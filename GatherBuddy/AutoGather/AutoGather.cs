@@ -19,6 +19,8 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Game.Text;
 using Dalamud.Utility;
 using ECommons.ExcelServices;
+using ECommons;
+using ECommons.Automation;
 
 namespace GatherBuddy.AutoGather
 {
@@ -64,6 +66,7 @@ namespace GatherBuddy.AutoGather
                     _movementController.DesiredPosition = Vector3.Zero;
                     StopNavigation();
                     AutoStatus = "Idle...";
+                    AutoGatherStatus = AutoGatherState.Idle;
                 }
                 else
                 {
@@ -83,12 +86,33 @@ namespace GatherBuddy.AutoGather
             WentHome = true;
 
             if (!GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
+            {
+                AutoGatherStatus = AutoGatherState.Idle;
                 return;
+            }
 
             if (Lifestream_IPCSubscriber.IsEnabled && !Lifestream_IPCSubscriber.IsBusy())
+            {
                 Lifestream_IPCSubscriber.ExecuteCommand("auto");
-            else 
+                TaskManager.Enqueue(() => !Lifestream_IPCSubscriber.IsBusy(), 60000);
+                // Wait until Lifestream successfully reaches it's destination before marking AutoGatherStatus as Idle
+                // This ensure that Artisan isnt restarted while Lifestream is Busy
+                TaskManager.Enqueue(() => AutoGatherStatus = AutoGatherState.Idle);
+            }
+            else
+            {
                 GatherBuddy.Log.Warning("Lifestream not found or not ready");
+                AutoGatherStatus = AutoGatherState.Idle;
+            }
+        }
+
+        unsafe public void CloseRecipeAddon()
+        {
+            if (RecipeNoteAddon != null && RecipeNoteAddon->AtkUnitBase.IsVisible)
+            {
+                GatherBuddy.Log.Debug("Closing recipe menu to exit crafting state");
+                TaskManager.Enqueue(() => Callback.Fire(&RecipeNoteAddon->AtkUnitBase, true, -1));
+            }
         }
 
         private class NoGatherableItemsInNodeExceptions : Exception { }
@@ -124,10 +148,30 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
+            // Handle Character Occupied States
             if (!CanAct)
             {
-                AutoStatus = "Player is busy...";
-                return;
+                if (IsPreparingToCraft)
+                {
+                    if(GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration && Artisan_IPCSubscriber.IsEnabled && !IsArtisanOperating())
+                    {
+                        AutoStatus = "Artisan is currently operating...";
+                    }
+                    else
+                    {
+                        CloseRecipeAddon();
+                    }
+                } else if (IsCrafting)
+                {
+                    if(GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration && Artisan_IPCSubscriber.IsEnabled)
+                    {
+                        AutoStatus = "Artisan is currently operating...";
+                    }
+                } else
+                {
+                    AutoStatus = "Player is busy...";
+                    return;
+                }
             }
 
             if (FreeInventorySlots == 0)
@@ -223,6 +267,15 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
+            if (GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration && Artisan_IPCSubscriber.IsEnabled)
+            {
+                if (AutoGatherStatus == AutoGatherState.Idle && !GenericHelpers.IsOccupied() && WasArtisanPaused)
+                {
+                    RestartArtisan();
+                    return;
+                }
+            }
+
             {//Block to limit the scope of the variable "next"
                 UpdateItemsToGather();
                 var next = ItemsToGather.FirstOrDefault();
@@ -236,8 +289,24 @@ namespace GatherBuddy.AutoGather
                     }
 
                     GoHome();
-                    AutoStatus = "No available items to gather";
+                    if (GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration && Artisan_IPCSubscriber.IsEnabled && IsArtisanOperating())
+                    {
+                        AutoStatus = "Artisan is currently operating...";
+                    }
+                    else
+                    {
+                        AutoStatus = "No available items to gather";
+                    }
                     return;
+                }
+                AutoGatherStatus = AutoGatherState.Gathering;
+
+                if (GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration && Artisan_IPCSubscriber.IsEnabled) {
+                    if(IsArtisanOperating() && !WasArtisanPaused)
+                    {
+                        PauseArtisan();
+                        return;
+                    }
                 }
 
                 foreach (var (loc, time) in VisitedTimedLocations)

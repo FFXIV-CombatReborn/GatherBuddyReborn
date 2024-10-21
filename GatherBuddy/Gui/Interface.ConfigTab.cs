@@ -85,6 +85,12 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DoMaterialize,
                 b => GatherBuddy.Config.AutoGatherConfig.DoMaterialize = b);
 
+        public static void DrawEnableArtisanIntegration()
+            => DrawCheckbox("Enable Artisan Integration",
+                "Gatherbuddy Reborn will automatically pause ongoing Artisan crafts and continues with the craft when GatherBuddy Reborn is idling and has nothing to gather",
+                GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration,
+                b => GatherBuddy.Config.AutoGatherConfig.EnableArtisanIntegration = b);
+
         public static void DrawMinimumGPGathering()
         {
             int tmp = (int)GatherBuddy.Config.AutoGatherConfig.MinimumGPForGathering;
@@ -1365,6 +1371,7 @@ public partial class Interface
                 ConfigFunctions.DrawForceWalkingBox();
                 ConfigFunctions.DrawAdvancedUnstuckBox();
                 ConfigFunctions.DrawMaterialExtraction();
+                ConfigFunctions.DrawEnableArtisanIntegration();
                 ConfigFunctions.DrawAntiStuckCooldown();
                 ConfigFunctions.DrawStuckThreshold();
                 ConfigFunctions.DrawTimedNodePrecog();

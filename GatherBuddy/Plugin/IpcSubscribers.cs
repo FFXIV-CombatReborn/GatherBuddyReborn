@@ -151,4 +151,21 @@ namespace GatherBuddy.Plugin
         internal static void Dispose()
             => IPCSubscriber_Common.DisposeAll(_disposalTokens);
     }
+
+    internal static class Artisan_IPCSubscriber
+    {
+        private static EzIPCDisposalToken[] _disposalTokens = EzIPC.Init(typeof(Artisan_IPCSubscriber), "Artisan");
+
+        internal static bool IsEnabled
+            => IPCSubscriber_Common.IsReady("Artisan");
+
+        [EzIPC("Artisan.IsListRunning", applyPrefix: false)]
+        internal static Func<bool> IsListRunning;
+
+        [EzIPC("Artisan.GetEnduranceStatus", applyPrefix: false)]
+        internal static Func<bool> GetEnduranceStatus;
+
+        [EzIPC("Artisan.SetStopRequest", applyPrefix: false)]
+        internal static Action<bool> SetStopRequest;
+    }
 }
