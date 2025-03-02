@@ -39,10 +39,13 @@ namespace GatherBuddy.AutoGather
             _advancedUnstuck                       =  new();
         }
 
+        //limit ipc event firing to only once
+        private bool _ipcEventWaitingFired = false;
+
         private readonly GatherBuddy _plugin;
         private readonly SoundHelper _soundHelper;
         private readonly AdvancedUnstuck _advancedUnstuck;
-        
+
         public           TaskManager TaskManager { get; }
 
         private bool _enabled { get; set; } = false;
@@ -57,7 +60,7 @@ namespace GatherBuddy.AutoGather
                 {
                     TaskManager.Abort();
                     targetInfo = null;
-                    if (VNavmesh_IPCSubscriber.IsEnabled && IsPathGenerating) 
+                    if (VNavmesh_IPCSubscriber.IsEnabled && IsPathGenerating)
                         VNavmesh_IPCSubscriber.Nav_PathfindCancelAll();
                     StopNavigation();
                     AutoStatus = "Idle...";
@@ -65,7 +68,7 @@ namespace GatherBuddy.AutoGather
                 }
                 else
                 {
-                    RefreshNextTreasureMapAllowance();                    
+                    RefreshNextTreasureMapAllowance();
                     WentHome = true; //Prevents going home right after enabling auto-gather
                 }
 
@@ -85,7 +88,7 @@ namespace GatherBuddy.AutoGather
 
             if (Lifestream_IPCSubscriber.IsEnabled && !Lifestream_IPCSubscriber.IsBusy())
                 Lifestream_IPCSubscriber.ExecuteCommand("auto");
-            else 
+            else
                 GatherBuddy.Log.Warning("Lifestream not found or not ready");
         }
 
@@ -139,6 +142,7 @@ namespace GatherBuddy.AutoGather
 
             if (IsGathering)
             {
+                _ipcEventWaitingFired = false;
                 if (targetInfo != null)
                 {
                     if (targetInfo.Location != null && targetInfo.Item.NodeType is NodeType.Unspoiled or NodeType.Legendary)
@@ -204,10 +208,10 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (GatherBuddy.Config.AutoGatherConfig.DoMaterialize 
+            if (GatherBuddy.Config.AutoGatherConfig.DoMaterialize
                 && Player.Job is Job.BTN or Job.MIN
-                && !isPathing 
-                && !Svc.Condition[ConditionFlag.Mounted] 
+                && !isPathing
+                && !Svc.Condition[ConditionFlag.Mounted]
                 && SpiritbondMax > 0)
             {
                 DoMateriaExtraction();
@@ -234,6 +238,11 @@ namespace GatherBuddy.AutoGather
                         GoHome();
 
                     AutoStatus = "No available items to gather";
+                    if (!_ipcEventWaitingFired)
+                    {
+                        _plugin.Ipc.AutoGathererEventWaitingForNextNode();
+                        _ipcEventWaitingFired = true;
+                    }
                     return;
                 }
 
@@ -311,7 +320,7 @@ namespace GatherBuddy.AutoGather
             }
 
             var forcedAetheryte = ForcedAetherytes.ZonesWithoutAetherytes.Where(z => z.ZoneId == targetInfo.Location.Territory.Id).FirstOrDefault();
-            if (forcedAetheryte.ZoneId != 0 
+            if (forcedAetheryte.ZoneId != 0
                 && (GatherBuddy.GameData.Aetherytes[forcedAetheryte.AetheryteId].Territory.Id == territoryId
                 || forcedAetheryte.AetheryteId == 70 && territoryId == 886)) //The Firmament
             {
@@ -406,7 +415,7 @@ namespace GatherBuddy.AutoGather
             }
 
             Vector3 selectedFarNode;
-            
+
             // only Legendary and Unspoiled show marker
             if (ShouldUseFlag && targetInfo.Item.NodeType is NodeType.Legendary or NodeType.Unspoiled)
             {
@@ -440,13 +449,14 @@ namespace GatherBuddy.AutoGather
                 }
 
             }
-             
+
             MoveToFarNode(selectedFarNode);
         }
 
         private void AbortAutoGather(string? status = null)
         {
             Enabled = false;
+            _plugin.Ipc.AutoGathererEventAborting(status);
             if (!string.IsNullOrEmpty(status))
                 AutoStatus = status;
             if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
@@ -491,7 +501,7 @@ namespace GatherBuddy.AutoGather
                         return true;
                     }
 
-                    return !IsGathering;       
+                    return !IsGathering;
                 }, "Wait until Gathering addon is closed or SelectYesno addon pops up");
             }
         }
