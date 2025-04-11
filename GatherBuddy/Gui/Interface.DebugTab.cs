@@ -26,6 +26,7 @@ using System.Collections;
 using ECommons;
 using ECommons.ExcelServices;
 using GatherBuddy.AutoGather.Lists;
+using Newtonsoft.Json;
 
 namespace GatherBuddy.Gui;
 
@@ -153,6 +154,32 @@ public partial class Interface
                     list.SetQuantity(item, 1000);
                 }
                 _plugin.AutoGatherListsManager.AddList(list);
+            }
+
+            if (ImGui.Button("Find Item in Gatherables List"))
+            {
+                var id   = 32047;
+                var item = GatherBuddy.GameData.Gatherables.Values.FirstOrDefault(g => g.ItemId == id);
+                if (item != null)
+                {
+                    var type       = item.GetType();
+                    var properties = type.GetProperties();
+
+                    foreach (var prop in properties)
+                    {
+                        var value = prop.GetValue(item, null);
+                        Svc.Log.Debug($"Property \"{prop.Name}\" = {value}");
+                    }
+
+                    foreach (var node in item.NodeList)
+                    {
+                        Svc.Log.Debug($"Node {node.Id} = {node.Name} - {node.NodeType}");
+                    }
+                }
+                else
+                {
+                    Svc.Log.Debug($"Item {id} not found");
+                }
             }
         }
     }

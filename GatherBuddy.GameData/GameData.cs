@@ -114,7 +114,7 @@ public class GameData
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
             var tmpGatheringPoints = DataManager.GetExcelSheet<GatheringPoint>()
-                .Where(row => row.PlaceName.RowId > 0)
+                //.Where(row => row.PlaceName.RowId > 0)
                 .GroupBy(row => row.GatheringPointBase.RowId)
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
