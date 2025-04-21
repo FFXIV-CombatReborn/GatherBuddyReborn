@@ -93,7 +93,7 @@ public unsafe partial class AutoGather
         }
 
         AutoStatus = "Repairing...";
-        StopNavigation();
+        Navigation.StopNavigation();
         YesAlready.Lock();
 
         var delay = (int)GatherBuddy.Config.AutoGatherConfig.ExecutionDelay;

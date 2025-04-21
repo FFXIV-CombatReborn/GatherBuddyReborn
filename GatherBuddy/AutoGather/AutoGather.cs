@@ -44,17 +44,17 @@ namespace GatherBuddy.AutoGather
             TaskManager.ShowDebug = false;
             _plugin               = plugin;
             _soundHelper          = new SoundHelper();
-            _advancedUnstuck      = new();
+            Navigation            = new Navigation();
             _activeItemList       = new ActiveItemList(plugin.AutoGatherListsManager);
             ArtisanExporter       = new Reflection.ArtisanExporter(plugin.AutoGatherListsManager);
         }
 
-        private readonly GatherBuddy     _plugin;
-        private readonly SoundHelper     _soundHelper;
-        private readonly AdvancedUnstuck _advancedUnstuck;
-        private readonly ActiveItemList  _activeItemList;
+        private readonly GatherBuddy    _plugin;
+        private readonly SoundHelper    _soundHelper;
+        private readonly ActiveItemList _activeItemList;
 
         public Reflection.ArtisanExporter ArtisanExporter;
+        public Navigation                 Navigation;
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
@@ -81,9 +81,9 @@ namespace GatherBuddy.AutoGather
                     ActionSequence             = null;
                     CurrentCollectableRotation = null;
 
-                    if (VNavmesh.Enabled && IsPathGenerating)
+                    if (VNavmesh.Enabled && VNavmesh.Nav.PathfindInProgress())
                         VNavmesh.Nav.PathfindCancelAll();
-                    StopNavigation();
+                    Navigation.StopNavigation();
                     CurrentFarNodeLocation   = null;
                     _homeWorldWarning        = false;
                     _diademQueuingInProgress = false;
@@ -102,7 +102,7 @@ namespace GatherBuddy.AutoGather
 
         public bool GoHome()
         {
-            StopNavigation();
+            Navigation.StopNavigation();
 
             if (WentHome)
                 return false;
@@ -149,7 +149,7 @@ namespace GatherBuddy.AutoGather
 
             try
             {
-                if (!NavReady)
+                if (!VNavmesh.Nav.IsReady())
                 {
                     AutoStatus = "Waiting for Navmesh...";
                     return;
@@ -240,7 +240,7 @@ namespace GatherBuddy.AutoGather
                     return;
 
                 AutoStatus = "Gathering...";
-                StopNavigation();
+                Navigation.StopNavigation();
                 try
                 {
                     DoActionTasks(gatherTarget);
@@ -262,28 +262,27 @@ namespace GatherBuddy.AutoGather
             ActionSequence             = null;
             CurrentCollectableRotation = null;
 
-            //Cache IPC call results
-            var isPathGenerating = IsPathGenerating;
-            var isPathing        = IsPathing;
-
-            switch (_advancedUnstuck.Check(CurrentDestination, isPathGenerating, isPathing))
+            var navCheck = Navigation.Check();
+            switch (navCheck)
             {
-                case AdvancedUnstuckCheckResult.Pass: break;
-                case AdvancedUnstuckCheckResult.Wait: return;
-                case AdvancedUnstuckCheckResult.Fail:
-                    StopNavigation();
-                    AutoStatus = $"Advanced unstuck in progress!";
+                case Navigation.NavigationResult.InProgress:
+                    AutoStatus = "Pathfinding...";
                     return;
-            }
-
-            if (isPathGenerating)
-            {
-                AutoStatus = "Generating path...";
-                return;
+                case Navigation.NavigationResult.Stuck:
+                    AutoStatus = "Pathfinding stuck, shuffling...";
+                    return;
+                case Navigation.NavigationResult.Success:
+                    AutoStatus = "Processing path...";
+                    Navigation.StartPath();
+                    return;
+                case Navigation.NavigationResult.Failed:
+                    AutoStatus = "Pathfinding failed";
+                    return;
+                case Navigation.NavigationResult.Pass: break;
             }
 
             if (Player.Job is Job.BTN or Job.MIN
-             && !isPathing
+             && !VNavmesh.Path.IsRunning()
              && !Svc.Condition[ConditionFlag.Mounted])
             {
                 if (SpiritbondMax > 0)
@@ -353,13 +352,13 @@ namespace GatherBuddy.AutoGather
                     if (aetheryte.Position.DistanceToPlayer() > 10)
                     {
                         AutoStatus = "Moving to aetheryte...";
-                        if (!isPathing && !isPathGenerating)
-                            Navigate(aetheryte.Position, false);
+                        if (!VNavmesh.Path.IsRunning() && !VNavmesh.Nav.PathfindInProgress())
+                            VNavmesh.SimpleMove.PathfindAndMoveTo(aetheryte.Position, false);
                     }
                     else if (!Lifestream.IsBusy())
                     {
                         AutoStatus = "Teleporting...";
-                        StopNavigation();
+                        Navigation.StopNavigation();
                         string name = string.Empty;
                         switch (territoryId)
                         {
@@ -419,7 +418,7 @@ namespace GatherBuddy.AutoGather
                                     return;
 
                                 TaskManager.Enqueue(YesAlready.Lock);
-                                TaskManager.Enqueue(StopNavigation);
+                                TaskManager.Enqueue(() => Navigation.StopNavigation());
                                 TaskManager.Enqueue(()
                                     => targetSystem->OpenObjectInteraction(
                                         (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)dutyNpc.Address));
@@ -480,7 +479,7 @@ namespace GatherBuddy.AutoGather
                 }
 
                 AutoStatus = "Teleporting...";
-                StopNavigation();
+                Navigation.StopNavigation();
 
                 if (!MoveToTerritory(next.First().Node))
                     AbortAutoGather();
@@ -531,9 +530,9 @@ namespace GatherBuddy.AutoGather
 
             AutoStatus = "Moving to far node...";
 
-            if (CurrentDestination != default)
+            if (Navigation.CurrentDestination != default)
             {
-                var currentNode = visibleNodes.FirstOrDefault(o => o.Position == CurrentDestination);
+                var currentNode = visibleNodes.FirstOrDefault(o => o.Position == Navigation.CurrentDestination);
                 if (currentNode != null && !currentNode.IsTargetable)
                     GatherBuddy.Log.Verbose($"Far node is not targetable, distance {currentNode.Position.DistanceToPlayer()}.");
 
@@ -543,7 +542,7 @@ namespace GatherBuddy.AutoGather
                 foreach (var node in allPositions.Where(o => o.DistanceToPlayer() < 80))
                     FarNodesSeenSoFar.Add(node);
 
-                if (CurrentDestination.DistanceToPlayer() < 80)
+                if (Navigation.CurrentDestination.DistanceToPlayer() < 80)
                 {
                     GatherBuddy.Log.Verbose("Far node is not targetable, choosing another");
                 }
@@ -777,7 +776,6 @@ namespace GatherBuddy.AutoGather
 
         public void Dispose()
         {
-            _advancedUnstuck.Dispose();
             NodeTracker.Dispose();
             _activeItemList.Dispose();
         }

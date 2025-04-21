@@ -22,7 +22,7 @@ namespace GatherBuddy.AutoGather
     {
         private unsafe void EnqueueDismount()
         {
-            TaskManager.Enqueue(StopNavigation);
+            TaskManager.Enqueue(() => Navigation.StopNavigation());
 
             var am = ActionManager.Instance();
             TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) am->UseAction(ActionType.Mount, 0); }, "Dismount");
@@ -53,7 +53,7 @@ namespace GatherBuddy.AutoGather
                 doMount = () => am->UseAction(ActionType.GeneralAction, 24);
             }
 
-            TaskManager.Enqueue(StopNavigation);
+            TaskManager.Enqueue(() => Navigation.StopNavigation());
             EnqueueActionWithDelay(doMount);
             TaskManager.Enqueue(() => Svc.Condition[ConditionFlag.Mounted], 2000);
         }
@@ -89,21 +89,21 @@ namespace GatherBuddy.AutoGather
                             try
                             {
                                 var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
-                                Navigate(floor, true);
-                                TaskManager.Enqueue(() => !IsPathGenerating);
+                                VNavmesh.SimpleMove.PathfindAndMoveTo(floor, true);
+                                TaskManager.Enqueue(() => !VNavmesh.Nav.PathfindInProgress());
                                 TaskManager.DelayNext(50);
-                                TaskManager.Enqueue(() => !IsPathing, 1000);
+                                TaskManager.Enqueue(() => !VNavmesh.Path.IsRunning(), 1000);
                                 EnqueueDismount();
                             }
                             catch { }
                             //If even that fails, do advanced unstuck
-                            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
+                            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) Navigation.ForceUnstuck(); });
                         }
                     });
                 }
                 else if (waitGP)
                 {
-                    StopNavigation();
+                    Navigation.StopNavigation();
                     AutoStatus = "Waiting for GP to regenerate...";
                 }
                 else
@@ -111,8 +111,8 @@ namespace GatherBuddy.AutoGather
                     // Use consumables with cast time just before gathering a node when player is surely not mounted
                     if (GetConsumablesWithCastTime(config) is var consumable and > 0)
                     {
-                        if (IsPathing)
-                            StopNavigation();
+                        if (VNavmesh.Path.IsRunning())
+                            Navigation.StopNavigation();
                         else
                             EnqueueActionWithDelay(() => UseItem(consumable));
                     }
@@ -143,14 +143,14 @@ namespace GatherBuddy.AutoGather
                         // Also move if vertical separation is too large.
                         if (!Dalamud.Conditions[ConditionFlag.Diving])
                         {
-                            TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) Navigate(gameObject.Position, false); });
+                            TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) VNavmesh.SimpleMove.PathfindAndMoveTo(gameObject.Position, false); });
                         }
                     }
                 }
             }
             else if (hSeparation < Math.Max(GatherBuddy.Config.AutoGatherConfig.MountUpDistance, 5) && !Dalamud.Conditions[ConditionFlag.Diving])
             {
-                Navigate(gameObject.Position, false);
+                Navigation.CurrentDestination = gameObject.Position;
             }
             else
             {
@@ -160,76 +160,9 @@ namespace GatherBuddy.AutoGather
                 }
                 else
                 {
-                    Navigate(gameObject.Position, ShouldFly(gameObject.Position));
+                    Navigation.CurrentDestination = gameObject.Position;
                 }
             }
-        }
-
-        private void StopNavigation()
-        {
-            // Reset navigation logic here
-            // For example, reinitiate navigation to the destination
-            CurrentDestination = default;
-            if (VNavmesh.Enabled)
-            {
-                VNavmesh.Path.Stop();
-            }
-        }
-
-        private void Navigate(Vector3 destination, bool shouldFly)
-        {
-            if (CurrentDestination == destination && (IsPathing || IsPathGenerating))
-                return;
-
-            //vnavmesh can't find a path on mesh underwater (because the character is basically flying), nor can it fly without a mount.
-            //Ensure that you are always mounted when underwater.
-            if (Dalamud.Conditions[ConditionFlag.Diving] && !Dalamud.Conditions[ConditionFlag.Mounted])
-            {
-                GatherBuddy.Log.Error("BUG: Navigate() called underwater without mounting up first");
-                Enabled = false;
-                return;
-            }
-
-            shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
-
-            StopNavigation();
-            CurrentDestination = destination;
-            var correctedDestination = GetCorrectedDestination(CurrentDestination);
-            GatherBuddy.Log.Debug($"Navigating to {destination} (corrected to {correctedDestination})");
-
-            LastNavigationResult = VNavmesh.SimpleMove.PathfindAndMoveTo(correctedDestination, shouldFly);
-        }
-
-        private static Vector3 GetCorrectedDestination(Vector3 destination)
-        {
-            const float MaxHorizontalSeparation = 3.0f;
-            const float MaxVerticalSeparation = 2.5f;
-
-            try
-            {
-                float separation;
-                if (WorldData.NodeOffsets.TryGetValue(destination, out var offset))
-                {
-                    offset = VNavmesh.Query.Mesh.NearestPoint(offset, MaxHorizontalSeparation, MaxVerticalSeparation);
-                    if ((separation = Vector2.Distance(offset.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)
-                        GatherBuddy.Log.Warning($"Offset is ignored because the horizontal separation {separation} is too large after correcting for mesh. Maximum allowed is {MaxHorizontalSeparation}.");
-                    else if ((separation = Math.Abs(offset.Y - destination.Y)) > MaxVerticalSeparation)
-                        GatherBuddy.Log.Warning($"Offset is ignored because the vertical separation {separation} is too large after correcting for mesh. Maximum allowed is {MaxVerticalSeparation}.");
-                    else
-                        return offset;
-                }
-
-                var correctedDestination = VNavmesh.Query.Mesh.NearestPoint(destination, MaxHorizontalSeparation, MaxVerticalSeparation);
-                if ((separation = Vector2.Distance(correctedDestination.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)
-                    GatherBuddy.Log.Warning($"Query.Mesh.NearestPoint() returned a point with too large horizontal separation {separation}. Maximum allowed is {MaxHorizontalSeparation}.");
-                else if ((separation = Math.Abs(correctedDestination.Y - destination.Y)) > MaxVerticalSeparation)
-                    GatherBuddy.Log.Warning($"Query.Mesh.NearestPoint() returned a point with too large vertical separation {separation}. Maximum allowed is {MaxVerticalSeparation}.");
-                else
-                    return correctedDestination;
-            }
-            catch (Exception) { }
-
-            return destination;
         }
 
         private void MoveToFarNode(Vector3 position)
@@ -242,7 +175,7 @@ namespace GatherBuddy.AutoGather
             }
             else
             {
-                Navigate(farNode, ShouldFly(farNode));
+                Navigation.CurrentDestination = farNode;
             }
         }
 

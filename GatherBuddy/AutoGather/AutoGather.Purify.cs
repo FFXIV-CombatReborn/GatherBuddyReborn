@@ -56,7 +56,7 @@ namespace GatherBuddy.AutoGather
         {
             AutoStatus = "Aetherial reduction";
             var delay = (int)GatherBuddy.Config.AutoGatherConfig.ExecutionDelay;
-            TaskManager.Enqueue(StopNavigation);
+            TaskManager.Enqueue(() => Navigation.StopNavigation());
             TaskManager.Enqueue(YesAlready.Lock);
             if (PurifyItemSelectorAddon == null)
             {

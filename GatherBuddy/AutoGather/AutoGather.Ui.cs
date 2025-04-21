@@ -35,12 +35,6 @@ namespace GatherBuddy.AutoGather
             }
 
             ImGui.Text($"Status: {GatherBuddy.AutoGather.AutoStatus}");
-            var lastNavString = GatherBuddy.AutoGather.LastNavigationResult.HasValue
-                ? GatherBuddy.AutoGather.LastNavigationResult.Value
-                    ? "Successful"
-                    : "Failed (If you're seeing this you probably need to restart your game)"
-                : "None";
-            ImGui.Text($"Navigation: {lastNavString}");
         }
 
 
@@ -138,7 +132,7 @@ namespace GatherBuddy.AutoGather
                         }
                         //VNavmesh_IPCSubscriber.Nav_PathfindCancelAll();
                         VNavmesh.Path.Stop();
-                        VNavmesh.SimpleMove.PathfindAndMoveTo(node.Position, GatherBuddy.AutoGather.ShouldFly(node.Position));
+                        VNavmesh.SimpleMove.PathfindAndMoveTo(node.Position, true);
                     }
 
                     if (WorldData.NodeOffsets.TryGetValue(node.Position, out var offset))
@@ -158,7 +152,7 @@ namespace GatherBuddy.AutoGather
                             }
                             //VNavmesh_IPCSubscriber.Nav_PathfindCancelAll();
                             VNavmesh.Path.Stop();
-                            VNavmesh.SimpleMove.PathfindAndMoveTo(offset, GatherBuddy.AutoGather.ShouldFly(offset));
+                            VNavmesh.SimpleMove.PathfindAndMoveTo(offset, true);
                         }
                     }
                     else

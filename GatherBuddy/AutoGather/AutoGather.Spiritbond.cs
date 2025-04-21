@@ -48,7 +48,7 @@ public partial class AutoGather
         }
         if (MaterializeAddon == null)
         {
-            TaskManager.Enqueue(StopNavigation);
+            TaskManager.Enqueue(() => Navigation.StopNavigation());
             EnqueueActionWithDelay(() => ActionManager.Instance()->UseAction(ActionType.GeneralAction, 14));
             TaskManager.Enqueue(() => MaterializeAddon != null);
             return;

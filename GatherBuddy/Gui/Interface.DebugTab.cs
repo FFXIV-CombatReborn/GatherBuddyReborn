@@ -722,12 +722,12 @@ public partial class Interface
 
         ImGui.Text($"Enabled: {GatherBuddy.AutoGather.Enabled}");
         ImGui.Text($"Status: {GatherBuddy.AutoGather.AutoStatus}");
-        ImGui.Text($"Navigation: {GatherBuddy.AutoGather.LastNavigationResult}");
-        ImGui.Text($"Current Destination: {GatherBuddy.AutoGather.CurrentDestination}");
+        ImGui.Text($"Navigation Task: {GatherBuddy.AutoGather.Navigation.CurrentPathTask?.Status}");
+        ImGui.Text($"Current Destination: {GatherBuddy.AutoGather.Navigation.CurrentDestination}");
         ImGui.Text($"IsGathering: {GatherBuddy.AutoGather.IsGathering}");
-        ImGui.Text($"IsPathing: {GatherBuddy.AutoGather.IsPathing}");
-        ImGui.Text($"IsPathGenerating: {GatherBuddy.AutoGather.IsPathGenerating}");
-        ImGui.Text($"NavReady: {GatherBuddy.AutoGather.NavReady}");
+        ImGui.Text($"IsPathing: {VNavmesh.Path.IsRunning()}");
+        ImGui.Text($"IsPathGenerating: {VNavmesh.Nav.PathfindInProgress()}");
+        ImGui.Text($"NavReady: {VNavmesh.Nav.IsReady()}");
         ImGui.Text($"CanAct: {GatherBuddy.AutoGather.CanAct}");
         ImGui.Text($"BlacklistedNodes: {GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId.Count}");
         ImGui.Text($"ItemsToGatherInZone: {GatherBuddy.AutoGather.ItemsToGatherInZone.Count()}");
