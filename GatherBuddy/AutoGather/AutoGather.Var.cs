@@ -15,7 +15,11 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Numerics;
+using ECommons.DalamudServices;
 using ECommons.MathHelpers;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using Lumina.Excel.Sheets;
+using GatheringType = GatherBuddy.Enums.GatheringType;
 
 namespace GatherBuddy.AutoGather
 {
@@ -75,17 +79,30 @@ namespace GatherBuddy.AutoGather
         public bool ShouldUseFlag
             => !GatherBuddy.Config.AutoGatherConfig.DisableFlagPathing;
 
-        public bool ShouldFly(Vector3 destination)
+        public unsafe bool ShouldFly(Vector3 destination)
         {
             if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving])
                 return true;
+
+            var territory = Dalamud.ClientState.TerritoryType;
+            var territoryRow = Svc.Data.GameData.GetExcelSheet<TerritoryType>();
+            if (territoryRow == null)
+                return false;
+
+            var playerState = PlayerState.Instance();
+            if (playerState == null)
+                return false;
+
+            var aetherCurrentComp = territoryRow.GetRow(territory).AetherCurrentCompFlgSet.RowId;
+            if (aetherCurrentComp == 0)
+                return false;
 
             if (GatherBuddy.Config.AutoGatherConfig.ForceWalking || Dalamud.ClientState.LocalPlayer == null)
             {
                 return false;
             }
 
-            return Vector3.Distance(Dalamud.ClientState.LocalPlayer.Position, destination)
+            return playerState->IsAetherCurrentZoneComplete(aetherCurrentComp) && Vector3.Distance(Dalamud.ClientState.LocalPlayer.Position, destination)
              >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance;
         }
 

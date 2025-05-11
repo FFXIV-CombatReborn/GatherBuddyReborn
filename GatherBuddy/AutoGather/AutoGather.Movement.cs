@@ -16,7 +16,10 @@ using GatherBuddy.Data;
 using ECommons.MathHelpers;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using GatherBuddy.Enums;
+using Lumina.Excel.Sheets;
+using Action = System.Action;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
+using GatheringType = GatherBuddy.Enums.GatheringType;
 
 namespace GatherBuddy.AutoGather
 {
@@ -161,7 +164,7 @@ namespace GatherBuddy.AutoGather
             }
             else
             {
-                if (!Dalamud.Conditions[ConditionFlag.Mounted])
+                if (ShouldMount())
                 {
                     if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
                         Navigate(gameObject.Position, false);
@@ -245,7 +248,7 @@ namespace GatherBuddy.AutoGather
         {
             var farNode = position;
 
-            if (!Dalamud.Conditions[ConditionFlag.Mounted])
+            if (ShouldMount())
             {
                 if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
                     Navigate(farNode, false);
@@ -259,7 +262,7 @@ namespace GatherBuddy.AutoGather
 
         private void MoveToFishingSpot(Vector3 position, Angle angle)
         {
-            if (!Dalamud.Conditions[ConditionFlag.Mounted])
+            if (ShouldMount())
             {
                 if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
                     Navigate(position, false, angle);
@@ -269,6 +272,14 @@ namespace GatherBuddy.AutoGather
             {
                 Navigate(position, ShouldFly(position), angle);
             }
+        }
+
+        private bool ShouldMount()
+        {
+            var territory    = Player.Territory;
+            var territoryRow = Svc.Data.GetExcelSheet<TerritoryType>().GetRow(territory);
+
+            return territoryRow.Mount && !Svc.Condition[ConditionFlag.Mounted];
         }
 
         public static Aetheryte? FindClosestAetheryte(ILocation location)
