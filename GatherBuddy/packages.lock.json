@@ -432,7 +432,7 @@
       "gatherbuddy.gamedata": {
         "type": "Project",
         "dependencies": {
-          "AllaganLib.GameSheets": "[1.3.0, )",
+          "AllaganLib.GameSheets": "[*, )",
           "GatherBuddy.Levenshtein": "[1.0.0, )",
           "OtterGui": "[1.0.0, )"
         }

@@ -4,7 +4,7 @@
     "net9.0-windows7.0": {
       "AllaganLib.GameSheets": {
         "type": "Direct",
-        "requested": "[1.3.0, )",
+        "requested": "[*, )",
         "resolved": "1.3.0",
         "contentHash": "8AeicK4ZK2UIiClDv1Q3829VP0iHU1aBJdCIiC7//YYJT8fURWwPJOunFpbjDBX9RMt2feNLa4zBlw3yn93Orw==",
         "dependencies": {
