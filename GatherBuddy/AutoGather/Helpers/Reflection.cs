@@ -86,7 +86,7 @@ namespace GatherBuddy.AutoGather.Helpers
                         list.Description = "Imported from Artisan";
                         foreach (var (itemId, quantity) in matList)
                         {
-                            var gatherable = GatherBuddy.GameData.Gatherables.FirstOrDefault(g => g.Key == itemId);
+                            var gatherable = GatherBuddy.GameData.Gatherables.FirstOrDefault(g => g.Key == itemId || g.Value.ItemUses.Select(i => i.Item.RowId).Contains(itemId));
                             if (gatherable.Value == null || gatherable.Value.NodeList.Count == 0)
                                 continue;
                             list.Add(gatherable.Value, (uint)quantity);

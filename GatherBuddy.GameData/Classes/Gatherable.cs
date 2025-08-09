@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using AllaganLib.GameSheets.ItemSources;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Utility;
@@ -45,6 +47,10 @@ public class Gatherable : IComparable<Gatherable>, IGatherable
         if (ItemData.RowId == 0)
             gameData.Log.Error("Invalid item.");
 
+        var uses = gameData.SheetManager.ItemInfoCache.GetItemUsesByType(AllaganLib.GameSheets.Caches.ItemInfoType.Reduction);
+        if (uses != null)
+            ItemUses.AddRange(uses.Where(i => i.CostItem?.RowId == ItemId));
+
         var levelData = gatheringData.GatheringItemLevel.ValueNullable;
         _levelStars = levelData == null ? 0 : (levelData.Value.GatheringItemLevel << 3) + levelData.Value.Stars;
         Name        = MultiString.FromItem(gameData.DataManager, gatheringData.Item.RowId);
@@ -55,6 +61,8 @@ public class Gatherable : IComparable<Gatherable>, IGatherable
 
     public int Stars
         => _levelStars & 0b111;
+
+    public List<ItemSource> ItemUses { get; } = new();
 
     public string StarsString()
         => StarsArray[Stars];

@@ -23,6 +23,9 @@ using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using Weather = GatherBuddy.Structs.Weather;
 using WeatherRow = Lumina.Excel.Sheets.Weather;
 using FishingSpotRow = Lumina.Excel.Sheets.FishingSpot;
+using AllaganLib.GameSheets.Caches;
+using AllaganLib.GameSheets.Service;
+using AllaganLib.GameSheets.ItemSources;
 
 namespace GatherBuddy;
 
@@ -30,6 +33,7 @@ public class GameData
 {
     public readonly string OverrideFile;
     internal IDataManager DataManager { get; }
+    internal SheetManager SheetManager { get; }
     internal FrozenDictionary<byte, CumulativeWeatherRates> CumulativeWeatherRates = FrozenDictionary<byte, CumulativeWeatherRates>.Empty;
 
     public readonly Logger Log;
@@ -48,7 +52,7 @@ public class GameData
     public FrozenDictionary<ushort, CosmicMission> CosmicFishingMissions { get; } = FrozenDictionary<ushort, CosmicMission>.Empty;
     public Dictionary<uint, List<Vector3>> WorldCoords           { get; init; } = new();
 
-    public IReadOnlyList<OceanRoute> OceanRoutes   { get; } = Array.Empty<OceanRoute>();
+    public IReadOnlyList<OceanRoute> OceanRoutes { get; } = Array.Empty<OceanRoute>();
     public OceanTimeline             OceanTimeline { get; } = null!;
 
     public PatriciaTrie<Gatherable> GatherablesTrie { get; } = new();
@@ -58,7 +62,7 @@ public class GameData
 
     public int TimedGatherables     { get; }
     public int MultiNodeGatherables { get; }
-    public int OverriddenFish       { get; private set; }
+    public int OverriddenFish { get; private set; }
 
     public (IGatherable? Item, ILocation? Location) GetConfig(ObjectType type, uint itemId, uint locationId)
         => type switch
@@ -84,6 +88,7 @@ public class GameData
         DataManager = gameData;
         WorldCoords = worldCoordsDict;
         OverrideFile = overrideFile;
+        SheetManager = new SheetManager(DataManager.GameData, new SheetManagerStartupOptions());
         try
         {
             GatheringIcons = new GatheringIcons(gameData);
@@ -160,10 +165,10 @@ public class GameData
             var catchData = DataManager.GetExcelSheet<FishingNoteInfo>();
             Fishes = DataManager.GetExcelSheet<FishParameter>()
                 .Where(f => f.Item.RowId != 0 && f.Item.RowId < 1000000)
-                .Select(f => new Fish(DataManager, f, catchData))
+                .Select(f => new Fish(this, f, catchData))
                 .Concat(DataManager.GetExcelSheet<SpearfishingItem>()
                     .Where(sf => sf.Item.RowId != 0 && sf.Item.RowId < 1000000)
-                    .Select(sf => new Fish(DataManager, sf, catchData)))
+                    .Select(sf => new Fish(this, sf, catchData)))
                 .GroupBy(f => f.ItemId)
                 .Select(group => group.First())
                 .ToFrozenDictionary(f => f.ItemId, f => f);
@@ -190,7 +195,7 @@ public class GameData
             HiddenMaps.Apply(this);
             ForcedAetherytes.Apply(this);
 
-            OceanRoutes   = SetupOceanRoutes(gameData, FishingSpots);
+            OceanRoutes = SetupOceanRoutes(gameData, FishingSpots);
             OceanTimeline = new OceanTimeline(gameData, OceanRoutes);
             SetOceanFish(OceanRoutes, Fishes.Values);
 

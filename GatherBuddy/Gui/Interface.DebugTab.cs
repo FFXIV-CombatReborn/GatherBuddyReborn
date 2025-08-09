@@ -768,6 +768,17 @@ public partial class Interface
                 ImGui.PopID();
             }
         }
+
+        if (ImGui.CollapsingHeader("Item Uses"))
+        {
+            using var group = ImRaii.Group();
+            var itemUses = GatherBuddy.GameData.Gatherables.SelectMany(g => g.Value.ItemUses).Distinct().ToList();
+            itemUses.AddRange(GatherBuddy.GameData.Fishes.SelectMany(f => f.Value.ItemUses).Distinct());
+            foreach (var item in itemUses)
+            {
+                ImGui.Text($"{item.Item.NameString}: CostItems:{string.Join(',', item.CostItems.Select(i => i.ItemRow.NameString))} | RewardItems: {string.Join(',', item.RewardItems.Select(i => i.ItemRow.NameString))}");
+            }
+        }
     }
 
     private void DrawAutoGatherDebug()

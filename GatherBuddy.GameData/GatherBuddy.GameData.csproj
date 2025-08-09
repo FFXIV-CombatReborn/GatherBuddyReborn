@@ -22,4 +22,8 @@
     <ProjectReference Include="..\GatherBuddy.Levenshtein\GatherBuddy.Levenshtein.csproj" />
     <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AllaganLib.GameSheets" Version="1.3.0" />
+  </ItemGroup>
 </Project>
