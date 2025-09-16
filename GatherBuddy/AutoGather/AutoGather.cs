@@ -210,7 +210,7 @@ namespace GatherBuddy.AutoGather
                 {
                     var atkUnitBasePtr = Dalamud.GameGui.GetAddonByName("RecipeNote");
                     var addon = new AddonMaster.RecipeNote(atkUnitBasePtr);
-                    if (!atkUnitBasePtr.IsNull && addon.IsVisible)
+                    if (!atkUnitBasePtr.IsNull && atkUnitBasePtr.IsVisible)
                     {
                         Callback.Fire(addon.Base, true, -1);
                     }
