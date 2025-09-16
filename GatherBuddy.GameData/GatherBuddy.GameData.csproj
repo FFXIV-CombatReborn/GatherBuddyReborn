@@ -1,4 +1,4 @@
-<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+﻿<Project Sdk="Dalamud.CN.NET.Sdk/13.1.0">
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <LangVersion>preview</LangVersion>
@@ -11,7 +11,10 @@
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Configurations>Debug;Release</Configurations>
-    <Platforms>x64</Platforms>
+    <Platforms>x64;x86;AnyCPU</Platforms>
+    <Use_Dalamud_CN>
+      true
+    </Use_Dalamud_CN>
   </PropertyGroup>
 
   <PropertyGroup>

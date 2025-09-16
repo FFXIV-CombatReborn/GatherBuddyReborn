@@ -1,11 +1,16 @@
-﻿<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+﻿<Project Sdk="Dalamud.CN.NET.Sdk/13.1.0">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Use_Dalamud_CN>
+          true
+        </Use_Dalamud_CN>
+        <Platforms>x64;x86</Platforms>
     </PropertyGroup>
+  
 
     <ItemGroup>
       <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+﻿<Project Sdk="Dalamud.CN.NET.Sdk/13.1.0">
   <PropertyGroup>
     <TargetFramework>net9.0-windows7.0</TargetFramework>
     <LangVersion>preview</LangVersion>
@@ -19,7 +19,10 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <CopyLocalLockfileAssemblies>true</CopyLocalLockfileAssemblies>
     <Configurations>Debug;Release</Configurations>
-    <Platforms>x64</Platforms>
+    <Platforms>x64;x86;AnyCPU</Platforms>
+    <Use_Dalamud_CN>
+      true
+    </Use_Dalamud_CN>
 	</PropertyGroup>
 
   <ItemGroup>
@@ -41,7 +44,7 @@
 
   <ItemGroup>
     <PackageReference Include="CSCore" Version="1.2.1.2" />
-    <PackageReference Include="MessagePack" Version="3.1.3" />
+    <PackageReference Include="MessagePack" Version="3.1.4" />
   </ItemGroup>
 
 	<ItemGroup>

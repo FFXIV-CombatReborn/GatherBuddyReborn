@@ -207,11 +207,11 @@ namespace GatherBuddy.AutoGather
             {
                 unsafe
                 {
-                    var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote");
-                    if (addon != null && addon->AtkUnitBase.IsVisible)
+                    var addon = new AddonMaster.RecipeNote(Dalamud.GameGui.GetAddonByName("RecipeNote"));
+                    if (addon != null && addon.IsVisible)
                     {
                         Svc.Log.Debug("Closing recipe menu to exit crafting state");
-                        Callback.Fire(&addon->AtkUnitBase, true, -1);
+                        Callback.Fire(addon.Base, true, -1);
                     }
                 }
             }
