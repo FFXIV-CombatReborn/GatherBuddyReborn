@@ -476,7 +476,7 @@ namespace GatherBuddy.AutoGather
                     {
                         TaskManager.Abort();
                         TaskManager.DelayNext(1000);
-                        TaskManager.Enqueue(() => { if (!Artisan.GetEnduranceStatus()) { useArtisan = false; Chat.SendMessage("Artisan无法继续，以停止。"); } });
+                        TaskManager.Enqueue(() => { if (!Artisan.GetEnduranceStatus()) { useArtisan = false; } });
                     }
                 }
                 return;
