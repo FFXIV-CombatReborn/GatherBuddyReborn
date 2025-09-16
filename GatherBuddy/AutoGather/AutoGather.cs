@@ -38,6 +38,7 @@ using Fish = GatherBuddy.Classes.Fish;
 using GatheringType = GatherBuddy.Enums.GatheringType;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using GatherBuddy.SeFunctions;
+using ECommons.ChatMethods;
 
 namespace GatherBuddy.AutoGather
 {
@@ -207,10 +208,10 @@ namespace GatherBuddy.AutoGather
             {
                 unsafe
                 {
-                    var addon = new AddonMaster.RecipeNote(Dalamud.GameGui.GetAddonByName("RecipeNote"));
-                    if (addon != null && addon.IsVisible)
+                    var atkUnitBasePtr = Dalamud.GameGui.GetAddonByName("RecipeNote");
+                    var addon = new AddonMaster.RecipeNote(atkUnitBasePtr);
+                    if (!atkUnitBasePtr.IsNull && addon.IsVisible)
                     {
-                        Svc.Log.Debug("Closing recipe menu to exit crafting state");
                         Callback.Fire(addon.Base, true, -1);
                     }
                 }
