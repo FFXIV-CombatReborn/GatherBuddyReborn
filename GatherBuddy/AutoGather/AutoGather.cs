@@ -36,6 +36,8 @@ using GatherBuddy.Classes;
 using Lumina.Excel.Sheets;
 using Fish = GatherBuddy.Classes.Fish;
 using GatheringType = GatherBuddy.Enums.GatheringType;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using GatherBuddy.SeFunctions;
 
 namespace GatherBuddy.AutoGather
 {
@@ -96,6 +98,7 @@ namespace GatherBuddy.AutoGather
         private readonly ActiveItemList  _activeItemList;
 
         public Reflection.ArtisanExporter ArtisanExporter;
+        private bool useArtisan = false;
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
@@ -136,12 +139,14 @@ namespace GatherBuddy.AutoGather
                     _diademQueuingInProgress = false;
                     FarNodesSeenSoFar.Clear();
                     VisitedNodes.Clear();
+                    useArtisan = false;
                 }
                 else
                 {
                     WentHome = true; //Prevents going home right after enabling auto-gather
                     if (AutoHook.Enabled)
                         AutoHook.SetPluginState(false); //Make sure AutoHook doesn't interfere with us
+                    useArtisan = Artisan.IsBusy();
                 }
 
                 _enabled = value;
@@ -196,6 +201,19 @@ namespace GatherBuddy.AutoGather
             if (!Enabled)
             {
                 return;
+            }
+
+            if (useArtisan && !Artisan.IsBusy())
+            {
+                unsafe
+                {
+                    var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote");
+                    if (addon != null && addon->AtkUnitBase.IsVisible)
+                    {
+                        Svc.Log.Debug("Closing recipe menu to exit crafting state");
+                        Callback.Fire(&addon->AtkUnitBase, true, -1);
+                    }
+                }
             }
 
             // If we are not gathering and _currentGatherTarget is set, we just finished gathering or left the node
@@ -261,6 +279,16 @@ namespace GatherBuddy.AutoGather
 
             if (!CanAct && !_diademQueuingInProgress)
             {
+                if (Dalamud.ClientState.LocalPlayer != null && Dalamud.ClientState.LocalPlayer.IsDead)
+                {
+                    var selectYesNoAddon = Dalamud.GameGui.GetAddonByName("SelectYesno");
+                    if (selectYesNoAddon == nint.Zero) return;
+                    var yesNo = new AddonMaster.SelectYesno(selectYesNoAddon);
+                    Artisan.pause();
+                    TaskManager.DelayNext(2333);
+                    TaskManager.Enqueue(yesNo.Yes);
+                    return;
+                }
                 AutoStatus = Dalamud.Conditions[ConditionFlag.Gathering] ? "Gathering..." : "Player is busy...";
                 return;
             }
@@ -269,6 +297,8 @@ namespace GatherBuddy.AutoGather
 
             if (FreeInventorySlots == 0)
             {
+                if (IsGathering)
+                    CloseGatheringAddons();
                 if (HasReducibleItems())
                 {
                     if (IsGathering)
@@ -278,6 +308,7 @@ namespace GatherBuddy.AutoGather
                 }
                 else
                 {
+                    ExchangeCollectable();
                     AbortAutoGather("Inventory is full");
                 }
 
@@ -426,7 +457,34 @@ namespace GatherBuddy.AutoGather
                 }
 
                 AutoStatus = "No available items to gather";
+                //No available items to gather, teleport to a sanctuary and then enable Artisan Endurance Mode
+                if (useArtisan && !Artisan.IsBusy() && !Artisan.GetEnduranceStatus())
+                {
+                    unsafe
+                    {
+                        if (!TerritoryInfo.Instance()->InSanctuary)
+                        {
+                            //Cheepest cost means in the same map.
+                            Svc.AetheryteList.Where(x => x.GilCost != 0).OrderBy(x => x.GilCost).TryGetFirst(out var v);
+                            TaskManager.Enqueue(() => Teleporter.Teleport(v.AetheryteId));
+                            return;
+                        }
+                    }
+
+                    if (Artisan.resume())
+                    {
+                        TaskManager.Abort();
+                        TaskManager.DelayNext(1000);
+                        TaskManager.Enqueue(() => { if (!Artisan.GetEnduranceStatus()) { useArtisan = false; Chat.SendMessage("Artisan无法继续，以停止。"); } });
+                    }
+                }
                 return;
+            }
+            //In order to gather available items，disable Artisan Endurance Mode
+            if (useArtisan && Artisan.IsBusy() && !Artisan.GetStopRequest())
+            {
+                if (Artisan.pause()) { TaskManager.DelayNext(3000); return; }
+
             }
 
             Waiting = false;
@@ -572,7 +630,7 @@ namespace GatherBuddy.AutoGather
                 Lifestream.Abort();
             WentHome = false;
 
-            if (next.First().Location.Territory.Id != territoryId)
+            if (next.First().Location.Territory.Id != territoryId || SameTerritoryButFar(next.First().Location))
             {
                 if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Functions.InTheDiadem())
                 {
@@ -717,6 +775,18 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
+            //Moke using Lay to find next node for NodeType.Regular or NodeType.Ephemeral
+            if (next.First().Gatherable.NodeType is NodeType.Regular or NodeType.Ephemeral) 
+            {
+                unsafe
+                {
+                    var am = ActionManager.Instance();
+                    if (am->GetActionStatus(ActionType.Action, Actions.Lay.ActionId) == 0)
+                    {
+                        TaskManager.Enqueue(() => am->UseAction(ActionType.Action, Actions.Lay.ActionId));
+                    }
+                }
+            }
             AutoStatus = "Moving to far node...";
 
             if (CurrentDestination != default)

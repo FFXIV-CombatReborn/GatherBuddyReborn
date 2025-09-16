@@ -306,5 +306,41 @@ namespace GatherBuddy.AutoGather
 
             return true;
         }
+
+        private bool SameTerritoryButFar(ILocation location)
+        {
+            if (location == null || Dalamud.ClientState.TerritoryType != location.Territory.Id)
+                return false;
+            if (Dalamud.ClientState.TerritoryType == location.Territory.Id
+                && Dalamud.ClientState.LocalPlayer != null)
+            {
+                var playerPos = Dalamud.ClientState.LocalPlayer.Position;
+                var aetheryte = location.ClosestAetheryte;
+                var posX = Utility.Maps.NodeToMap(playerPos.X, location.Territory.SizeFactor);
+                var posY = Utility.Maps.NodeToMap(playerPos.Z, location.Territory.SizeFactor);
+                var distAetheryte = aetheryte != null
+                    ? System.Math.Sqrt(aetheryte.WorldDistance(location.Territory.Id, location.IntegralXCoord, location.IntegralYCoord))
+                    : double.PositiveInfinity;
+                var distPlayer = System.Math.Sqrt(Utility.Math.SquaredDistance(posX, posY, location.IntegralXCoord, location.IntegralYCoord));
+                if (distAetheryte > 300 && distPlayer > distAetheryte * 1.5)
+                    return true;
+            }
+            return false;
+        }
+
+        private void ExchangeCollectable()
+        {
+            TaskManager.Enqueue(() => Teleporter.Teleport(8));
+            TaskManager.Enqueue(() => Svc.Condition[ConditionFlag.Casting]);
+            TaskManager.Enqueue(() => Dalamud.Commands.ProcessCommand("/pdrtelepo 国际"));
+            TaskManager.Enqueue(() => Svc.Condition[ConditionFlag.BetweenAreas]);
+            TaskManager.Enqueue(() => !Svc.Condition[ConditionFlag.BetweenAreas]);
+            TaskManager.Enqueue(() => NavReady);
+            TaskManager.Enqueue(() => Navigate(new Vector3(-258 + (float)(Random.Shared.NextDouble() * 2), 16 + (float)(Random.Shared.NextDouble() * 2), 41), false));
+            //Vector3(-257.2519f, 16.2f, 37.64392f)
+            TaskManager.Enqueue(() => InteractWithCollectablesShop());
+            //TaskManager.Enqueue(() => ExchangeCollectableHelper());
+
+        }
     }
 }

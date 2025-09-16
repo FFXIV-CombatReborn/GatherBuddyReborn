@@ -12,7 +12,7 @@ namespace GatherBuddy.AutoGather
     {
         private bool HasReducibleItems()
         {
-            if (!GatherBuddy.Config.AutoGatherConfig.DoReduce || Svc.Condition[ConditionFlag.Mounted])
+            if (!GatherBuddy.Config.AutoGatherConfig.DoReduce || Svc.Condition[ConditionFlag.Mounted] || Artisan.IsBusy())
                 return false;
 
             if (!QuestManager.IsQuestComplete(67633)) // No Longer a Collectable

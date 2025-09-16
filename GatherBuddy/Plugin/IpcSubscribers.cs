@@ -284,4 +284,60 @@ namespace GatherBuddy.Plugin
         [EzIPC] internal static readonly Action EnqueueHET;
         [EzIPC("AutoRetainer.GC.EnqueueInitiation", applyPrefix: false)] internal static readonly Action EnqueueGCInitiation;
     }
+
+    internal static class Artisan
+    {
+        static Artisan()
+        {
+            EzIPC.Init(typeof(Artisan), "Artisan");
+        }
+
+        internal static bool Enabled => IPCSubscriber.IsReady("Artisan");
+
+        [EzIPC("Artisan.IsBusy", applyPrefix: false)]
+        internal static readonly Func<bool> IsBusy;
+
+        [EzIPC("Artisan.GetEnduranceStatus", applyPrefix: false)]
+        internal static readonly Func<bool> GetEnduranceStatus;
+
+        [EzIPC("Artisan.SetEnduranceStatus", applyPrefix: false)]
+        internal static readonly Action<bool> SetEnduranceStatus;
+
+        [EzIPC("Artisan.IsListPaused", applyPrefix: false)]
+        internal static readonly Func<bool> IsListPaused;
+
+        [EzIPC("Artisan.GetStopRequest", applyPrefix: false)]
+        internal static readonly Func<bool> GetStopRequest;
+
+        [EzIPC("Artisan.SetStopRequest", applyPrefix: false)]
+        internal static readonly Action<bool> SetStopRequest;
+        internal static bool pause()
+        {
+            if (!Enabled) return false;
+
+            if (IsBusy())
+            {
+                if (GetEnduranceStatus())
+                {
+                    SetEnduranceStatus(false);
+                }
+
+                // wait until craft finished.
+                return true;
+            }
+            return false;
+        }
+        internal static bool resume()
+        {
+            if (!Enabled) return false;
+            if (IsBusy()) return false;
+            if (!GetEnduranceStatus())
+            {
+                SetEnduranceStatus(true);
+                return true;
+            }
+            // wait 3s for crafting.
+            return false;
+        }
+    }
 }

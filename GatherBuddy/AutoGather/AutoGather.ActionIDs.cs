@@ -124,6 +124,7 @@ public partial class AutoGather
         public static readonly BaseAction Gift1         = new(21178, 21177, 2666, type: EffectType.BoonChance);
         public static readonly BaseAction Gift2         = new(25590, 25589, 759, type: EffectType.BoonChance);
         public static readonly BaseAction Tidings       = new(21204, 21203, 2667, type: EffectType.BoonYield);
+        public static readonly BaseAction Lay           = new(211, 228);
 
         //Fishing Actions
         public static readonly FishingAction Cast             = new FishingAction(289);
