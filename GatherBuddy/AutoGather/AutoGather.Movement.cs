@@ -47,7 +47,7 @@ namespace GatherBuddy.AutoGather
             }
             else
             {
-                if (am->GetActionStatus(ActionType.GeneralAction, 24) != 0)
+                if (am->GetActionStatus(ActionType.GeneralAction, 9) != 0)
                 {
                     return;
                 }
