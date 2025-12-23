@@ -1023,7 +1023,8 @@ namespace GatherBuddy.AutoGather
                         case false when contentsFinderConfirmAddon > 0:
                         {
                             var contents = new AddonMaster.ContentsFinderConfirm(contentsFinderConfirmAddon);
-                            TaskManager.Enqueue(contents.Commence);
+                            contents.Commence();
+                            TaskManager.DelayNext(500);
                             TaskManager.Enqueue(() => _diademQueuingInProgress = false);
                             TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.BoundByDuty]);
                             return;
@@ -1444,7 +1445,8 @@ namespace GatherBuddy.AutoGather
                             case false when contentsFinderConfirmAddon > 0:
                             {
                                 var contents = new AddonMaster.ContentsFinderConfirm(contentsFinderConfirmAddon);
-                                TaskManager.Enqueue(contents.Commence);
+                                contents.Commence();
+                                TaskManager.DelayNext(500);
                                 TaskManager.Enqueue(() => _diademQueuingInProgress = false);
                                 TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.BoundByDuty]);
                                 return;
@@ -1983,16 +1985,37 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void LeaveTheDiadem()
         {
-            AgentModule.Instance()->GetAgentByInternalId(AgentId.ContentsFinderMenu)->Show();
-            if (GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* addon))
+            TaskManager.Enqueue(() =>
             {
-                TaskManager.Enqueue(() => Callback.Fire(addon, true,  0));
-                TaskManager.Enqueue(() => Callback.Fire(addon, false, -2));
-                TaskManager.DelayNext(1000);
-                TaskManager.Enqueue(() => Callback.Fire((AtkUnitBase*)(nint)Dalamud.GameGui.GetAddonByName("SelectYesno"), true, 0));
-                TaskManager.Enqueue(() => GenericHelpers.IsScreenReady());
-                return;
-            }
+                AgentModule.Instance()->GetAgentByInternalId(AgentId.ContentsFinderMenu)->Show();
+            });
+            
+            TaskManager.Enqueue(() =>
+            {
+                if (GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* addon) && addon->IsReady)
+                {
+                    var leaveCallback = stackalloc FFXIVClientStructs.FFXIV.Component.GUI.AtkValue[1];
+                    addon->FireCallback(1, leaveCallback);
+                    return true;
+                }
+                return false;
+            }, "Wait for ContentsFinderMenu addon");
+            
+            TaskManager.DelayNext(500);
+            
+            TaskManager.Enqueue(() =>
+            {
+                if (GenericHelpers.TryGetAddonByName("SelectYesno", out AtkUnitBase* yesnoAddon) && yesnoAddon->IsReady)
+                {
+                    var yesNo = new AddonMaster.SelectYesno((nint)yesnoAddon);
+                    yesNo.Yes();
+                    return;
+                }
+            });
+            
+            TaskManager.DelayNext(500);
+            TaskManager.Enqueue(() => !GenericHelpers.TryGetAddonByName("SelectYesno", out _), "Wait for SelectYesno to close");
+            TaskManager.Enqueue(() => GenericHelpers.IsScreenReady());
         }
 
         private void AbortAutoGather(string? status = null)

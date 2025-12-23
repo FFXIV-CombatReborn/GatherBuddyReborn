@@ -5,6 +5,7 @@ using Dalamud.Memory;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
+using GatherBuddy.AutoGather.Collectables;
 
 namespace GatherBuddy.Automation;
 
@@ -157,7 +158,12 @@ public static unsafe class AddonMaster
         public ContentsFinderConfirm(nint addon) : base(addon) { }
         public ContentsFinderConfirm(void* addon) : base(addon) { }
 
-        public void Commence() => ClickButtonIfEnabled(Addon->CommenceButton);
+        public void Commence()
+        {
+            if (Addon->CommenceButton != null && Addon->CommenceButton->IsEnabled && Addon->CommenceButton->AtkComponentBase.OwnerNode->AtkResNode.IsVisible())
+                Callback.Fire(Base, true, 8);
+        }
+        
         public void Withdraw() => ClickButtonIfEnabled(Addon->WithdrawButton);
         public void Wait() => ClickButtonIfEnabled(Addon->WaitButton);
     }
@@ -204,24 +210,13 @@ public static unsafe class AddonMaster
                 if (Base == null || !Base->IsReady)
                     return Array.Empty<ShopItem>();
 
-                var items = new List<ShopItem>();
-                for (int i = 0; i < 12; i++)
+                var result = new List<ShopItem>();
+                foreach (var item in ScripShopItemManager.ShopItems)
                 {
-                    var baseIndex = 200 + (i * 7);
-                    if (baseIndex + 6 >= Base->AtkValuesCount)
-                        break;
-
-                    var itemId = Base->AtkValues[baseIndex].UInt;
-                    if (itemId == 0)
-                        continue;
-
-                    items.Add(new ShopItem
-                    {
-                        ItemId = itemId,
-                        Index = i
-                    });
+                    result.Add(new ShopItem { ItemId = item.ItemId, Index = item.Index });
                 }
-                return items.ToArray();
+                
+                return result.ToArray();
             }
         }
 

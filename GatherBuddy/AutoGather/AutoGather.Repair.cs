@@ -106,16 +106,15 @@ public unsafe partial class AutoGather
         TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Occupied39], 5000, "Wait for repairs.");
         TaskManager.DelayNext(delay);
         TaskManager.Enqueue(() => { if (RepairAddon is var addon and not null) Callback.Fire(&addon->AtkUnitBase, true, -1); }, 1000, true, "Close repair menu.");
-        TaskManager.DelayNext(500);
+        TaskManager.DelayNext(1000);
         TaskManager.Enqueue(() => {
             var repairAutoAddon = GetAddon<FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase>("RepairAuto");
-            if (repairAutoAddon != null && repairAutoAddon->IsVisible)
-            {
-                GatherBuddy.Log.Debug("[Repair] Closing RepairAuto progress window");
-                Callback.Fire(repairAutoAddon, true, -1);
-            }
+            if (repairAutoAddon == null || !repairAutoAddon->IsVisible)
+                return true;
+            GatherBuddy.Log.Debug("[Repair] RepairAuto window still visible, closing it");
+            repairAutoAddon->Close(true);
             return true;
-        }, "Close RepairAuto progress window.");
+        }, 3000, "Wait for RepairAuto window to close or force close it.");
         TaskManager.DelayNext(delay);
 
         return true;
@@ -192,6 +191,15 @@ public unsafe partial class AutoGather
         TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Occupied39], 5000, "Wait for repairs.");
         TaskManager.DelayNext(delay);
         TaskManager.Enqueue(() => { if (RepairAddon is var addon and not null) Callback.Fire(&addon->AtkUnitBase, true, -1); }, 1000, true, "Close repair menu.");
+        TaskManager.DelayNext(1000);
+        TaskManager.Enqueue(() => {
+            var repairAutoAddon = GetAddon<FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase>("RepairAuto");
+            if (repairAutoAddon == null || !repairAutoAddon->IsVisible)
+                return true;
+            GatherBuddy.Log.Debug("[Repair] RepairAuto window still visible, closing it");
+            repairAutoAddon->Close(true);
+            return true;
+        }, 3000, "Wait for RepairAuto window to close or force close it.");
         TaskManager.DelayNext(delay);
         TaskManager.Enqueue(() =>
         {

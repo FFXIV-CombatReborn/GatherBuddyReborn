@@ -8,6 +8,9 @@ namespace GatherBuddy.AutoGather.Collectables;
 
 public unsafe class ScripShopWindowHandler
 {
+    private int _currentPage = -1;
+    private int _currentSubPage = -1;
+    
     public bool IsReady => Automation.GenericHelpers.TryGetAddonByName<AtkUnitBase>("InclusionShop", out var addon) &&
                           Automation.GenericHelpers.IsAddonReady(addon);
     
@@ -25,6 +28,7 @@ public unsafe class ScripShopWindowHandler
     
     public void SelectPage(int page)
     {
+        _currentPage = page;
         if (Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
         {
             var selectPage = stackalloc AtkValue[]
@@ -51,6 +55,7 @@ public unsafe class ScripShopWindowHandler
     
     public void SelectSubPage(int subPage)
     {
+        _currentSubPage = subPage;
         if (Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
         {
             var selectSubPage = stackalloc AtkValue[]
@@ -64,38 +69,25 @@ public unsafe class ScripShopWindowHandler
     
     public bool SelectItem(uint itemId, int amount)
     {
-        if (Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
+        if (!Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
+            return false;
+        
+        var shopItem = ScripShopItemManager.ShopItems.FirstOrDefault(x => x.ItemId == itemId);
+        if (shopItem == null || shopItem.Page != _currentPage || shopItem.SubPage != _currentSubPage)
         {
-            var shop = new Automation.AddonMaster.InclusionShop(addon);
-            var shopItems = shop.ShopItems;
-            var index = -1;
-            
-            for (int i = 0; i < shopItems.Length; i++)
-            {
-                if (shopItems[i].ItemId == itemId)
-                {
-                    index = i;
-                    break;
-                }
-            }
-            
-            if (index == -1)
-            {
-                GatherBuddy.Log.Error($"[ScripShopWindowHandler] Item ID {itemId} not found in current scrip shop tab");
-                return false;
-            }
-            
-            var selectItem = stackalloc AtkValue[]
-            {
-                new() { Type = ValueType.Int, Int = 14 },
-                new() { Type = ValueType.UInt, UInt = (uint)index },
-                new() { Type = ValueType.UInt, UInt = (uint)amount }
-            };
-            addon->FireCallback(3, selectItem);
-            return true;
+            GatherBuddy.Log.Error($"[ScripShopWindowHandler] Item ID {itemId} not found in current page={_currentPage} subpage={_currentSubPage}");
+            return false;
         }
         
-        return false;
+        GatherBuddy.Log.Information($"[ScripShopWindowHandler] SelectItem: itemId={itemId}, index={shopItem.Index}, amount={amount}, page={_currentPage}, subpage={_currentSubPage}");
+        var selectItem = stackalloc AtkValue[]
+        {
+            new() { Type = ValueType.Int, Int = 14 },
+            new() { Type = ValueType.UInt, UInt = (uint)shopItem.Index },
+            new() { Type = ValueType.UInt, UInt = (uint)amount }
+        };
+        addon->FireCallback(3, selectItem);
+        return true;
     }
     
     public void PurchaseItem()
@@ -113,20 +105,21 @@ public unsafe class ScripShopWindowHandler
     
     public int GetScripCount()
     {
-        if (Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
+        if (!Automation.GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon))
+            return -1;
+            
+        for (int i = 0; i < addon->UldManager.NodeListCount; i++)
         {
-            for (int i = 0; i < addon->UldManager.NodeListCount; i++)
+            var node = addon->UldManager.NodeList[i];
+            if (node == null) continue;
+            if (node->Type == NodeType.Text && node->NodeId == 4)
             {
-                var node = addon->UldManager.NodeList[i];
-                if (node->Type == NodeType.Text && node->NodeId == 4)
+                var textNode = node->GetAsAtkTextNode();
+                if (textNode != null)
                 {
-                    var textNode = node->GetAsAtkTextNode();
-                    if (textNode != null)
-                    {
-                        var text = textNode->NodeText.ToString().Replace(",", "");
-                        if (int.TryParse(text, out var count))
-                            return count;
-                    }
+                    var text = textNode->NodeText.ToString().Replace(",", "");
+                    if (int.TryParse(text, out var count))
+                        return count;
                 }
             }
         }
