@@ -570,13 +570,23 @@ public class CollectableManager : IDisposable
     {
         _purchaseQueue.Clear();
         
+        var configChanged = false;
+        foreach (var item in _config.CollectableConfig.ScripShopItems)
+        {
+            if (item.AmountPurchased > item.Quantity)
+            {
+                item.AmountPurchased = 0;
+                configChanged = true;
+            }
+        }
+        if (configChanged)
+            GatherBuddy.Config.Save();
+        
         foreach (var item in _config.CollectableConfig.ScripShopItems)
         {
             var remaining = item.Quantity - item.AmountPurchased;
             if (remaining > 0 && item.Item != null)
-            {
                 _purchaseQueue.Enqueue((item.Item.ItemId, item.Name, remaining, (int)item.Item.ItemCost, item.Item.Page, item.Item.SubPage));
-            }
         }
     }
     
