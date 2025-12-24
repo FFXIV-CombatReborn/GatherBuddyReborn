@@ -276,6 +276,24 @@ public partial class Interface
             ImGuiUtil.HoverTooltip("The distance at which you will mount up to move to a node.");
         }
 
+        public static void DrawLandingDistance()
+        {
+            ImGui.SetNextItemWidth(150);
+            var tmp = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+            if (ImGui.DragFloat("Landing Distance", ref tmp, 0.1f, 0.0f, 50f))
+            {
+                GatherBuddy.Config.AutoGatherConfig.LandingDistance = tmp;
+                GatherBuddy.Config.Save();
+            }
+
+            ImGuiUtil.HoverTooltip(
+                "The distance at which you will try to land.\n\n" +
+                "Low values increase the chance of being unable to dismount properly.\n" +
+                "High values may produce weird-looking paths.\n" +
+                "Reasonable values are between 5 and 10 yalms."
+            );
+        }
+
         public static void DrawMoveWhileMounting()
             => DrawCheckbox("Move while mounting up",
                 "Begin pathfinding to the next node while summoning a mount",
@@ -1529,6 +1547,7 @@ public partial class Interface
             {
                 AutoGatherUI.DrawMountSelector();
                 ConfigFunctions.DrawMountUpDistance();
+                ConfigFunctions.DrawLandingDistance();
                 ConfigFunctions.DrawMoveWhileMounting();
                 ConfigFunctions.DrawHonkModeBox();
                 if (GatherBuddy.Config.AutoGatherConfig.HonkMode)

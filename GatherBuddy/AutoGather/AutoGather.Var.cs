@@ -1,23 +1,22 @@
-using System;
 using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
+using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Linq;
 using System.Numerics;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using GatherBuddy.Utilities;
-using GatherBuddy.AutoGather.AtkReaders;
+using System.Threading.Tasks;
 using LuminaTerritoryType = Lumina.Excel.Sheets.TerritoryType;
 
 namespace GatherBuddy.AutoGather
@@ -46,9 +45,8 @@ namespace GatherBuddy.AutoGather
         public bool IsFishing
             => Dalamud.Conditions[ConditionFlag.Fishing];
 
-        public  bool?      LastNavigationResult { get; set; }         = null;
-        public  Vector3    CurrentDestination   { get; private set; } = default;
-        public  Angle      CurrentRotation      { get; private set; } = default;
+        public  Vector3    CurrentDestination   { get { return _navState.destination; }  }
+        private (Task<List<Vector3>>? task, Vector3 destination, bool flying, bool mountingUp, bool directPath, List<Vector3>? groundPath) _navState;
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 

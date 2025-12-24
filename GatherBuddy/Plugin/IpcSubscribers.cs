@@ -83,9 +83,17 @@ namespace GatherBuddy.Plugin
                     Debug.Assert(PointOnFloor != null);
                 }
 
+                /// <summary>
+                /// Returns the nearest point on the ground to the given position,
+                /// within the specified horizontal and vertical range (box-shaped).
+                /// </summary>
                 [EzIPC("vnavmesh.Query.Mesh.NearestPoint", applyPrefix: false)]
                 internal static readonly Func<Vector3, float, float, Vector3> NearestPoint;
 
+                /// <summary>
+                /// Returns the highest point on the mesh within the specified horizontal
+                /// range (box-shaped) that is not above the given position.
+                /// </summary>
                 [EzIPC("vnavmesh.Query.Mesh.PointOnFloor", applyPrefix: false)]
                 internal static readonly Func<Vector3, bool, float, Vector3> PointOnFloor;
             }
@@ -100,6 +108,7 @@ namespace GatherBuddy.Plugin
                 Debug.Assert(Stop != null);
                 Debug.Assert(IsRunning != null);
                 Debug.Assert(NumWaypoints != null);
+                Debug.Assert(ListWaypoints != null);
                 Debug.Assert(GetMovementAllowed != null);
                 Debug.Assert(SetMovementAllowed != null);
                 Debug.Assert(GetAlignCamera != null);
@@ -119,6 +128,9 @@ namespace GatherBuddy.Plugin
 
             [EzIPC("vnavmesh.Path.NumWaypoints", applyPrefix: false)]
             internal static readonly Func<int> NumWaypoints;
+
+            [EzIPC("vnavmesh.Path.ListWaypoints", applyPrefix: false)]
+            internal static readonly Func<List<Vector3>> ListWaypoints;
 
             [EzIPC("vnavmesh.Path.GetMovementAllowed", applyPrefix: false)]
             internal static readonly Func<bool> GetMovementAllowed;
@@ -145,11 +157,15 @@ namespace GatherBuddy.Plugin
             {
                 EzIPC.Init(typeof(SimpleMove), "vnavmesh");
                 Debug.Assert(PathfindAndMoveTo != null);
+                Debug.Assert(PathfindAndMoveCloseTo != null);
                 Debug.Assert(PathfindInProgress != null);
             }
 
             [EzIPC("vnavmesh.SimpleMove.PathfindAndMoveTo", applyPrefix: false)]
             internal static readonly Func<Vector3, bool, bool> PathfindAndMoveTo;
+
+            [EzIPC("vnavmesh.SimpleMove.PathfindAndMoveCloseTo", applyPrefix: false)]
+            internal static readonly Func<Vector3, bool, float, bool> PathfindAndMoveCloseTo;
 
             [EzIPC("vnavmesh.SimpleMove.PathfindInProgress", applyPrefix: false)]
             internal static readonly Func<bool> PathfindInProgress;
