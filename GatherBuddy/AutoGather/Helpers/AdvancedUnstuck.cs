@@ -12,7 +12,6 @@ namespace GatherBuddy.AutoGather.Movement
     public enum AdvancedUnstuckCheckResult
     {
         Pass,
-        Wait,
         Fail
     }
     public sealed class AdvancedUnstuck : IDisposable
@@ -26,11 +25,10 @@ namespace GatherBuddy.AutoGather.Movement
         private DateTime _unstuckStart;
         private DateTime _lastCheck;
         private Vector3 _lastPosition;
-        private bool _lastWasFailure;
 
         public bool IsRunning => _movementController.Enabled;
 
-        public AdvancedUnstuckCheckResult Check(Vector3 destination, bool isPathGenerating, bool isPathing)
+        public AdvancedUnstuckCheckResult Check(Vector3 destination, bool isPathing)
         {
             if (IsRunning)
                 return AdvancedUnstuckCheckResult.Fail;
@@ -54,18 +52,11 @@ namespace GatherBuddy.AutoGather.Movement
             {
                 _lastPosition = Player.Position;
                 _lastMovement = now;
-                _lastWasFailure = false;
                 return AdvancedUnstuckCheckResult.Pass;
             }
 
-            //vnavmesh is generating path: update current position
-            if (isPathGenerating)
-            {
-                _lastPosition = Player.Position;
-                _lastMovement = now;
-            }
             //vnavmesh is moving...
-            else if (isPathing)
+            if (isPathing)
             {
                 //...and quite fast: update current position
                 if (_lastPosition.DistanceToPlayer() >= MinMovementDistance)
@@ -79,17 +70,15 @@ namespace GatherBuddy.AutoGather.Movement
                     GatherBuddy.Log.Warning($"Advanced Unstuck: the character is stuck. Moved {_lastPosition.DistanceToPlayer()} yalms in {now.Subtract(_lastMovement).TotalSeconds} seconds.");
                     Start();
                 }
-            }
-            //Not generating path and not moving for 2 consecutive framework updates: unstuck
-            else if (_lastWasFailure)
+            } 
+            else
             {
-                GatherBuddy.Log.Warning($"Advanced Unstuck: vnavmesh failure detected.");
-                Start();
+                //vnavmesh is generating path: update current position.
+                //Not checking IsPathGenerating because pathfinding may complete asynchronously, and this is handled by HandlePathfinding()
+                _lastPosition = Player.Position;
+                _lastMovement = now;
             }
-
-            //Not generating path and not moving: remember that fact and exit main loop
-            _lastWasFailure = !isPathGenerating && !isPathing;
-            return IsRunning ? AdvancedUnstuckCheckResult.Fail : _lastWasFailure ? AdvancedUnstuckCheckResult.Wait : AdvancedUnstuckCheckResult.Pass;
+            return IsRunning ? AdvancedUnstuckCheckResult.Fail : AdvancedUnstuckCheckResult.Pass;
         }
 
         public void Force()

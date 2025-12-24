@@ -546,9 +546,8 @@ namespace GatherBuddy.AutoGather
                     
                     if (GatherBuddy.Config.AutoGatherConfig.UseNavigation)
                     {
-                        var pathGenerating = IsPathGenerating;
                         var pathing = IsPathing;
-                        var unstuckResult = _advancedUnstuck.Check(CurrentDestination, pathGenerating, pathing);
+                        var unstuckResult = _advancedUnstuck.Check(CurrentDestination, pathing);
                         if (unstuckResult == AdvancedUnstuckCheckResult.Fail)
                         {
                             StopNavigation();
@@ -624,10 +623,9 @@ namespace GatherBuddy.AutoGather
             var isPathGenerating = IsPathGenerating;
             var isPathing        = IsPathing;
 
-            switch (_advancedUnstuck.Check(CurrentDestination, isPathGenerating, isPathing))
+            switch (_advancedUnstuck.Check(CurrentDestination, isPathing))
             {
                 case AdvancedUnstuckCheckResult.Pass: break;
-                case AdvancedUnstuckCheckResult.Wait: return;
                 case AdvancedUnstuckCheckResult.Fail:
                     StopNavigation();
                     AutoStatus = $"Advanced unstuck in progress!";
