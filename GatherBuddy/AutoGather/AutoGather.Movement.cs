@@ -19,6 +19,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
+using System.Collections.Generic;
 
 namespace GatherBuddy.AutoGather
 {
@@ -326,7 +327,7 @@ namespace GatherBuddy.AutoGather
                 // Switch vnavmesh to no-fly mode when close to landing point
                 var wp = VNavmesh.Path.ListWaypoints().ToList();
                 VNavmesh.Path.Stop();
-                VNavmesh.Path.MoveTo(wp, false);
+                VNavmesh.Path.MoveTo(SmoothCornersBezier(wp), false);
                 _navState.flying = false;
                 GatherBuddy.Log.Debug($"Switching to ground movement, {wp.Count} waypoints left.");
                 return;
@@ -337,12 +338,12 @@ namespace GatherBuddy.AutoGather
                 // Switch vnavmesh to fly mode when mounted up
                 var wp = VNavmesh.Path.ListWaypoints().ToList();
                 
-                // Remove first waypoint if it's too close.
-                if (wp.Count > 0 && Vector2.DistanceSquared(Player.Position.AsVector2(), wp[0].AsVector2()) < 4f)
+                // Remove first waypoints if too close.
+                while (wp.Count > 0 && Vector2.DistanceSquared(Player.Position.AsVector2(), wp[0].AsVector2()) < 4f)
                     wp.RemoveAt(0);
 
                 VNavmesh.Path.Stop();
-                VNavmesh.Path.MoveTo(wp, true);
+                VNavmesh.Path.MoveTo(SmoothCornersBezier(wp), true);
                 _navState.mountingUp = false;
                 GatherBuddy.Log.Debug($"Switching to flying movement, {wp.Count} waypoints left.");
                 return;
@@ -399,7 +400,7 @@ namespace GatherBuddy.AutoGather
                             break;
                     }
                 VNavmesh.Path.Stop();
-                VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
+                VNavmesh.Path.MoveTo(SmoothCornersBezier(path), _navState.flying && !_navState.mountingUp);
                 GatherBuddy.Log.Debug($"VNavmesh started moving via {pathtype} path, {path.Count} waypoints.");
             }
 
@@ -520,6 +521,47 @@ namespace GatherBuddy.AutoGather
             catch (Exception) { }
 
             return destination;
+        }
+
+        private static List<Vector3> SmoothCornersBezier(List<Vector3> path, float cornerRadius = 5.0f, int segmentsPerCorner = 10)
+        {
+            if (path.Count < 3)
+                return [.. path];
+
+            List<Vector3> result = [path[0]];
+
+            for (var i = 1; i < path.Count - 1; i++)
+            {
+                var A = path[i - 1];
+                var B = path[i];
+                var C = path[i + 1];
+
+                var dirIn = Vector3.Normalize(B - A);
+                var dirOut = Vector3.Normalize(C - B);
+
+                var lenIn = Vector3.Distance(A, B);
+                var lenOut = Vector3.Distance(B, C);
+
+                var r = MathF.Min(cornerRadius, MathF.Min(lenIn, lenOut) * 0.5f);
+
+                var p0 = B - dirIn * r;
+                var p2 = B + dirOut * r;
+                var p1 = B; // control point
+
+                for (var s = 0; s <= segmentsPerCorner; s++)
+                {
+                    var t = s / (float)segmentsPerCorner;
+                    var point =
+                        (1 - t) * (1 - t) * p0 +
+                        2 * (1 - t) * t * p1 +
+                        t * t * p2;
+
+                    result.Add(point);
+                }
+            }
+
+            result.Add(path[^1]);
+            return result;
         }
 
         private void MoveToFarNode(Vector3 position)
