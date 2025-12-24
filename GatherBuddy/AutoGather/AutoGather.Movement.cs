@@ -122,7 +122,9 @@ namespace GatherBuddy.AutoGather
                             return;
                         }
 
-                        if (vSeparation < 3)
+                        // If flying direct path to offset, complete navigation first, since offset is expected to be on the ground.
+                        // Otherwise, stop once in range to interact.
+                        if (vSeparation < 3 && !(_navState.offset && Dalamud.Conditions[ConditionFlag.InFlight] && IsPathing))
                         {
 
                             StopNavigation();
@@ -260,7 +262,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (_navState.destination == destination && (IsPathing || IsPathGenerating))
+            if (_navState.destination == destination && (IsPathing || IsPathGenerating || _navState.task != null))
                 return; 
 
             StopNavigation();
@@ -274,6 +276,7 @@ namespace GatherBuddy.AutoGather
             _navState.flying = shouldFly;
             _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted];
             _navState.directPath = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
+            _navState.offset = destination != offsettedDestination;
 
             if (_navState.directPath)
             {
