@@ -8,13 +8,10 @@ using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using GatherBuddy.SeFunctions;
-using GatherBuddy.Data;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using GatherBuddy.Enums;
 using GatherBuddy.Utilities;
@@ -57,14 +54,14 @@ namespace GatherBuddy.AutoGather
                 doMount = () => am->UseAction(ActionType.GeneralAction, 24);
             }
 
-            if (!GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                TaskManager.Enqueue(StopNavigation);
             EnqueueActionWithDelay(doMount);
             TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.Mounted], 2000);
+        }
 
-            // Reset navigation to find a better path if the mount can fly
-            if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting && !Dalamud.Conditions[ConditionFlag.Diving])
-                TaskManager.Enqueue(StopNavigation);
+        private unsafe bool CanMount()
+        {
+            var am = ActionManager.Instance();
+            return am->GetActionStatus(ActionType.GeneralAction, 24) == 0;
         }
 
         private unsafe bool IsMountUnlocked(uint mount)
@@ -82,32 +79,21 @@ namespace GatherBuddy.AutoGather
             var hSeparation = Vector2.Distance(gameObject.Position.ToVector2(), Player.Position.ToVector2());
             var vSeparation = Math.Abs(gameObject.Position.Y - Player.Position.Y);
 
+            if (gameObject.Position.DistanceToPlayer() < 15 && Dalamud.Targets.Target != gameObject)
+                Dalamud.Targets.Target = gameObject;
+
             if (hSeparation < 3.5)
             {
-                
                 var waitGP = targetItem.ItemData.IsCollectable && Player.Object.CurrentGp < config.CollectableMinGP;
                 waitGP |= !targetItem.ItemData.IsCollectable && Player.Object.CurrentGp < config.GatherableMinGP;
 
                 if (Dalamud.Conditions[ConditionFlag.Mounted] && (waitGP || GetConsumablesWithCastTime(config) > 0))
                 {
-                    //Try to dismount early. It would help with nodes where it is not possible to dismount at vnavmesh's provided floor point
                     EnqueueDismount();
                     TaskManager.Enqueue(() => {
-                        //If early dismount failed, navigate to the nearest floor point
                         if (Dalamud.Conditions[ConditionFlag.Mounted] && Dalamud.Conditions[ConditionFlag.InFlight] && !Dalamud.Conditions[ConditionFlag.Diving])
                         {
-                            try
-                            {
-                                var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
-                                Navigate(floor, true);
-                                TaskManager.Enqueue(() => !IsPathGenerating);
-                                TaskManager.DelayNext(50);
-                                TaskManager.Enqueue(() => !IsPathing, 1000);
-                                EnqueueDismount();
-                            }
-                            catch { }
-                            //If even that fails, do advanced unstuck
-                            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
+                            ForceLandAndDismount();
                         }
                     });
                 }
@@ -138,7 +124,9 @@ namespace GatherBuddy.AutoGather
 
                         if (vSeparation < 3)
                         {
-                            
+
+                            StopNavigation();
+
                             var targetGatheringType = targetItem.GatheringType.ToGroup();
                             var isUmbralItem = UmbralNodes.IsUmbralItem(targetItem.ItemId);
                             if (isUmbralItem && Functions.InTheDiadem())
@@ -167,42 +155,42 @@ namespace GatherBuddy.AutoGather
                                     AbortAutoGather();
                                 }
                             }
-                            else {
+                            else
+                            {
                                 if (shouldSkipJobSwitch && targetGatheringType != JobAsGatheringType)
                                 {
                                     GatherBuddy.Log.Information($"[Umbral] Skipping job switch at node after umbral gathering (staying on {JobAsGatheringType})");
                                 }
                                 EnqueueNodeInteraction(gameObject, targetItem);
                             }
-                        }
-
-                        // The node could be behind a rock or a tree and not be interactable. This happened in the Endwalker, but seems not to be reproducible in the Dawntrail.
-                        // Enqueue navigation anyway, just in case.
-                        // Also move if vertical separation is too large.
-                        if (!Dalamud.Conditions[ConditionFlag.Diving])
+                        } 
+                        else
                         {
-                            TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) Navigate(gameObject.Position, false); });
+                            Navigate(gameObject.Position, false);
                         }
                     }
                 }
             }
-            else if (hSeparation < Math.Max(GatherBuddy.Config.AutoGatherConfig.MountUpDistance, 5))
-            {
-                Navigate(gameObject.Position, false);
-            }
             else
             {
-                if (!Dalamud.Conditions[ConditionFlag.Mounted])
-                {
-                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                        Navigate(gameObject.Position, false);
-                    EnqueueMountUp();
-                }
-                else
-                {
-                    Navigate(gameObject.Position, ShouldFly(gameObject.Position));
-                }
+                Navigate(gameObject.Position, ShouldFly(gameObject.Position));
             }
+        }
+
+        private void ForceLandAndDismount()
+        {
+            try
+            {
+                var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
+                Navigate(floor, true, direct: true);
+                TaskManager.Enqueue(() => !IsPathGenerating);
+                TaskManager.DelayNext(50);
+                TaskManager.Enqueue(() => !IsPathing, 1000);
+                EnqueueDismount();
+            }
+            catch { }
+            // If even that fails, do advanced unstuck
+            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
         }
 
         private void MoveToCloseSpearfishingNode(IGameObject gameObject, Classes.Fish targetFish)
@@ -235,16 +223,7 @@ namespace GatherBuddy.AutoGather
             }
             else
             {
-                if (!Dalamud.Conditions[ConditionFlag.Mounted])
-                {
-                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                        Navigate(gameObject.Position, false);
-                    EnqueueMountUp();
-                }
-                else
-                {
-                    Navigate(gameObject.Position, ShouldFly(gameObject.Position));
-                }
+                Navigate(gameObject.Position, ShouldFly(gameObject.Position));
             }
         }
 
@@ -252,11 +231,12 @@ namespace GatherBuddy.AutoGather
         {
             // Reset navigation logic here
             // For example, reinitiate navigation to the destination
-            CurrentDestination = default;
-            CurrentRotation    = default;
+            _navState = default;
             if (VNavmesh.Enabled)
             {
                 VNavmesh.Path.Stop();
+                if (IsPathGenerating)
+                    VNavmesh.Nav.PathfindCancelAll();
             }
         }
 
@@ -267,26 +247,176 @@ namespace GatherBuddy.AutoGather
             playerObject->SetRotation(angle.Rad);
         }
 
-        private void Navigate(Vector3 destination, bool shouldFly, Angle angle = default, bool preferGround = false)
+        private void Navigate(Vector3 destination, bool shouldFly, bool preferGround = false, bool direct = false)
         {
-            if (CurrentDestination == destination && (IsPathing || IsPathGenerating))
-                return;
+            var canMount = Vector2.Distance(destination.ToVector2(), Player.Position.ToVector2()) >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance && CanMount();
+            if (!Dalamud.Conditions[ConditionFlag.Mounted] && canMount)
+            {
+                EnqueueMountUp();
+                if (!GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
+                {
+                    StopNavigation();
+                    return;
+                }
+            }
 
-            shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
+            if (_navState.destination == destination && (IsPathing || IsPathGenerating))
+                return; 
 
             StopNavigation();
-            CurrentDestination = destination;
-            CurrentRotation    = angle;
-            var correctedDestination = GetCorrectedDestination(CurrentDestination, preferGround);
 
-            LastNavigationResult = VNavmesh.SimpleMove.PathfindAndMoveTo(correctedDestination, shouldFly);
-            
-            if (LastNavigationResult == false)
+            shouldFly &= canMount || Dalamud.Conditions[ConditionFlag.Mounted];
+            shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
+
+            var offsettedDestination = GetCorrectedDestination(destination, preferGround);
+            var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+            _navState.destination = destination;
+            _navState.flying = shouldFly;
+            _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted];
+            _navState.directPath = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
+
+            if (_navState.directPath)
             {
-                GatherBuddy.Log.Warning($"VNavmesh pathfinding failed for destination {destination} (corrected: {correctedDestination}), shouldFly: {shouldFly}");
-                CurrentDestination = default;
-                CurrentRotation = default;
+                _navState.task = VNavmesh.Nav.Pathfind(Player.Position, offsettedDestination, shouldFly);
+                GatherBuddy.Log.Debug($"Starting direct pathfinding to {offsettedDestination} (original: {destination}), flying: {shouldFly}.");
             }
+            else
+            {
+                var floorPoint = Player.Position;
+                if (Dalamud.Conditions[ConditionFlag.InFlight])
+                {
+                    try
+                    {
+                        floorPoint = VNavmesh.Query.Mesh.PointOnFloor(Player.Position + Vector3.Create(0, 1, 0), false, 5);
+                    }
+                    catch { }
+                }
+                _navState.task = VNavmesh.Nav.Pathfind(floorPoint, destination, false);
+                GatherBuddy.Log.Debug($"Starting ground pathfinding to {destination} from floor point {floorPoint}.");
+            }
+        }
+
+        private void HandlePathfinding()
+        {
+            if (_navState.destination == default)
+                return;
+
+            var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+
+            if (_navState.flying && !_navState.directPath && !Dalamud.Conditions[ConditionFlag.Diving] && Vector3.Distance(Player.Position, _navState.destination) < landingDistance * 1.1f)
+            {
+                // Switch vnavmesh to no-fly mode when close to landing point
+                var wp = VNavmesh.Path.ListWaypoints().ToList();
+                VNavmesh.Path.Stop();
+                VNavmesh.Path.MoveTo(wp, false);
+                _navState.flying = false;
+                GatherBuddy.Log.Debug($"Switching to ground movement, {wp.Count} waypoints left.");
+                return;
+            }
+
+            if (_navState.flying && _navState.mountingUp && Dalamud.Conditions[ConditionFlag.Mounted])
+            {
+                // Switch vnavmesh to fly mode when mounted up
+                var wp = VNavmesh.Path.ListWaypoints().ToList();
+                VNavmesh.Path.Stop();
+                VNavmesh.Path.MoveTo(wp, true);
+                _navState.mountingUp = false;
+                GatherBuddy.Log.Debug($"Switching to flying movement, {wp.Count} waypoints left.");
+                return;
+            }
+
+            if (_navState.task == null || !_navState.task.IsCompleted)
+                return;
+
+            var path = _navState.task.Result;
+            var groundPath = _navState.groundPath;
+            _navState.task = null;
+            _navState.groundPath = null;
+
+            if (path.Count == 0)
+            {
+                if (_navState.directPath || groundPath != null)
+                {
+                    GatherBuddy.Log.Error($"VNavmesh failed to find a path.");
+                    StopNavigation();
+                    _advancedUnstuck.Force();
+                }
+                else
+                {
+                    GatherBuddy.Log.Warning($"VNavmesh failed to find a ground path, falling back to flying path.");
+                    _navState.directPath = true;
+                    _navState.task = VNavmesh.Nav.Pathfind(Player.Position, _navState.destination, _navState.flying);
+                }
+            }
+            else
+            {
+                if (_navState.directPath)
+                {
+                    VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
+                    GatherBuddy.Log.Debug($"VNavmesh started moving via direct path, {path.Count} waypoints.");
+                }
+                else if (groundPath == null)
+                {
+                    var i = path.Count - 1;
+                    while (i >= 0)
+                    {
+                        if (Vector3.Distance(path[i], _navState.destination) > landingDistance) break;
+                        i--;
+                    }
+
+                    if (i >= 0 && i < path.Count - 1)
+                    {
+                        var landWP = GetPointAtRadius(path[i], path[i + 1], _navState.destination, landingDistance);
+                        _navState.task = VNavmesh.Nav.Pathfind(Player.Position, landWP, _navState.flying);
+                        _navState.groundPath = path.GetRange(i + 1, path.Count - i - 1);
+                        GatherBuddy.Log.Debug($"Landing waypoint at {landWP}, {Vector3.Distance(landWP, _navState.destination)}; {_navState.groundPath.Count} ground waypoints total.");
+                    }
+                    else
+                    {
+                        // Probably too close to target
+                        VNavmesh.Path.MoveTo(path, false);
+                        _navState.flying = false;
+                        GatherBuddy.Log.Debug($"VNavmesh started moving via ground path, {path.Count} waypoints.");
+                    }
+                }
+                else
+                {
+                    path.AddRange(groundPath);
+                    foreach (var p in path)
+                        GatherBuddy.Log.Debug($"Waypoint: {p}, {Vector3.Distance(p, _navState.destination)}");
+
+                    VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
+                    GatherBuddy.Log.Debug($"VNavmesh started moving via combined path, {path.Count} waypoints.");
+                }
+            }
+        }
+
+        private static Vector3 GetPointAtRadius(Vector3 p1, Vector3 p2, Vector3 target, float radius)
+        {
+            var d = (p2 - p1).ToVector2();        // Segment direction vector.
+            var f = (p1 - target).ToVector2();    // Vector from target to segment start.
+
+            // Quadratic coefficients: at^2 + bt + c = 0.
+            var a = Vector2.Dot(d, d);
+            var b = 2 * Vector2.Dot(f, d);
+            var c = Vector2.Dot(f, f) - radius * radius;
+
+            var discriminant = b * b - 4 * a * c;
+
+            // If discriminant < 0, there is no intersection (math safety).
+            if (discriminant < 0) return p1;
+
+            discriminant = (float)Math.Sqrt(discriminant);
+
+            // Calculate the two possible intersection points on the infinite line.
+            var t1 = (-b - discriminant) / (2 * a);
+            var t2 = (-b + discriminant) / (2 * a);
+
+            // Since one point is inside and one is outside, one 't' will be between 0 and 1.
+            var t = (t1 >= 0 && t1 <= 1) ? t1 : t2;
+
+            // Final point on the segment.
+            return p1 + (p2 - p1) * t;
         }
 
         private static Vector3 GetCorrectedDestination(Vector3 destination, bool preferGround = false)
@@ -308,14 +438,9 @@ namespace GatherBuddy.AutoGather
                         return offset;
                 }
 
-                var correctedDestination = VNavmesh.Query.Mesh.NearestPoint(destination, MaxHorizontalSeparation, MaxVerticalSeparation);
-                if ((separation = Vector2.Distance(correctedDestination.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)
-                    GatherBuddy.Log.Warning($"Query.Mesh.NearestPoint() returned a point with too large horizontal separation {separation}. Maximum allowed is {MaxHorizontalSeparation}.");
-                else if ((separation = Math.Abs(correctedDestination.Y - destination.Y)) > MaxVerticalSeparation)
-                    GatherBuddy.Log.Warning($"Query.Mesh.NearestPoint() returned a point with too large vertical separation {separation}. Maximum allowed is {MaxVerticalSeparation}.");
-                else
-                    return correctedDestination;
-                
+                // There was code that corrected the destination to the nearest point on the mesh, but testing showed that
+                // navigating directly to the node yields better results, and points within landing distance are on the mesh anyway.
+
                 if (preferGround)
                 {
                     const float GroundSearchRadius = 15f;
@@ -347,48 +472,12 @@ namespace GatherBuddy.AutoGather
         {
             var farNode = position;
 
-            if (!Dalamud.Conditions[ConditionFlag.Mounted])
-            {
-                if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                    Navigate(farNode, false);
-                EnqueueMountUp();
-            }
-            else
-            {
-                Navigate(farNode, ShouldFly(farNode));
-            }
+            Navigate(farNode, ShouldFly(farNode));
         }
 
         private unsafe void MoveToFishingSpot(Vector3 position, Angle angle)
         {
-            if (!Dalamud.Conditions[ConditionFlag.Mounted])
-            {
-                var am = ActionManager.Instance();
-                var mount = GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId;
-                var canMount = IsMountUnlocked(mount) && am->GetActionStatus(ActionType.Mount, mount) == 0;
-                if (!canMount)
-                {
-                    canMount = am->GetActionStatus(ActionType.GeneralAction, 24) == 0;
-                }
-                
-                if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting && canMount)
-                {
-                    Navigate(position, false, angle, preferGround: true);
-                    EnqueueMountUp();
-                }
-                else if (canMount)
-                {
-                    EnqueueMountUp();
-                }
-                else
-                {
-                    Navigate(position, false, angle, preferGround: true);
-                }
-            }
-            else
-            {
-                Navigate(position, ShouldFly(position), angle, preferGround: true);
-            }
+            Navigate(position, ShouldFly(position), preferGround: true);
         }
 
         public static Aetheryte? FindClosestAetheryte(ILocation location)

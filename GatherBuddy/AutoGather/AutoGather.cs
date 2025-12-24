@@ -387,6 +387,8 @@ namespace GatherBuddy.AutoGather
             if (HandleFishingCollectable())
                 return;
 
+            HandlePathfinding(); // This should be done before checking TaskManager
+
             if (TaskManager.IsBusy)
             {
                 //GatherBuddy.Log.Verbose("TaskManager has tasks, skipping DoAutoGather");
@@ -1728,17 +1730,8 @@ namespace GatherBuddy.AutoGather
                             if (distance > CloseEnoughDistance)
                             {
                                 AutoStatus = $"Rushing to umbral node {nodeId} (Weather: {currentUmbralWeather}, {distance:F0}y)...";
-                                
-                                if (!Dalamud.Conditions[ConditionFlag.Mounted] && distance >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance)
-                                {
-                                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                                        Navigate(targetPosition, false);
-                                    EnqueueMountUp();
-                                }
-                                else
-                                {
-                                    Navigate(targetPosition, ShouldFly(targetPosition));
-                                }
+
+                                Navigate(targetPosition, ShouldFly(targetPosition));
                                 return;
                             }
                             else
@@ -1883,17 +1876,8 @@ namespace GatherBuddy.AutoGather
                 var distance = Vector3.Distance(Player.Position, targetPosition);
                 
                 AutoStatus = $"Moving to next Diadem node ({distance:F0}y)...";
-                
-                if (!Dalamud.Conditions[ConditionFlag.Mounted] && distance >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance)
-                {
-                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                        Navigate(targetPosition, false);
-                    EnqueueMountUp();
-                }
-                else
-                {
-                    Navigate(targetPosition, ShouldFly(targetPosition));
-                }
+
+                Navigate(targetPosition, ShouldFly(targetPosition));
             }
             else
             {
