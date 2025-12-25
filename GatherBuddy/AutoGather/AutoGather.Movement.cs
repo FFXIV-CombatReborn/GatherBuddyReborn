@@ -325,6 +325,11 @@ namespace GatherBuddy.AutoGather
             {
                 // Switch vnavmesh to fly mode when mounted up
                 var wp = VNavmesh.Path.ListWaypoints().ToList();
+                
+                // Remove first waypoint if it's too close.
+                if (wp.Count > 0 && Vector2.DistanceSquared(Player.Position.AsVector2(), wp[0].AsVector2()) < 4f)
+                    wp.RemoveAt(0);
+
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(wp, true);
                 _navState.mountingUp = false;
