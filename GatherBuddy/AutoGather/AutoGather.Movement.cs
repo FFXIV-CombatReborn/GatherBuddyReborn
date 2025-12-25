@@ -3,7 +3,6 @@ using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using FFXIVClientStructs.FFXIV.Client.Graphics.Environment;
 using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Data;
@@ -14,9 +13,11 @@ using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Utilities;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
 
 namespace GatherBuddy.AutoGather
@@ -269,7 +270,19 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (_navState.destination == destination && (IsPathing || IsPathGenerating || _navState.task != null))
+            var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+
+            if (_navState.destination == destination && _navState.stage == PathfindingStage.RetryCombinedPathfinding 
+                && _navState.task == null && Environment.TickCount64 - _navState.lastTry > 1000)
+            {
+                _navState.lastTry = Environment.TickCount64;
+                _navState.cts = new CancellationTokenSource();
+                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, _navState.cts.Token);
+                GatherBuddy.Log.Debug($"Retrying combined pathfinding to {destination}.");
+                return;
+            }                
+
+            if (_navState.destination == destination && (IsPathing || _navState.task != null))
                 return; 
 
             StopNavigation();
@@ -278,28 +291,24 @@ namespace GatherBuddy.AutoGather
             shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
 
             var offsettedDestination = GetCorrectedDestination(destination, preferGround);
-            var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
             _navState.destination = destination;
             _navState.flying = shouldFly;
             _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted];
-            _navState.directPath = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
+            _navState.direct = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
             _navState.offset = destination != offsettedDestination;
             _navState.cts = new CancellationTokenSource();
 
-            if (_navState.directPath)
+            if (_navState.direct)
             {
                 _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, offsettedDestination, shouldFly, _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Starting direct pathfinding to {offsettedDestination} (original: {destination}), flying: {shouldFly}.");
             }
             else
             {
-                var floorPoint = Player.Position;
-                if (Dalamud.Conditions[ConditionFlag.InFlight])
-                {
-                    floorPoint = VNavmesh.Query.Mesh.PointOnFloor(Player.Position + Vector3.Create(0, 1, 0), false, 5).GetValueOrDefault(floorPoint);
-                }
-                _navState.task = VNavmesh.Nav.PathfindCancelable(floorPoint, destination, false, _navState.cts.Token);
-                GatherBuddy.Log.Debug($"Starting ground pathfinding to {destination} from floor point {floorPoint}.");
+                _navState.lastTry = Environment.TickCount64;
+                _navState.stage = PathfindingStage.InitialCombinedPathfinding;
+                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, _navState.cts.Token);
+                GatherBuddy.Log.Debug($"Starting combined pathfinding to {destination}.");
             }
         }
 
@@ -310,7 +319,9 @@ namespace GatherBuddy.AutoGather
 
             var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
 
-            if (_navState.flying && !_navState.directPath && !Dalamud.Conditions[ConditionFlag.Diving] && Vector3.Distance(Player.Position, _navState.destination) < landingDistance * 1.1f)
+            if (_navState.flying && _navState.stage == PathfindingStage.Done
+                && !Dalamud.Conditions[ConditionFlag.Diving]
+                && Vector3.Distance(Player.Position, _navState.destination) < landingDistance * 1.1f)
             {
                 // Switch vnavmesh to no-fly mode when close to landing point
                 var wp = VNavmesh.Path.ListWaypoints().ToList();
@@ -341,98 +352,130 @@ namespace GatherBuddy.AutoGather
                 return;
 
             var path = _navState.task.Result;
-            var groundPath = _navState.groundPath;
             _navState.task = null;
             _navState.cts.Dispose();
             _navState.cts = null;
-            _navState.groundPath = null;
 
             if (path.Count == 0)
             {
-                if (_navState.directPath || groundPath != null)
+                if (_navState.direct || _navState.stage == PathfindingStage.FallbackDirectPathfinding)
                 {
                     GatherBuddy.Log.Error($"VNavmesh failed to find a path.");
                     StopNavigation();
                     _advancedUnstuck.Force();
                 }
-                else
+                else if (_navState.stage == PathfindingStage.InitialCombinedPathfinding)
                 {
-                    GatherBuddy.Log.Warning($"VNavmesh failed to find a ground path, falling back to flying path.");
-                    _navState.directPath = true;
+                    GatherBuddy.Log.Debug($"VNavmesh failed to find a combined path, falling back to direct path.");
+                    _navState.stage++;
                     _navState.cts = new CancellationTokenSource();
                     _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, _navState.destination, _navState.flying, _navState.cts.Token);
+                }
+                else if (_navState.stage != PathfindingStage.RetryCombinedPathfinding)
+                {
+                    GatherBuddy.Log.Error($"BUG: Pathfinding failure at unexpected stage {_navState.stage}.");
+                    AbortAutoGather();
                 }
             }
             else
             {
-                if (_navState.directPath)
-                {
-                    VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
-                    GatherBuddy.Log.Debug($"VNavmesh started moving via direct path, {path.Count} waypoints.");
-                }
-                else if (groundPath == null)
-                {
-                    var i = path.Count - 1;
-                    while (i >= 0)
+                var pathtype = "unknown";
+                if (_navState.direct)
+                    pathtype = "direct";
+                else switch (_navState.stage)
                     {
-                        if (Vector3.Distance(path[i], _navState.destination) > landingDistance) break;
-                        i--;
+                        case PathfindingStage.InitialCombinedPathfinding:
+                            pathtype = "combined";
+                            _navState.stage = PathfindingStage.Done;
+                            break;
+                        case PathfindingStage.FallbackDirectPathfinding:
+                            pathtype = "fallback direct";
+                            _navState.stage++;
+                            break;
+                        case PathfindingStage.RetryCombinedPathfinding:
+                            pathtype = "combined";
+                            _navState.stage++;
+                            RemovePassedWaypoints(path);
+                            break;
                     }
+                VNavmesh.Path.Stop();
+                VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
+                GatherBuddy.Log.Debug($"VNavmesh started moving via {pathtype} path, {path.Count} waypoints.");
+            }
 
-                    if (i >= 0 && i < path.Count - 1)
-                    {
-                        var landWP = GetPointAtRadius(path[i], path[i + 1], _navState.destination, landingDistance);
-                        _navState.cts = new CancellationTokenSource();
-                        _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, landWP, _navState.flying, _navState.cts.Token);
-                        _navState.groundPath = path.GetRange(i + 1, path.Count - i - 1);
-                        GatherBuddy.Log.Debug($"Landing waypoint at {landWP}, {Vector3.Distance(landWP, _navState.destination)}; {_navState.groundPath.Count} ground waypoints total.");
-                    }
-                    else
-                    {
-                        // Probably too close to target
-                        VNavmesh.Path.MoveTo(path, false);
-                        _navState.flying = false;
-                        GatherBuddy.Log.Debug($"VNavmesh started moving via ground path, {path.Count} waypoints.");
-                    }
-                }
-                else
-                {
-                    path.AddRange(groundPath);
-                    foreach (var p in path)
-                        GatherBuddy.Log.Debug($"Waypoint: {p}, {Vector3.Distance(p, _navState.destination)}");
+            static void RemovePassedWaypoints(List<Vector3> path)
+            {
+                var p = Player.Position;
+                var t = path[^1];
+                var fwd = new Vector3(t.X - p.X, 0f, t.Z - p.Z);
+                if (fwd.LengthSquared() < 1f) return;
+                fwd = Vector3.Normalize(fwd);
 
-                    VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
-                    GatherBuddy.Log.Debug($"VNavmesh started moving via combined path, {path.Count} waypoints.");
+                var n = 0;
+                while (n < path.Count)
+                {
+                    var next = new Vector3(path[n].X - p.X, 0f, path[n].Z - p.Z);
+                    if (Vector3.Dot(fwd, next) > 0) break;
+                    n++;
                 }
+                path.RemoveRange(0, n);
             }
         }
 
-        private static Vector3 GetPointAtRadius(Vector3 p1, Vector3 p2, Vector3 target, float radius)
+        private static async Task<List<Vector3>> FindCombinedPath(Vector3 player, Vector3 target, float landingDistance, CancellationToken token)
         {
-            var d = (p2 - p1).ToVector2();        // Segment direction vector.
-            var f = (p1 - target).ToVector2();    // Vector from target to segment start.
+            var point = VNavmesh.Query.Mesh.PointOnFloor(player + Vector3.Create(0, 1, 0), false, 15f);
+            if (point == null) return [];
 
-            // Quadratic coefficients: at^2 + bt + c = 0.
-            var a = Vector2.Dot(d, d);
-            var b = 2 * Vector2.Dot(f, d);
-            var c = Vector2.Dot(f, f) - radius * radius;
+            var groundPath = await VNavmesh.Nav.PathfindCancelable(point.Value, target, false, token);
+            if (groundPath.Count == 0) return [];
 
-            var discriminant = b * b - 4 * a * c;
+            var n = FindIntersection(groundPath, target, landingDistance);
+            var landingWP = GetPointAtRadius(groundPath[n], groundPath[n + 1], target, landingDistance);
+            var flyPath = await VNavmesh.Nav.PathfindCancelable(player, landingWP, true, token);
+            if (flyPath.Count == 0) return [];
 
-            // If discriminant < 0, there is no intersection (math safety).
-            if (discriminant < 0) return p1;
+            flyPath.AddRange(groundPath.Skip(n + 1));
+            return flyPath;
 
-            discriminant = (float)Math.Sqrt(discriminant);
+            int FindIntersection(List<Vector3> wp, Vector3 p, float radius)
+            {
+                var r2 = radius * radius;
+                for (var i = wp.Count - 2; i > 0; i--)
+                {
+                    if (Vector3.DistanceSquared(wp[i], p) > r2)
+                        return i;
+                }
+                return 0;
+            }
 
-            // Calculate the two possible intersection points on the infinite line.
-            var t1 = (-b - discriminant) / (2 * a);
-            var t2 = (-b + discriminant) / (2 * a);
+            Vector3 GetPointAtRadius(Vector3 p1, Vector3 p2, Vector3 target, float radius)
+            {
+                var d = (p2 - p1).ToVector2();        // Segment direction vector.
+                var f = (p1 - target).ToVector2();    // Vector from target to segment start.
 
-            // Since one point is inside and one is outside, one 't' will be between 0 and 1.
-            var t = (t1 >= 0 && t1 <= 1) ? t1 : t2;
+                // Quadratic coefficients: at^2 + bt + c = 0.
+                var a = Vector2.Dot(d, d);
+                var b = 2 * Vector2.Dot(f, d);
+                var c = Vector2.Dot(f, f) - radius * radius;
 
-            // Final point on the segment.
-            return p1 + (p2 - p1) * t;
+                var discriminant = b * b - 4 * a * c;
+
+                // If discriminant < 0, there is no intersection (math safety).
+                if (discriminant < 0) return p1;
+
+                discriminant = (float)Math.Sqrt(discriminant);
+
+                // Calculate the two possible intersection points on the infinite line.
+                var t1 = (-b - discriminant) / (2 * a);
+                var t2 = (-b + discriminant) / (2 * a);
+
+                // Since one point is inside and one is outside, one 't' will be between 0 and 1.
+                var t = (t1 >= 0 && t1 <= 1) ? t1 : t2;
+
+                // Final point on the segment.
+                return p1 + (p2 - p1) * t;
+            }
         }
 
         private static Vector3 GetCorrectedDestination(Vector3 destination, bool preferGround = false)

@@ -46,8 +46,16 @@ namespace GatherBuddy.AutoGather
         public bool IsFishing
             => Dalamud.Conditions[ConditionFlag.Fishing];
 
-        public  Vector3    CurrentDestination   { get { return _navState.destination; }  }
-        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool directPath, bool offset, List<Vector3>? groundPath) _navState;
+        enum PathfindingStage
+        {
+            InitialCombinedPathfinding = 0,
+            FallbackDirectPathfinding = 1,
+            RetryCombinedPathfinding = 2,
+            Done = 3
+        }
+        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool direct, bool offset, PathfindingStage stage, long lastTry) _navState;
+        public Vector3 CurrentDestination { get { return _navState.destination; } }
+
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 
