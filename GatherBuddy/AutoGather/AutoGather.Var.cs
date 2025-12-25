@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using LuminaTerritoryType = Lumina.Excel.Sheets.TerritoryType;
 
@@ -46,7 +47,7 @@ namespace GatherBuddy.AutoGather
             => Dalamud.Conditions[ConditionFlag.Fishing];
 
         public  Vector3    CurrentDestination   { get { return _navState.destination; }  }
-        private (Task<List<Vector3>>? task, Vector3 destination, bool flying, bool mountingUp, bool directPath, bool offset, List<Vector3>? groundPath) _navState;
+        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool directPath, bool offset, List<Vector3>? groundPath) _navState;
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 
