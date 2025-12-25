@@ -88,14 +88,14 @@ namespace GatherBuddy.Plugin
                 /// within the specified horizontal and vertical range (box-shaped).
                 /// </summary>
                 [EzIPC("vnavmesh.Query.Mesh.NearestPoint", applyPrefix: false)]
-                internal static readonly Func<Vector3, float, float, Vector3> NearestPoint;
+                internal static readonly Func<Vector3, float, float, Vector3?> NearestPoint;
 
                 /// <summary>
                 /// Returns the highest point on the mesh within the specified horizontal
                 /// range (box-shaped) that is not above the given position.
                 /// </summary>
                 [EzIPC("vnavmesh.Query.Mesh.PointOnFloor", applyPrefix: false)]
-                internal static readonly Func<Vector3, bool, float, Vector3> PointOnFloor;
+                internal static readonly Func<Vector3, bool, float, Vector3?> PointOnFloor;
             }
         }
 
