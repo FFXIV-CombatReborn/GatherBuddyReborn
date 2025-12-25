@@ -1081,7 +1081,7 @@ namespace GatherBuddy.AutoGather
                 if (dutyNpc != null && dutyNpc.Position.DistanceToPlayer() > 3)
                 {
                     AutoStatus = "Moving to Diadem NPC...";
-                    var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000);
+                    var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000).GetValueOrDefault(dutyNpc.Position);
                     if (CurrentDestination != point || (!isPathing && !isPathGenerating))
                     {
                         Navigate(point, false);
@@ -1503,7 +1503,7 @@ namespace GatherBuddy.AutoGather
                     if (dutyNpc != null && dutyNpc.Position.DistanceToPlayer() > 3)
                     {
                         AutoStatus = "Moving to Diadem NPC...";
-                        var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000);
+                        var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000).GetValueOrDefault(dutyNpc.Position);
                         if (CurrentDestination != point || (!IsPathGenerating && !IsPathing))
                         {
                             Navigate(point, false);
@@ -2047,7 +2047,10 @@ namespace GatherBuddy.AutoGather
                     .OrderBy(o => Vector2.Distance(pos.Value, new Vector2(o.X, o.Z)))
                     .FirstOrDefault();
                 if (selectedFarNode == default)
-                    selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(new Vector3(pos.Value.X, 0, pos.Value.Y), 10, 10000);
+                {
+                    var point = new Vector3(pos.Value.X, 0, pos.Value.Y);
+                    selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point);
+                }
             }
             else
             {

@@ -186,11 +186,14 @@ namespace GatherBuddy.AutoGather
             try
             {
                 var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
-                Navigate(floor, true, direct: true);
-                TaskManager.Enqueue(() => !IsPathGenerating);
-                TaskManager.DelayNext(50);
-                TaskManager.Enqueue(() => !IsPathing, 1000);
-                EnqueueDismount();
+                if (floor != null)
+                {
+                    Navigate(floor.Value, true, direct: true);
+                    TaskManager.Enqueue(() => !IsPathGenerating);
+                    TaskManager.DelayNext(50);
+                    TaskManager.Enqueue(() => !IsPathing, 1000);
+                    EnqueueDismount();
+                }
             }
             catch { }
             // If even that fails, do advanced unstuck
@@ -293,11 +296,7 @@ namespace GatherBuddy.AutoGather
                 var floorPoint = Player.Position;
                 if (Dalamud.Conditions[ConditionFlag.InFlight])
                 {
-                    try
-                    {
-                        floorPoint = VNavmesh.Query.Mesh.PointOnFloor(Player.Position + Vector3.Create(0, 1, 0), false, 5);
-                    }
-                    catch { }
+                    floorPoint = VNavmesh.Query.Mesh.PointOnFloor(Player.Position + Vector3.Create(0, 1, 0), false, 5).GetValueOrDefault(floorPoint);
                 }
                 _navState.task = VNavmesh.Nav.PathfindCancelable(floorPoint, destination, false, _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Starting ground pathfinding to {destination} from floor point {floorPoint}.");
@@ -441,7 +440,7 @@ namespace GatherBuddy.AutoGather
                 float separation;
                 if (WorldData.NodeOffsets.TryGetValue(destination, out var offset))
                 {
-                    offset = VNavmesh.Query.Mesh.NearestPoint(offset, MaxHorizontalSeparation, MaxVerticalSeparation);
+                    offset = VNavmesh.Query.Mesh.NearestPoint(offset, MaxHorizontalSeparation, MaxVerticalSeparation).GetValueOrDefault(offset);
                     if ((separation = Vector2.Distance(offset.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)
                         GatherBuddy.Log.Warning($"Offset is ignored because the horizontal separation {separation} is too large after correcting for mesh. Maximum allowed is {MaxHorizontalSeparation}.");
                     else if ((separation = Math.Abs(offset.Y - destination.Y)) > MaxVerticalSeparation)
@@ -459,19 +458,13 @@ namespace GatherBuddy.AutoGather
                     const float MaxGroundHorizontalSeparation = 7.5f;
                     const float MaxGroundVerticalSeparation = 10f;
                     
-                    try
-                    {
-                        var groundPoint = VNavmesh.Query.Mesh.PointOnFloor(destination, false, GroundSearchRadius);
-                        var hDist = Vector2.Distance(groundPoint.ToVector2(), destination.ToVector2());
-                        var vDist = Math.Abs(groundPoint.Y - destination.Y);
+                    var groundPoint = VNavmesh.Query.Mesh.PointOnFloor(destination, false, GroundSearchRadius).GetValueOrDefault(destination);
+                    var hDist = Vector2.Distance(groundPoint.ToVector2(), destination.ToVector2());
+                    var vDist = Math.Abs(groundPoint.Y - destination.Y);
                         
-                        if (hDist <= MaxGroundHorizontalSeparation && vDist <= MaxGroundVerticalSeparation)
-                        {
-                            return groundPoint;
-                        }
-                    }
-                    catch (Exception)
+                    if (hDist <= MaxGroundHorizontalSeparation && vDist <= MaxGroundVerticalSeparation)
                     {
+                        return groundPoint;
                     }
                 }
             }

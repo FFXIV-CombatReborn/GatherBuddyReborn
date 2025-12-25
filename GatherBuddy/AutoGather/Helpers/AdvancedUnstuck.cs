@@ -138,14 +138,14 @@ namespace GatherBuddy.AutoGather.Movement
                     {
                         var floorPosition = VNavmesh.Query.Mesh.PointOnFloor.Invoke(testPosition, true, 50f);
                         
-                        if (floorPosition != default)
+                        if (floorPosition.HasValue && floorPosition.Value != default)
                         {
-                            var distanceToFloor = Vector3.Distance(floorPosition, Player.Position);
-                            var heightDiff = Math.Abs(floorPosition.Y - testPosition.Y);
+                            var distanceToFloor = Vector3.Distance(floorPosition.Value, Player.Position);
+                            var heightDiff = Math.Abs(floorPosition.Value.Y - testPosition.Y);
                             
                             if (distanceToFloor > 10f && heightDiff < 30f)
                             {
-                                landablePosition = floorPosition;
+                                landablePosition = floorPosition.Value;
                                 GatherBuddy.Log.Information($"[Fishing Unstuck] Found landable position at {distanceToFloor:F1}y away (height diff: {heightDiff:F1}y)");
                                 break;
                             }
