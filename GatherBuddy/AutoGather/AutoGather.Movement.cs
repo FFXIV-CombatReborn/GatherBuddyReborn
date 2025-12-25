@@ -1,20 +1,22 @@
 using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Helpers;
+using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using FFXIVClientStructs.FFXIV.Client.Graphics.Environment;
 using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Data;
+using GatherBuddy.Enums;
+using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
+using GatherBuddy.Utilities;
 using System;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Game.ClientState.Objects.Types;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using FFXIVClientStructs.FFXIV.Client.Game.Object;
-using GatherBuddy.Enums;
-using GatherBuddy.Utilities;
+using System.Threading;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
 
 namespace GatherBuddy.AutoGather
@@ -232,14 +234,16 @@ namespace GatherBuddy.AutoGather
         private void StopNavigation()
         {
             // Reset navigation logic here
-            // For example, reinitiate navigation to the destination
+            if (_navState.cts != null && _navState.task != null)
+            {
+                var cts = _navState.cts;
+                cts.Cancel();
+                _navState.task.ContinueWith(_ => cts.Dispose());
+            }
+
             _navState = default;
             if (VNavmesh.Enabled)
-            {
                 VNavmesh.Path.Stop();
-                if (IsPathGenerating)
-                    VNavmesh.Nav.PathfindCancelAll();
-            }
         }
 
         private unsafe void SetRotation(Angle angle)
@@ -277,10 +281,11 @@ namespace GatherBuddy.AutoGather
             _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted];
             _navState.directPath = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
             _navState.offset = destination != offsettedDestination;
+            _navState.cts = new CancellationTokenSource();
 
             if (_navState.directPath)
             {
-                _navState.task = VNavmesh.Nav.Pathfind(Player.Position, offsettedDestination, shouldFly);
+                _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, offsettedDestination, shouldFly, _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Starting direct pathfinding to {offsettedDestination} (original: {destination}), flying: {shouldFly}.");
             }
             else
@@ -294,7 +299,7 @@ namespace GatherBuddy.AutoGather
                     }
                     catch { }
                 }
-                _navState.task = VNavmesh.Nav.Pathfind(floorPoint, destination, false);
+                _navState.task = VNavmesh.Nav.PathfindCancelable(floorPoint, destination, false, _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Starting ground pathfinding to {destination} from floor point {floorPoint}.");
             }
         }
@@ -328,12 +333,14 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (_navState.task == null || !_navState.task.IsCompleted)
+            if (_navState.task == null || _navState.cts == null || !_navState.task.IsCompleted)
                 return;
 
             var path = _navState.task.Result;
             var groundPath = _navState.groundPath;
             _navState.task = null;
+            _navState.cts.Dispose();
+            _navState.cts = null;
             _navState.groundPath = null;
 
             if (path.Count == 0)
@@ -348,7 +355,8 @@ namespace GatherBuddy.AutoGather
                 {
                     GatherBuddy.Log.Warning($"VNavmesh failed to find a ground path, falling back to flying path.");
                     _navState.directPath = true;
-                    _navState.task = VNavmesh.Nav.Pathfind(Player.Position, _navState.destination, _navState.flying);
+                    _navState.cts = new CancellationTokenSource();
+                    _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, _navState.destination, _navState.flying, _navState.cts.Token);
                 }
             }
             else
@@ -370,7 +378,8 @@ namespace GatherBuddy.AutoGather
                     if (i >= 0 && i < path.Count - 1)
                     {
                         var landWP = GetPointAtRadius(path[i], path[i + 1], _navState.destination, landingDistance);
-                        _navState.task = VNavmesh.Nav.Pathfind(Player.Position, landWP, _navState.flying);
+                        _navState.cts = new CancellationTokenSource();
+                        _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, landWP, _navState.flying, _navState.cts.Token);
                         _navState.groundPath = path.GetRange(i + 1, path.Count - i - 1);
                         GatherBuddy.Log.Debug($"Landing waypoint at {landWP}, {Vector3.Distance(landWP, _navState.destination)}; {_navState.groundPath.Count} ground waypoints total.");
                     }
