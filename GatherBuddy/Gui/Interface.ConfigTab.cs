@@ -14,11 +14,11 @@ using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
-using OtterGui;
-using OtterGui.Widgets;
+using ElliLib;
+using ElliLib.Widgets;
 using FishRecord = GatherBuddy.FishTimer.FishRecord;
 using GatheringType = GatherBuddy.Enums.GatheringType;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 

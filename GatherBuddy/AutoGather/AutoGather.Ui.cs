@@ -16,8 +16,8 @@ using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using GatherBuddy.CustomInfo;
 using Newtonsoft.Json;
-using OtterGui;
-using OtterGui.Raii;
+using ElliLib;
+using ElliLib.Raii;
 
 namespace GatherBuddy.AutoGather
 {

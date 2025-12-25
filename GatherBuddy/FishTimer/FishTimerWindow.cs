@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -7,10 +7,10 @@ using Dalamud.Interface.Windowing;
 using GatherBuddy.Config;
 using GatherBuddy.Gui;
 using GatherBuddy.SeFunctions;
-using OtterGui;
-using OtterGui.Extensions;
-using OtterGui.Raii;
-using OtterGui.Text;
+using ElliLib;
+using ElliLib.Extensions;
+using ElliLib.Raii;
+using ElliLib.Text;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using TimeStamp = GatherBuddy.Time.TimeStamp;
 

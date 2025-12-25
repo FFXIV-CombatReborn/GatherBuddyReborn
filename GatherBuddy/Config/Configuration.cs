@@ -9,7 +9,7 @@ using Dalamud.Game.Text;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather;
 using GatherBuddy.Enums;
-using OtterGui.Classes;
+using ElliLib.Classes;
 
 namespace GatherBuddy.Config;
 

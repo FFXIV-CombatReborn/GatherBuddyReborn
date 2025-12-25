@@ -3,7 +3,7 @@ using System.Linq;
 using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using OtterGui.Filesystem;
+using ElliLib.Filesystem;
 
 namespace GatherBuddy.AutoGather.Lists;
 

@@ -6,7 +6,7 @@ using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
 using Lumina.Excel.Sheets;
 using Newtonsoft.Json;
-using OtterGui;
+using ElliLib;
 using System;
 using System.Collections.Generic;
 using System.IO;

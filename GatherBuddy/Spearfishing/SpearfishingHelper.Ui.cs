@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
@@ -8,8 +8,8 @@ using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.SeFunctions;
-using OtterGui;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ElliLib;
+using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Spearfishing;
 

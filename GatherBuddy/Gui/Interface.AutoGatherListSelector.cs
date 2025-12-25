@@ -9,12 +9,12 @@ using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Config;
 using GatherBuddy.Classes;
 using GatherBuddy.Plugin;
-using OtterGui;
-using OtterGui.Classes;
-using OtterGui.FileSystem.Selector;
-using OtterGui.Filesystem;
-using OtterGui.Log;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ElliLib;
+using ElliLib.Classes;
+using ElliLib.Filesystem;
+using ElliLib.Filesystem.Selector;
+using ElliLib.Log;
+using ElliLib.Raii;
 
 namespace GatherBuddy.Gui;
 

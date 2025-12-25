@@ -24,8 +24,7 @@ public partial class FishingParser : IDisposable
     public unsafe FishingParser(IGameInteropProvider provider)
     {
         FishingSpotNames = SetupFishingSpotNames();
-        var sigScannerWrapper = new SigScannerWrapper(Dalamud.Interop);
-        _catchHook       = new UpdateFishCatch(sigScannerWrapper).CreateHook(provider, OnCatchUpdate);
+        _catchHook       = new UpdateFishCatch(Dalamud.SigScanner).CreateHook(provider, OnCatchUpdate);
         var hookPtr = (IntPtr)ActionManager.MemberFunctionPointers.UseAction;
         _hookHook = provider.HookFromAddress<UseActionDelegate>(hookPtr, OnUseAction);
     }

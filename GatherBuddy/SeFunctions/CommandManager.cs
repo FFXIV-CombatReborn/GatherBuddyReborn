@@ -16,7 +16,7 @@ public class CommandManager
         _uiModulePtr    = gameGui.GetUIModule();
     }
 
-    public CommandManager(IGameGui gameGui, ISigScannerWrapper sigScanner)
+    public CommandManager(IGameGui gameGui, ISigScanner sigScanner)
         : this(gameGui, new ProcessChatBox(sigScanner))
     { }
 

@@ -14,9 +14,9 @@ using GatherBuddy.Config;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
-using OtterGui;
-using OtterGui.Widgets;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ElliLib;
+using ElliLib.Widgets;
+using ImRaii = ElliLib.Raii.ImRaii;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Automation;
 

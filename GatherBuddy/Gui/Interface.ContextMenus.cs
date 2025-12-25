@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -17,7 +17,7 @@ using GatherBuddy.GatherHelper;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Structs;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 

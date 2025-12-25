@@ -64,11 +64,18 @@
         "resolved": "17.11.4",
         "contentHash": "mudqUHhNpeqIdJoUx2YDWZO/I9uEDYVowan89R6wsomfnUJQk6HteoQTlNjZDixhT2B4IXMkMtgZtoceIjLRmA=="
       },
+      "ellilib": {
+        "type": "Project",
+        "dependencies": {
+          "JetBrains.Annotations": "[2024.3.0, )",
+          "Microsoft.Extensions.DependencyInjection": "[9.0.2, )"
+        }
+      },
       "gatherbuddy.gamedata": {
         "type": "Project",
         "dependencies": {
-          "GatherBuddy.Levenshtein": "[1.0.0, )",
-          "OtterGui": "[1.0.0, )"
+          "ElliLib": "[1.0.0, )",
+          "GatherBuddy.Levenshtein": "[1.0.0, )"
         }
       },
       "gatherbuddy.levenshtein": {
@@ -76,13 +83,6 @@
       },
       "gatherbuddy.models": {
         "type": "Project"
-      },
-      "ottergui": {
-        "type": "Project",
-        "dependencies": {
-          "JetBrains.Annotations": "[2024.3.0, )",
-          "Microsoft.Extensions.DependencyInjection": "[9.0.2, )"
-        }
       }
     }
   }
