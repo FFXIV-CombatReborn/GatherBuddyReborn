@@ -432,6 +432,7 @@ namespace GatherBuddy.AutoGather
 
             var n = FindIntersection(groundPath, target, landingDistance);
             var landingWP = GetPointAtRadius(groundPath[n], groundPath[n + 1], target, landingDistance);
+            if (Math.Abs(target.Y - landingWP.Y) > 15f) return []; // Diadem sanity check
             var flyPath = await VNavmesh.Nav.PathfindCancelable(player, landingWP, true, token);
             if (flyPath.Count == 0) return [];
 
