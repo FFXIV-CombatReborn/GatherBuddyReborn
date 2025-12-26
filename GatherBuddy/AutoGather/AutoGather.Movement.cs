@@ -327,6 +327,7 @@ namespace GatherBuddy.AutoGather
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(wp, false);
                 _navState.flying = false;
+                Dismount(); // Try to land (not dismount)
                 GatherBuddy.Log.Debug($"Switching to ground movement, {wp.Count} waypoints left.");
                 return;
             }
@@ -427,6 +428,11 @@ namespace GatherBuddy.AutoGather
                 }
                 path.RemoveRange(0, n);
             }
+        }
+
+        private unsafe void Dismount()
+        {
+            ActionManager.Instance()->UseAction(ActionType.GeneralAction, 23); // Hotkey Z
         }
 
         private static async Task<List<Vector3>> FindCombinedPath(Vector3 player, Vector3 target, float landingDistance, bool flying, CancellationToken token)
