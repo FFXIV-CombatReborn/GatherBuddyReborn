@@ -1,5 +1,6 @@
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.AutoGather.Extensions;
@@ -20,6 +21,9 @@ namespace GatherBuddy.AutoGather
         private unsafe void EnqueueNodeInteraction(IGameObject gameObject, Gatherable targetItem)
         {
             var targetSystem = TargetSystem.Instance();
+            GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+            GatherBuddy.ToastGui.ErrorToast += HandleNodeInteractionErrorToast;
+
             if (targetSystem == null)
                 return;
 
@@ -48,11 +52,24 @@ namespace GatherBuddy.AutoGather
 
             TaskManager.Enqueue(() =>
             {
+                GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
                 if (!Dalamud.Conditions[ConditionFlag.Gathering] && Dalamud.Conditions[ConditionFlag.Mounted] && Dalamud.Conditions[ConditionFlag.InFlight] && !Dalamud.Conditions[ConditionFlag.Diving])
                 {
                     ForceLandAndDismount();
                 }
             });
+        }
+
+        private unsafe void HandleNodeInteractionErrorToast(ref SeString message, ref bool isHandled)
+        {
+            // With current navigation, getting 'Unable to execute command while in flight' means we are either too high above the ground
+            // or even not above traversable ground, so retrying node interaction is pointless, force dismount instead.
+
+            GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+            var text = message.TextValue;
+            GatherBuddy.Log.Debug($"Node interaction error toast detected: {text} Forcing dismount.");
+            TaskManager.Abort();
+            ForceLandAndDismount();
         }
 
         private unsafe void EnqueueSpearfishingNodeInteraction(IGameObject gameObject, Classes.Fish targetFish)

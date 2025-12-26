@@ -29,6 +29,7 @@ using ElliLib;
 using ElliLib.Classes;
 using ElliLib.Log;
 using GatherBuddy.AutoGather;
+using Dalamud.IoC;
 
 namespace GatherBuddy;
 
@@ -81,6 +82,8 @@ public partial class GatherBuddy : IDalamudPlugin
     internal readonly Executor                       Executor;
     internal readonly ContextMenu                    ContextMenu;
     internal readonly FishRecorder                   FishRecorder;
+
+    [PluginService] internal static IToastGui ToastGui { get; private set; } = null!;
 
     internal readonly GatherBuddyIpc Ipc;
     //    internal readonly WotsitIpc Wotsit;

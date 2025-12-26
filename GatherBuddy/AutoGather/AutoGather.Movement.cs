@@ -184,19 +184,15 @@ namespace GatherBuddy.AutoGather
 
         private void ForceLandAndDismount()
         {
-            try
+            var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
+            if (floor != null)
             {
-                var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
-                if (floor != null)
-                {
-                    Navigate(floor.Value, true, direct: true);
-                    TaskManager.Enqueue(() => !IsPathGenerating);
-                    TaskManager.DelayNext(50);
-                    TaskManager.Enqueue(() => !IsPathing, 1000);
-                    EnqueueDismount();
-                }
+                Navigate(floor.Value, true, direct: true);
+                TaskManager.Enqueue(() => !IsPathGenerating);
+                TaskManager.DelayNext(50);
+                TaskManager.Enqueue(() => !IsPathing, 1000);
+                EnqueueDismount();
             }
-            catch { }
             // If even that fails, do advanced unstuck
             TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
         }
