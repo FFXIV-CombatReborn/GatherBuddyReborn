@@ -642,7 +642,7 @@ namespace GatherBuddy.AutoGather
 
             if (Functions.InTheDiadem())
             {
-                TryUseAetherCannon();
+                if (TryUseAetherCannon()) return;
                 
                 var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
                 var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
