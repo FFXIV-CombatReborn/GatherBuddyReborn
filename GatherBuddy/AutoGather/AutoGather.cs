@@ -147,8 +147,6 @@ namespace GatherBuddy.AutoGather
                     
                     CleanupAutoHook();
 
-                    if (VNavmesh.Enabled && IsPathGenerating)
-                        VNavmesh.Nav.PathfindCancelAll();
                     StopNavigation();
                     CurrentFarNodeLocation   = null;
                     _homeWorldWarning        = false;
