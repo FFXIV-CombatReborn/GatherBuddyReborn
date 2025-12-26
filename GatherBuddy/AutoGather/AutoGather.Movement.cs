@@ -285,8 +285,6 @@ namespace GatherBuddy.AutoGather
             if (_navState.destination == destination && (IsPathing || _navState.task != null))
                 return; 
 
-            StopNavigation();
-
             shouldFly &= canMount || Dalamud.Conditions[ConditionFlag.Mounted];
             shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
 
@@ -404,9 +402,9 @@ namespace GatherBuddy.AutoGather
                         case PathfindingStage.RetryCombinedPathfinding:
                             pathtype = "combined";
                             _navState.stage++;
-                            RemovePassedWaypoints(path);
                             break;
                     }
+                if (IsPathing) RemovePassedWaypoints(path);
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
                 GatherBuddy.Log.Debug($"VNavmesh started moving via {pathtype} path, {path.Count} waypoints.");
