@@ -277,7 +277,7 @@ namespace GatherBuddy.AutoGather
             {
                 _navState.lastTry = Environment.TickCount64;
                 _navState.cts = new CancellationTokenSource();
-                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, _navState.cts.Token);
+                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, Dalamud.Conditions[ConditionFlag.InFlight], _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Retrying combined pathfinding to {destination}.");
                 return;
             }                
@@ -307,7 +307,7 @@ namespace GatherBuddy.AutoGather
             {
                 _navState.lastTry = Environment.TickCount64;
                 _navState.stage = PathfindingStage.InitialCombinedPathfinding;
-                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, _navState.cts.Token);
+                _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, Dalamud.Conditions[ConditionFlag.InFlight], _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Starting combined pathfinding to {destination}.");
             }
         }
@@ -431,9 +431,9 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private static async Task<List<Vector3>> FindCombinedPath(Vector3 player, Vector3 target, float landingDistance, CancellationToken token)
+        private static async Task<List<Vector3>> FindCombinedPath(Vector3 player, Vector3 target, float landingDistance, bool flying, CancellationToken token)
         {
-            var point = VNavmesh.Query.Mesh.PointOnFloor(player + Vector3.Create(0, 1, 0), false, 15f);
+            var point = flying ? VNavmesh.Query.Mesh.PointOnFloor(player, false, 5f) : player;
             if (point == null) return [];
 
             var groundPath = await VNavmesh.Nav.PathfindCancelable(point.Value, target, false, token);
