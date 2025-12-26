@@ -10,18 +10,20 @@ public class SeFunctionBase<T> where T : Delegate
     public    IntPtr Address;
     protected T?     FuncDelegate;
 
-    public SeFunctionBase(ISigScannerWrapper sigScanner, int offset)
+    public SeFunctionBase(ISigScanner sigScanner, int offset)
     {
-        Address = sigScanner.ModuleBaseAddress + offset;
+        Address = sigScanner.Module.BaseAddress + offset;
         GatherBuddy.Log.Debug($"{GetType().Name} address 0x{Address.ToInt64():X16}, baseOffset 0x{offset:X16}.");
     }
 
-    public SeFunctionBase(ISigScannerWrapper sigScanner, string signature, int offset = 0)
+    public SeFunctionBase(ISigScanner sigScanner, string signature, int offset = 0)
     {
-        Address = sigScanner.ScanText(signature);
-        if (Address != IntPtr.Zero)
-            Address += offset;
-        var baseOffset = (ulong)Address.ToInt64() - (ulong)sigScanner.ModuleBaseAddress.ToInt64();
+        if (sigScanner.TryScanText(signature, out var ptr))
+            Address = (IntPtr)ptr + offset;
+        else
+            Address = IntPtr.Zero;
+        
+        var baseOffset = Address != IntPtr.Zero ? (ulong)Address.ToInt64() - (ulong)sigScanner.Module.BaseAddress.ToInt64() : 0;
         GatherBuddy.Log.Debug($"{GetType().Name} address 0x{Address.ToInt64():X16}, baseOffset 0x{baseOffset:X16}.");
     }
 

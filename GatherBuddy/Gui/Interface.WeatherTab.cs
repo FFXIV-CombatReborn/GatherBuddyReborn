@@ -1,13 +1,13 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using GatherBuddy.Config;
 using GatherBuddy.Time;
-using OtterGui;
-using OtterGui.Table;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ElliLib;
+using ElliLib.Table;
+using ImRaii = ElliLib.Raii.ImRaii;
 using Dalamud.Interface.Textures;
 
 namespace GatherBuddy.Gui;

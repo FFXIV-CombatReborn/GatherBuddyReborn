@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,8 +9,8 @@ using Dalamud.Interface.Utility;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
-using OtterGui.Text;
-using OtterGui.Widgets;
+using ElliLib.Text;
+using ElliLib.Widgets;
 using static GatherBuddy.FishTimer.FishRecord;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using Bait = GatherBuddy.Structs.Bait;

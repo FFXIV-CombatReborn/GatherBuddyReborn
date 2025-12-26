@@ -7,7 +7,7 @@ using GatherBuddy.Enums;
 using GatherBuddy.Structs;
 using GatherBuddy.Time;
 using Newtonsoft.Json;
-using OtterGui.Extensions;
+using ElliLib.Extensions;
 
 namespace GatherBuddy.Data;
 

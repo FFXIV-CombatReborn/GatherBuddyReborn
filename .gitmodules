@@ -1,4 +1,3 @@
-[submodule "OtterGui"]
-	path = OtterGui
-	url = https://github.com/Ottermandias/OtterGui
-	branch = main
+[submodule "ElliLib"]
+	path = ElliLib
+	url = https://github.com/Deathbeyond87/ElliLib.git

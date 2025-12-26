@@ -25,9 +25,9 @@ using GatherBuddy.SeFunctions;
 using GatherBuddy.Spearfishing;
 using GatherBuddy.Weather;
 using SigScannerWrapper = GatherBuddy.SeFunctions.SigScannerWrapper;
-using OtterGui;
-using OtterGui.Classes;
-using OtterGui.Log;
+using ElliLib;
+using ElliLib.Classes;
+using ElliLib.Log;
 using GatherBuddy.AutoGather;
 
 namespace GatherBuddy;

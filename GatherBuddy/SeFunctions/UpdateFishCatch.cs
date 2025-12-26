@@ -1,4 +1,5 @@
 using System;
+using Dalamud.Plugin.Services;
 
 namespace GatherBuddy.SeFunctions;
 
@@ -7,7 +8,7 @@ public delegate void UpdateCatchDelegate(IntPtr module, uint fishId, bool large,
 
 public sealed class UpdateFishCatch : SeFunctionBase<UpdateCatchDelegate>
 {
-    public UpdateFishCatch(ISigScannerWrapper sigScanner)
+    public UpdateFishCatch(ISigScanner sigScanner)
         : base(sigScanner, "48 89 6C 24 ?? 56 41 56 41 57 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 ?? ?? ?? ?? 48 8B 01")
     {}
 }

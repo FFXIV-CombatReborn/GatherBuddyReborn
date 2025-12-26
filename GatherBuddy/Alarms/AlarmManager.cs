@@ -9,7 +9,7 @@ using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
 using Newtonsoft.Json;
-using OtterGui.Extensions;
+using ElliLib.Extensions;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.Alarms;

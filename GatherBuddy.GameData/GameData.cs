@@ -15,7 +15,7 @@ using GatherBuddy.Interfaces;
 using GatherBuddy.Levenshtein;
 using GatherBuddy.Structs;
 using Lumina.Excel.Sheets;
-using OtterGui.Log;
+using ElliLib.Log;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
 using AetheryteRow = Lumina.Excel.Sheets.Aetheryte;
 using Fish = GatherBuddy.Classes.Fish;

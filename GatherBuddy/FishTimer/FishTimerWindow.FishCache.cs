@@ -9,9 +9,9 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using Dalamud.Bindings.ImGui;
-using OtterGui.Text;
+using ElliLib.Text;
 using static GatherBuddy.Gui.Interface;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ImRaii = ElliLib.Raii.ImRaii;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using Effects = GatherBuddy.Models.Effects;
 

@@ -20,6 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GatherBuddy.Levenshtein\GatherBuddy.Levenshtein.csproj" />
-    <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
+    <ProjectReference Include="..\ElliLib\ElliLib.csproj" />
   </ItemGroup>
 </Project>

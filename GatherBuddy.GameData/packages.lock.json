@@ -26,15 +26,15 @@
         "resolved": "9.0.2",
         "contentHash": "MNe7GSTBf3jQx5vYrXF0NZvn6l7hUKF6J54ENfAgCO8y6xjN1XUmKKWG464LP2ye6QqDiA1dkaWEZBYnhoZzjg=="
       },
-      "gatherbuddy.levenshtein": {
-        "type": "Project"
-      },
-      "ottergui": {
+      "ellilib": {
         "type": "Project",
         "dependencies": {
           "JetBrains.Annotations": "[2024.3.0, )",
           "Microsoft.Extensions.DependencyInjection": "[9.0.2, )"
         }
+      },
+      "gatherbuddy.levenshtein": {
+        "type": "Project"
       }
     }
   }

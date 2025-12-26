@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
-using OtterGui;
+using ElliLib;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -16,8 +16,8 @@ using GatherBuddy.GatherGroup;
 using GatherBuddy.GatherHelper;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Plugin;
-using OtterGui.Widgets;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ElliLib.Widgets;
+using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 

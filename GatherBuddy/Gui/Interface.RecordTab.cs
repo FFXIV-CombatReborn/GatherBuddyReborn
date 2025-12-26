@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,10 +7,10 @@ using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
 using GatherBuddy.Plugin;
-using OtterGui;
-using OtterGui.Table;
+using ElliLib;
+using ElliLib.Table;
 using Newtonsoft.Json;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ImRaii = ElliLib.Raii.ImRaii;
 using System.Text;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
@@ -18,7 +18,7 @@ using Dalamud.Interface.Utility;
 using Effects = GatherBuddy.Models.Effects;
 using GatherBuddy.Time;
 using GatherBuddy.Weather;
-using OtterGui.Text;
+using ElliLib.Text;
 
 namespace GatherBuddy.Gui;
 

@@ -7,6 +7,7 @@ using Dalamud.Memory;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.System.Memory;
 using FFXIVClientStructs.FFXIV.Client.System.String;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
@@ -110,54 +111,18 @@ public static unsafe class Callback
 
 public static unsafe class Chat
 {
-    private const string SendChatSignature = "48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC 20 48 8B F2 48 8B F9 45 84 C9";
     private const string SanitizeStringSignature = "48 89 5C 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 45 70 4D 8B F8 4C 89 44 24 ?? 4C 8B 05 ?? ?? ?? ?? 44 8B E2";
 
-    private delegate void ProcessChatBoxDelegate(IntPtr uiModule, IntPtr message, IntPtr unused, byte a4);
     private delegate void SanitizeStringDelegate(Utf8String* stringPtr, int a2, nint a3);
 
-    private static readonly SigScanner _sigScanner = new SigScanner();
-    private static ProcessChatBoxDelegate? _processChatBox;
     private static SanitizeStringDelegate? _sanitizeString;
 
-    [StructLayout(LayoutKind.Explicit)]
-    private readonly struct ChatPayload : IDisposable
-    {
-        [FieldOffset(0)] private readonly IntPtr textPtr;
-        [FieldOffset(16)] private readonly ulong textLen;
-        [FieldOffset(8)] private readonly ulong unk1;
-        [FieldOffset(24)] private readonly ulong unk2;
-
-        internal ChatPayload(byte[] stringBytes)
-        {
-            textPtr = Marshal.AllocHGlobal(stringBytes.Length + 30);
-            Marshal.Copy(stringBytes, 0, textPtr, stringBytes.Length);
-            Marshal.WriteByte(textPtr + stringBytes.Length, 0);
-            textLen = (ulong)(stringBytes.Length + 1);
-            unk1 = 64;
-            unk2 = 0;
-        }
-
-        public void Dispose()
-        {
-            Marshal.FreeHGlobal(textPtr);
-        }
-    }
-
-    private static void InitializeProcessChatBox()
-    {
-        if (_processChatBox != null) return;
-        
-        var addr = _sigScanner.ScanText(SendChatSignature);
-        _processChatBox = Marshal.GetDelegateForFunctionPointer<ProcessChatBoxDelegate>(addr);
-        GatherBuddy.Log.Debug($"[Chat] ProcessChatBox initialized at 0x{addr:X16}");
-    }
 
     private static void InitializeSanitizeString()
     {
         if (_sanitizeString != null) return;
         
-        var addr = _sigScanner.ScanText(SanitizeStringSignature);
+        var addr = (IntPtr)Dalamud.SigScanner.ScanText(SanitizeStringSignature);
         _sanitizeString = Marshal.GetDelegateForFunctionPointer<SanitizeStringDelegate>(addr);
         GatherBuddy.Log.Debug($"[Chat] SanitizeString initialized at 0x{addr:X16}");
     }
@@ -176,14 +141,12 @@ public static unsafe class Chat
 
     private static void SendMessageUnsafe(byte[] message)
     {
-        InitializeProcessChatBox();
-        
-        var uiModule = (IntPtr)Framework.Instance()->GetUIModule();
-        using var payload = new ChatPayload(message);
-        var mem1 = Marshal.AllocHGlobal(400);
-        Marshal.StructureToPtr(payload, mem1, false);
-        _processChatBox!(uiModule, mem1, IntPtr.Zero, 0);
-        Marshal.FreeHGlobal(mem1);
+        var uiModule = UIModule.Instance();
+        var utf8String = Utf8String.FromString(new string(Encoding.UTF8.GetChars(message)));
+        uiModule->ProcessChatBoxEntry(utf8String);
+        utf8String->Dtor();
+        IMemorySpace.Free(utf8String);
+        GatherBuddy.Log.Debug($"[Chat] Message sent");
     }
 
     public static void SendMessage(string message)

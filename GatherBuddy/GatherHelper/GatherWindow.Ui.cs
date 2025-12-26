@@ -15,9 +15,9 @@ using GatherBuddy.Enums;
 using GatherBuddy.Gui;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
-using OtterGui;
+using ElliLib;
 using Functions = GatherBuddy.Plugin.Functions;
-using ImRaii = OtterGui.Raii.ImRaii;
+using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.GatherHelper;
 

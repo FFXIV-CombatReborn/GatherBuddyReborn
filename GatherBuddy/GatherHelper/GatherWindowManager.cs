@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,7 +6,7 @@ using Dalamud.Interface.ImGuiNotification;
 using GatherBuddy.Alarms;
 using GatherBuddy.Interfaces;
 using Newtonsoft.Json;
-using OtterGui.Extensions;
+using ElliLib.Extensions;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.GatherHelper;

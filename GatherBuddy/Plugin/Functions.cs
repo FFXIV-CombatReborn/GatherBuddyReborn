@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Keys;
 using Lumina.Excel.Sheets;
-using OtterGui.Classes;
+using ElliLib.Classes;
 
 namespace GatherBuddy.Plugin;
 
