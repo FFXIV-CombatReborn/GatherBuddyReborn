@@ -351,9 +351,18 @@ namespace GatherBuddy.AutoGather
             if (_navState.task == null || _navState.cts == null || !_navState.task.IsCompleted)
                 return;
 
-            var path = _navState.task.Result;
-            _navState.task = null;
+            List<Vector3> path;
+            try
+            {
+                path = _navState.task.Result;
+            } catch (Exception ex) {
+                GatherBuddy.Log.Error($"Pathfinding task threw an exception: {ex.Message}");
+                StopNavigation();
+                _advancedUnstuck.Force();
+                return;
+            }
             _navState.cts.Dispose();
+            _navState.task = null;
             _navState.cts = null;
 
             if (path.Count == 0)
