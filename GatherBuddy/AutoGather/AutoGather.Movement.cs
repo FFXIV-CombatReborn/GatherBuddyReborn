@@ -318,10 +318,11 @@ namespace GatherBuddy.AutoGather
                 return;
 
             var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+            var player = Player.Position;
 
             if (_navState.flying && _navState.stage == PathfindingStage.Done
                 && !Dalamud.Conditions[ConditionFlag.Diving]
-                && Vector3.Distance(Player.Position, _navState.destination) < landingDistance * 1.1f)
+                && Vector3.Distance(player, _navState.destination) < landingDistance * 1.1f)
             {
                 // Switch vnavmesh to no-fly mode when close to landing point
                 var wp = VNavmesh.Path.ListWaypoints().ToList();
@@ -335,11 +336,10 @@ namespace GatherBuddy.AutoGather
             if (_navState.flying && _navState.mountingUp && Dalamud.Conditions[ConditionFlag.Mounted])
             {
                 // Switch vnavmesh to fly mode when mounted up
-                var wp = VNavmesh.Path.ListWaypoints().ToList();
-                
-                // Remove first waypoint if it's too close.
-                if (wp.Count > 0 && Vector2.DistanceSquared(Player.Position.AsVector2(), wp[0].AsVector2()) < 4f)
-                    wp.RemoveAt(0);
+                var wp = VNavmesh.Path.ListWaypoints()
+                    // Remove waypoints that are too close.
+                    .SkipWhile(p => Vector2.DistanceSquared(player.AsVector2(), p.AsVector2()) < 16f)
+                    .ToList();
 
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(wp, true);
@@ -378,7 +378,7 @@ namespace GatherBuddy.AutoGather
                     GatherBuddy.Log.Debug($"VNavmesh failed to find a combined path, falling back to direct path.");
                     _navState.stage++;
                     _navState.cts = new CancellationTokenSource();
-                    _navState.task = VNavmesh.Nav.PathfindCancelable(Player.Position, _navState.destination, _navState.flying, _navState.cts.Token);
+                    _navState.task = VNavmesh.Nav.PathfindCancelable(player, _navState.destination, _navState.flying, _navState.cts.Token);
                 }
                 else if (_navState.stage != PathfindingStage.RetryCombinedPathfinding)
                 {
