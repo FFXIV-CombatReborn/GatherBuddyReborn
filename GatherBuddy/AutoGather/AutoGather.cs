@@ -2058,6 +2058,43 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
+            if (HasReducibleItems())
+            {
+                GatherBuddy.Log.Debug("[AutoGather] Found reducible items during abort, reducing before shutdown");
+                
+                if (Player.Job == 18)
+                {
+                    if (IsGathering)
+                    {
+                        QueueQuitFishingTasks();
+                        return;
+                    }
+
+                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                    {
+                        TaskManager.Enqueue(() =>
+                        {
+                            AutoHook.SetPluginState?.Invoke(false);
+                            AutoHook.SetAutoStartFishing?.Invoke(false);
+                        });
+                    }
+                    
+                    ReduceItems(true, () =>
+                    {
+                        AbortAutoGather(status);
+                    });
+                }
+                else
+                {
+                    ReduceItems(true, () =>
+                    {
+                        AbortAutoGather(status);
+                    });
+                }
+                
+                return;
+            }
+
             if (!string.IsNullOrEmpty(status))
                 AutoStatus = status;
             if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
