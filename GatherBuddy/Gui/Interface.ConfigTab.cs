@@ -966,17 +966,24 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon = b);
         
-        public static void DrawCollectOnAutogatherDisabledBox()
-            => DrawCheckbox("Turn in collectables when AutoGather stops",
-                "Automatically turn in collectables when AutoGather is disabled",
-                GatherBuddy.Config.CollectableConfig.CollectOnAutogatherDisabled,
-                b => GatherBuddy.Config.CollectableConfig.CollectOnAutogatherDisabled = b);
+        public static void DrawCollectableAutoTurninBox()
+            => DrawCheckbox("Auto-turn in collectables",
+                "Automatically turn in collectables when inventory threshold is reached during gathering",
+                GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables,
+                b => GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables = b);
         
-        public static void DrawEnableAutogatherOnFinishBox()
-            => DrawCheckbox("Re-enable AutoGather after turning in",
-                "Automatically re-enable AutoGather after collectable turn-in completes",
-                GatherBuddy.Config.CollectableConfig.EnableAutogatherOnFinish,
-                b => GatherBuddy.Config.CollectableConfig.EnableAutogatherOnFinish = b);
+        public static void DrawCollectableThreshold()
+        {
+            var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
+            ImGui.SetNextItemWidth(SetInputWidth);
+            if (ImGui.DragInt("Collectable Inventory Threshold", ref threshold, 1, 1, 999))
+            {
+                GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold = Math.Max(1, threshold);
+                GatherBuddy.Config.Save();
+            }
+            ImGuiUtil.HoverTooltip("Turn in collectables when you have this many collectables in your inventory.");
+        }
+        
         
         public static void DrawBuyAfterEachCollectBox()
             => DrawCheckbox("Buy scrip shop items after each turn-in",
@@ -1253,8 +1260,11 @@ public partial class Interface
             
             if (ImGui.TreeNodeEx("Collectable"))
             {
-                ConfigFunctions.DrawCollectOnAutogatherDisabledBox();
-                ConfigFunctions.DrawEnableAutogatherOnFinishBox();
+                ConfigFunctions.DrawCollectableAutoTurninBox();
+                if (GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
+                {
+                    ConfigFunctions.DrawCollectableThreshold();
+                }
                 ConfigFunctions.DrawBuyAfterEachCollectBox();
                 
                 ImGui.Spacing();

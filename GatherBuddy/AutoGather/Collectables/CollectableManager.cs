@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
+using GatherBuddy.Automation;
 using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
@@ -330,8 +331,32 @@ public class CollectableManager : IDisposable
             return;
         }
         
-        if (Dalamud.ClientState.TerritoryType == shop.TerritoryId && (DateTime.UtcNow - _lastAction) > TimeSpan.FromSeconds(5))
+        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
         {
+            return;
+        }
+        
+        if (playerPos == Vector3.Zero)
+        {
+            return;
+        }
+        
+        if (Lifestream.Enabled && Lifestream.IsBusy())
+        {
+            GatherBuddy.Log.Debug($"[CollectableManager] Lifestream is busy, waiting...");
+            return;
+        }
+        
+        if (Dalamud.ClientState.TerritoryType == shop.TerritoryId)
+        {
+            var timeSinceLastAction = (DateTime.UtcNow - _lastAction).TotalSeconds;
+            if (timeSinceLastAction <= 5)
+            {
+                GatherBuddy.Log.Debug($"[CollectableManager] Waiting {5 - timeSinceLastAction:F1}s before pathing...");
+                return;
+            }
+            
+            GatherBuddy.Log.Information($"[CollectableManager] Starting navigation to {shop.Name}");
             try
             {
                 VNavmesh.SimpleMove.PathfindAndMoveTo(shop.Location, false);
@@ -546,11 +571,6 @@ public class CollectableManager : IDisposable
         IsRunning = false;
         _state = CollectableState.Idle;
         OnFinishCollecting?.Invoke();
-        
-        if (_config.CollectableConfig.EnableAutogatherOnFinish && GatherBuddy.AutoGather != null)
-        {
-            GatherBuddy.AutoGather.Enabled = true;
-        }
     }
     
     private void HandleError()
@@ -570,23 +590,23 @@ public class CollectableManager : IDisposable
     {
         _purchaseQueue.Clear();
         
-        var configChanged = false;
-        foreach (var item in _config.CollectableConfig.ScripShopItems)
-        {
-            if (item.AmountPurchased > item.Quantity)
-            {
-                item.AmountPurchased = 0;
-                configChanged = true;
-            }
-        }
-        if (configChanged)
-            GatherBuddy.Config.Save();
+        var inventoryItems = ItemHelper.GetCurrentInventoryItems();
         
         foreach (var item in _config.CollectableConfig.ScripShopItems)
         {
-            var remaining = item.Quantity - item.AmountPurchased;
-            if (remaining > 0 && item.Item != null)
+            if (item.Item == null) continue;
+            
+            var currentCount = inventoryItems
+                .Where(x => x.BaseItemId == item.Item.ItemId)
+                .Sum(x => (int)x.Quantity);
+            
+            var remaining = item.Quantity - currentCount;
+            
+            if (remaining > 0)
+            {
+                GatherBuddy.Log.Debug($"[CollectableManager] {item.Name}: Target={item.Quantity}, Current={currentCount}, Remaining={remaining}");
                 _purchaseQueue.Enqueue((item.Item.ItemId, item.Name, remaining, (int)item.Item.ItemCost, item.Item.Page, item.Item.SubPage));
+            }
         }
     }
     
@@ -793,12 +813,7 @@ public class CollectableManager : IDisposable
         var next = _purchaseQueue.Dequeue();
         var newRemaining = next.remaining - _currentPurchaseAmount;
         
-        var cfgItem = _config.CollectableConfig.ScripShopItems.FirstOrDefault(x => x.Name == next.name);
-        if (cfgItem != null)
-        {
-            cfgItem.AmountPurchased += _currentPurchaseAmount;
-            GatherBuddy.Config.Save();
-        }
+        GatherBuddy.Log.Debug($"[CollectableManager] Purchased {_currentPurchaseAmount}x {next.name}, remaining: {newRemaining}");
         
         if (newRemaining > 0)
         {

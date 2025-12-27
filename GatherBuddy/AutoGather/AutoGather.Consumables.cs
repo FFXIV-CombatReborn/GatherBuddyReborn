@@ -76,9 +76,7 @@ namespace GatherBuddy.AutoGather
 
         private static bool IsItemDoLManual(Item item)
         {
-            if (item.ItemUICategory.RowId != 63)
-                return false;
-            return item.ItemAction.ValueNullable?.RowId == 816 && item.ItemAction.ValueNullable?.Data[0] is 302 or 303 or 1752 or 5330;
+            return item.RowId is 12668 or 4633 or 4635 or 26553;
         }
 
         private static bool IsItemDoLSquadronManual(Item item)
