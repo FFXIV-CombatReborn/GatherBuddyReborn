@@ -290,7 +290,7 @@ public partial class Interface
                 "The distance at which you will try to land.\n\n" +
                 "Low values increase the chance of being unable to dismount properly.\n" +
                 "High values may produce weird-looking paths.\n" +
-                "Reasonable values are between 5 and 10 yalms."
+                "Reasonable values are between 4 and 8 yalms."
             );
         }
 
