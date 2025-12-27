@@ -184,12 +184,7 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     
-                    if (GatherBuddy.Config.CollectableConfig.CollectOnAutogatherDisabled && _disabledBySystem)
-                    {
-                        GatherBuddy.Log.Debug("[AutoGather] Triggering collectable turn-in after AutoGather ended (system disable)");
-                        GatherBuddy.CollectableManager?.Start();
-                    }
-                    else if (GatherBuddy.CollectableManager?.IsRunning == true)
+                    if (GatherBuddy.CollectableManager?.IsRunning == true)
                     {
                         GatherBuddy.Log.Debug("[AutoGather] Stopping collectable turn-in (user disabled AutoGather)");
                         GatherBuddy.CollectableManager?.Stop();
@@ -762,10 +757,6 @@ namespace GatherBuddy.AutoGather
                 
                 if (!next.Any())
                 {
-                    if (GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
-                        if (GoHome())
-                            return;
-
                     if (HasReducibleItems())
                     {
                         if (Player.Job == 18 /* FSH */)
@@ -801,6 +792,23 @@ namespace GatherBuddy.AutoGather
 
                         return;
                     }
+                    
+                    if (GatherBuddy.CollectableManager?.IsRunning == true)
+                    {
+                        AutoStatus = "Turning in collectables...";
+                        return;
+                    }
+                    
+                    if (HasCollectables())
+                    {
+                        AutoStatus = "Turning in collectables...";
+                        GatherBuddy.CollectableManager?.Start();
+                        return;
+                    }
+
+                    if (GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
+                        if (GoHome())
+                            return;
 
                     if (!Waiting)
                     {
@@ -824,6 +832,19 @@ namespace GatherBuddy.AutoGather
 
             if (RepairIfNeeded())
                 return;
+
+            if (GatherBuddy.CollectableManager?.IsRunning == true)
+            {
+                AutoStatus = "Turning in collectables...";
+                return;
+            }
+            
+            if (HasCollectables())
+            {
+                AutoStatus = "Turning in collectables...";
+                GatherBuddy.CollectableManager?.Start();
+                return;
+            }
 
             if (!GatherBuddy.Config.AutoGatherConfig.UseNavigation)
             {

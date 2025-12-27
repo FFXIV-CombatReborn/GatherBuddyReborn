@@ -7,9 +7,9 @@ namespace GatherBuddy.Config;
 
 public class CollectableConfig
 {
-    public bool CollectOnAutogatherDisabled { get; set; } = false;
-    public bool EnableAutogatherOnFinish { get; set; } = false;
+    public bool AutoTurnInCollectables { get; set; } = false;
     public bool BuyAfterEachCollect { get; set; } = false;
+    public int CollectableInventoryThreshold { get; set; } = 100;
     
     private CollectableShop? _preferredCollectableShop;
     

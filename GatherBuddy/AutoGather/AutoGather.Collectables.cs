@@ -4,6 +4,7 @@ using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.Classes;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -12,6 +13,53 @@ namespace GatherBuddy.AutoGather
     public partial class AutoGather
     {
         private CollectableRotation? CurrentCollectableRotation;
+
+        private unsafe bool HasCollectables()
+        {
+            if (!GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
+                return false;
+
+            if (GatherBuddy.CollectableManager == null)
+                return false;
+
+            var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
+            if (threshold <= 0)
+                return false;
+
+            var shopSubSheet = Dalamud.GameData.GetSubrowExcelSheet<Lumina.Excel.Sheets.CollectablesShopItem>();
+            var shopItemIds = shopSubSheet == null
+                ? new HashSet<uint>()
+                : shopSubSheet.SelectMany(s => s).Select(r => r.Item.RowId).ToHashSet();
+
+            if (shopItemIds.Count == 0)
+                return false;
+
+            var manager = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+            if (manager == null)
+                return false;
+
+            var collectableCount = 0;
+
+            foreach (var invType in InventoryTypes)
+            {
+                var container = manager->GetInventoryContainer(invType);
+                if (container == null || !container->IsLoaded)
+                    continue;
+
+                for (int i = 0; i < container->Size; i++)
+                {
+                    var slot = container->GetInventorySlot(i);
+                    if (slot != null && slot->ItemId != 0 && shopItemIds.Contains(slot->ItemId))
+                    {
+                        collectableCount++;
+                        if (collectableCount >= threshold)
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
 
         private unsafe partial class CollectableRotation
         {
