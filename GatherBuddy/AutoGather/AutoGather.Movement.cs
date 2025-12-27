@@ -287,7 +287,7 @@ namespace GatherBuddy.AutoGather
             var offsettedDestination = GetCorrectedDestination(destination, preferGround);
             _navState.destination = destination;
             _navState.flying = shouldFly;
-            _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted];
+            _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted] && !Dalamud.Conditions[ConditionFlag.Diving];
             _navState.direct = direct || !shouldFly || landingDistance == 0 || destination != offsettedDestination || Dalamud.Conditions[ConditionFlag.Diving];
             _navState.offset = destination != offsettedDestination;
             _navState.cts = new CancellationTokenSource();
