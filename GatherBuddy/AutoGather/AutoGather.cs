@@ -382,6 +382,8 @@ namespace GatherBuddy.AutoGather
             if (HandleFishingCollectable())
                 return;
 
+            HandlePathfinding(); // This should be done before checking TaskManager
+
             if (TaskManager.IsBusy)
             {
                 //GatherBuddy.Log.Verbose("TaskManager has tasks, skipping DoAutoGather");
@@ -518,9 +520,8 @@ namespace GatherBuddy.AutoGather
                     
                     if (GatherBuddy.Config.AutoGatherConfig.UseNavigation)
                     {
-                        var pathGenerating = IsPathGenerating;
                         var pathing = IsPathing;
-                        var unstuckResult = _advancedUnstuck.Check(CurrentDestination, pathGenerating, pathing);
+                        var unstuckResult = _advancedUnstuck.Check(CurrentDestination, pathing);
                         if (unstuckResult == AdvancedUnstuckCheckResult.Fail)
                         {
                             StopNavigation();
@@ -596,10 +597,9 @@ namespace GatherBuddy.AutoGather
             var isPathGenerating = IsPathGenerating;
             var isPathing        = IsPathing;
 
-            switch (_advancedUnstuck.Check(CurrentDestination, isPathGenerating, isPathing))
+            switch (_advancedUnstuck.Check(CurrentDestination, isPathing))
             {
                 case AdvancedUnstuckCheckResult.Pass: break;
-                case AdvancedUnstuckCheckResult.Wait: return;
                 case AdvancedUnstuckCheckResult.Fail:
                     StopNavigation();
                     AutoStatus = $"Advanced unstuck in progress!";
@@ -1031,7 +1031,7 @@ namespace GatherBuddy.AutoGather
                 if (dutyNpc != null && dutyNpc.Position.DistanceToPlayer() > 3)
                 {
                     AutoStatus = "Moving to Diadem NPC...";
-                    var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000);
+                    var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000).GetValueOrDefault(dutyNpc.Position);
                     if (CurrentDestination != point || (!isPathing && !isPathGenerating))
                     {
                         Navigate(point, false);
@@ -1453,7 +1453,7 @@ namespace GatherBuddy.AutoGather
                     if (dutyNpc != null && dutyNpc.Position.DistanceToPlayer() > 3)
                     {
                         AutoStatus = "Moving to Diadem NPC...";
-                        var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000);
+                        var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000).GetValueOrDefault(dutyNpc.Position);
                         if (CurrentDestination != point || (!IsPathGenerating && !IsPathing))
                         {
                             Navigate(point, false);
@@ -1749,17 +1749,8 @@ namespace GatherBuddy.AutoGather
                             if (distance > CloseEnoughDistance)
                             {
                                 AutoStatus = $"Rushing to umbral node {nodeId} (Weather: {currentUmbralWeather}, {distance:F0}y)...";
-                                
-                                if (!Dalamud.Conditions[ConditionFlag.Mounted] && distance >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance)
-                                {
-                                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                                        Navigate(targetPosition, false);
-                                    EnqueueMountUp();
-                                }
-                                else
-                                {
-                                    Navigate(targetPosition, ShouldFly(targetPosition));
-                                }
+
+                                Navigate(targetPosition, ShouldFly(targetPosition));
                                 return;
                             }
                             else
@@ -1904,17 +1895,8 @@ namespace GatherBuddy.AutoGather
                 var distance = Vector3.Distance(Player.Position, targetPosition);
                 
                 AutoStatus = $"Moving to next Diadem node ({distance:F0}y)...";
-                
-                if (!Dalamud.Conditions[ConditionFlag.Mounted] && distance >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance)
-                {
-                    if (GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
-                        Navigate(targetPosition, false);
-                    EnqueueMountUp();
-                }
-                else
-                {
-                    Navigate(targetPosition, ShouldFly(targetPosition));
-                }
+
+                Navigate(targetPosition, ShouldFly(targetPosition));
             }
             else
             {
@@ -2015,7 +1997,10 @@ namespace GatherBuddy.AutoGather
                     .OrderBy(o => Vector2.Distance(pos.Value, new Vector2(o.X, o.Z)))
                     .FirstOrDefault();
                 if (selectedFarNode == default)
-                    selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(new Vector3(pos.Value.X, 0, pos.Value.Y), 10, 10000);
+                {
+                    var point = new Vector3(pos.Value.X, 0, pos.Value.Y);
+                    selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point);
+                }
             }
             else
             {

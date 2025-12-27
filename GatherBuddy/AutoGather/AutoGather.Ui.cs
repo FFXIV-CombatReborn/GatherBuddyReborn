@@ -34,12 +34,6 @@ namespace GatherBuddy.AutoGather
             }
 
             ImGui.Text($"Status: {GatherBuddy.AutoGather.AutoStatus}");
-            var lastNavString = GatherBuddy.AutoGather.LastNavigationResult.HasValue
-                ? GatherBuddy.AutoGather.LastNavigationResult.Value
-                    ? "Successful"
-                    : "Failed (If you're seeing this you probably need to restart your game)"
-                : "None";
-            ImGui.Text($"Navigation: {lastNavString}");
         }
 
 
