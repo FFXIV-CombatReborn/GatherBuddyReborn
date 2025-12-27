@@ -234,16 +234,23 @@ namespace GatherBuddy.AutoGather
         private void StopNavigation()
         {
             // Reset navigation logic here
+            StopPathfinding();
+
+            _navState = default;
+            if (VNavmesh.Enabled)
+                VNavmesh.Path.Stop();
+        }
+
+        private void StopPathfinding()
+        {
             if (_navState.cts != null && _navState.task != null)
             {
                 var cts = _navState.cts;
                 cts.Cancel();
                 _navState.task.ContinueWith(_ => cts.Dispose());
+                _navState.task = null;
+                _navState.cts = null;
             }
-
-            _navState = default;
-            if (VNavmesh.Enabled)
-                VNavmesh.Path.Stop();
         }
 
         private unsafe void SetRotation(Angle angle)
@@ -281,10 +288,13 @@ namespace GatherBuddy.AutoGather
             if (_navState.destination == destination && (IsPathing || _navState.task != null))
                 return; 
 
+            StopPathfinding();
+
             shouldFly &= canMount || Dalamud.Conditions[ConditionFlag.Mounted];
             shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
 
             var offsettedDestination = GetCorrectedDestination(destination, preferGround);
+            _navState = default;
             _navState.destination = destination;
             _navState.flying = shouldFly;
             _navState.mountingUp = shouldFly && !Dalamud.Conditions[ConditionFlag.Mounted] && !Dalamud.Conditions[ConditionFlag.Diving];
