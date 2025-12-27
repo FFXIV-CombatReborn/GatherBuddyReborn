@@ -39,7 +39,7 @@ public unsafe class GatheringReader(AtkUnitBase* addon) : AtkReader(addon)
             for (var i = 0; i < 8; ++i)
             {
                 var slot = ItemSlotReaders[i];
-                GatherBuddy.Log.Debug($"GatheringReader: Slot {i} - Item: {slot.Item?.Name.English ?? "None"} - HasBonus: {slot.HasBonus} - RequiresPerception: {slot.RequiresPerception} - HasGivingLandBuff: {slot.HasGivingLandBuff} - IsCollectable: {slot.IsCollectable} - Yield: {slot.Yield} - BoonChance: {slot.BoonChance}");
+                //GatherBuddy.Log.Debug($"GatheringReader: Slot {i} - Item: {slot.Item?.Name.English ?? "None"} - HasBonus: {slot.HasBonus} - RequiresPerception: {slot.RequiresPerception} - HasGivingLandBuff: {slot.HasGivingLandBuff} - IsCollectable: {slot.IsCollectable} - Yield: {slot.Yield} - BoonChance: {slot.BoonChance}");
                 result.Add(new ItemSlot(i, slot, ItemSlotFlags, GatherChances, ItemLevel));
             }
 
