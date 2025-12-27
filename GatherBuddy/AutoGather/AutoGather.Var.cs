@@ -28,7 +28,7 @@ namespace GatherBuddy.AutoGather
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Path.IsRunning();
 
         public bool IsPathGenerating
-            => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Nav.PathfindInProgress();
+            => _navState.task != null;
 
         public bool NavReady
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Nav.IsReady();
