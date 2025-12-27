@@ -138,7 +138,7 @@ namespace GatherBuddy.AutoGather.Lists
             
             IEnumerable<GatherTarget> nearbyItems = [];
             
-            if (this.Any(n => !n.Node?.Times.AlwaysUp() ?? false))
+            if (this.Any(n => n.Time != TimeInterval.Always))
             {
                 nearbyItems = [this.First(n => n.Time.InRange(AutoGather.AdjustedServerTime))];
             }
@@ -366,8 +366,10 @@ namespace GatherBuddy.AutoGather.Lists
             }
 
             _gatherableItems.Clear();
-            _gatherableItems.AddRange(nodes.Select(x => new GatherTarget(x.Item, x.Node, x.Time, x.Quantity)));
             
+            var nodeTargets = nodes.Select(x => new GatherTarget(x.Item, x.Node, x.Time, x.Quantity)).ToList();
+            
+            var fishTargets = new List<GatherTarget>();
             foreach (var x in fish)
             {
                 var location = x.PreferredLocation;
@@ -406,8 +408,19 @@ namespace GatherBuddy.AutoGather.Lists
                     }
                 }
                 
-                _gatherableItems.Add(new GatherTarget(x.Fish, location, x.Time, x.Quantity));
+                fishTargets.Add(new GatherTarget(x.Fish, location, x.Time, x.Quantity));
             }
+            
+            _gatherableItems.AddRange(nodeTargets.Concat(fishTargets)
+                .OrderBy(x => x.Time == TimeInterval.Always)
+                .ThenBy(x => x.Location.GatheringType.ToGroup() != (Player.Job switch
+                {
+                    16 => GatheringType.Miner,
+                    17 => GatheringType.Botanist,
+                    18 => GatheringType.Fisher,
+                    _ => GatheringType.Unknown
+                })));
+            
             
             AddUmbralItemsIfAvailable(adjustedServerTime, minerLevel, botanistLevel);
             
