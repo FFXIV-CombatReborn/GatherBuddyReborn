@@ -184,7 +184,7 @@ namespace GatherBuddy.AutoGather
 
         private void ForceLandAndDismount()
         {
-            var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
+            var floor = VNavmesh.Query.Mesh.NearestPoint(Player.Position, 5, 5);
             if (floor != null)
             {
                 Navigate(floor.Value, true, direct: true);
