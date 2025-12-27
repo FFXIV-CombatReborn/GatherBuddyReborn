@@ -64,12 +64,16 @@ namespace GatherBuddy.AutoGather
         {
             // With current navigation, getting 'Unable to execute command while in flight' means we are either too high above the ground
             // or even not above traversable ground, so retrying node interaction is pointless, force dismount instead.
+            // In the rare cases of 'Unable to execute command while jumping' we are already dismounted, so just Abort() to retry.
 
             GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
             var text = message.TextValue;
-            GatherBuddy.Log.Debug($"Node interaction error toast detected: {text} Forcing dismount.");
+            GatherBuddy.Log.Debug($"Node interaction error toast detected: {text}.");
             TaskManager.Abort();
-            ForceLandAndDismount();
+            if (Dalamud.Conditions[ConditionFlag.InFlight])
+                ForceLandAndDismount();
+            else
+                TaskManager.DelayNext(400);
         }
 
         private unsafe void EnqueueSpearfishingNodeInteraction(IGameObject gameObject, Classes.Fish targetFish)
