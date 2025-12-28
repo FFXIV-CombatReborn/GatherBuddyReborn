@@ -9,7 +9,9 @@ public class CollectableConfig
 {
     public bool AutoTurnInCollectables { get; set; } = false;
     public bool BuyAfterEachCollect { get; set; } = false;
+    public bool UseInventoryFullThreshold { get; set; } = false;
     public int CollectableInventoryThreshold { get; set; } = 100;
+    public int InventoryFullThreshold { get; set; } = 140;
     
     private CollectableShop? _preferredCollectableShop;
     
