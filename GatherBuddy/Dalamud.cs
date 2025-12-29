@@ -36,5 +36,7 @@ public class Dalamud
     [PluginService] public static IGameInteropProvider    Hooking         { get; private set; } = null!;
     [PluginService] public static IGameInventory          GameInventory   { get; private set; } = null!;
     [PluginService] public static ISigScanner             SigScanner      { get; private set; } = null!;
+    [PluginService] public static IToastGui               ToastGui        { get; private set; } = null!;
+
     // @formatter:on
 }

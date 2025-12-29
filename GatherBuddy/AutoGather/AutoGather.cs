@@ -164,7 +164,7 @@ namespace GatherBuddy.AutoGather
                     _lastUmbralWeather = 0;
                     _hasGatheredUmbralThisSession = false;
                     _autoRetainerWasEnabledBeforeDiadem = false;
-                    GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+                    Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
 
                     ClearSpearfishingSessionData();
                     

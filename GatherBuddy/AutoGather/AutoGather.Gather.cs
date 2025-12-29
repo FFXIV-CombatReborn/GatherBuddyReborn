@@ -21,8 +21,8 @@ namespace GatherBuddy.AutoGather
         private unsafe void EnqueueNodeInteraction(IGameObject gameObject, Gatherable targetItem)
         {
             var targetSystem = TargetSystem.Instance();
-            GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
-            GatherBuddy.ToastGui.ErrorToast += HandleNodeInteractionErrorToast;
+            Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+            Dalamud.ToastGui.ErrorToast += HandleNodeInteractionErrorToast;
 
             if (targetSystem == null)
                 return;
@@ -52,7 +52,7 @@ namespace GatherBuddy.AutoGather
 
             TaskManager.Enqueue(() =>
             {
-                GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+                Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
                 if (!Dalamud.Conditions[ConditionFlag.Gathering] && Dalamud.Conditions[ConditionFlag.Mounted] && Dalamud.Conditions[ConditionFlag.InFlight] && !Dalamud.Conditions[ConditionFlag.Diving])
                 {
                     ForceLandAndDismount();
@@ -66,7 +66,7 @@ namespace GatherBuddy.AutoGather
             // or even not above traversable ground, so retrying node interaction is pointless, force dismount instead.
             // In the rare cases of 'Unable to execute command while jumping' we are already dismounted, so just Abort() to retry.
 
-            GatherBuddy.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+            Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
             var text = message.TextValue;
             GatherBuddy.Log.Debug($"Node interaction error toast detected: {text}.");
             TaskManager.Abort();

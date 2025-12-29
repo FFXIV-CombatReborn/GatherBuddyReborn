@@ -83,8 +83,6 @@ public partial class GatherBuddy : IDalamudPlugin
     internal readonly ContextMenu                    ContextMenu;
     internal readonly FishRecorder                   FishRecorder;
 
-    [PluginService] internal static IToastGui ToastGui { get; private set; } = null!;
-
     internal readonly GatherBuddyIpc Ipc;
     //    internal readonly WotsitIpc Wotsit;
 
