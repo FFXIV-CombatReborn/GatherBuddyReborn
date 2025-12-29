@@ -1184,6 +1184,9 @@ public partial class Interface
                     
                     foreach (var item in shopItems)
                     {
+                        if (item.Page < 3)
+                            continue;
+                        
                         if (_scripShopFilterText.Length > 0 && !item.Name.Contains(_scripShopFilterText, StringComparison.OrdinalIgnoreCase))
                             continue;
                         

@@ -58,11 +58,11 @@ namespace GatherBuddy.AutoGather
                     {
                         usedSlots++;
                         
-                        if (shopItemIds.Contains(slot->ItemId))
+                        var isCollectable = (slot->Flags & FFXIVClientStructs.FFXIV.Client.Game.InventoryItem.ItemFlags.Collectable) != 0;
+                        if (isCollectable && shopItemIds.Contains(slot->ItemId))
                         {
                             collectableCount++;
                             
-                            // Use collectable count threshold if not using inventory full mode
                             if (!useInventoryFull && collectableCount >= threshold)
                                 return true;
                         }
