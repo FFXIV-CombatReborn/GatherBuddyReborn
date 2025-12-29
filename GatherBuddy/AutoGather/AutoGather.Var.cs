@@ -166,6 +166,8 @@ namespace GatherBuddy.AutoGather
 
         public readonly HashSet<Vector3> FarNodesSeenSoFar = [];
         public readonly LinkedList<uint> VisitedNodes      = [];
+        // Distance at which a node is expected to become visible, and it is given up on if it does not.
+        public const float NodeVisibilityDistance = 50f;
 
         private readonly Dictionary<Vector3, DateTime> _diademSpawnAreaLastChecked = new();
         private Vector3? _currentDiademPatrolTarget = null;

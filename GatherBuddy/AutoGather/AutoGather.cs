@@ -1793,9 +1793,7 @@ namespace GatherBuddy.AutoGather
                             var targetPosition = validPositions.First();
                             var distance = Vector3.Distance(Player.Position, targetPosition);
                             
-                            const float CloseEnoughDistance = 50f;
-                            
-                            if (distance > CloseEnoughDistance)
+                            if (distance > NodeVisibilityDistance)
                             {
                                 AutoStatus = $"Rushing to umbral node {nodeId} (Weather: {currentUmbralWeather}, {distance:F0}y)...";
 
@@ -1865,13 +1863,11 @@ namespace GatherBuddy.AutoGather
             if (ActivateGatheringBuffs(false))
                 return;
 
-            const float NearbyNodeDistance = 150f;
             foreach (var visibleNode in allVisibleNodes.Where(node => !node.IsTargetable))
             {
                 var nodePosition = visibleNode.Position;
-                if (Vector3.Distance(Player.Position, nodePosition) < NearbyNodeDistance)
+                if (Vector3.Distance(Player.Position, nodePosition) < NodeVisibilityDistance)
                 {
-                    if (!FarNodesSeenSoFar.Contains(nodePosition))
                         FarNodesSeenSoFar.Add(nodePosition);
                 }
             }
@@ -2014,10 +2010,10 @@ namespace GatherBuddy.AutoGather
                 //It takes some time (roundtrip to the server) before a node becomes targetable after it becomes visible,
                 //so we need to delay excluding it. But instead of measuring time, we use distance, since character is traveling at a constant speed.
                 //Value 50 was determined empirically.
-                foreach (var node in allPositions.Where(o => o.DistanceToPlayer() < 50))
+                foreach (var node in allPositions.Where(o => o.DistanceToPlayer() < NodeVisibilityDistance))
                     FarNodesSeenSoFar.Add(node);
 
-                if (CurrentDestination.DistanceToPlayer() < 50)
+                if (CurrentDestination.DistanceToPlayer() < NodeVisibilityDistance)
                 {
                     GatherBuddy.Log.Verbose("Far node is not targetable, choosing another");
                 }
