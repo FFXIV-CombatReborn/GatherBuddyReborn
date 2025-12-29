@@ -943,6 +943,82 @@ public partial class Interface
             }
         }
 
+        public static void DrawAmbitiousLureConfig()
+        {
+            DrawCheckbox("Enable automatic Ambitious Lure",
+                "Automatically enable Ambitious Lure for fish that use Powerful Hookset.",
+                GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure,
+                b => GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure = b);
+            
+            if (GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
+            {
+                ImGui.Indent();
+                
+                var gpAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+                if (ImGui.RadioButton("Use Ambitious Lure when GP is Above", gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove = true;
+                    GatherBuddy.Config.Save();
+                }
+                
+                ImGui.SameLine();
+                if (ImGui.RadioButton("Below##AmbitiousLure", !gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove = false;
+                    GatherBuddy.Config.Save();
+                }
+                
+                var gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
+                ImGui.SetNextItemWidth(SetInputWidth);
+                if (ImGui.DragInt("GP Threshold##AmbitiousLure", ref gpThreshold, 1, 0, 10000))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold = Math.Max(0, gpThreshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Ambitious Lure will be used when your GP is above/below this threshold.");
+                
+                ImGui.Unindent();
+            }
+        }
+
+        public static void DrawModestLureConfig()
+        {
+            DrawCheckbox("Enable automatic Modest Lure",
+                "Automatically enable Modest Lure for fish that use Precision Hookset.",
+                GatherBuddy.Config.AutoGatherConfig.EnableModestLure,
+                b => GatherBuddy.Config.AutoGatherConfig.EnableModestLure = b);
+            
+            if (GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
+            {
+                ImGui.Indent();
+                
+                var gpAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+                if (ImGui.RadioButton("Use Modest Lure when GP is Above", gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove = true;
+                    GatherBuddy.Config.Save();
+                }
+                
+                ImGui.SameLine();
+                if (ImGui.RadioButton("Below##ModestLure", !gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove = false;
+                    GatherBuddy.Config.Save();
+                }
+                
+                var gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
+                ImGui.SetNextItemWidth(SetInputWidth);
+                if (ImGui.DragInt("GP Threshold##ModestLure", ref gpThreshold, 1, 0, 10000))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold = Math.Max(0, gpThreshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Modest Lure will be used when your GP is above/below this threshold.");
+                
+                ImGui.Unindent();
+            }
+        }
+
         public static void DrawUseHookTimersBox()
         {
             DrawCheckbox("Use Hook Timers in AutoHook Presets",
@@ -974,14 +1050,49 @@ public partial class Interface
         
         public static void DrawCollectableThreshold()
         {
-            var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
-            ImGui.SetNextItemWidth(SetInputWidth);
-            if (ImGui.DragInt("Collectable Inventory Threshold", ref threshold, 1, 1, 999))
+            var useInventoryFull = GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold;
+            
+            if (ImGui.RadioButton("Collectable Count Threshold", !useInventoryFull))
             {
-                GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold = Math.Max(1, threshold);
+                GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold = false;
                 GatherBuddy.Config.Save();
             }
-            ImGuiUtil.HoverTooltip("Turn in collectables when you have this many collectables in your inventory.");
+            ImGuiUtil.HoverTooltip("Turn in collectables when you have a certain number of collectables.");
+            
+            if (!useInventoryFull)
+            {
+                ImGui.Indent();
+                var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
+                ImGui.SetNextItemWidth(150);
+                if (ImGui.DragInt("Collectable Count", ref threshold, 1, 1, 999))
+                {
+                    GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold = Math.Max(1, threshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Turn in when you have this many collectables.");
+                ImGui.Unindent();
+            }
+            
+            if (ImGui.RadioButton("Inventory Full Threshold", useInventoryFull))
+            {
+                GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold = true;
+                GatherBuddy.Config.Save();
+            }
+            ImGuiUtil.HoverTooltip("Turn in collectables when your inventory reaches a certain number of occupied slots.");
+            
+            if (useInventoryFull)
+            {
+                ImGui.Indent();
+                var fullThreshold = GatherBuddy.Config.CollectableConfig.InventoryFullThreshold;
+                ImGui.SetNextItemWidth(150);
+                if (ImGui.DragInt("Inventory Slots Used", ref fullThreshold, 1, 1, 140))
+                {
+                    GatherBuddy.Config.CollectableConfig.InventoryFullThreshold = Math.Max(1, Math.Min(140, fullThreshold));
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Turn in when your inventory has this many occupied slots (max 140).");
+                ImGui.Unindent();
+            }
         }
         
         
@@ -1073,6 +1184,9 @@ public partial class Interface
                     
                     foreach (var item in shopItems)
                     {
+                        if (item.Page < 3)
+                            continue;
+                        
                         if (_scripShopFilterText.Length > 0 && !item.Name.Contains(_scripShopFilterText, StringComparison.OrdinalIgnoreCase))
                             continue;
                         
@@ -1225,6 +1339,8 @@ public partial class Interface
                 ConfigFunctions.DrawUseHookTimersBox();
                 ConfigFunctions.DrawSurfaceSlapConfig();
                 ConfigFunctions.DrawIdenticalCastConfig();
+                ConfigFunctions.DrawAmbitiousLureConfig();
+                ConfigFunctions.DrawModestLureConfig();
                 ConfigFunctions.DrawManualPresetGenerator();
                 ImGui.TreePop();
             }

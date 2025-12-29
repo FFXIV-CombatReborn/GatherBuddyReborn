@@ -596,6 +596,18 @@ public class CollectableManager : IDisposable
         {
             if (item.Item == null) continue;
             
+            if (item.Item.Page < 3)
+            {
+                GatherBuddy.Log.Warning($"[CollectableManager] Skipping crafter scrip item: {item.Name} (Page={item.Item.Page})");
+                continue;
+            }
+            
+            if (item.Item.ScripType is Data.ScripType.PurpleCraftersScrips or Data.ScripType.OrangeCraftersScrips)
+            {
+                GatherBuddy.Log.Warning($"[CollectableManager] Skipping crafter scrip item: {item.Name} (ScripType={item.Item.ScripType})");
+                continue;
+            }
+            
             var currentCount = inventoryItems
                 .Where(x => x.BaseItemId == item.Item.ItemId)
                 .Sum(x => (int)x.Quantity);

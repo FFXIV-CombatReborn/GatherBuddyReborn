@@ -241,13 +241,13 @@ public class AutoHookPresetBuilder
             GatherBuddy.Log.Debug($"[AutoHook] Using bite timers for {fish.Name[GatherBuddy.Language]}: {minTime:F1}s - {maxTime:F1}s");
         }
 
-        ConfigureLures(hookConfig.NormalHook, fish.Lure);
+        ConfigureLures(hookConfig.NormalHook, fish.HookSet);
         SetHookConfiguration(hookConfig.NormalHook, ahBiteType, ahHookType, minTime, maxTime);
 
         if (fish.Predators.Length > 0)
         {
             hookConfig.IntuitionHook.UseCustomStatusHook = true;
-            ConfigureLures(hookConfig.IntuitionHook, fish.Lure);
+            ConfigureLures(hookConfig.IntuitionHook, fish.HookSet);
             SetHookConfiguration(hookConfig.IntuitionHook, ahBiteType, ahHookType, minTime, maxTime);
         }
     }
@@ -348,16 +348,33 @@ public class AutoHookPresetBuilder
         };
     }
 
-    private static void ConfigureLures(AHBaseHookset hookset, Lure lure)
+    private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet)
     {
-        if (lure == Lure.None)
+        bool ambitiousEnabled = false;
+        bool modestEnabled = false;
+        
+        if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
+        {
+            ambitiousEnabled = true;
+        }
+        
+        if (hookSet == HookSet.Precise && GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
+        {
+            modestEnabled = true;
+        }
+        
+        if (!ambitiousEnabled && !modestEnabled)
             return;
 
         hookset.CastLures = new AHLuresConfig
         {
             Enabled = true,
-            AmbitiousLureEnabled = lure == Lure.Ambitious,
-            ModestLureEnabled = lure == Lure.Modest
+            AmbitiousLureEnabled = ambitiousEnabled,
+            AmbitiousLureGpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold,
+            AmbitiousLureGpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove,
+            ModestLureEnabled = modestEnabled,
+            ModestLureGpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold,
+            ModestLureGpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove
         };
     }
 

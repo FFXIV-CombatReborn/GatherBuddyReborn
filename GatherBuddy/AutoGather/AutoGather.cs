@@ -418,6 +418,18 @@ namespace GatherBuddy.AutoGather
                     else
                         ReduceItems(false);
                 }
+                else if (HasCollectables())
+                {
+                    if (GatherBuddy.CollectableManager?.IsRunning == true)
+                    {
+                        AutoStatus = "Turning in collectables...";
+                        return;
+                    }
+                    
+                    GatherBuddy.Log.Information("[AutoGather] Inventory full with collectables - starting turn-in");
+                    AutoStatus = "Turning in collectables...";
+                    GatherBuddy.CollectableManager?.Start();
+                }
                 else
                 {
                     AbortAutoGather("Inventory is full");
@@ -460,13 +472,23 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (_activeItemList.GetNextOrDefault(new List<uint>()).Any(g => g.Fish != null)
-             && !GatherBuddy.Config.AutoGatherConfig.FishDataCollection)
+            if (_activeItemList.GetNextOrDefault(new List<uint>()).Any(g => g.Fish != null))
             {
-                Communicator.PrintError(
-                    "You have fish on your auto-gather list but you have not opted in to fishing data collection. Auto-gather cannot continue. Please enable fishing data collection in your configuration options or remove fish from your auto-gather lists.");
-                AbortAutoGather();
-                return;
+                if (!GatherBuddy.Config.AutoGatherConfig.FishDataCollection)
+                {
+                    Communicator.PrintError(
+                        "You have fish on your auto-gather list but you have not opted in to fishing data collection. Auto-gather cannot continue. Please enable fishing data collection in your configuration options or remove fish from your auto-gather lists.");
+                    AbortAutoGather();
+                    return;
+                }
+                
+                if (!AutoHook.Enabled)
+                {
+                    Communicator.PrintError(
+                        "[GatherBuddyReborn] You have fish on your auto-gather list but AutoHook is not installed or enabled. Auto-gather cannot continue. Please install and enable AutoHook or remove fish from your auto-gather lists.");
+                    AbortAutoGather();
+                    return;
+                }
             }
 
             if (IsGathering)
