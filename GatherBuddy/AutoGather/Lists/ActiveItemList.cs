@@ -413,6 +413,7 @@ namespace GatherBuddy.AutoGather.Lists
             
             _gatherableItems.AddRange(nodeTargets.Concat(fishTargets)
                 .OrderBy(x => x.Time == TimeInterval.Always)
+                .ThenBy(x => x.Gatherable != null ? GetNodeTypeAsPriority(x.Gatherable) : 99)
                 .ThenBy(x => x.Location.GatheringType.ToGroup() != (Player.Job switch
                 {
                     16 => GatheringType.Miner,
