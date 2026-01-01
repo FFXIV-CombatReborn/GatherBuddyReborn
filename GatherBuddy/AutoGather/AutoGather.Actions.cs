@@ -230,38 +230,41 @@ namespace GatherBuddy.AutoGather
 
             SetupAutoHookForFishing(target);
 
-            var bait = GetCorrectBaitId(target);
-            if (bait == 0)
+            if (!GatherBuddy.Config.AutoGatherConfig.UseAutoHook || !AutoHook.Enabled)
             {
-                Communicator.Print($"No bait found in inventory. Auto-fishing cannot continue.");
-                AbortAutoGather();
-            }
-
-            if (bait != GatherBuddy.CurrentBait.Current)
-            {
-                var switchResult = GatherBuddy.CurrentBait.ChangeBait(bait);
-                switch (switchResult)
+                var bait = GetCorrectBaitId(target);
+                if (bait == 0)
                 {
-                    case CurrentBait.ChangeBaitReturn.InvalidBait:
-                        GatherBuddy.Log.Error("Invalid bait selected: " + bait);
-                        AbortAutoGather();
-                        break;
-                    case CurrentBait.ChangeBaitReturn.NotInInventory:
-                        Communicator.Print(
-                            $"Bait '{target.Fish!.InitialBait.Name}' for fish '{target.Fish!.Name[GatherBuddy.Language]}' not in inventory. Auto-fishing cannot continue.");
-                        AbortAutoGather();
-                        break;
-                    case CurrentBait.ChangeBaitReturn.Success:
-                    case CurrentBait.ChangeBaitReturn.AlreadyEquipped:
-                        break;
-                    case CurrentBait.ChangeBaitReturn.UnknownError:
-                        GatherBuddy.Log.Error("Unknown error when switching bait. Auto-gather cannot continue.");
-                        AbortAutoGather();
-                        break;
+                    Communicator.Print($"No bait found in inventory. Auto-fishing cannot continue.");
+                    AbortAutoGather();
                 }
 
-                TaskManager.DelayNext(1000);
-                return;
+                if (bait != GatherBuddy.CurrentBait.Current)
+                {
+                    var switchResult = GatherBuddy.CurrentBait.ChangeBait(bait);
+                    switch (switchResult)
+                    {
+                        case CurrentBait.ChangeBaitReturn.InvalidBait:
+                            GatherBuddy.Log.Error("Invalid bait selected: " + bait);
+                            AbortAutoGather();
+                            break;
+                        case CurrentBait.ChangeBaitReturn.NotInInventory:
+                            Communicator.Print(
+                                $"Bait '{target.Fish!.InitialBait.Name}' for fish '{target.Fish!.Name[GatherBuddy.Language]}' not in inventory. Auto-fishing cannot continue.");
+                            AbortAutoGather();
+                            break;
+                        case CurrentBait.ChangeBaitReturn.Success:
+                        case CurrentBait.ChangeBaitReturn.AlreadyEquipped:
+                            break;
+                        case CurrentBait.ChangeBaitReturn.UnknownError:
+                            GatherBuddy.Log.Error("Unknown error when switching bait. Auto-gather cannot continue.");
+                            AbortAutoGather();
+                            break;
+                    }
+
+                    TaskManager.DelayNext(1000);
+                    return;
+                }
             }
 
             if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)

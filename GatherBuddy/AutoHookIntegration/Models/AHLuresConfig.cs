@@ -7,21 +7,36 @@ public class AHLuresConfig
     [JsonProperty("Enabled")]
     public bool Enabled { get; set; }
 
-    [JsonProperty("AmbitiousLureEnabled")]
-    public bool AmbitiousLureEnabled { get; set; }
+    [JsonProperty("Id")]
+    public uint Id { get; set; }
     
-    [JsonProperty("AmbitiousLureGpThreshold")]
-    public int AmbitiousLureGpThreshold { get; set; }
+    [JsonProperty("GpThreshold")]
+    public int GpThreshold { get; set; }
     
-    [JsonProperty("AmbitiousLureGpThresholdAbove")]
-    public bool AmbitiousLureGpThresholdAbove { get; set; }
+    [JsonProperty("GpThresholdAbove")]
+    public bool GpThresholdAbove { get; set; }
 
-    [JsonProperty("ModestLureEnabled")]
-    public bool ModestLureEnabled { get; set; }
+    [JsonProperty("LureStacks")]
+    public int LureStacks { get; set; } = 3;
     
-    [JsonProperty("ModestLureGpThreshold")]
-    public int ModestLureGpThreshold { get; set; }
+    [JsonProperty("CancelAttempt")]
+    public bool CancelAttempt { get; set; }
     
-    [JsonProperty("ModestLureGpThresholdAbove")]
-    public bool ModestLureGpThresholdAbove { get; set; }
+    [JsonProperty("LureTarget")]
+    public int LureTarget { get; set; }
+    
+    [JsonProperty("OnlyWhenActiveSlap")]
+    public bool OnlyWhenActiveSlap { get; set; }
+    
+    [JsonProperty("OnlyWhenNotActiveSlap")]
+    public bool OnlyWhenNotActiveSlap { get; set; }
+    
+    [JsonProperty("OnlyWhenActiveIdentical")]
+    public bool OnlyWhenActiveIdentical { get; set; }
+    
+    [JsonProperty("OnlyWhenNotActiveIdentical")]
+    public bool OnlyWhenNotActiveIdentical { get; set; }
+    
+    [JsonProperty("OnlyCastLarge")]
+    public bool OnlyCastLarge { get; set; }
 }

@@ -14,6 +14,8 @@ namespace GatherBuddy.AutoHookIntegration;
 public class AutoHookPresetBuilder
 {
     private const uint VersatileLureId = 29717;
+    private const uint AmbitiousLureId = 37594;
+    private const uint ModestLureId = 37595;
     
     private static unsafe int GetInventoryItemCount(uint itemRowId)
     {
@@ -185,6 +187,7 @@ public class AutoHookPresetBuilder
         
         GatherBuddy.Log.Debug($"[AutoHook] Added {preset.ListOfFish.Count} fish configs");
 
+        ConfigureExtraCfg(preset, fishArray);
         ConfigureAutoCasts(preset, fishArray, gbrPreset);
         
         if (preset.AutoCastsCfg?.CastPatience != null)
@@ -350,31 +353,40 @@ public class AutoHookPresetBuilder
 
     private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet)
     {
-        bool ambitiousEnabled = false;
-        bool modestEnabled = false;
+        uint lureId = 0;
+        int gpThreshold = 0;
+        bool gpThresholdAbove = true;
         
         if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
         {
-            ambitiousEnabled = true;
+            lureId = AmbitiousLureId;
+            gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
+            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
         }
-        
-        if (hookSet == HookSet.Precise && GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
+        else if (hookSet == HookSet.Precise && GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
         {
-            modestEnabled = true;
+            lureId = ModestLureId;
+            gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
+            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
         }
         
-        if (!ambitiousEnabled && !modestEnabled)
+        if (lureId == 0)
             return;
 
         hookset.CastLures = new AHLuresConfig
         {
             Enabled = true,
-            AmbitiousLureEnabled = ambitiousEnabled,
-            AmbitiousLureGpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold,
-            AmbitiousLureGpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove,
-            ModestLureEnabled = modestEnabled,
-            ModestLureGpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold,
-            ModestLureGpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove
+            Id = lureId,
+            GpThreshold = gpThreshold,
+            GpThresholdAbove = gpThresholdAbove,
+            LureStacks = 3,
+            CancelAttempt = false,
+            LureTarget = 0,
+            OnlyWhenActiveSlap = false,
+            OnlyWhenNotActiveSlap = false,
+            OnlyWhenActiveIdentical = false,
+            OnlyWhenNotActiveIdentical = false,
+            OnlyCastLarge = false
         };
     }
 
@@ -485,6 +497,24 @@ public class AutoHookPresetBuilder
         );
     }
 
+    private static void ConfigureExtraCfg(AHCustomPresetConfig preset, Fish[] fishList)
+    {
+        var firstFish = fishList.FirstOrDefault();
+        if (firstFish == null)
+            return;
+        
+        var baitId = firstFish.InitialBait.Id;
+        
+        preset.ExtraCfg = new AHExtraCfg
+        {
+            Enabled = true,
+            ForceBaitSwap = true,
+            ForcedBaitId = baitId
+        };
+        
+        GatherBuddy.Log.Debug($"[AutoHook] Configured ExtraCfg: Force Bait Swap enabled with bait ID {baitId}");
+    }
+    
     private static void ConfigureAutoCasts(AHCustomPresetConfig preset, Fish[] fishList, ConfigPreset? gbrPreset)
     {
         var needsPatience = fishList.Any(f => f.ItemData.Rarity > 0 || f.IsBigFish);
