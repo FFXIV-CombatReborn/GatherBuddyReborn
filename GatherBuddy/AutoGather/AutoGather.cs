@@ -1008,8 +1008,7 @@ namespace GatherBuddy.AutoGather
             }
             
             //Idyllshire to The Dravanian Hinterlands
-            if ((territoryId == 478 && (next.First().Node?.Territory.Id == 399 || next.First().FishingSpot?.Territory.Id == 399))
-             || (territoryId == 418 && (next.First().Node?.Territory.Id is 901 or 929 or 939 || next.First().FishingSpot?.Territory.Id is 901 or 929 or 939)) && Lifestream.Enabled)
+            if (territoryId == 478 && (next.First().Node?.Territory.Id == 399 || next.First().FishingSpot?.Territory.Id == 399))
             {
                 var aetheryte = Dalamud.Objects.Where(x => x.ObjectKind == ObjectKind.Aetheryte && x.IsTargetable)
                     .OrderBy(x => x.Position.DistanceToPlayer()).FirstOrDefault();
@@ -1031,20 +1030,9 @@ namespace GatherBuddy.AutoGather
                         }
                         AutoStatus = "Teleporting...";
                         StopNavigation();
-                        string name = string.Empty;
-                        switch (territoryId)
-                        {
-                            case 478:
                                 var xCoord = next.First().Node?.DefaultXCoord ?? next.First().FishingSpot?.DefaultXCoord ?? 0;
                                 var exit = xCoord < 2000 ? 91u : 92u;
-                                name = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Aetheryte>().GetRow(exit).AethernetName.Value.Name
-                                    .ToString();
-                                break;
-                            case 418:
-                                name = Dalamud.GameData.GetExcelSheet<TerritoryType>().GetRow(886).PlaceName.Value.Name.ToString()
-                                    .Split(" ")[1];
-                                break;
-                        }
+                        var name = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Aetheryte>().GetRow(exit).AethernetName.Value.Name.ToString();
 
                         TaskManager.Enqueue(() => Lifestream.AethernetTeleport(name));
                         TaskManager.DelayNext(1000);
@@ -1136,6 +1124,18 @@ namespace GatherBuddy.AutoGather
                             return;
                         }
                     }
+            }
+
+            if (territoryId is not 939 and not 886 && (next.First().Node?.Territory.Id is 901 or 929 or 939 || next.First().FishingSpot?.Territory.Id is 901 or 929 or 939) && Lifestream.Enabled)
+            {
+                if (!Lifestream.IsBusy())
+                {
+                    AutoStatus = "Teleporting...";
+                    StopNavigation();
+                    TaskManager.Enqueue(() => Lifestream.ExecuteCommand("firmament"));
+                    TaskManager.Enqueue(() => !Lifestream.IsBusy(), 30000);
+                }
+                return;
             }
 
             var forcedAetheryte = ForcedAetherytes.ZonesWithoutAetherytes
@@ -1428,42 +1428,26 @@ namespace GatherBuddy.AutoGather
             
             if (territoryId == 418 && fish.FishingSpot?.Territory.Id is 901 or 929 or 939 && Lifestream.Enabled)
             {
-                var aetheryte = Dalamud.Objects.Where(x => x.ObjectKind == ObjectKind.Aetheryte && x.IsTargetable)
-                    .OrderBy(x => x.Position.DistanceToPlayer()).FirstOrDefault();
-                if (aetheryte != null)
-                {
-                    if (aetheryte.Position.DistanceToPlayer() > 10)
+                    if (IsFishing)
                     {
-                        AutoStatus = "Moving to aetheryte...";
-                        if (!isPathing && !isPathGenerating)
-                            Navigate(aetheryte.Position, false);
-                    }
-                    else if (!Lifestream.IsBusy())
-                    {
-                        if (IsFishing)
+                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
                         {
-                            if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                            {
-                                AutoHook.SetPluginState?.Invoke(false);
-                                AutoHook.SetAutoStartFishing?.Invoke(false);
-                            }
-                            AutoStatus = "Closing fishing before teleport...";
-                            QueueQuitFishingTasks();
-                            return;
+                            AutoHook.SetPluginState?.Invoke(false);
+                            AutoHook.SetAutoStartFishing?.Invoke(false);
                         }
+                        AutoStatus = "Closing fishing before teleport...";
+                        QueueQuitFishingTasks();
+                        return;
+                    }
+                if (!Lifestream.IsBusy())
+                {
                         AutoStatus = "Teleporting...";
                         StopNavigation();
-                        string name = Dalamud.GameData.GetExcelSheet<TerritoryType>().GetRow(886).PlaceName.Value.Name.ToString()
-                            .Split(" ")[1];
-
-                        TaskManager.Enqueue(() => Lifestream.AethernetTeleport(name));
-                        TaskManager.DelayNext(1000);
-                        TaskManager.Enqueue(() => GenericHelpers.IsScreenReady());
+                    TaskManager.Enqueue(() => Lifestream.ExecuteCommand("firmament"));
+                    TaskManager.Enqueue(() => !Lifestream.IsBusy(), 30000);
                     }
-
                     return;
                 }
-            }
             
             if (fish.FishingSpot?.Territory.Id != territoryId && !(isCurrentDiadem && isTargetDiadem))
             {
