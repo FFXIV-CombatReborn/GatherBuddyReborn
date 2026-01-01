@@ -111,10 +111,157 @@ public partial class AutoGatherListsManager
 
     public void ToggleList(AutoGatherList list)
     {
+        if (!list.Enabled && !ValidateFishingBait(list))
+        {
+            return;
+        }
+        
         list.Enabled = !list.Enabled;
         Save();
         if (list.Items.Count > 0)
             SetActiveItems();
+    }
+    
+    private unsafe bool ValidateFishingBait(AutoGatherList list)
+    {
+        try
+        {
+            var fishInList = list.Items.OfType<Fish>().Where(f => !f.IsSpearFish && list.EnabledItems.TryGetValue(f, out var enabled) && enabled).ToList();
+            if (fishInList.Count == 0)
+                return true;
+            
+            static uint GetInventoryItemCount(uint itemRowId)
+            {
+                return (uint)FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance()->GetInventoryItemCount(itemRowId < 100000 ? itemRowId : itemRowId - 100000, itemRowId >= 100000);
+            }
+            
+            var missingBaits = new System.Collections.Generic.HashSet<uint>();
+            const uint VersatileLureId = 29717;
+            
+            foreach (var fish in fishInList)
+            {
+                var baitId = fish.InitialBait?.Id ?? 0;
+                if (baitId == 0)
+                    continue;
+                
+                if (GatherBuddy.Config.AutoGatherConfig.UseExistingAutoHookPresets)
+                {
+                    var customBaitId = GetCustomPresetBaitId(fish.ItemId);
+                    if (customBaitId.HasValue)
+                    {
+                        baitId = customBaitId.Value;
+                        GatherBuddy.Log.Debug($"[Auto-Gather] Using custom preset bait ID {baitId} for fish {fish.ItemId}");
+                    }
+                }
+                
+                if (GetInventoryItemCount(baitId) == 0 && GetInventoryItemCount(VersatileLureId) == 0)
+                {
+                    missingBaits.Add(baitId);
+                }
+            }
+            
+            if (missingBaits.Count > 0)
+            {
+                var baitIds = string.Join(", ", missingBaits);
+                Communicator.PrintError($"[Auto-Gather] Cannot enable list '{list.Name}': Missing required bait IDs (and no Versatile Lure): {baitIds}");
+                GatherBuddy.Log.Error($"[Auto-Gather] List '{list.Name}' not enabled: Missing bait IDs {baitIds} and no Versatile Lure");
+                return false;
+            }
+            
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            GatherBuddy.Log.Error($"[Auto-Gather] Error validating fishing bait: {ex.Message}\n{ex.StackTrace}");
+            return true;
+        }
+    }
+    
+    private unsafe bool ValidateSingleFishBait(IGatherable item)
+    {
+        if (item is not Fish fish || fish.IsSpearFish)
+            return true;
+        
+        try
+        {
+            static uint GetInventoryItemCount(uint itemRowId)
+            {
+                return (uint)FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance()->GetInventoryItemCount(itemRowId < 100000 ? itemRowId : itemRowId - 100000, itemRowId >= 100000);
+            }
+            
+            const uint VersatileLureId = 29717;
+            var baitId = fish.InitialBait?.Id ?? 0;
+            
+            if (baitId == 0)
+                return true;
+            
+            if (GatherBuddy.Config.AutoGatherConfig.UseExistingAutoHookPresets)
+            {
+                var customBaitId = GetCustomPresetBaitId(fish.ItemId);
+                if (customBaitId.HasValue)
+                    baitId = customBaitId.Value;
+            }
+            
+            if (GetInventoryItemCount(baitId) == 0 && GetInventoryItemCount(VersatileLureId) == 0)
+            {
+                Communicator.PrintError($"[Auto-Gather] Cannot add/enable {fish.Name[GatherBuddy.Language]}: Missing bait ID {baitId} and no Versatile Lure");
+                GatherBuddy.Log.Error($"[Auto-Gather] Fish {fish.ItemId} not enabled: Missing bait ID {baitId} and no Versatile Lure");
+                return false;
+            }
+            
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            GatherBuddy.Log.Error($"[Auto-Gather] Error validating single fish bait: {ex.Message}");
+            return true;
+        }
+    }
+    
+    private uint? GetCustomPresetBaitId(uint fishId)
+    {
+        try
+        {
+            var pluginConfigsDir = Dalamud.PluginInterface.ConfigDirectory.Parent?.FullName;
+            if (string.IsNullOrEmpty(pluginConfigsDir))
+                return null;
+
+            var configPath = System.IO.Path.Combine(pluginConfigsDir, "AutoHook.json");
+            if (!System.IO.File.Exists(configPath))
+                return null;
+
+            var json = System.IO.File.ReadAllText(configPath);
+            var config = Newtonsoft.Json.Linq.JObject.Parse(json);
+
+            var customPresets = config["HookPresets"]?["CustomPresets"] as Newtonsoft.Json.Linq.JArray;
+            if (customPresets == null)
+                return null;
+
+            foreach (var preset in customPresets)
+            {
+                var presetName = preset?["PresetName"]?.ToString();
+                if (presetName != null && presetName.Equals(fishId.ToString(), System.StringComparison.Ordinal))
+                {
+                    var forcedBaitIdToken = preset?["ExtraCfg"]?["ForcedBaitId"];
+                    if (forcedBaitIdToken != null)
+                    {
+                        var forcedBaitId = forcedBaitIdToken.ToObject<uint>();
+                        if (forcedBaitId > 0)
+                        {
+                            GatherBuddy.Log.Debug($"[Auto-Gather] Found custom preset for fish {fishId} with bait ID {forcedBaitId}");
+                            return forcedBaitId;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (System.Exception ex)
+        {
+            GatherBuddy.Log.Error($"[Auto-Gather] Error reading AutoHook config for bait validation: {ex.Message}");
+            return null;
+        }
     }
 
     public void SetFallback(AutoGatherList list, bool value)
@@ -129,6 +276,10 @@ public partial class AutoGatherListsManager
     {
         if (list.Add(item))
         {
+            if (list.Enabled && !ValidateSingleFishBait(item))
+            {
+                list.SetEnabled(item, false);
+            }
             Save();
             if (list.Enabled)
                 SetActiveItems();
@@ -171,6 +322,11 @@ public partial class AutoGatherListsManager
 
     public void ChangeEnabled(AutoGatherList list, IGatherable item, bool enabled)
     {
+        if (enabled && list.Enabled && !ValidateSingleFishBait(item))
+        {
+            return;
+        }
+        
         if (list.SetEnabled(item, enabled))
         {
             Save();

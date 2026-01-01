@@ -130,6 +130,8 @@ public class AutoHookPresetBuilder
         var fishWithBait = allFishWithMooches.Where(f => f.Mooches.Length == 0).ToList();
         var fishWithMooch = allFishWithMooches.Where(f => f.Mooches.Length > 0).ToList();
         
+        uint? actualBaitId = null;
+        
         var baitGroups = fishWithBait.GroupBy(f => f.InitialBait.Id);
         foreach (var group in baitGroups)
         {
@@ -142,6 +144,9 @@ public class AutoHookPresetBuilder
                 GatherBuddy.Log.Warning($"[AutoHook] User does not have bait {baitId} in inventory, using Versatile Lure ({VersatileLureId}) instead");
                 effectiveBaitId = VersatileLureId;
             }
+
+            if (actualBaitId == null)
+                actualBaitId = effectiveBaitId;
 
             var hookConfig = new AHHookConfig((int)effectiveBaitId);
             
@@ -187,7 +192,7 @@ public class AutoHookPresetBuilder
         
         GatherBuddy.Log.Debug($"[AutoHook] Added {preset.ListOfFish.Count} fish configs");
 
-        ConfigureExtraCfg(preset, fishArray);
+        ConfigureExtraCfg(preset, actualBaitId);
         ConfigureAutoCasts(preset, fishArray, gbrPreset);
         
         if (preset.AutoCastsCfg?.CastPatience != null)
@@ -497,19 +502,19 @@ public class AutoHookPresetBuilder
         );
     }
 
-    private static void ConfigureExtraCfg(AHCustomPresetConfig preset, Fish[] fishList)
+    private static void ConfigureExtraCfg(AHCustomPresetConfig preset, uint? baitId)
     {
-        var firstFish = fishList.FirstOrDefault();
-        if (firstFish == null)
+        if (baitId == null)
+        {
+            GatherBuddy.Log.Warning($"[AutoHook] No bait ID available for ExtraCfg, skipping Force Bait Swap configuration");
             return;
-        
-        var baitId = firstFish.InitialBait.Id;
+        }
         
         preset.ExtraCfg = new AHExtraCfg
         {
             Enabled = true,
             ForceBaitSwap = true,
-            ForcedBaitId = baitId
+            ForcedBaitId = baitId.Value
         };
         
         GatherBuddy.Log.Debug($"[AutoHook] Configured ExtraCfg: Force Bait Swap enabled with bait ID {baitId}");
