@@ -35,9 +35,9 @@ namespace GatherBuddy.AutoGather
 
         private bool IsBlacklisted(Vector3 g)
         {
-            var blacklisted = GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId.ContainsKey(Dalamud.ClientState.TerritoryType)
-             && GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId[Dalamud.ClientState.TerritoryType].Contains(g);
-            return blacklisted;
+            var blacklist = GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId;
+            return blacklist.TryGetValue(Dalamud.ClientState.TerritoryType, out var points)
+                    && points.Contains(g);
         }
 
         public bool IsGathering
@@ -165,24 +165,11 @@ namespace GatherBuddy.AutoGather
             => _activeItemList.DebugVisitedTimedLocations;
 
         public readonly HashSet<Vector3> FarNodesSeenSoFar = [];
-        public readonly LinkedList<uint> VisitedNodes      = [];
+        public readonly LinkedList<uint> VisitedNodes      = [];        
         // Distance at which a node is expected to become visible, and it is given up on if it does not.
         public const float NodeVisibilityDistance = 50f;
 
-        private readonly Dictionary<Vector3, DateTime> _diademSpawnAreaLastChecked = new();
-        private Vector3? _currentDiademPatrolTarget = null;
-        private const float DiademSpawnAreaCheckRadius = 80f;
-        private const int DiademSpawnAreaRecheckSeconds = 180;
-        
-        private readonly LinkedList<Vector3> _diademRecentlyGatheredNodes = new();
-        private const int DiademNodeRespawnWindow = 8;
-        
-        private DateTime _diademArborCallUsedAt = DateTime.MinValue;
-        private Vector3? _diademArborCallTarget = null;
-        
-        private readonly LinkedList<Vector3> _diademVisitedNodes = new();
-        private const int DiademVisitedNodeTrackingCount = 20;
-        private const float DiademNodeProximityThreshold = 5f;
+        private int _diademPathIndex = -1;
         
         private uint _lastUmbralWeather = 0;
         private bool _hasGatheredUmbralThisSession = false;
