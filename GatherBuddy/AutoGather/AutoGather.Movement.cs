@@ -82,9 +82,6 @@ namespace GatherBuddy.AutoGather
             var hSeparation = Vector2.Distance(gameObject.Position.ToVector2(), Player.Position.ToVector2());
             var vSeparation = Math.Abs(gameObject.Position.Y - Player.Position.Y);
 
-            if (gameObject.Position.DistanceToPlayer() < 15 && Dalamud.Targets.Target != gameObject)
-                Dalamud.Targets.Target = gameObject;
-
             if (hSeparation < 3.5)
             {
                 var waitGP = targetItem.ItemData.IsCollectable && Player.Object.CurrentGp < config.CollectableMinGP;
