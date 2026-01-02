@@ -243,7 +243,7 @@ public static partial class Fish
             .Bait      (data, 12707)
             .Bite      (data, HookSet.Precise, BiteType.Weak);
         data.Apply     (12780, Patch.Heavensward) // Sweetfish
-            .Bait      (data, 12706)
+            .Bait      (data, 12707)
             .Bite      (data, HookSet.Powerful, BiteType.Strong)
             .Snag      (data, Snagging.None);
         data.Apply     (12781, Patch.Heavensward) // Orn Butterfly

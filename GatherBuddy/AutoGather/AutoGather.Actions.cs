@@ -138,8 +138,14 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void DoFishingTasks(IEnumerable<GatherTarget> targets)
         {
+        if (TryUseFoodAndMedicine())
+            return;
+        
         if (SpiritbondMax > 0)
         {
+            if (GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                return;
+            
             if (IsGathering || IsFishing)
             {
                 if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
@@ -171,7 +177,10 @@ namespace GatherBuddy.AutoGather
 
             if (FreeInventorySlots < 20 && HasReducibleItems())
             {
-                if (IsFishing)
+                if (GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                    return;
+                
+                if (IsFishing || IsGathering)
                 {
                     QueueQuitFishingTasks();
                     return;
@@ -186,7 +195,7 @@ namespace GatherBuddy.AutoGather
                 });
             }
 
-            ReduceItems(false, () =>
+            ReduceItems(true, () =>
             {
                 if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
                 {
@@ -229,40 +238,6 @@ namespace GatherBuddy.AutoGather
             LureSuccess = false;
 
             SetupAutoHookForFishing(target);
-
-            var bait = GetCorrectBaitId(target);
-            if (bait == 0)
-            {
-                Communicator.Print($"No bait found in inventory. Auto-fishing cannot continue.");
-                AbortAutoGather();
-            }
-
-            if (bait != GatherBuddy.CurrentBait.Current)
-            {
-                var switchResult = GatherBuddy.CurrentBait.ChangeBait(bait);
-                switch (switchResult)
-                {
-                    case CurrentBait.ChangeBaitReturn.InvalidBait:
-                        GatherBuddy.Log.Error("Invalid bait selected: " + bait);
-                        AbortAutoGather();
-                        break;
-                    case CurrentBait.ChangeBaitReturn.NotInInventory:
-                        Communicator.Print(
-                            $"Bait '{target.Fish!.InitialBait.Name}' for fish '{target.Fish!.Name[GatherBuddy.Language]}' not in inventory. Auto-fishing cannot continue.");
-                        AbortAutoGather();
-                        break;
-                    case CurrentBait.ChangeBaitReturn.Success:
-                    case CurrentBait.ChangeBaitReturn.AlreadyEquipped:
-                        break;
-                    case CurrentBait.ChangeBaitReturn.UnknownError:
-                        GatherBuddy.Log.Error("Unknown error when switching bait. Auto-gather cannot continue.");
-                        AbortAutoGather();
-                        break;
-                }
-
-                TaskManager.DelayNext(1000);
-                return;
-            }
 
             if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
             {
@@ -331,22 +306,6 @@ namespace GatherBuddy.AutoGather
             return false;
         }
 
-        private uint GetCorrectBaitId(GatherTarget target)
-        {
-            var bait = target.Fish!.InitialBait;
-            if (GetInventoryItemCount(bait.Id) > 0)
-                return bait.Id;
-
-            var versatileLure = GatherBuddy.GameData.Bait[29717];
-            if (GetInventoryItemCount(versatileLure.Id) > 0)
-                return versatileLure.Id;
-
-            var firstBait = GatherBuddy.GameData.Bait.FirstOrDefault();
-            if (GetInventoryItemCount(firstBait.Value.Id) > 0)
-                return firstBait.Value.Id;
-
-            return 0;
-        }
 
         private bool HasPatienceStatus()
         {

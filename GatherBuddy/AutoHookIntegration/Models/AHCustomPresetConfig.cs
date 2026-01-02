@@ -25,7 +25,7 @@ public class AHCustomPresetConfig
     public AHAutoCastsConfig? AutoCastsCfg { get; set; }
 
     [JsonProperty("ExtraCfg")]
-    public object? ExtraCfg { get; set; }
+    public AHExtraCfg? ExtraCfg { get; set; }
 
     public AHCustomPresetConfig(string name)
     {

@@ -14,6 +14,8 @@ using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
+using GatherBuddy.Utilities;
+using Dalamud.Utility;
 using ElliLib;
 using ElliLib.Widgets;
 using FishRecord = GatherBuddy.FishTimer.FishRecord;
@@ -1034,6 +1036,218 @@ public partial class Interface
                 "Auto accept/decline collectable fish based on minimum collectability.",
                 GatherBuddy.Config.AutoGatherConfig.AutoCollectablesFishing,
                 b => GatherBuddy.Config.AutoGatherConfig.AutoCollectablesFishing = b);
+
+        public static void DrawDeferRepairDuringFishingBuffsBox()
+            => DrawCheckbox("Defer repairs during fishing buffs",
+                "Prevents GBR from stopping fishing for repairs when you have active fishing skill buffs.\n"
+              + "Buffs like Patience, Surface Slap, Identical Cast, Prize Catch, etc. will be respected.",
+                GatherBuddy.Config.AutoGatherConfig.DeferRepairDuringFishingBuffs,
+                b => GatherBuddy.Config.AutoGatherConfig.DeferRepairDuringFishingBuffs = b);
+
+        public static void DrawDeferReductionDuringFishingBuffsBox()
+            => DrawCheckbox("Defer aetherial reduction during fishing buffs",
+                "Prevents GBR from stopping fishing for aetherial reduction when you have active fishing skill buffs.",
+                GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs,
+                b => GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs = b);
+
+        public static void DrawDeferMateriaExtractionDuringFishingBuffsBox()
+            => DrawCheckbox("Defer materia extraction during fishing buffs",
+                "Prevents GBR from stopping fishing for materia extraction when you have active fishing skill buffs.",
+                GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs,
+                b => GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs = b);
+
+        public static void DrawFishingCordialConfig()
+        {
+            DrawCheckbox("Use Cordial",
+                "Automatically use cordials in generated fishing presets when GP falls below the minimum threshold.",
+                GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing,
+                b => GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing = b);
+
+            if (GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(150);
+                var gpThreshold = GatherBuddy.Config.AutoGatherConfig.CordialForFishingGPThreshold;
+                if (ImGui.DragInt("GP Threshold", ref gpThreshold, 1, 0, 10000))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.CordialForFishingGPThreshold = Math.Max(0, gpThreshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Use cordial when GP falls below this threshold (prevents overcapping).");
+                ImGui.Unindent();
+            }
+        }
+
+        public static void DrawUsePatienceBox()
+            => DrawCheckbox("Use Patience/Patience II",
+                "Automatically use Patience/Patience II in generated fishing presets when fishing for:\n"
+              + "• Fish requiring mooch chains\n"
+              + "• Collectable fish\n"
+              + "• Fish that can be used for aetherial reduction",
+                GatherBuddy.Config.AutoGatherConfig.UsePatience,
+                b => GatherBuddy.Config.AutoGatherConfig.UsePatience = b);
+
+        public static void DrawPrizeCatchConfig()
+        {
+            DrawCheckbox("Use Prize Catch",
+                "Automatically use Prize Catch in generated fishing presets.\n"
+              + "Recommended for mooching or Surface Slap fishing.",
+                GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch,
+                b => GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch = b);
+            
+            if (GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch)
+            {
+                ImGui.Indent();
+                
+                var gpAbove = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove;
+                if (ImGui.RadioButton("Use Prize Catch when GP is Above", gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove = true;
+                    GatherBuddy.Config.Save();
+                }
+                
+                ImGui.SameLine();
+                if (ImGui.RadioButton("Below##PrizeCatch", !gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove = false;
+                    GatherBuddy.Config.Save();
+                }
+                
+                var gpThreshold = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold;
+                ImGui.SetNextItemWidth(SetInputWidth);
+                if (ImGui.DragInt("GP Threshold##PrizeCatch", ref gpThreshold, 1, 0, 10000))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold = Math.Max(0, gpThreshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Prize Catch will be used when your GP is above/below this threshold.");
+                
+                ImGui.Unindent();
+            }
+        }
+
+        public static void DrawChumConfig()
+        {
+            DrawCheckbox("Use Chum",
+                "Automatically use Chum in generated fishing presets.",
+                GatherBuddy.Config.AutoGatherConfig.UseChum,
+                b => GatherBuddy.Config.AutoGatherConfig.UseChum = b);
+            
+            if (GatherBuddy.Config.AutoGatherConfig.UseChum)
+            {
+                ImGui.Indent();
+                
+                var gpAbove = GatherBuddy.Config.AutoGatherConfig.ChumGPAbove;
+                if (ImGui.RadioButton("Use Chum when GP is Above", gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ChumGPAbove = true;
+                    GatherBuddy.Config.Save();
+                }
+                
+                ImGui.SameLine();
+                if (ImGui.RadioButton("Below##Chum", !gpAbove))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ChumGPAbove = false;
+                    GatherBuddy.Config.Save();
+                }
+                
+                var gpThreshold = GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold;
+                ImGui.SetNextItemWidth(SetInputWidth);
+                if (ImGui.DragInt("GP Threshold##Chum", ref gpThreshold, 1, 0, 10000))
+                {
+                    GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold = Math.Max(0, gpThreshold);
+                    GatherBuddy.Config.Save();
+                }
+                ImGuiUtil.HoverTooltip("Chum will be used when your GP is above/below this threshold.");
+                
+                ImGui.Unindent();
+            }
+        }
+
+        public static void DrawFishingConsumablesConfig()
+        {
+            DrawCheckbox("Use Food",
+                "Automatically use configured food when food buff expires (only when NOT fishing or no active fishing buffs).",
+                GatherBuddy.Config.AutoGatherConfig.UseFood,
+                b => GatherBuddy.Config.AutoGatherConfig.UseFood = b);
+
+            if (GatherBuddy.Config.AutoGatherConfig.UseFood)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(150);
+                DrawConsumableCombo("Select food", AutoGather.AutoGather.PossibleFoods, 
+                    GatherBuddy.Config.AutoGatherConfig.FoodItemId, 
+                    id => 
+                    {
+                        GatherBuddy.Config.AutoGatherConfig.FoodItemId = id;
+                        GatherBuddy.Config.Save();
+                    });
+                ImGui.Unindent();
+            }
+
+            DrawCheckbox("Use Medicine",
+                "Automatically use configured medicine (like Draft of Spiritbond) when medicine buff expires (only when NOT fishing or no active fishing buffs).",
+                GatherBuddy.Config.AutoGatherConfig.UseMedicine,
+                b => GatherBuddy.Config.AutoGatherConfig.UseMedicine = b);
+
+            if (GatherBuddy.Config.AutoGatherConfig.UseMedicine)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(150);
+                DrawConsumableCombo("Select medicine", AutoGather.AutoGather.PossiblePotions, 
+                    GatherBuddy.Config.AutoGatherConfig.MedicineItemId, 
+                    id => 
+                    {
+                        GatherBuddy.Config.AutoGatherConfig.MedicineItemId = id;
+                        GatherBuddy.Config.Save();
+                    });
+                ImGui.Unindent();
+            }
+        }
+
+        private static void DrawConsumableCombo(string label, Lumina.Excel.Sheets.Item[] items, uint currentItemId, Action<uint> onChanged)
+        {
+            var list = items
+                .SelectMany(item => new[]
+                {
+                    (item, rowid: item.RowId, isHq: false),
+                    (item, rowid: item.RowId + 1_000_000, isHq: true)
+                })
+                .Where(x => !x.isHq || x.item.CanBeHq)
+                .Select(x => (name: ItemUtil.GetItemName(x.rowid, includeIcon: true).ExtractText(), x.rowid, count: AutoGather.AutoGather.GetInventoryItemCount(x.rowid)))
+                .Where(x => !string.IsNullOrEmpty(x.name))
+                .OrderBy(x => x.count == 0)
+                .ThenBy(x => x.name)
+                .Select(x => x with { name = $"{x.name} ({x.count})" })
+                .ToList();
+
+            var selected = (currentItemId > 0 ? list.FirstOrDefault(x => x.rowid == currentItemId).name : null) ?? string.Empty;
+            using var combo = ImRaii.Combo(label, selected);
+            if (combo)
+            {
+                if (ImGui.Selectable(string.Empty, currentItemId <= 0))
+                {
+                    onChanged(0);
+                }
+
+                bool? separatorState = null;
+                foreach (var (itemname, rowid, count) in list)
+                {
+                    if (count != 0)
+                        separatorState = true;
+                    else if (separatorState ?? false)
+                    {
+                        ImGui.Separator();
+                        separatorState = false;
+                    }
+
+                    if (ImGui.Selectable(itemname, currentItemId == rowid))
+                    {
+                        onChanged(rowid);
+                    }
+                }
+            }
+        }
         
         public static void DrawDiademAutoAetherCannonBox()
             => DrawCheckbox("Diadem Auto-Aethercannon",
@@ -1336,7 +1550,15 @@ public partial class Interface
                 ConfigFunctions.DrawFishingSpotMinutes();
                 ConfigFunctions.DrawFishCollectionBox();
                 ConfigFunctions.DrawAutoCollectablesFishingBox();
+                ConfigFunctions.DrawDeferRepairDuringFishingBuffsBox();
+                ConfigFunctions.DrawDeferReductionDuringFishingBuffsBox();
+                ConfigFunctions.DrawDeferMateriaExtractionDuringFishingBuffsBox();
+                ConfigFunctions.DrawFishingCordialConfig();
+                ConfigFunctions.DrawFishingConsumablesConfig();
                 ConfigFunctions.DrawUseHookTimersBox();
+                ConfigFunctions.DrawUsePatienceBox();
+                ConfigFunctions.DrawPrizeCatchConfig();
+                ConfigFunctions.DrawChumConfig();
                 ConfigFunctions.DrawSurfaceSlapConfig();
                 ConfigFunctions.DrawIdenticalCastConfig();
                 ConfigFunctions.DrawAmbitiousLureConfig();
