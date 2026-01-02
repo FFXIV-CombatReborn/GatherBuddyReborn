@@ -101,6 +101,22 @@ namespace GatherBuddy.AutoGather
         public bool UseHookTimers { get; set; } = false;
         public bool AutoCollectablesFishing { get; set; } = true;
         public bool DiademAutoAetherCannon { get; set; } = false;
+        public bool DeferRepairDuringFishingBuffs { get; set; } = true;
+        public bool DeferReductionDuringFishingBuffs { get; set; } = true;
+        public bool DeferMateriaExtractionDuringFishingBuffs { get; set; } = true;
+        public bool UseFood { get; set; } = false;
+        public uint FoodItemId { get; set; } = 0;
+        public bool UseMedicine { get; set; } = false;
+        public uint MedicineItemId { get; set; } = 0;
+        public bool UseCordialForFishing { get; set; } = false;
+        public int CordialForFishingGPThreshold { get; set; } = 0;
+        public bool UsePatience { get; set; } = true;
+        public bool UsePrizeCatch { get; set; } = false;
+        public int PrizeCatchGPThreshold { get; set; } = 200;
+        public bool PrizeCatchGPAbove { get; set; } = true;
+        public bool UseChum { get; set; } = false;
+        public int ChumGPThreshold { get; set; } = 100;
+        public bool ChumGPAbove { get; set; } = true;
 
         public enum SortingType
         {

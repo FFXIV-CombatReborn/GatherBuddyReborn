@@ -138,8 +138,14 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void DoFishingTasks(IEnumerable<GatherTarget> targets)
         {
+        if (TryUseFoodAndMedicine())
+            return;
+        
         if (SpiritbondMax > 0)
         {
+            if (GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                return;
+            
             if (IsGathering || IsFishing)
             {
                 if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
@@ -171,7 +177,10 @@ namespace GatherBuddy.AutoGather
 
             if (FreeInventorySlots < 20 && HasReducibleItems())
             {
-                if (IsFishing)
+                if (GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                    return;
+                
+                if (IsFishing || IsGathering)
                 {
                     QueueQuitFishingTasks();
                     return;
@@ -186,7 +195,7 @@ namespace GatherBuddy.AutoGather
                 });
             }
 
-            ReduceItems(false, () =>
+            ReduceItems(true, () =>
             {
                 if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
                 {

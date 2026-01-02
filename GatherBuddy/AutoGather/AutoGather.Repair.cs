@@ -135,6 +135,9 @@ public unsafe partial class AutoGather
             return false;
         }
         
+        if (GatherBuddy.Config.AutoGatherConfig.DeferRepairDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+            return false;
+        
         if ((DateTime.Now - _lastRepairTime).TotalSeconds < 5)
             return false;
 

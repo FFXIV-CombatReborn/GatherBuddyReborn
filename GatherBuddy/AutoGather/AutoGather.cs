@@ -413,7 +413,11 @@ namespace GatherBuddy.AutoGather
             {
                 if (HasReducibleItems())
                 {
-                    if (IsGathering)
+                    if (Player.Job == 18 /* FSH */ && GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                    {
+                        return;
+                    }
+                    else if (IsGathering)
                         CloseGatheringAddons();
                     else
                         ReduceItems(false);
@@ -638,22 +642,39 @@ namespace GatherBuddy.AutoGather
              && !isPathing
              && !Dalamud.Conditions[ConditionFlag.Mounted])
             {
+                if (TryUseFoodAndMedicine())
+                    return;
+
                 if (SpiritbondMax > 0)
                 {
-                    GatherBuddy.Log.Debug($"[Materia] Triggering extraction. IsGathering={IsGathering}, SpiritbondMax={SpiritbondMax}");
-                    if (IsGathering)
+                    if (Player.Job == 18 /* FSH */ && GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
                     {
-                        QueueQuitFishingTasks();
+                        return;
                     }
+                    else
+                    {
+                        GatherBuddy.Log.Debug($"[Materia] Triggering extraction. IsGathering={IsGathering}, SpiritbondMax={SpiritbondMax}");
+                        if (IsGathering)
+                        {
+                            QueueQuitFishingTasks();
+                        }
 
-                    DoMateriaExtraction();
-                    return;
+                        DoMateriaExtraction();
+                        return;
+                    }
                 }
 
                 if (FreeInventorySlots < 20 && HasReducibleItems())
                 {
-                    ReduceItems(true);
-                    return;
+                    if (Player.Job == 18 /* FSH */ && GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        ReduceItems(true);
+                        return;
+                    }
                 }
             }
 
@@ -783,29 +804,36 @@ namespace GatherBuddy.AutoGather
                     {
                         if (Player.Job == 18 /* FSH */)
                         {
-                            if (IsGathering)
+                            if (GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
                             {
-                                QueueQuitFishingTasks();
                                 return;
                             }
+                            else
+                            {
+                                if (IsGathering)
+                                {
+                                    QueueQuitFishingTasks();
+                                    return;
+                                }
 
-                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                    {
-                        TaskManager.Enqueue(() =>
-                        {
-                            AutoHook.SetPluginState?.Invoke(false);
-                            AutoHook.SetAutoStartFishing?.Invoke(false);
-                        });
-                    }
-                    
-                    ReduceItems(true, () =>
-                    {
-                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                        {
-                            AutoHook.SetPluginState?.Invoke(true);
-                            AutoHook.SetAutoStartFishing?.Invoke(true);
-                        }
-                    });
+                                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                                {
+                                    TaskManager.Enqueue(() =>
+                                    {
+                                        AutoHook.SetPluginState?.Invoke(false);
+                                        AutoHook.SetAutoStartFishing?.Invoke(false);
+                                    });
+                                }
+                                
+                                ReduceItems(true, () =>
+                                {
+                                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                                    {
+                                        AutoHook.SetPluginState?.Invoke(true);
+                                        AutoHook.SetAutoStartFishing?.Invoke(true);
+                                    }
+                                });
+                            }
                         }
                         else
                         {
@@ -1413,17 +1441,17 @@ namespace GatherBuddy.AutoGather
                     }
                     else if (!Lifestream.IsBusy())
                     {
-                    if (IsFishing)
-                    {
-                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                        if (IsFishing)
                         {
-                            AutoHook.SetPluginState?.Invoke(false);
-                            AutoHook.SetAutoStartFishing?.Invoke(false);
+                            if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                            {
+                                AutoHook.SetPluginState?.Invoke(false);
+                                AutoHook.SetAutoStartFishing?.Invoke(false);
+                            }
+                            AutoStatus = "Closing fishing before teleport...";
+                            QueueQuitFishingTasks();
+                            return;
                         }
-                        AutoStatus = "Closing fishing before teleport...";
-                        QueueQuitFishingTasks();
-                        return;
-                    }
                         AutoStatus = "Teleporting...";
                         StopNavigation();
                         string name = Dalamud.GameData.GetExcelSheet<TerritoryType>().GetRow(886).PlaceName.Value.Name.ToString()
@@ -2103,39 +2131,46 @@ namespace GatherBuddy.AutoGather
 
             if (HasReducibleItems())
             {
-                GatherBuddy.Log.Debug("[AutoGather] Found reducible items during abort, reducing before shutdown");
-                
-                if (Player.Job == 18)
+                if (Player.Job == 18 && GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
                 {
-                    if (IsGathering)
-                    {
-                        QueueQuitFishingTasks();
-                        return;
-                    }
-
-                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                    {
-                        TaskManager.Enqueue(() =>
-                        {
-                            AutoHook.SetPluginState?.Invoke(false);
-                            AutoHook.SetAutoStartFishing?.Invoke(false);
-                        });
-                    }
-                    
-                    ReduceItems(true, () =>
-                    {
-                        AbortAutoGather(status);
-                    });
+                    GatherBuddy.Log.Debug("[AutoGather] Skipping reduction during abort due to active fishing or buffs");
                 }
                 else
                 {
-                    ReduceItems(true, () =>
+                    GatherBuddy.Log.Debug("[AutoGather] Found reducible items during abort, reducing before shutdown");
+                    
+                    if (Player.Job == 18)
                     {
-                        AbortAutoGather(status);
-                    });
+                        if (IsGathering)
+                        {
+                            QueueQuitFishingTasks();
+                            return;
+                        }
+
+                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                        {
+                            TaskManager.Enqueue(() =>
+                            {
+                                AutoHook.SetPluginState?.Invoke(false);
+                                AutoHook.SetAutoStartFishing?.Invoke(false);
+                            });
+                        }
+                        
+                        ReduceItems(true, () =>
+                        {
+                            AbortAutoGather(status);
+                        });
+                    }
+                    else
+                    {
+                        ReduceItems(true, () =>
+                        {
+                            AbortAutoGather(status);
+                        });
+                    }
+                    
+                    return;
                 }
-                
-                return;
             }
 
             if (!string.IsNullOrEmpty(status))

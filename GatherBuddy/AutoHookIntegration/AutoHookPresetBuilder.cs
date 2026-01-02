@@ -249,13 +249,14 @@ public class AutoHookPresetBuilder
             GatherBuddy.Log.Debug($"[AutoHook] Using bite timers for {fish.Name[GatherBuddy.Language]}: {minTime:F1}s - {maxTime:F1}s");
         }
 
-        ConfigureLures(hookConfig.NormalHook, fish.HookSet);
+        var requiredLure = fish.Lure != Lure.None ? fish.Lure : (Lure?)null;
+        ConfigureLures(hookConfig.NormalHook, fish.HookSet, requiredLure);
         SetHookConfiguration(hookConfig.NormalHook, ahBiteType, ahHookType, minTime, maxTime);
 
         if (fish.Predators.Length > 0)
         {
             hookConfig.IntuitionHook.UseCustomStatusHook = true;
-            ConfigureLures(hookConfig.IntuitionHook, fish.HookSet);
+            ConfigureLures(hookConfig.IntuitionHook, fish.HookSet, requiredLure);
             SetHookConfiguration(hookConfig.IntuitionHook, ahBiteType, ahHookType, minTime, maxTime);
         }
     }
@@ -356,13 +357,25 @@ public class AutoHookPresetBuilder
         };
     }
 
-    private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet)
+    private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet, Lure? requiredLure = null)
     {
         uint lureId = 0;
         int gpThreshold = 0;
         bool gpThresholdAbove = true;
         
-        if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
+        if (requiredLure == Lure.Ambitious)
+        {
+            lureId = AmbitiousLureId;
+            gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
+            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+        }
+        else if (requiredLure == Lure.Modest)
+        {
+            lureId = ModestLureId;
+            gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
+            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+        }
+        else if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
         {
             lureId = AmbitiousLureId;
             gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
@@ -522,20 +535,45 @@ public class AutoHookPresetBuilder
     
     private static void ConfigureAutoCasts(AHCustomPresetConfig preset, Fish[] fishList, ConfigPreset? gbrPreset)
     {
-        var needsPatience = fishList.Any(f => f.ItemData.Rarity > 0 || f.IsBigFish);
+        var hasMooches = fishList.Any(f => f.Mooches.Length > 0);
         var needsCollect = fishList.Any(f => f.ItemData.IsCollectable);
-        var useCordials = gbrPreset?.Consumables.Cordial.Enabled ?? false;
+        var canBeReduced = fishList.Any(f => f.ItemData.AetherialReduce != 0);
+        var shouldUsePatience = hasMooches || needsCollect || canBeReduced;
+        var needsPatience = shouldUsePatience && GatherBuddy.Config.AutoGatherConfig.UsePatience;
+        
+        if (shouldUsePatience)
+        {
+            if (GatherBuddy.Config.AutoGatherConfig.UsePatience)
+            {
+                var reasons = new System.Collections.Generic.List<string>();
+                if (hasMooches) reasons.Add("mooch chains");
+                if (needsCollect) reasons.Add("collectables");
+                if (canBeReduced) reasons.Add("aetherial reduction");
+                GatherBuddy.Log.Debug($"[AutoHook] Patience enabled due to: {string.Join(", ", reasons)}");
+            }
+            else
+            {
+                GatherBuddy.Log.Debug($"[AutoHook] Patience disabled by user config (would be needed for mooch chains, collectables, or aetherial reduction)");
+            }
+        }
+        else
+        {
+            GatherBuddy.Log.Debug($"[AutoHook] Patience not needed - no mooch chains, collectables, or reducible fish");
+        }
+        
+        var useCordials = GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing;
+        var cordialGpThreshold = GatherBuddy.Config.AutoGatherConfig.CordialForFishingGPThreshold;
         
         var hasSurfaceSlap = fishList.Any(f => f.SurfaceSlap != null);
-        var hasMooches = fishList.Any(f => f.Mooches.Length > 0);
-        var needsPrizeCatch = hasSurfaceSlap || hasMooches;
+        var shouldUsePrizeCatch = hasSurfaceSlap || hasMooches;
+        var usePrizeCatch = shouldUsePrizeCatch && GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch;
+        var useChum = GatherBuddy.Config.AutoGatherConfig.UseChum;
         
         var fisherLevel = DiscipleOfLand.FisherLevel;
         const uint patienceId = 4102;
         const uint patience2Id = 4106;
         var patienceActionId = fisherLevel >= 60 ? patience2Id : patienceId;
         var patienceGpCost = fisherLevel >= 60 ? 560 : 200;
-        GatherBuddy.Log.Debug($"[AutoHook] Fisher level: {fisherLevel}, setting Patience action ID: {patienceActionId}, GP cost: {patienceGpCost}");
         
         AHAutoPatience? patienceConfig = null;
         if (needsPatience)
@@ -547,7 +585,7 @@ public class AutoHookPresetBuilder
                 GpThreshold = patienceGpCost,
                 GpThresholdAbove = true
             };
-            GatherBuddy.Log.Debug($"[AutoHook] Created Patience config: Enabled={patienceConfig.Enabled}, Id={patienceConfig.Id}, GP: {patienceConfig.GpThreshold} (Above={patienceConfig.GpThresholdAbove})");
+            GatherBuddy.Log.Debug($"[AutoHook] Created Patience config: Enabled=true, Id={patienceActionId}, GP: {patienceGpCost} (Above=true)");
         }
 
         preset.AutoCastsCfg = new AHAutoCastsConfig
@@ -570,22 +608,32 @@ public class AutoHookPresetBuilder
             } : null,
             CastCordial = useCordials ? new AHAutoCordial
             {
-                Enabled = true
+                Enabled = true,
+                GpThreshold = cordialGpThreshold,
+                GpThresholdAbove = false
             } : null,
-            CastPrizeCatch = needsPrizeCatch ? new AHAutoPrizeCatch
+            CastPrizeCatch = usePrizeCatch ? new AHAutoPrizeCatch
             {
                 Enabled = true,
                 UseWhenMoochIIOnCD = false,
                 UseOnlyWithIdenticalCast = false,
-                UseOnlyWithActiveSlap = hasSurfaceSlap
+                UseOnlyWithActiveSlap = hasSurfaceSlap,
+                GpThreshold = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold,
+                GpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove
             } : null,
-            CastThaliaksFavor = !needsPrizeCatch ? new AHAutoThaliaksFavor
+            CastChum = useChum ? new AHAutoChum
+            {
+                Enabled = true,
+                GpThreshold = GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold,
+                GpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ChumGPAbove
+            } : null,
+            CastThaliaksFavor = new AHAutoThaliaksFavor
             {
                 Enabled = true,
                 ThaliaksFavorStacks = 3,
                 ThaliaksFavorRecover = 150,
                 UseWhenCordialCD = useCordials
-            } : null
+            }
         };
     }
 }
