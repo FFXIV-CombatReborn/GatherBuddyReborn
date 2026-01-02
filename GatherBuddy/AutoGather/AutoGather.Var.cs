@@ -53,7 +53,7 @@ namespace GatherBuddy.AutoGather
             RetryCombinedPathfinding = 2,
             Done = 3
         }
-        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool direct, bool offset, PathfindingStage stage, long lastTry) _navState;
+        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool direct, bool offset, PathfindingStage stage, long lastTry, int landWP) _navState;
         public Vector3 CurrentDestination { get { return _navState.destination; } }
 
         private ILocation? CurrentFarNodeLocation;

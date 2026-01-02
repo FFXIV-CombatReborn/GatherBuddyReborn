@@ -320,40 +320,40 @@ namespace GatherBuddy.AutoGather
 
             var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
             var player = Player.Position;
+            List<Vector3> path;
 
             if (_navState.flying && _navState.stage == PathfindingStage.Done
                 && !Dalamud.Conditions[ConditionFlag.Diving]
-                && Vector3.Distance(player, _navState.destination) < landingDistance * 1.1f)
+                && (path = VNavmesh.Path.ListWaypoints()).Count < _navState.landWP)
             {
                 // Switch vnavmesh to no-fly mode when close to landing point
-                var wp = VNavmesh.Path.ListWaypoints().ToList();
+                path = [.. path]; // Clone, because Stop() clears the list
                 VNavmesh.Path.Stop();
-                VNavmesh.Path.MoveTo(wp, false);
+                VNavmesh.Path.MoveTo(path, false);
                 _navState.flying = false;
                 Dismount(); // Try to land (not dismount)
-                GatherBuddy.Log.Debug($"Switching to ground movement, {wp.Count} waypoints left.");
+                GatherBuddy.Log.Debug($"Switching to ground movement, {path.Count} waypoints left.");
                 return;
             }
 
             if (_navState.flying && _navState.mountingUp && Dalamud.Conditions[ConditionFlag.Mounted])
             {
                 // Switch vnavmesh to fly mode when mounted up
-                var wp = VNavmesh.Path.ListWaypoints()
+                path = VNavmesh.Path.ListWaypoints()
                     // Remove waypoints that are too close.
                     .SkipWhile(p => Vector2.DistanceSquared(player.AsVector2(), p.AsVector2()) < 16f)
                     .ToList();
 
                 VNavmesh.Path.Stop();
-                VNavmesh.Path.MoveTo(wp, true);
+                VNavmesh.Path.MoveTo(path, true);
                 _navState.mountingUp = false;
-                GatherBuddy.Log.Debug($"Switching to flying movement, {wp.Count} waypoints left.");
+                GatherBuddy.Log.Debug($"Switching to flying movement, {path.Count} waypoints left.");
                 return;
             }
 
             if (_navState.task == null || _navState.cts == null || !_navState.task.IsCompleted)
                 return;
 
-            List<Vector3> path;
             try
             {
                 path = _navState.task.Result;
@@ -396,15 +396,16 @@ namespace GatherBuddy.AutoGather
                 else switch (_navState.stage)
                     {
                         case PathfindingStage.InitialCombinedPathfinding:
+                        case PathfindingStage.RetryCombinedPathfinding:
                             pathtype = "combined";
                             _navState.stage = PathfindingStage.Done;
+                            // Extract landing waypoint that is passed at the end of the list by FindCombinedPath()
+                            var landWP = path[^1];
+                            path.RemoveAt(path.Count - 1);
+                            _navState.landWP = path.Count - path.FindLastIndex(x => x == landWP);
                             break;
                         case PathfindingStage.FallbackDirectPathfinding:
                             pathtype = "fallback direct";
-                            _navState.stage++;
-                            break;
-                        case PathfindingStage.RetryCombinedPathfinding:
-                            pathtype = "combined";
                             _navState.stage++;
                             break;
                     }
@@ -455,7 +456,12 @@ namespace GatherBuddy.AutoGather
             var flyPath = await VNavmesh.Nav.PathfindCancelable(player, meshWP.Value, true, token);
             if (flyPath.Count == 0) return [];
 
+            if (flyPath.Count > 1 && Vector3.DistanceSquared(flyPath[^1], flyPath[^2]) < 0.01f) 
+                flyPath.RemoveAt(flyPath.Count - 1);
+
+            landingWP = flyPath[^1];
             flyPath.AddRange(groundPath.Skip(n + 1));
+            flyPath.Add(landingWP); // Pass landing waypoint at the end of the list; it will be handled separately.
             return flyPath;
 
             int FindIntersection(List<Vector3> wp, Vector3 p, float radius)
