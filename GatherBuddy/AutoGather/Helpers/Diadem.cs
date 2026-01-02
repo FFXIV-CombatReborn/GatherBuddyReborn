@@ -40,6 +40,8 @@ namespace GatherBuddy.AutoGather.Helpers
         public static FrozenSet<GatheringNode> RegularBaseNodes { get; private set; }
         public static FrozenSet<Gatherable> RegularItems { get; private set; }
         public static FrozenSet<Gatherable> OddlyDelicateItems { get; private set; }
+        public static FrozenDictionary<uint, uint> RawToApprovedItemIds { get; private set; }
+        public static FrozenDictionary<uint, uint> ApprovedToRawItemIds { get; private set; }
 
         static Diadem()
         {
@@ -73,6 +75,14 @@ namespace GatherBuddy.AutoGather.Helpers
             RegularItems = RegularBaseNodes.SelectMany(bn => bn.Items).ToFrozenSet();
 
             OddlyDelicateItems = [GatherBuddy.GameData.Gatherables[31767], GatherBuddy.GameData.Gatherables[31769]];
+
+            RawToApprovedItemIds = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.HWDGathererInspection>()
+                .SelectMany(x => x.HWDGathererInspectionData)
+                .Where(x => x.RequiredItem.IsValid && x.RequiredItem.RowId != 0 && x.ItemReceived.IsValid && x.ItemReceived.RowId != 0)
+                .Where(x => x.RequiredItem.Value.Item.Is<Lumina.Excel.Sheets.Item>() && x.RequiredItem.Value.Item.RowId != 0)
+                .ToFrozenDictionary(x => x.RequiredItem.Value.Item.RowId, x => x.ItemReceived.RowId);
+
+            ApprovedToRawItemIds = RawToApprovedItemIds.ToFrozenDictionary(x => x.Value, x => x.Key);
         }
         public Diadem()
         {
