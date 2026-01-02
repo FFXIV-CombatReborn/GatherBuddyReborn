@@ -1,18 +1,17 @@
-using System;
-using System.Collections.Generic;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Classes;
-using System.Linq;
-using System.Runtime.InteropServices;
-using Dalamud.Game.ClientState.Conditions;
 using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Data;
-using GatherBuddy.Plugin;
+using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
+using GatherBuddy.Plugin;
+using GatherBuddy.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 
 namespace GatherBuddy.AutoGather
 {
@@ -24,35 +23,34 @@ namespace GatherBuddy.AutoGather
             if (targetSystem == null)
                 return;
 
+            // Delay interaction by one frame after stopping movement to avoid the "Unable to execute command while in flight" error.
             TaskManager.Enqueue(() =>
             {
                 _lastNodeInteractionTime = Environment.TickCount64;
                 targetSystem->OpenObjectInteraction((FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)gameObject.Address);
+                GatherBuddy.Log.Debug($"Interacting with node, "
+                    + $"distanceXZ: {Vector2.Distance(gameObject.Position.ToVector2(), Player.Position.ToVector2())}, "
+                    + $"distanceY: {Player.Position.Y - gameObject.Position.Y}, "
+                    + $"Conditions: {string.Join(' ', Dalamud.Conditions.AsReadOnlySet())}.");
             });
-            TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.Gathering], 500);
-            
-            TaskManager.Enqueue(() => {
-                if (!Dalamud.Conditions[ConditionFlag.Gathering])
+
+            // If flying, it takes up to 600 ms for the Mounted condition to fade and up to 500 ms more for the Gathering condition to appear.
+
+            TaskManager.Enqueue(() =>
+            {
+                if (Dalamud.Conditions[ConditionFlag.Gathering])
                 {
-                    targetSystem->OpenObjectInteraction((FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)gameObject.Address);
+                    GatherBuddy.Log.Debug($"Opening node took {Environment.TickCount64 - _lastNodeInteractionTime} ms.");
+                    return true;
                 }
-            });
-            TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.Gathering], 500);
-            
-            TaskManager.Enqueue(() => {
+                return false;
+            }, 1100, "Node interaction");
+
+            TaskManager.Enqueue(() =>
+            {
                 if (!Dalamud.Conditions[ConditionFlag.Gathering] && Dalamud.Conditions[ConditionFlag.Mounted] && Dalamud.Conditions[ConditionFlag.InFlight] && !Dalamud.Conditions[ConditionFlag.Diving])
                 {
-                    try
-                    {
-                        var floor = VNavmesh.Query.Mesh.PointOnFloor(Player.Position, false, 3);
-                        Navigate(floor, true);
-                        TaskManager.Enqueue(() => !IsPathGenerating);
-                        TaskManager.DelayNext(50);
-                        TaskManager.Enqueue(() => !IsPathing, 1000);
-                        EnqueueDismount();
-                    }
-                    catch { }
-                    TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
+                    ForceLandAndDismount();
                 }
             });
         }

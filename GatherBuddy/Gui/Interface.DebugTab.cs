@@ -835,7 +835,6 @@ public partial class Interface
 
         ImGui.Text($"Enabled: {GatherBuddy.AutoGather.Enabled}");
         ImGui.Text($"Status: {GatherBuddy.AutoGather.AutoStatus}");
-        ImGui.Text($"Navigation: {GatherBuddy.AutoGather.LastNavigationResult}");
         ImGui.Text($"Current Destination: {GatherBuddy.AutoGather.CurrentDestination}");
         ImGui.Text($"IsGathering: {GatherBuddy.AutoGather.IsGathering}");
         ImGui.Text($"IsPathing: {GatherBuddy.AutoGather.IsPathing}");
