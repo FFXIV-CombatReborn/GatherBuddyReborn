@@ -35,10 +35,9 @@ namespace GatherBuddy.AutoGather.Movement
 
             var now = DateTime.Now;
 
-            //On cooldown, not navigating or near the destination: disable tracking and reset
+            //On cooldown or not navigating: disable tracking and reset
             if (now.Subtract(_unstuckStart).TotalSeconds < GatherBuddy.Config.AutoGatherConfig.NavResetCooldown
-                || destination == default
-                || Vector2.Distance(destination.ToVector2(), Player.Position.ToVector2()) < 3.5)
+                || destination == default)
             {
                 _lastCheck = DateTime.MinValue;
                 return AdvancedUnstuckCheckResult.Pass;
