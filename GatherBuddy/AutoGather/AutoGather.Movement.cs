@@ -257,7 +257,7 @@ namespace GatherBuddy.AutoGather
             playerObject->SetRotation(angle.Rad);
         }
 
-        private void Navigate(Vector3 destination, bool shouldFly, bool preferGround = false, bool direct = false)
+        private void Navigate(Vector3 destination, bool shouldFly, bool direct = false)
         {
             var canMount = Vector2.Distance(destination.ToVector2(), Player.Position.ToVector2()) >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance && CanMount();
             if (!Dalamud.Conditions[ConditionFlag.Mounted] && canMount)
@@ -290,7 +290,7 @@ namespace GatherBuddy.AutoGather
             shouldFly &= canMount || Dalamud.Conditions[ConditionFlag.Mounted];
             shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
 
-            var offsettedDestination = GetCorrectedDestination(destination, preferGround);
+            var offsettedDestination = GetCorrectedDestination(destination);
             _navState = default;
             _navState.destination = destination;
             _navState.flying = shouldFly;
@@ -504,7 +504,7 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private static Vector3 GetCorrectedDestination(Vector3 destination, bool preferGround = false)
+        private static Vector3 GetCorrectedDestination(Vector3 destination)
         {
             const float MaxHorizontalSeparation = 3.0f;
             const float MaxVerticalSeparation = 2.5f;
@@ -525,22 +525,6 @@ namespace GatherBuddy.AutoGather
 
                 // There was code that corrected the destination to the nearest point on the mesh, but testing showed that
                 // navigating directly to the node yields better results, and points within landing distance are on the mesh anyway.
-
-                if (preferGround)
-                {
-                    const float GroundSearchRadius = 15f;
-                    const float MaxGroundHorizontalSeparation = 7.5f;
-                    const float MaxGroundVerticalSeparation = 10f;
-                    
-                    var groundPoint = VNavmesh.Query.Mesh.PointOnFloor(destination, false, GroundSearchRadius).GetValueOrDefault(destination);
-                    var hDist = Vector2.Distance(groundPoint.ToVector2(), destination.ToVector2());
-                    var vDist = Math.Abs(groundPoint.Y - destination.Y);
-                        
-                    if (hDist <= MaxGroundHorizontalSeparation && vDist <= MaxGroundVerticalSeparation)
-                    {
-                        return groundPoint;
-                    }
-                }
             }
             catch (Exception) { }
 
@@ -556,7 +540,7 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void MoveToFishingSpot(Vector3 position, Angle angle)
         {
-            Navigate(position, ShouldFly(position), preferGround: true);
+            Navigate(position, ShouldFly(position));
         }
 
         public static Aetheryte? FindClosestAetheryte(ILocation location)
