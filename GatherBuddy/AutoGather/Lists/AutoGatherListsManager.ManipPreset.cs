@@ -116,6 +116,11 @@ public partial class AutoGatherListsManager
             return;
         }
         
+        if (!list.Enabled && !ValidateGatherablePerception(list))
+        {
+            return;
+        }
+        
         list.Enabled = !list.Enabled;
         Save();
         if (list.Items.Count > 0)
@@ -218,6 +223,75 @@ public partial class AutoGatherListsManager
         }
     }
     
+    private bool ValidateGatherablePerception(AutoGatherList list)
+    {
+        try
+        {
+            var gatherablesInList = list.Items.OfType<Gatherable>().Where(g => list.EnabledItems.TryGetValue(g, out var enabled) && enabled).ToList();
+            if (gatherablesInList.Count == 0)
+                return true;
+            
+            var playerPerception = DiscipleOfLand.Perception;
+            var insufficientPerception = new System.Collections.Generic.List<(string Name, int Required, int Current)>();
+            
+            foreach (var gatherable in gatherablesInList)
+            {
+                var requiredPerception = (int)gatherable.GatheringData.PerceptionReq;
+                if (requiredPerception == 0)
+                    continue;
+                
+                if (playerPerception < requiredPerception)
+                {
+                    insufficientPerception.Add((gatherable.Name[GatherBuddy.Language], requiredPerception, playerPerception));
+                }
+            }
+            
+            if (insufficientPerception.Count > 0)
+            {
+                var itemDetails = string.Join(", ", insufficientPerception.Select(x => $"{x.Name} (needs {x.Required})"));
+                Communicator.PrintError($"[Auto-Gather] Cannot enable list '{list.Name}': Insufficient perception (current: {playerPerception}): {itemDetails}");
+                GatherBuddy.Log.Error($"[Auto-Gather] List '{list.Name}' not enabled: Insufficient perception {playerPerception}");
+                return false;
+            }
+            
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            GatherBuddy.Log.Error($"[Auto-Gather] Error validating gatherable perception: {ex.Message}\n{ex.StackTrace}");
+            return true;
+        }
+    }
+    
+    private bool ValidateSingleGatherablePerception(IGatherable item)
+    {
+        if (item is not Gatherable gatherable)
+            return true;
+        
+        try
+        {
+            var requiredPerception = (int)gatherable.GatheringData.PerceptionReq;
+            if (requiredPerception == 0)
+                return true;
+            
+            var playerPerception = DiscipleOfLand.Perception;
+            
+            if (playerPerception < requiredPerception)
+            {
+                Communicator.PrintError($"[Auto-Gather] Cannot add/enable {gatherable.Name[GatherBuddy.Language]}: Insufficient perception (needs {requiredPerception}, current: {playerPerception})");
+                GatherBuddy.Log.Error($"[Auto-Gather] Gatherable {gatherable.ItemId} not enabled: Needs {requiredPerception} perception, current: {playerPerception}");
+                return false;
+            }
+            
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            GatherBuddy.Log.Error($"[Auto-Gather] Error validating single gatherable perception: {ex.Message}");
+            return true;
+        }
+    }
+    
     private uint? GetCustomPresetBaitId(uint fishId)
     {
         try
@@ -280,6 +354,10 @@ public partial class AutoGatherListsManager
             {
                 list.SetEnabled(item, false);
             }
+            if (list.Enabled && !ValidateSingleGatherablePerception(item))
+            {
+                list.SetEnabled(item, false);
+            }
             Save();
             if (list.Enabled)
                 SetActiveItems();
@@ -323,6 +401,11 @@ public partial class AutoGatherListsManager
     public void ChangeEnabled(AutoGatherList list, IGatherable item, bool enabled)
     {
         if (enabled && list.Enabled && !ValidateSingleFishBait(item))
+        {
+            return;
+        }
+        
+        if (enabled && list.Enabled && !ValidateSingleGatherablePerception(item))
         {
             return;
         }
