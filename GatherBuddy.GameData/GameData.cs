@@ -117,7 +117,8 @@ public class GameData
             Gatherables = DataManager.GetExcelSheet<GatheringItem>()
                 .Where(g => g.Item.RowId != 0 && g.Item.RowId < 1000000 && g.Item.TryGetValue<Item>(out var i) && !i.Name.IsEmpty)
                 .GroupBy(g => g.Item.RowId)
-                .Select(group => group.First())
+                // The Diadem items have multiple matching GatheringItem rows; take the newest
+                .Select(group => group.MaxBy(g => g.RowId))
                 .ToFrozenDictionary(g => g.Item.RowId, g => new Gatherable(this, g));
             GatherablesByGatherId = Gatherables.Values.ToFrozenDictionary(g => g.GatheringId, g => g);
             Log.Verbose("Collected {NumGatherables} different gatherable items.", Gatherables.Count);
@@ -226,6 +227,10 @@ public class GameData
     {
         if (t == null || t.Value.RowId < 2)
             return null;
+
+        // Upgrade The Diadem territory to the latest instance
+        if (t.Value.RowId is 901 or 929)
+            t = DataManager.GetExcelSheet<TerritoryType>().GetRow(939);
 
         if (Territories.TryGetValue(t.Value.RowId, out var territory))
             return territory;

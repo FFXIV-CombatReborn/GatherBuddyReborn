@@ -4,6 +4,7 @@ using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
 
@@ -132,6 +133,9 @@ public class ContextMenu : IDisposable
             itemId -= 1000000u;
         else if (itemId >= 500000u)
             itemId -= 500000u;
+
+        if (Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
+            itemId = rawItemId;
 
         if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var g))
             return g;

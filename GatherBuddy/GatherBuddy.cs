@@ -29,6 +29,7 @@ using ElliLib;
 using ElliLib.Classes;
 using ElliLib.Log;
 using GatherBuddy.AutoGather;
+using Dalamud.IoC;
 
 namespace GatherBuddy;
 

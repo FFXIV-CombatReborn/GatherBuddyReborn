@@ -86,77 +86,78 @@ namespace GatherBuddy.AutoGather
             targetSystem->Target = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)gameObject.Address;
         }
         
-        private unsafe void TryUseAetherCannon()
+        private unsafe bool TryUseAetherCannon()
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon)
-                return;
+                return false;
             if (!Plugin.Functions.InTheDiadem())
-                return;
+                return false;
             if (IsPathing)
-                return;
+                return false;
             if (DateTime.UtcNow - _lastAetherTarget < _aetherDebounce)
-                return;
+                return false;
             if (!IsDiademAetherGaugeReady())
-                return;
+                return false;
 
             var enemy = FindNearbyEnemyForAether();
-            if (enemy != null)
+            if (enemy == null)
+                return false;
+
+            var enemyId = enemy.GameObjectId;
+            TargetByGameObject(enemy);
+            _lastAetherTarget = DateTime.UtcNow;
+            GatherBuddy.Log.Debug($"[Diadem] Targeting enemy {enemy.Name} (ID: {enemyId}) at {enemy.Position}");
+
+            TaskManager.DelayNext(100);
+
+            TaskManager.Enqueue(() =>
             {
-                var enemyId = enemy.GameObjectId;
-                TargetByGameObject(enemy);
-                _lastAetherTarget = DateTime.UtcNow;
-                GatherBuddy.Log.Debug($"[Diadem] Targeting enemy {enemy.Name} (ID: {enemyId}) at {enemy.Position}");
-                
-                TaskManager.DelayNext(100);
-                
-                TaskManager.Enqueue(() =>
+                var currentTarget = Dalamud.Targets.Target;
+                if (currentTarget == null || currentTarget.GameObjectId != enemyId)
                 {
-                    var currentTarget = Dalamud.Targets.Target;
-                    if (currentTarget == null || currentTarget.GameObjectId != enemyId)
-                    {
-                        GatherBuddy.Log.Debug($"[Diadem] Target not set properly. Current: {currentTarget?.Name ?? "null"}");
-                        return true;
-                    }
-                    
-                    GatherBuddy.Log.Debug($"[Diadem] Target confirmed: {currentTarget.Name}, distance: {Vector3.Distance(Player.Position, currentTarget.Position):F1}y");
+                    GatherBuddy.Log.Debug($"[Diadem] Target not set properly. Current: {currentTarget?.Name ?? "null"}");
                     return true;
-                });
-                
-                EnqueueActionWithDelay(() =>
+                }
+
+                GatherBuddy.Log.Debug($"[Diadem] Target confirmed: {currentTarget.Name}, distance: {Vector3.Distance(Player.Position, currentTarget.Position):F1}y");
+                return true;
+            });
+
+            EnqueueActionWithDelay(() =>
+            {
+                var currentTarget = Dalamud.Targets.Target;
+                if (currentTarget == null)
                 {
-                    var currentTarget = Dalamud.Targets.Target;
-                    if (currentTarget == null)
-                    {
-                        GatherBuddy.Log.Debug($"[Diadem] No target when trying to fire");
-                        return;
-                    }
-                    
-                    var amInstance = ActionManager.Instance();
-                    if (amInstance == null)
-                    {
-                        GatherBuddy.Log.Debug($"[Diadem] ActionManager.Instance() is null");
-                        return;
-                    }
-                    
-                    var targetId = currentTarget.GameObjectId;
-                    var actionStatus = amInstance->GetActionStatus(ActionType.Action, AethercannonActionId);
-                    GatherBuddy.Log.Debug($"[Diadem] Firing at target ID {targetId}, action status: {actionStatus}");
-                    
-                    if (actionStatus == 0)
-                    {
-                        var result = amInstance->UseAction(ActionType.Action, AethercannonActionId, targetId);
-                        GatherBuddy.Log.Debug($"[Diadem] UseAction returned: {result}");
-                    }
-                    else
-                    {
-                        GatherBuddy.Log.Debug($"[Diadem] Cannot use action, status code: {actionStatus}");
-                    }
-                });
-                
-                TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.Casting], 1000, "Wait for aethercannon cast start");
-                TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Casting], 5000, "Wait for aethercannon cast finish");
-                TaskManager.DelayNext(500);
-            }
+                    GatherBuddy.Log.Debug($"[Diadem] No target when trying to fire");
+                    return;
+                }
+
+                var amInstance = ActionManager.Instance();
+                if (amInstance == null)
+                {
+                    GatherBuddy.Log.Debug($"[Diadem] ActionManager.Instance() is null");
+                    return;
+                }
+
+                var targetId = currentTarget.GameObjectId;
+                var actionStatus = amInstance->GetActionStatus(ActionType.Action, AethercannonActionId);
+                GatherBuddy.Log.Debug($"[Diadem] Firing at target ID {targetId}, action status: {actionStatus}");
+
+                if (actionStatus == 0)
+                {
+                    var result = amInstance->UseAction(ActionType.Action, AethercannonActionId, targetId);
+                    GatherBuddy.Log.Debug($"[Diadem] UseAction returned: {result}");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug($"[Diadem] Cannot use action, status code: {actionStatus}");
+                }
+            });
+
+            TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.Casting], 1000, "Wait for aethercannon cast start");
+            TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Casting], 5000, "Wait for aethercannon cast finish");
+            TaskManager.DelayNext(500);
+            return true;
         }
     }
 }
