@@ -367,6 +367,9 @@ namespace GatherBuddy.AutoGather
 
             HandlePathfinding(); // This should be done before checking TaskManager
 
+            if (Dalamud.Conditions[ConditionFlag.Jumping61] && IsPathing) // Jumping Windmire
+                StopNavigation();
+
             if (TaskManager.IsBusy)
             {
                 //GatherBuddy.Log.Verbose("TaskManager has tasks, skipping DoAutoGather");
@@ -1738,7 +1741,7 @@ namespace GatherBuddy.AutoGather
             var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
             
             var hasUmbralItems = HasUmbralItemsInActiveList();
-                
+
             if (isUmbralWeather && hasUmbralItems)
             {
                 var currentUmbralWeather = (UmbralNodes.UmbralWeatherType)currentWeather;
@@ -1766,7 +1769,8 @@ namespace GatherBuddy.AutoGather
                             {
                                 AutoStatus = $"Rushing to umbral node {nodeId} (Weather: {currentUmbralWeather}, {distance:F0}y)...";
 
-                                Navigate(targetPosition, ShouldFly(targetPosition));
+                                var jump = TryWindmireJump(ref targetPosition);
+                                Navigate(targetPosition, ShouldFly(targetPosition), direct: jump);
                                 return true;
                             }
                             else
@@ -1872,7 +1876,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            // Let normal navigation logic handle Skybuilders quest items.
+            // Let normal navigation logic handle Skybuilders' Tools quest items.
             if (Diadem.OddlyDelicateItems.Any(i => i == next.First().Item))
                 return false;
 
@@ -1926,8 +1930,12 @@ namespace GatherBuddy.AutoGather
                     }
                     else
                     {
-                        AutoStatus = $"Moving to next Diadem node ({nextNode.Position.DistanceToPlayer():F0}y)...";
-                        MoveToCloseNode(nextNode, next.First().Gatherable!, config);
+                        AutoStatus = $"Moving to next Diadem node ({Vector3.Distance(player, nextNode.Position):F0}y)...";
+                        var pos = nextNode.Position;
+                        if (TryWindmireJump(ref pos))
+                            Navigate(pos, ShouldFly(pos), direct: true);
+                        else
+                            MoveToCloseNode(nextNode, next.First().Gatherable!, config);
                         return true;
                     }
                 }
@@ -1936,14 +1944,39 @@ namespace GatherBuddy.AutoGather
                     var pos = WorldData.WorldLocationsByNodeId[path[_diademPathIndex]]
                         .OrderBy(pos => Vector3.DistanceSquared(pos, player))
                         .First();
-                    AutoStatus = $"Moving to next Diadem node ({pos.DistanceToPlayer():F0}y)...";
-                    Navigate(pos, ShouldFly(pos));
+
+                    AutoStatus = $"Moving to next Diadem node ({Vector3.Distance(player, pos):F0}y)...";
+
+                    var jump = TryWindmireJump(ref pos);
+                    Navigate(pos, ShouldFly(pos), direct: jump);
                     return true;
                 }
             }
 
             AutoStatus = "No suitable Diadem nodes found, waiting...";
             return true;
+
+            bool TryWindmireJump(ref Vector3 destination)
+            {
+                if (!GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps)
+                    return false;
+
+                var pos = destination;
+
+                var ((windmire, _), windmireDistance) = Diadem.Windmires
+                        .Select(w => (w, Distance: Vector3.Distance(player, w.From) + Vector3.Distance(w.To, pos)))
+                        .MinBy(x => x.Distance);
+
+                var directDistance = Vector3.Distance(player, pos);
+
+                // Use Windmire only if it provides a 2x advantage in distance.
+                if (windmireDistance * 2f < directDistance)
+                {
+                    destination = windmire;
+                    return true;
+                }
+                return false;
+            }
         }
 
         private void DoNodeMovement(IEnumerable<GatherTarget> next, ConfigPreset config)

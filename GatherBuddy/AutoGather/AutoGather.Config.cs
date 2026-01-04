@@ -102,6 +102,7 @@ namespace GatherBuddy.AutoGather
         public bool UseHookTimers { get; set; } = false;
         public bool AutoCollectablesFishing { get; set; } = true;
         public bool DiademAutoAetherCannon { get; set; } = false;
+        public bool DiademWindmireJumps { get; set; } = false;
         public bool DeferRepairDuringFishingBuffs { get; set; } = true;
         public bool DeferReductionDuringFishingBuffs { get; set; } = true;
         public bool DeferMateriaExtractionDuringFishingBuffs { get; set; } = true;

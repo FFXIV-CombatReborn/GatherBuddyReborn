@@ -1273,6 +1273,13 @@ public partial class Interface
               + "Only fires while not pathing/navigating. 2-second cooldown between uses.",
                 GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon = b);
+
+        public static void DrawDiademWindmireJumps()
+            => DrawCheckbox("Diadem Windmire Jumps",
+                "Allows the use of Windmires for jumping between islands in the Diadem.\n" +
+                "Windmires will only be used when they provide a significant distance advantage over normal movement.",
+                GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps,
+                b => GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps = b);
         
         public static void DrawCollectableAutoTurninBox()
             => DrawCheckbox("Auto-turn in collectables",
@@ -1602,6 +1609,7 @@ public partial class Interface
                     ConfigFunctions.DrawAutoretainerTimedNodeDelayBox();
                 }
                 ConfigFunctions.DrawDiademAutoAetherCannonBox();
+                ConfigFunctions.DrawDiademWindmireJumps();
                 ConfigFunctions.DrawSortingMethodCombo();
                 ConfigFunctions.DrawLifestreamCommandTextInput();
                 ConfigFunctions.DrawAntiStuckCooldown();

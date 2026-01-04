@@ -42,6 +42,26 @@ namespace GatherBuddy.AutoGather.Helpers
         public static FrozenSet<Gatherable> OddlyDelicateItems { get; private set; }
         public static FrozenDictionary<uint, uint> RawToApprovedItemIds { get; private set; }
         public static FrozenDictionary<uint, uint> ApprovedToRawItemIds { get; private set; }
+        public static ImmutableArray<(Vector3 From, Vector3 To)> Windmires { get; private set; } = [
+            (Vector3.Create(-724.649f,270.846f,-27.428f),Vector3.Create(-540.327f,317.677f,323.471f)),
+            (Vector3.Create(-558.688f,318.068f,308.976f),Vector3.Create(-723.915f,271.008f,-49.867f)),
+            (Vector3.Create(-287.557f,318.234f,558.728f),Vector3.Create(-118.239f,114.119f,537.373f)),
+            (Vector3.Create(-140.415f,113.127f,519.463f),Vector3.Create(-311.086f,317.677f,560.815f)),
+            (Vector3.Create(274.797f,85.048f,470.526f),Vector3.Create(359.416f,-4.959f,450.553f)),
+            (Vector3.Create(467.156f,-25.674f,187.769f),Vector3.Create(661.631f,223.636f,-57.878f)),
+            (Vector3.Create(713.130f,218.108f,-334.355f),Vector3.Create(640.518f,251.972f,-401.531f)),
+            (Vector3.Create(603.883f,251.803f,-411.563f),Vector3.Create(546.746f,192.386f,-516.838f)),
+            (Vector3.Create(469.004f,191.349f,-667.111f),Vector3.Create(388.159f,290.028f,-713.512f)),
+            (Vector3.Create(177.985f,292.541f,-737.720f),Vector3.Create(129.320f,-49.587f,-512.261f)),
+            (Vector3.Create(-590.303f,33.309f,-230.903f),Vector3.Create(-623.508f,282.778f,-175.324f)),
+            (Vector3.Create(-629.557f,280.432f,-187.958f),Vector3.Create(-575.189f,34.246f,-236.601f)),
+            (Vector3.Create(340.000f,-4.986f,471.190f),Vector3.Create(257.618f,86.381f,487.877f)),
+            (Vector3.Create(137.765f,-50.296f,-481.785f),Vector3.Create(203.764f,293.528f,-736.416f)),
+            (Vector3.Create(434.434f,289.603f,-735.568f),Vector3.Create(473.259f,200.712f,-636.561f)),
+            (Vector3.Create(528.247f,189.653f,-494.262f),Vector3.Create(624.109f,251.972f,-423.270f)),
+            (Vector3.Create(636.711f,251.792f,-389.120f),Vector3.Create(713.730f,219.938f,-311.411f)),
+            (Vector3.Create(657.981f,222.430f,-33.609f),Vector3.Create(466.911f,-23.926f,202.930f)),
+        ];
 
         static Diadem()
         {
