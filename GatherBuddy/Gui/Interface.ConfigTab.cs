@@ -276,6 +276,24 @@ public partial class Interface
             ImGuiUtil.HoverTooltip("The distance at which you will mount up to move to a node.");
         }
 
+        public static void DrawLandingDistance()
+        {
+            ImGui.SetNextItemWidth(150);
+            var tmp = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
+            if (ImGui.DragFloat("Landing Distance", ref tmp, 0.1f, 0.0f, 50f))
+            {
+                GatherBuddy.Config.AutoGatherConfig.LandingDistance = tmp;
+                GatherBuddy.Config.Save();
+            }
+
+            ImGuiUtil.HoverTooltip(
+                "The distance at which you will try to land.\n\n" +
+                "Low values increase the chance of being unable to dismount properly.\n" +
+                "High values may produce weird-looking paths.\n" +
+                "Reasonable values are between 4 and 8 yalms."
+            );
+        }
+
         public static void DrawMoveWhileMounting()
             => DrawCheckbox("Move while mounting up",
                 "Begin pathfinding to the next node while summoning a mount",
@@ -1255,6 +1273,13 @@ public partial class Interface
               + "Only fires while not pathing/navigating. 2-second cooldown between uses.",
                 GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon = b);
+
+        public static void DrawDiademWindmireJumps()
+            => DrawCheckbox("Diadem Windmire Jumps",
+                "Allows the use of Windmires for jumping between islands in the Diadem.\n" +
+                "Windmires will only be used when they provide a significant distance advantage over normal movement.",
+                GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps,
+                b => GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps = b);
         
         public static void DrawCollectableAutoTurninBox()
             => DrawCheckbox("Auto-turn in collectables",
@@ -1529,6 +1554,7 @@ public partial class Interface
             {
                 AutoGatherUI.DrawMountSelector();
                 ConfigFunctions.DrawMountUpDistance();
+                ConfigFunctions.DrawLandingDistance();
                 ConfigFunctions.DrawMoveWhileMounting();
                 ConfigFunctions.DrawHonkModeBox();
                 if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
@@ -1583,6 +1609,7 @@ public partial class Interface
                     ConfigFunctions.DrawAutoretainerTimedNodeDelayBox();
                 }
                 ConfigFunctions.DrawDiademAutoAetherCannonBox();
+                ConfigFunctions.DrawDiademWindmireJumps();
                 ConfigFunctions.DrawSortingMethodCombo();
                 ConfigFunctions.DrawLifestreamCommandTextInput();
                 ConfigFunctions.DrawAntiStuckCooldown();

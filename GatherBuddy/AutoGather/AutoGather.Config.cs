@@ -8,6 +8,7 @@ namespace GatherBuddy.AutoGather
     public class AutoGatherConfig
     {
         public float                           MountUpDistance               { get; set; } = 15.0f;
+        public float                           LandingDistance               { get; set; } = 6.0f;
         public uint                            AutoGatherMountId             { get; set; } = 1;
         public bool MoveWhileMounting { get; set; } = false;
         public Dictionary<uint, List<Vector3>> BlacklistedNodesByTerritoryId { get; set; } = new();
@@ -101,6 +102,7 @@ namespace GatherBuddy.AutoGather
         public bool UseHookTimers { get; set; } = false;
         public bool AutoCollectablesFishing { get; set; } = true;
         public bool DiademAutoAetherCannon { get; set; } = false;
+        public bool DiademWindmireJumps { get; set; } = false;
         public bool DeferRepairDuringFishingBuffs { get; set; } = true;
         public bool DeferReductionDuringFishingBuffs { get; set; } = true;
         public bool DeferMateriaExtractionDuringFishingBuffs { get; set; } = true;

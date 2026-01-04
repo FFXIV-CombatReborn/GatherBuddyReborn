@@ -1,23 +1,23 @@
-using System;
 using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
+using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Linq;
 using System.Numerics;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using GatherBuddy.Utilities;
-using GatherBuddy.AutoGather.AtkReaders;
+using System.Threading;
+using System.Threading.Tasks;
 using LuminaTerritoryType = Lumina.Excel.Sheets.TerritoryType;
 
 namespace GatherBuddy.AutoGather
@@ -28,16 +28,16 @@ namespace GatherBuddy.AutoGather
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Path.IsRunning();
 
         public bool IsPathGenerating
-            => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Nav.PathfindInProgress();
+            => _navState.task != null;
 
         public bool NavReady
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Nav.IsReady();
 
         private bool IsBlacklisted(Vector3 g)
         {
-            var blacklisted = GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId.ContainsKey(Dalamud.ClientState.TerritoryType)
-             && GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId[Dalamud.ClientState.TerritoryType].Contains(g);
-            return blacklisted;
+            var blacklist = GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId;
+            return blacklist.TryGetValue(Dalamud.ClientState.TerritoryType, out var points)
+                    && points.Contains(g);
         }
 
         public bool IsGathering
@@ -46,9 +46,16 @@ namespace GatherBuddy.AutoGather
         public bool IsFishing
             => Dalamud.Conditions[ConditionFlag.Fishing];
 
-        public  bool?      LastNavigationResult { get; set; }         = null;
-        public  Vector3    CurrentDestination   { get; private set; } = default;
-        public  Angle      CurrentRotation      { get; private set; } = default;
+        enum PathfindingStage
+        {
+            InitialCombinedPathfinding = 0,
+            FallbackDirectPathfinding = 1,
+            RetryCombinedPathfinding = 2,
+            Done = 3
+        }
+        private (Task<List<Vector3>>? task, CancellationTokenSource? cts, Vector3 destination, bool flying, bool mountingUp, bool direct, bool offset, PathfindingStage stage, long lastTry, int landWP) _navState;
+        public Vector3 CurrentDestination { get { return _navState.destination; } }
+
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 
@@ -158,22 +165,11 @@ namespace GatherBuddy.AutoGather
             => _activeItemList.DebugVisitedTimedLocations;
 
         public readonly HashSet<Vector3> FarNodesSeenSoFar = [];
-        public readonly LinkedList<uint> VisitedNodes      = [];
+        public readonly LinkedList<uint> VisitedNodes      = [];        
+        // Distance at which a node is expected to become visible, and it is given up on if it does not.
+        public const float NodeVisibilityDistance = 50f;
 
-        private readonly Dictionary<Vector3, DateTime> _diademSpawnAreaLastChecked = new();
-        private Vector3? _currentDiademPatrolTarget = null;
-        private const float DiademSpawnAreaCheckRadius = 80f;
-        private const int DiademSpawnAreaRecheckSeconds = 180;
-        
-        private readonly LinkedList<Vector3> _diademRecentlyGatheredNodes = new();
-        private const int DiademNodeRespawnWindow = 8;
-        
-        private DateTime _diademArborCallUsedAt = DateTime.MinValue;
-        private Vector3? _diademArborCallTarget = null;
-        
-        private readonly LinkedList<Vector3> _diademVisitedNodes = new();
-        private const int DiademVisitedNodeTrackingCount = 20;
-        private const float DiademNodeProximityThreshold = 5f;
+        private int _diademPathIndex = -1;
         
         private uint _lastUmbralWeather = 0;
         private bool _hasGatheredUmbralThisSession = false;
