@@ -8,6 +8,7 @@ namespace GatherBuddy.AutoGather
     public class AutoGatherConfig
     {
         public float                           MountUpDistance               { get; set; } = 15.0f;
+        public float                           LandingDistance               { get; set; } = 6.0f;
         public uint                            AutoGatherMountId             { get; set; } = 1;
         public bool MoveWhileMounting { get; set; } = false;
         public Dictionary<uint, List<Vector3>> BlacklistedNodesByTerritoryId { get; set; } = new();
