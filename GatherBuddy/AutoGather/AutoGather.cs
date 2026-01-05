@@ -55,6 +55,8 @@ namespace GatherBuddy.AutoGather
             _diadem                      =  new Diadem();
             ArtisanExporter              =  new Reflection.ArtisanExporter(plugin.AutoGatherListsManager);
             Dalamud.Chat.CheckMessageHandled += OnMessageHandled;
+            // TODO: Fix toast handler delegate signature
+            // Dalamud.ToastGui.Toast += OnToast;
             //Dalamud.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "Gathering", OnGatheringFinalize);
             _plugin.FishRecorder.Parser.CaughtFish += OnFishCaught;
         }
@@ -64,6 +66,13 @@ namespace GatherBuddy.AutoGather
         {
             PreviouslyCaughtFish = LastCaughtFish;
             LastCaughtFish       = arg1;
+            
+            // Reset amiss counter on successful catch (indicates amiss state cleared)
+            if (_consecutiveAmissCount > 0)
+            {
+                GatherBuddy.Log.Information($"[AutoGather] Fish caught successfully! Amiss counter reset from {_consecutiveAmissCount} to 0.");
+                _consecutiveAmissCount = 0;
+            }
             
             if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
             {
@@ -83,14 +92,58 @@ namespace GatherBuddy.AutoGather
 
         // Track the current gather target for robust node handling
         private GatherTarget? _currentGatherTarget;
+        private volatile bool _fishDetectedPlayer = false;
+        private volatile bool _fishWaryDetected = false; // Warning (3 min before amiss)
+        private int _consecutiveAmissCount = 0;
+
+        // TODO: Fix OnToast signature to match IToastGui.OnNormalToastDelegate
+        /*
+        private void OnToast(SeString message, bool isHandled)
+        {
+            try
+            {
+                var text = message.TextValue;
+                
+                // Check for fish anti-bot detection toasts
+                // "Fish have become wary" = warning (3 min before amiss)
+                // "Fish sense something amiss" = amiss (after ~50 min with rod out)
+                // Note: Using Contains for partial matching to support potential localization variations
+                if (text.Contains("wary", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("amiss", StringComparison.OrdinalIgnoreCase))
+                {
+                    GatherBuddy.Log.Warning($"[AutoGather] Fish detection toast received: '{text}' - triggering relocation.");
+                    _fishDetectedPlayer = true;
+                }
+            }
+            catch (Exception e)
+            {
+                GatherBuddy.Log.Error($"[AutoGather] Failed to handle toast: {e}");
+            }
+        }
+        */
 
         private void OnMessageHandled(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
             try
             {
+                var text = message.TextValue;
+                
+                // Check for fish anti-bot detection messages (backup for toast handler)
+                // Differentiate between wary (warning) and amiss (actual condition)
+                if (text.Contains("wary", StringComparison.OrdinalIgnoreCase))
+                {
+                    GatherBuddy.Log.Warning($"[AutoGather] Fish wary warning received: '{text}' - simple relocation.");
+                    _fishWaryDetected = true;
+                }
+                else if (text.Contains("amiss", StringComparison.OrdinalIgnoreCase))
+                {
+                    _consecutiveAmissCount++;
+                    GatherBuddy.Log.Warning($"[AutoGather] Fish amiss detected (count: {_consecutiveAmissCount}): '{text}'");
+                    _fishDetectedPlayer = true;
+                }
+                
                 if (type is (XivChatType)2243)
                 {
-                    var text = message.TextValue;
                     var id = Dalamud.GameData.GetExcelSheet<LogMessage>()
                         ?.FirstOrDefault(x => x.Text.ToString() == text).RowId;
 
@@ -162,6 +215,9 @@ namespace GatherBuddy.AutoGather
                     _hasGatheredUmbralThisSession = false;
                     _autoRetainerWasEnabledBeforeDiadem = false;
                     _diademPathIndex = -1;
+                    _fishDetectedPlayer = false;
+                    _fishWaryDetected = false;
+                    _consecutiveAmissCount = 0;
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
 
                     ClearSpearfishingSessionData();
@@ -1581,6 +1637,137 @@ namespace GatherBuddy.AutoGather
 
             if (IsFishing)
             {
+                // Check for wary warning (3-min heads-up before amiss)
+                if (_fishWaryDetected)
+                {
+                    _fishWaryDetected = false; // Reset the flag
+                    GatherBuddy.Log.Information($"[AutoGather] Fish wary warning - doing simple relocation (not counted toward amiss)...");
+                    
+                    var oldPosition = fishingSpotData.Position;
+                    const float MinRelocationDistance = 10.0f;
+                    var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(
+                        fish!.FishingSpot,
+                        oldPosition,
+                        MinRelocationDistance);
+
+                    if (positionData.HasValue)
+                    {
+                        var newPos = positionData.Value.Position;
+                        var newRot = positionData.Value.Rotation;
+                        var dist = Vector3.Distance(newPos, oldPosition);
+
+                        GatherBuddy.Log.Information($"[AutoGather] Wary relocation: {oldPosition} → {newPos}, distance={dist}y");
+                        FishingSpotData[fish] = (newPos, newRot, DateTime.MaxValue);
+                        
+                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                        {
+                            AutoHook.SetPluginState?.Invoke(false);
+                            AutoHook.SetAutoStartFishing?.Invoke(false);
+                        }
+                        
+                        AutoStatus = "Fish wary - relocating...";
+                        QueueQuitFishingTasks();
+                    }
+                    else
+                    {
+                        GatherBuddy.Log.Warning("[AutoGather] No alternate position for wary relocation, continuing...");
+                    }
+                    
+                    return;
+                }
+                
+                // Check if fish detected the player - escalating response for actual amiss
+                if (_fishDetectedPlayer)
+                {
+                    _fishDetectedPlayer = false; // Reset the flag
+
+                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                    {
+                        AutoHook.SetPluginState?.Invoke(false);
+                        AutoHook.SetAutoStartFishing?.Invoke(false);
+                    }
+                    
+                    // Escalating response based on how many times amiss has occurred
+                    if (_consecutiveAmissCount == 1)
+                    {
+                        // First occurrence: Try relocating within same spot
+                        GatherBuddy.Log.Warning($"[AutoGather] First amiss detection - relocating within spot...");
+                        var oldPosition = fishingSpotData.Position;
+
+                        const float MinRelocationDistance = 10.0f;
+                        var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(
+                            fish!.FishingSpot,
+                            oldPosition,
+                            MinRelocationDistance);
+
+                        if (!positionData.HasValue)
+                        {
+                            Communicator.PrintError(
+                                $"No alternate position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue.");
+                            AbortAutoGather();
+                            return;
+                        }
+
+                        var newPos = positionData.Value.Position;
+                        var newRot = positionData.Value.Rotation;
+                        var dist = Vector3.Distance(newPos, oldPosition);
+
+                        GatherBuddy.Log.Information($"[AutoGather] Relocating within '{fish.FishingSpot.Name}' " +
+                                      $"from {oldPosition} to {newPos}, distance={dist}y");
+
+                        FishingSpotData[fish] = (newPos, newRot, DateTime.MaxValue);
+                        
+                        AutoStatus = "Fish detected! Relocating and waiting...";
+                        QueueQuitFishingTasks();
+                        
+                        // Wait 30 seconds to give fish time to "calm down"
+                        TaskManager.DelayNext(30000);
+                        TaskManager.Enqueue(() => 
+                        {
+                            GatherBuddy.Log.Information("[AutoGather] Wait complete, resuming fishing...");
+                            return true;
+                        });
+                    }
+                    else
+                    {
+                        // Second+ occurrence: Teleport out of zone and return (always clears amiss)
+                        GatherBuddy.Log.Warning($"[AutoGather] Persistent amiss (count: {_consecutiveAmissCount}) - teleporting out of zone to clear state...");
+                        
+                        AutoStatus = "Persistent amiss! Teleporting out to clear...";
+                        QueueQuitFishingTasks();
+                        
+                        // Go home to clear the amiss state
+                        TaskManager.Enqueue(() => 
+                        {
+                            var wentHome = GoHome();
+                            if (wentHome)
+                            {
+                                GatherBuddy.Log.Information("[AutoGather] Teleported home. Waiting before returning to fishing spot...");
+                            }
+                            else
+                            {
+                                GatherBuddy.Log.Warning("[AutoGather] Could not teleport home (Lifestream not available?). Waiting at current location...");
+                            }
+                            return true;
+                        });
+                        
+                        // Wait at home for 10 seconds
+                        TaskManager.DelayNext(10000);
+                        
+                        // Reset counter and WentHome flag so we return
+                        TaskManager.Enqueue(() => 
+                        {
+                            _consecutiveAmissCount = 0; // Reset counter after zone teleport
+                            WentHome = false;
+                            GatherBuddy.Log.Information("[AutoGather] Amiss cleared by zone teleport. Returning to fishing spot...");
+                            AutoStatus = "Returning to fishing spot...";
+                            return true;
+                        });
+                    }
+                    
+                    return;
+                }
+                
                 if (fishingSpotData.Expiration < DateTime.Now)
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Fishing spot timer expired ({GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes} minutes), relocating...");
@@ -1619,6 +1806,7 @@ namespace GatherBuddy.AutoGather
                     QueueQuitFishingTasks();
                     return;
                 }
+                
                 
                 StopNavigation();
                 AutoStatus = "Fishing...";
@@ -2626,6 +2814,7 @@ namespace GatherBuddy.AutoGather
             _activeItemList.Dispose();
             _diadem?.Dispose();
             Dalamud.Chat.CheckMessageHandled -= OnMessageHandled;
+            // Dalamud.ToastGui.Toast -= OnToast; // TODO: Re-enable when toast handler signature is fixed
             //Dalamud.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "Gathering", OnGatheringFinalize);
         }
     }
