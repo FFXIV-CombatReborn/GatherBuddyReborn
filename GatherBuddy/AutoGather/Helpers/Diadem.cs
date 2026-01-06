@@ -33,9 +33,9 @@ namespace GatherBuddy.AutoGather.Helpers
         private const uint ChainsPerPath = 6;
         private const uint NodesPerChain = 8;
         private const uint NodesPerPath = ChainsPerPath * NodesPerChain;
-        private bool _wasGathering;
+        private uint _lastNode;
         private readonly byte[] _indexes = new byte[TotalPaths];
-        private readonly bool[] _initialized = new bool[TotalPaths];
+        private int _initialized; // bitfield
         public static FrozenDictionary<GatheringType, ImmutableArray<uint>> ShortestPaths { get; private set; }
         public static FrozenSet<GatheringNode> RegularBaseNodes { get; private set; }
         public static FrozenSet<Gatherable> RegularItems { get; private set; }
@@ -174,44 +174,46 @@ namespace GatherBuddy.AutoGather.Helpers
             if (!Functions.InTheDiadem())
             {
                 Array.Fill(_indexes, (byte)0);
-                Array.Fill(_initialized, true);
+                _initialized = (1 << (int)TotalPaths) - 1;
                 return;
             }
 
             var isGathering = Dalamud.Conditions[ConditionFlag.Gathering];
-            if (isGathering && !_wasGathering)
+
+            if (isGathering)
             {
                 // Advance index to the next node
-                _wasGathering = true;
                 var target = Dalamud.Targets.Target;
                 if (target != null && target.ObjectKind == ObjectKind.GatheringPoint)
                 {
                     var nodeId = target.BaseId;
                     if (nodeId >= FirstNode && nodeId <= LastNode)
                     {
-                        var pathIndex = (nodeId - FirstNode) / NodesPerPath;
-                        var nodeIndex = (nodeId - FirstNode + 1u) % NodesPerChain; // +1 to target the next node in chain
-                        if (_indexes[pathIndex] != nodeIndex)
-                        {
-                            //GatherBuddy.Log.Debug($"[Diadem] Changing path {pathIndex} index from {_indexes[pathIndex]} to {nodeIndex}");
-                            _indexes[pathIndex] = (byte)nodeIndex;
-                        }
-                        _initialized[pathIndex] = true;
+                        _lastNode = nodeId;
                     }
                 }
             }
-            else if (!isGathering && (_wasGathering || _initialized.Any(x => !x)))
+            else if (!isGathering && _lastNode != 0)
             {
-                // This is needed to counter manual intervention, e.g. enabling/rebuilding the plugin
-                // or closing a node without gathering it.
+                // Wait until the node becomes untargetable.
+                if (!Dalamud.Objects.Any(obj => obj.ObjectKind == ObjectKind.GatheringPoint && obj.IsTargetable && obj.BaseId == _lastNode))
+                {
+                    var pathIndex = (_lastNode - FirstNode) / NodesPerPath;
+                    var nodeIndex = (_lastNode - FirstNode + 1u) % NodesPerChain; // +1 to target the next node in chain
+                    _indexes[pathIndex] = (byte)nodeIndex;
+                    _initialized |= 1 << (int)pathIndex;
+                    _lastNode = 0u;
+                }
+            }
+            else if (!isGathering && _initialized != (1 << (int)TotalPaths) - 1)
+            {
+                // This is needed to support enabling/rebuilding the plugin inside The Diadem.
 
                 var jobOffset = Player.Job switch { 16 /*MIN*/ => 0, 17 /*BTN*/ => (int)PathsPerJob, _ => -1 };
                 if (jobOffset < 0) return;
 
                 var effectId = AutoGather.Actions.Prospect.EffectId;
                 if (!Player.Status?.Any(s => s.StatusId == effectId) ?? true) return;
-
-                _wasGathering = false;
 
                 foreach (var obj in Dalamud.Objects.Where(obj => obj.ObjectKind == ObjectKind.GatheringPoint))
                 {
@@ -220,6 +222,9 @@ namespace GatherBuddy.AutoGather.Helpers
 
                     var pathIndex = (int)((nodeId - FirstNode) / NodesPerPath);
                     var nodeIndex = (nodeId - FirstNode) % NodesPerChain;
+                    
+                    if ((_initialized & (1 << pathIndex)) != 0) continue;
+
                     if (obj.IsTargetable)
                     {
                         if (_indexes[pathIndex] != nodeIndex)
@@ -227,9 +232,9 @@ namespace GatherBuddy.AutoGather.Helpers
                             GatherBuddy.Log.Debug($"[Diadem] Changing path {pathIndex} index from {_indexes[pathIndex]} to {nodeIndex}");
                             _indexes[pathIndex] = (byte)nodeIndex;
                         }
-                        _initialized[pathIndex] = true;
+                        _initialized |= 1 << pathIndex;
                     }
-                    else if (!_initialized[pathIndex])
+                    else
                     {
                         if (_indexes[pathIndex] == nodeIndex
                             && nodeId >= FirstNode + jobOffset * NodesPerPath
