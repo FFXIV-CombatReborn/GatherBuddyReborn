@@ -48,7 +48,7 @@ public static partial class Fish
             .Weather(data, 49)
             .Bite(data, HookSet.Powerful, BiteType.Legendary);
         data.Apply(38835, Patch.GodsRevelLandsTremble) // Cosmic Haze
-            .Mooch(data, 36594, 36489)
+            .Mooch(data, 36595, 36489)
             .Time(1200, 240)
             .Weather(data, 149)
             .Bite(data, HookSet.Powerful, BiteType.Legendary);

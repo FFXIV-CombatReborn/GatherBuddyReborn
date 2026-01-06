@@ -104,7 +104,7 @@ public static partial class Fish
             .Predators (data, 180, (12800, 3), (12754, 5))
             .Weather   (data, 1, 2);
         data.Apply     (17589, Patch.TheFarEdgeOfFate) // Opabinia
-            .Mooch     (data, 30136, 12776)
+            .Mooch     (data, 12710, 12776)
             .Bite      (data, HookSet.Precise, BiteType.Legendary)
             .ForceLegendary()
             .Snag      (data, Snagging.None)

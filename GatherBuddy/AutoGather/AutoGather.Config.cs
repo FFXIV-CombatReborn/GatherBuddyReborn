@@ -82,7 +82,7 @@ namespace GatherBuddy.AutoGather
         public int SoundPlaybackVolume { get; set; } = 100;
         public bool FishDataCollection { get; set; } = false;
         public bool AlwaysGatherMaps { get; set; } = false;
-        public int MaxFishingSpotMinutes { get; set; } = 20;
+        public int MaxFishingSpotMinutes { get; set; } = 0;
         public bool UseNavigation { get; set; } = true;
         public bool UseAutoHook { get; set; } = true;
         public bool DisableAutoHookOnStop { get; set; } = false;

@@ -287,7 +287,7 @@ public static partial class Fish
             .Bait      (data, 36594)
             .Bite      (data, HookSet.Powerful, BiteType.Strong);
         data.Apply     (36489, Patch.Endwalker) // Vacuum Shrimp
-            .Bait      (data, 36594)
+            .Bait      (data, 36595)
             .Bite      (data, HookSet.Powerful, BiteType.Strong);
         data.Apply     (36491, Patch.Endwalker) // Cosmic Noise
             .Bait      (data, 36594)
