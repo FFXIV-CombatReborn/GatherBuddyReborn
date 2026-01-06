@@ -161,7 +161,7 @@ public static partial class Fish
             .Bait      (data, 20614)
             .Bite      (data, HookSet.Precise, BiteType.Weak);
         data.Apply     (20064, Patch.Stormblood) // Balloon Frog
-            .Bait      (data, 20614)
+            .Bait      (data, 20613)
             .Bite      (data, HookSet.Precise, BiteType.Weak)
             .Snag      (data, Snagging.None);
         data.Apply     (20065, Patch.Stormblood) // Lantern Marimo

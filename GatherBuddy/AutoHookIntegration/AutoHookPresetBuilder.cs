@@ -72,7 +72,7 @@ public class AutoHookPresetBuilder
         var additionalFish = new HashSet<Fish>();
         
         var targetBiteTypes = targetFish
-            .Select(f => f.BiteType)
+            .Select(f => f.Mooches.Length > 0 ? f.Mooches[0].BiteType : f.BiteType)
             .Where(bt => bt != BiteType.Unknown && bt != BiteType.None)
             .Distinct()
             .ToList();
@@ -101,10 +101,7 @@ public class AutoHookPresetBuilder
                     continue;
                 
                 if (targetBiteTypes.Contains(fish.BiteType))
-                {
-                    GatherBuddy.Log.Debug($"[AutoHook] Adding {fish.Name[GatherBuddy.Language]} ({fish.BiteType}) from fishing spot for Surface Slap");
                     additionalFish.Add(fish);
-                }
             }
         }
         
@@ -127,8 +124,10 @@ public class AutoHookPresetBuilder
             }
         }
         
-        var fishWithBait = allFishWithMooches.Where(f => f.Mooches.Length == 0).ToList();
-        var fishWithMooch = allFishWithMooches.Where(f => f.Mooches.Length > 0).ToList();
+        var moochChainFish = CollectAllFishInMoochChains(fishArray);
+        var surfaceSlapFish = allFishWithMooches.Where(f => !moochChainFish.Contains(f)).ToList();
+        var fishWithBait = moochChainFish.Where(f => f.Mooches.Length == 0).ToList();
+        var fishWithMooch = moochChainFish.Where(f => f.Mooches.Length > 0).ToList();
         
         uint? actualBaitId = null;
         
@@ -166,22 +165,10 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish);
+                ConfigureHookForFish(hookConfig, fish, configureLures: false);
             }
             
             preset.ListOfMooch.Add(hookConfig);
-        }
-        
-        GatherBuddy.Log.Debug($"[AutoHook] Created {preset.ListOfBaits.Count} bait configs and {preset.ListOfMooch.Count} mooch configs");
-        
-        // Debug: Check hookset states
-        foreach (var baitCfg in preset.ListOfBaits)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Bait {baitCfg.BaitFish.Id}: Weak={baitCfg.NormalHook.PatienceWeak.HooksetEnabled}, Strong={baitCfg.NormalHook.PatienceStrong.HooksetEnabled}, Legendary={baitCfg.NormalHook.PatienceLegendary.HooksetEnabled}");
-        }
-        foreach (var moochCfg in preset.ListOfMooch)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Mooch {moochCfg.BaitFish.Id}: Weak={moochCfg.NormalHook.PatienceWeak.HooksetEnabled}, Strong={moochCfg.NormalHook.PatienceStrong.HooksetEnabled}, Legendary={moochCfg.NormalHook.PatienceLegendary.HooksetEnabled}");
         }
         
         // Add all fish configs
@@ -189,16 +176,9 @@ public class AutoHookPresetBuilder
         {
             AddFishConfig(preset, fish, fishArray, allFishWithMooches);
         }
-        
-        GatherBuddy.Log.Debug($"[AutoHook] Added {preset.ListOfFish.Count} fish configs");
 
         ConfigureExtraCfg(preset, actualBaitId);
         ConfigureAutoCasts(preset, fishArray, gbrPreset);
-        
-        if (preset.AutoCastsCfg?.CastPatience != null)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Final preset Patience config: Enabled={preset.AutoCastsCfg.CastPatience.Enabled}, Id={preset.AutoCastsCfg.CastPatience.Id}, GP: {preset.AutoCastsCfg.CastPatience.GpThreshold} (Above={preset.AutoCastsCfg.CastPatience.GpThresholdAbove})");
-        }
         
         return preset;
     }
@@ -227,12 +207,10 @@ public class AutoHookPresetBuilder
         return preset;
     }
 
-    private static void ConfigureHookForFish(AHHookConfig hookConfig, Fish fish)
+    private static void ConfigureHookForFish(AHHookConfig hookConfig, Fish fish, bool configureLures = true)
     {
         var ahBiteType = ConvertBiteType(fish.BiteType);
         var ahHookType = ConvertHookSet(fish.HookSet);
-        
-        GatherBuddy.Log.Debug($"[AutoHook] Configuring hook for {fish.Name[GatherBuddy.Language]}: BiteType={fish.BiteType}->{ahBiteType}, HookSet={fish.HookSet}->{ahHookType}");
         
         if (ahBiteType == AHBiteType.Unknown || ahHookType == AHHookType.Unknown)
         {
@@ -243,20 +221,21 @@ public class AutoHookPresetBuilder
         var biteTimers = GatherBuddy.BiteTimerService.GetBiteTimers(fish.ItemId);
         var minTime = biteTimers?.WhiskerMin ?? 0;
         var maxTime = biteTimers?.WhiskerMax ?? 0;
-        
-        if (biteTimers != null)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Using bite timers for {fish.Name[GatherBuddy.Language]}: {minTime:F1}s - {maxTime:F1}s");
-        }
 
         var requiredLure = fish.Lure != Lure.None ? fish.Lure : (Lure?)null;
-        ConfigureLures(hookConfig.NormalHook, fish.HookSet, requiredLure);
+        if (configureLures)
+        {
+            ConfigureLures(hookConfig.NormalHook, fish.HookSet, requiredLure);
+        }
         SetHookConfiguration(hookConfig.NormalHook, ahBiteType, ahHookType, minTime, maxTime);
 
         if (fish.Predators.Length > 0)
         {
             hookConfig.IntuitionHook.UseCustomStatusHook = true;
-            ConfigureLures(hookConfig.IntuitionHook, fish.HookSet, requiredLure);
+            if (configureLures)
+            {
+                ConfigureLures(hookConfig.IntuitionHook, fish.HookSet, requiredLure);
+            }
             SetHookConfiguration(hookConfig.IntuitionHook, ahBiteType, ahHookType, minTime, maxTime);
         }
     }
@@ -299,8 +278,6 @@ public class AutoHookPresetBuilder
         };
 
         if (patienceConfig == null) return;
-
-        GatherBuddy.Log.Debug($"[AutoHook] Setting {biteType} hookset: Enabled={true}, Type={hookType}");
         
         // Set Patience hookset
         patienceConfig.HooksetEnabled = true;
@@ -410,18 +387,52 @@ public class AutoHookPresetBuilder
 
     private static void AddFishConfig(AHCustomPresetConfig preset, Fish fish, Fish[] targetFishList, HashSet<Fish> allFish)
     {
-        // The mooch ID should be the immediate predecessor fish in the chain
-        // which is the last element in the Mooches array
-        var mooch = new AHAutoMooch();
-        if (fish.Mooches.Length > 0)
+        bool isTargetFish = targetFishList.Any(f => f.ItemId == fish.ItemId);
+        if (isTargetFish)
+            return;
+        
+        var targetFish = targetFishList.FirstOrDefault();
+        if (targetFish == null)
         {
-            mooch = new AHAutoMooch(fish.Mooches[^1].ItemId);
+            return;
         }
         
-        // Configure Surface Slap based on config and bite type matching
-        var surfaceSlap = DetermineSurfaceSlap(fish, targetFishList, allFish);
+        var targetMoochChain = new HashSet<Fish>();
+        var currentFish = targetFish;
+        while (currentFish.Mooches.Length > 0)
+        {
+            var moochFish = currentFish.Mooches[^1];
+            if (targetMoochChain.Contains(moochFish))
+            {
+                break;
+            }
+            targetMoochChain.Add(moochFish);
+            currentFish = moochFish;
+        }
         
-        // Configure Identical Cast for target fish
+        bool isPartOfTargetMoochChain = targetMoochChain.Contains(fish);
+        
+        bool isSourceFish = false;
+        if (targetMoochChain.Count > 0)
+        {
+            var sourcefish = targetMoochChain.Last();
+            isSourceFish = fish.BiteType == sourcefish.BiteType && 
+                          fish.BiteType != BiteType.Unknown && 
+                          fish.BiteType != BiteType.None &&
+                          !isPartOfTargetMoochChain &&
+                          !targetFishList.Any(f => f.ItemId == fish.ItemId);
+        }
+        
+        if (!isPartOfTargetMoochChain && !isSourceFish)
+            return;
+        
+        AHAutoMooch? mooch = null;
+        if (isPartOfTargetMoochChain)
+        {
+            mooch = new AHAutoMooch(fish.ItemId);
+        }
+        
+        var surfaceSlap = DetermineSurfaceSlap(fish, targetFishList, allFish);
         var identicalCast = DetermineIdenticalCast(fish, targetFishList);
         
         var fishConfig = new AHFishConfig((int)fish.ItemId)
@@ -439,22 +450,14 @@ public class AutoHookPresetBuilder
     private static AHAutoSurfaceSlap DetermineSurfaceSlap(Fish fish, Fish[] targetFishList, HashSet<Fish> allFish)
     {
         if (fish.SurfaceSlap != null)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Fish {fish.Name[GatherBuddy.Language]} has manual Surface Slap data");
             return new AHAutoSurfaceSlap(true);
-        }
         
         if (!GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
-        {
             return new AHAutoSurfaceSlap(false);
-        }
         
         bool isTargetFish = targetFishList.Any(f => f.ItemId == fish.ItemId);
         if (isTargetFish)
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Fish {fish.Name[GatherBuddy.Language]} is a target fish - no Surface Slap");
             return new AHAutoSurfaceSlap(false);
-        }
         
         bool isMoochFish = allFish.Any(f => f.Mooches.Contains(fish));
         if (isMoochFish)
@@ -468,17 +471,26 @@ public class AutoHookPresetBuilder
             return new AHAutoSurfaceSlap(false);
         }
         
-        bool sharesBiteTypeWithTarget = targetFishList.Any(targetFish => 
-            targetFish.BiteType == fishBiteType && 
-            targetFish.BiteType != BiteType.Unknown && 
-            targetFish.BiteType != BiteType.None
-        );
+        var targetFish = targetFishList.FirstOrDefault();
+        if (targetFish == null)
+        {
+            return new AHAutoSurfaceSlap(false);
+        }
         
-        if (sharesBiteTypeWithTarget)
+        BiteType relevantBiteType;
+        if (targetFish.Mooches.Length > 0)
+            relevantBiteType = targetFish.Mooches[0].BiteType;
+        else
+            relevantBiteType = targetFish.BiteType;
+        
+        bool sharesBiteType = fishBiteType == relevantBiteType && 
+            relevantBiteType != BiteType.Unknown && 
+            relevantBiteType != BiteType.None;
+        
+        if (sharesBiteType)
         {
             var gpThreshold = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold;
             var gpAbove = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove;
-            GatherBuddy.Log.Debug($"[AutoHook] Enabling Surface Slap for {fish.Name[GatherBuddy.Language]} ({fishBiteType}) - shares bite type with target fish. GP: {(gpAbove ? "Above" : "Below")} {gpThreshold}");
             return new AHAutoSurfaceSlap(
                 enabled: true,
                 gpThreshold: gpThreshold,
@@ -504,10 +516,8 @@ public class AutoHookPresetBuilder
             return new AHAutoIdenticalCast(false);
         }
         
-        // Enable Identical Cast for target fish
         var gpThreshold = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPThreshold;
         var gpAbove = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove;
-        GatherBuddy.Log.Debug($"[AutoHook] Enabling Identical Cast for {fish.Name[GatherBuddy.Language]} (target fish). GP: {(gpAbove ? "Above" : "Below")} {gpThreshold}");
         return new AHAutoIdenticalCast(
             enabled: true,
             gpThreshold: gpThreshold,
@@ -529,8 +539,6 @@ public class AutoHookPresetBuilder
             ForceBaitSwap = true,
             ForcedBaitId = baitId.Value
         };
-        
-        GatherBuddy.Log.Debug($"[AutoHook] Configured ExtraCfg: Force Bait Swap enabled with bait ID {baitId}");
     }
     
     private static void ConfigureAutoCasts(AHCustomPresetConfig preset, Fish[] fishList, ConfigPreset? gbrPreset)
@@ -540,26 +548,6 @@ public class AutoHookPresetBuilder
         var canBeReduced = fishList.Any(f => f.ItemData.AetherialReduce != 0);
         var shouldUsePatience = hasMooches || needsCollect || canBeReduced;
         var needsPatience = shouldUsePatience && GatherBuddy.Config.AutoGatherConfig.UsePatience;
-        
-        if (shouldUsePatience)
-        {
-            if (GatherBuddy.Config.AutoGatherConfig.UsePatience)
-            {
-                var reasons = new System.Collections.Generic.List<string>();
-                if (hasMooches) reasons.Add("mooch chains");
-                if (needsCollect) reasons.Add("collectables");
-                if (canBeReduced) reasons.Add("aetherial reduction");
-                GatherBuddy.Log.Debug($"[AutoHook] Patience enabled due to: {string.Join(", ", reasons)}");
-            }
-            else
-            {
-                GatherBuddy.Log.Debug($"[AutoHook] Patience disabled by user config (would be needed for mooch chains, collectables, or aetherial reduction)");
-            }
-        }
-        else
-        {
-            GatherBuddy.Log.Debug($"[AutoHook] Patience not needed - no mooch chains, collectables, or reducible fish");
-        }
         
         var useCordials = GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing;
         var cordialGpThreshold = GatherBuddy.Config.AutoGatherConfig.CordialForFishingGPThreshold;
@@ -585,7 +573,6 @@ public class AutoHookPresetBuilder
                 GpThreshold = patienceGpCost,
                 GpThresholdAbove = true
             };
-            GatherBuddy.Log.Debug($"[AutoHook] Created Patience config: Enabled=true, Id={patienceActionId}, GP: {patienceGpCost} (Above=true)");
         }
 
         preset.AutoCastsCfg = new AHAutoCastsConfig

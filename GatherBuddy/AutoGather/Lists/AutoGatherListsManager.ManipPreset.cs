@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using GatherBuddy.Classes;
+using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using ElliLib.Filesystem;
@@ -231,6 +232,16 @@ public partial class AutoGatherListsManager
             if (gatherablesInList.Count == 0)
                 return true;
             
+            var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
+            var isMiner = currentJob == 16;
+            var isBotanist = currentJob == 17;
+            
+            if (!isMiner && !isBotanist)
+            {
+                GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation - player not on Miner or Botanist (current job: {currentJob})");
+                return true;
+            }
+            
             var playerPerception = DiscipleOfLand.Perception;
             var insufficientPerception = new System.Collections.Generic.List<(string Name, int Required, int Current)>();
             
@@ -239,6 +250,14 @@ public partial class AutoGatherListsManager
                 var requiredPerception = (int)gatherable.GatheringData.PerceptionReq;
                 if (requiredPerception == 0)
                     continue;
+                
+                var gatheringType = gatherable.GatheringType.ToGroup();
+                if ((isMiner && gatheringType != GatheringType.Miner) || (isBotanist && gatheringType != GatheringType.Botanist))
+                {
+                    continue;
+                }
+                
+                GatherBuddy.Log.Debug($"[Auto-Gather] Validating {gatherable.Name[GatherBuddy.Language]}: requires {requiredPerception} perception (current: {playerPerception})");
                 
                 if (playerPerception < requiredPerception)
                 {
@@ -274,7 +293,26 @@ public partial class AutoGatherListsManager
             if (requiredPerception == 0)
                 return true;
             
+            var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
+            var gatheringType = gatherable.GatheringType.ToGroup();
+            var isMiner = currentJob == 16;
+            var isBotanist = currentJob == 17;
+            
+            if (!isMiner && !isBotanist)
+            {
+                GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation for {gatherable.Name[GatherBuddy.Language]} - player not on Miner or Botanist (current job: {currentJob})");
+                return true;
+            }
+            
+            if ((isMiner && gatheringType != GatheringType.Miner) || (isBotanist && gatheringType != GatheringType.Botanist))
+            {
+                GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation for {gatherable.Name[GatherBuddy.Language]} - item is for different gathering job");
+                return true;
+            }
+            
             var playerPerception = DiscipleOfLand.Perception;
+            
+            GatherBuddy.Log.Debug($"[Auto-Gather] Validating {gatherable.Name[GatherBuddy.Language]}: requires {requiredPerception} perception (current: {playerPerception})");
             
             if (playerPerception < requiredPerception)
             {

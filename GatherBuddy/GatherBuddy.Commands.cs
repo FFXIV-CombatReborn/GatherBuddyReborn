@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
+using Dalamud.Game;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
 using GatherBuddy.Enums;
@@ -231,6 +232,43 @@ public partial class GatherBuddy
 
     private static void OnGatherDebug(string command, string arguments)
     {
-        DebugMode = !DebugMode;
+        switch (arguments.ToLowerInvariant())
+        {
+            case "wary":
+                Dalamud.ToastGui.ShowQuest("The fish have become wary of your presence. It might be time to shift your position...");
+                Communicator.Print("Debug: Triggered 'wary' quest toast [EN] (ID 5517)");
+                break;
+            case "amiss":
+                Dalamud.ToastGui.ShowQuest("The fish sense something amiss. Perhaps it is time to try another location.");
+                Communicator.Print("Debug: Triggered 'amiss' quest toast [EN] (ID 3516)");
+                break;
+            case "wary-de":
+                Dalamud.ToastGui.ShowQuest("Die Fische in der Umgebung sind auf dich aufmerksam geworden. Besser, du wechselst den Ort ...");
+                Communicator.Print("Debug: Triggered 'wary' quest toast [DE] (ID 5517)");
+                break;
+            case "amiss-de":
+                Dalamud.ToastGui.ShowQuest("Die Fische sind misstrauisch und kommen keinen Ilm näher. Versuch es lieber an einer anderen Stelle.");
+                Communicator.Print("Debug: Triggered 'amiss' quest toast [DE] (ID 3516)");
+                break;
+            case "wary-fr":
+                Dalamud.ToastGui.ShowQuest("Les poissons des environs commencent à se méfier de vous. Il est temps d'aller voir ailleurs...");
+                Communicator.Print("Debug: Triggered 'wary' quest toast [FR] (ID 5517)");
+                break;
+            case "amiss-fr":
+                Dalamud.ToastGui.ShowQuest("Les poissons sont devenus méfiants. Vous devriez aller pêcher dans un autre endroit.");
+                Communicator.Print("Debug: Triggered 'amiss' quest toast [FR] (ID 3516)");
+                break;
+            case "wary-jp":
+                Dalamud.ToastGui.ShowQuest("周辺の魚が警戒し始めている。そろそろ移動した方が良さそうだ……");
+                Communicator.Print("Debug: Triggered 'wary' quest toast [JP] (ID 5517)");
+                break;
+            case "amiss-jp":
+                Dalamud.ToastGui.ShowQuest("魚たちに警戒されてしまったようだ……。少し場所を変えたほうがいいだろう。");
+                Communicator.Print("Debug: Triggered 'amiss' quest toast [JP] (ID 3516)");
+                break;
+            default:
+                DebugMode = !DebugMode;
+                break;
+        }
     }
 }

@@ -336,6 +336,7 @@ namespace GatherBuddy.AutoGather.Lists
                     x.Quantity))
                 .Where(x => x.Time.InRange(adjustedServerTime))
                 .Where(x => ArePredatorWindowsActive(x.Fish, x.PreferredLocation, adjustedServerTime))
+                .Where(x => AreMoochDependenciesUp(x.Fish, x.PreferredLocation, adjustedServerTime))
                 .GroupBy(x => x.Fish, x => x, (_, g) => g
                     // Order by end time, longest first as in the original UptimeManager.NextUptime().
                     .OrderByDescending(x => x.Time.End)
@@ -472,6 +473,37 @@ namespace GatherBuddy.AutoGather.Lists
             return true;
         }
 
+        private bool AreMoochDependenciesUp(Fish fish, ILocation location, TimeStamp now)
+        {
+            if (fish.Mooches.Length == 0)
+                return true;
+
+            var territory = location switch
+            {
+                FishingSpot spot => spot.Territory,
+                _ => Territory.Invalid
+            };
+
+            if (territory == Territory.Invalid)
+            {
+                GatherBuddy.Log.Debug($"[ActiveItemList] Could not determine territory for {fish.Name[GatherBuddy.Language]}");
+                return true;
+            }
+
+            foreach (var moochFish in fish.Mooches)
+            {
+                var moochUptime = GatherBuddy.UptimeManager.NextUptime(moochFish, territory, now);
+                
+                if (!moochUptime.InRange(now))
+                {
+                    GatherBuddy.Log.Debug($"[ActiveItemList] Mooch {moochFish.Name[GatherBuddy.Language]} window not active for {fish.Name[GatherBuddy.Language]}");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static float GetHorizontalSquaredDistanceToPlayer(GatheringNode node)
         {
             if (node.Territory.Id != Dalamud.ClientState.TerritoryType)
@@ -537,8 +569,8 @@ namespace GatherBuddy.AutoGather.Lists
         /// </returns>
         public bool ShouldUpdateWhileFishing()
         {
-            // Check if Eorzea hour changed or active items changed
             return _activeItemsChanged
+                || _gatheredSomething
                 || _lastUpdateTime.TotalEorzeaHours() != AutoGather.AdjustedServerTime.TotalEorzeaHours();
         }
 
