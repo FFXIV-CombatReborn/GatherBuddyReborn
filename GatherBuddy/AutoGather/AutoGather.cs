@@ -470,6 +470,12 @@ namespace GatherBuddy.AutoGather
 
             if (FreeInventorySlots == 0)
             {
+                if (GatherBuddy.CollectableManager?.IsRunning == true)
+                {
+                    AutoStatus = "Turning in collectables...";
+                    return;
+                }
+                
                 if (HasReducibleItems())
                 {
                     if (Player.Job == 18 /* FSH */ && GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
@@ -483,12 +489,6 @@ namespace GatherBuddy.AutoGather
                 }
                 else if (HasCollectables())
                 {
-                    if (GatherBuddy.CollectableManager?.IsRunning == true)
-                    {
-                        AutoStatus = "Turning in collectables...";
-                        return;
-                    }
-                    
                     GatherBuddy.Log.Information("[AutoGather] Inventory full with collectables - starting turn-in");
                     AutoStatus = "Turning in collectables...";
                     GatherBuddy.CollectableManager?.Start();
@@ -749,29 +749,41 @@ namespace GatherBuddy.AutoGather
                     !UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)) &&
                     target.Location.Territory.Id is 901 or 929 or 939);
                 
-                if (weatherChanged && isUmbralWeather && !wasUmbralWeather && hasUmbralItems && hasNormalDiademItems)
+                var requiredUmbralWeathers = _activeItemList
+                    .Where(target => target.Gatherable != null && 
+                        UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
+                    .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
+                    .Where(w => w.HasValue)
+                    .Select(w => (uint)w.Value)
+                    .Distinct()
+                    .ToList();
+                
+                var isCorrectUmbralWeather = isUmbralWeather && requiredUmbralWeathers.Contains(currentWeather);
+                var wasCorrectUmbralWeather = wasUmbralWeather && requiredUmbralWeathers.Contains(_lastUmbralWeather);
+                
+                if (weatherChanged && isCorrectUmbralWeather && !wasCorrectUmbralWeather && hasUmbralItems && hasNormalDiademItems)
                 {
                     StopNavigation();
-                    GatherBuddy.Log.Information($"[Umbral] Weather changed to umbral ({currentWeather}) - leaving Diadem for clean state");
+                    GatherBuddy.Log.Information($"[Umbral] Weather changed to correct umbral weather ({currentWeather}) - leaving Diadem for clean state");
                     _lastUmbralWeather = currentWeather;
                     LeaveTheDiadem();
                     return;
                 }
                 
-                if (weatherChanged && !isUmbralWeather && wasUmbralWeather && hasUmbralItems && hasNormalDiademItems)
+                if (weatherChanged && !isCorrectUmbralWeather && wasCorrectUmbralWeather && hasUmbralItems && hasNormalDiademItems)
                 {
                     StopNavigation();
-                    GatherBuddy.Log.Information($"[Umbral] Weather changed to normal ({currentWeather}) - leaving Diadem for clean state");
+                    GatherBuddy.Log.Information($"[Umbral] Weather changed away from correct umbral weather ({currentWeather}) - leaving Diadem for clean state");
                     _lastUmbralWeather = currentWeather;
                     LeaveTheDiadem();
                     return;
                 }
                 
-                if (weatherChanged && !isUmbralWeather && wasUmbralWeather && hasUmbralItems && !hasNormalDiademItems)
+                if (weatherChanged && !isCorrectUmbralWeather && wasCorrectUmbralWeather && hasUmbralItems && !hasNormalDiademItems)
                 {
                     _hasGatheredUmbralThisSession = false;
                     _lastUmbralWeather = currentWeather;
-                    GatherBuddy.Log.Information($"[Umbral] Weather changed to normal with only umbral items - leaving Diadem");
+                    GatherBuddy.Log.Information($"[Umbral] Weather changed away from correct weather with only umbral items - leaving Diadem");
                     StopNavigation();
                     LeaveTheDiadem();
                     return;
@@ -826,11 +838,20 @@ namespace GatherBuddy.AutoGather
                     if (Functions.InTheDiadem())
                     {
                         var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                        var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
+                        var requiredWeathers = _activeItemList
+                            .Where(target => target.Gatherable != null && 
+                                UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
+                            .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
+                            .Where(w => w.HasValue)
+                            .Select(w => (uint)w.Value)
+                            .Distinct()
+                            .ToList();
                         
-                        if (!isUmbralWeather)
+                        var isCorrectUmbralWeather = requiredWeathers.Contains(currentWeather);
+                        
+                        if (!isCorrectUmbralWeather)
                         {
-                            AutoStatus = "Waiting in Diadem for umbral weather...";
+                            AutoStatus = "Waiting in Diadem for correct umbral weather...";
                             if (!Waiting)
                             {
                                 Waiting = true;
@@ -1299,25 +1320,33 @@ namespace GatherBuddy.AutoGather
                 }
                 else if (Functions.InTheDiadem())
                 {
-                    // Check if we're waiting for umbral weather - if so, don't leave due to territory mismatch
                     var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                    var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
                     var hasUmbralItems = next.Any(target => target.Gatherable != null && 
                         UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)));
                     
-                    if (!isUmbralWeather && hasUmbralItems)
+                    if (hasUmbralItems)
                     {
-                        // We're waiting for umbral weather - don't leave due to territory mismatch
-                        // Also reset session flag in case it wasn't reset in DoNodeMovementDiadem
-                        _hasGatheredUmbralThisSession = false;
-                        AutoStatus = "Waiting in Diadem for next umbral weather...";
-                        return;
+                        var requiredWeathers = next
+                            .Where(target => target.Gatherable != null && 
+                                UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
+                            .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
+                            .Where(w => w.HasValue)
+                            .Select(w => (uint)w.Value)
+                            .Distinct()
+                            .ToList();
+                        
+                        var isCorrectUmbralWeather = requiredWeathers.Contains(currentWeather);
+                        
+                        if (!isCorrectUmbralWeather)
+                        {
+                            _hasGatheredUmbralThisSession = false;
+                            AutoStatus = "Waiting in Diadem for correct umbral weather...";
+                            return;
+                        }
                     }
-                    else
-                    {
-                        LeaveTheDiadem();
-                        return;
-                    }
+                    
+                    LeaveTheDiadem();
+                    return;
                 }
 
             if (Dalamud.Conditions[ConditionFlag.Gathering] 
