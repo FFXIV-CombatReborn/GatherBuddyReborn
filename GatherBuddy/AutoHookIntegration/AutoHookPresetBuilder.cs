@@ -546,6 +546,12 @@ public class AutoHookPresetBuilder
         var hasMooches = fishList.Any(f => f.Mooches.Length > 0);
         var needsCollect = fishList.Any(f => f.ItemData.IsCollectable);
         var canBeReduced = fishList.Any(f => f.ItemData.AetherialReduce != 0);
+        
+        GatherBuddy.Log.Debug($"[AutoHook] ConfigureAutoCasts: Fish count={fishList.Length}, needsCollect={needsCollect}");
+        foreach (var fish in fishList)
+        {
+            GatherBuddy.Log.Debug($"[AutoHook]   Fish: {fish.Name[GatherBuddy.Language]} (ID:{fish.ItemId}), IsCollectable={fish.ItemData.IsCollectable}");
+        }
         var shouldUsePatience = hasMooches || needsCollect || canBeReduced;
         var needsPatience = shouldUsePatience && GatherBuddy.Config.AutoGatherConfig.UsePatience;
         
@@ -622,5 +628,7 @@ public class AutoHookPresetBuilder
                 UseWhenCordialCD = useCordials
             }
         };
+        
+        GatherBuddy.Log.Debug($"[AutoHook] CastCollect configured: {(preset.AutoCastsCfg.CastCollect != null ? $"Enabled={preset.AutoCastsCfg.CastCollect.Enabled}" : "null")}");
     }
 }

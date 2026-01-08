@@ -43,6 +43,14 @@ public static class GatherableExtensions
         }
 
         var inventory = InventoryManager.Instance();
-        return inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, (short)(gatherable.ItemData.IsCollectable ? 1 : 0));
+        
+        if (gatherable.ItemData.IsCollectable)
+        {
+            var collectableCount = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 1);
+            var normalCount = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
+            return collectableCount + normalCount;
+        }
+        
+        return inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
     }
 }

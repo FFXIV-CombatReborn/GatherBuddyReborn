@@ -260,6 +260,14 @@ public class AutoGatherList
             {
                 changes |= list.quantities[fish] != quantity;
 
+                if (cfg.PrefferedLocations.TryGetValue(itemId, out var locId))
+                {
+                    if (fish.FishingSpots.FirstOrDefault(n => n.Id == locId) is var loc and not null)
+                        list.SetPreferredLocation(fish, loc);
+                    else
+                        changes = true;
+                }
+
                 if (cfg.EnabledItems.TryGetValue(itemId, out var enabled))
                     list.SetEnabled(fish, enabled);
             }
