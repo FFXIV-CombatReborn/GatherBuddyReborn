@@ -235,7 +235,7 @@ namespace GatherBuddy.AutoGather
 
                 if (slot != null)
                 {
-                    return (true, slot);
+                    return (false, slot);
                 }
             }
 
