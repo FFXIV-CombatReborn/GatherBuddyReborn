@@ -491,7 +491,10 @@ namespace GatherBuddy.AutoGather
                 {
                     GatherBuddy.Log.Information("[AutoGather] Inventory full with collectables - starting turn-in");
                     AutoStatus = "Turning in collectables...";
-                    GatherBuddy.CollectableManager?.Start();
+                    if (IsGathering)
+                        CloseGatheringAddons();
+                    else
+                        GatherBuddy.CollectableManager?.Start();
                 }
                 else
                 {
@@ -742,17 +745,25 @@ namespace GatherBuddy.AutoGather
                 var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
                 var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
                 var wasUmbralWeather = UmbralNodes.IsUmbralWeather(_lastUmbralWeather);
-                var weatherChanged = currentWeather != _lastUmbralWeather && _lastUmbralWeather != 0;
+                var weatherChanged = currentWeather != _lastUmbralWeather;
+                
+                if (_lastUmbralWeather == 0)
+                {
+                    _lastUmbralWeather = currentWeather;
+                    weatherChanged = false;
+                }
                 
                 var hasUmbralItems = HasUmbralItemsInActiveList();
                 var hasNormalDiademItems = _activeItemList.Any(target => target.Gatherable != null && 
                     !UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)) &&
                     target.Location.Territory.Id is 901 or 929 or 939);
                 
-                var requiredUmbralWeathers = _activeItemList
-                    .Where(target => target.Gatherable != null && 
-                        UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
-                    .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
+                var umbralItemsInListManager = GetActiveItemsNeedingGathering()
+                    .Where(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)))
+                    .ToList();
+                
+                var requiredUmbralWeathers = umbralItemsInListManager
+                    .Select(item => UmbralNodes.GetUmbralItemInfo(item.Item.ItemId)?.Weather)
                     .Where(w => w.HasValue)
                     .Select(w => (uint)w.Value)
                     .Distinct()
