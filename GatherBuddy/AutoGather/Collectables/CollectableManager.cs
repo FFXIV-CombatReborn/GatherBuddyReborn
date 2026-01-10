@@ -781,11 +781,17 @@ public class CollectableManager : IDisposable
         
         var next = _purchaseQueue.Peek();
         var scrips = _scripShopWindowHandler.GetScripCount();
-        var maxByScrip = next.cost > 0 ? (scrips / next.cost) : next.remaining;
+        var reserveAmount = _config.CollectableConfig.ReserveScripAmount;
+        var availableScrips = Math.Max(0, scrips - reserveAmount);
+        var maxByScrip = next.cost > 0 ? (availableScrips / next.cost) : next.remaining;
         var amount = Math.Min(next.remaining, Math.Min(maxByScrip, 99));
         
         if (amount <= 0)
         {
+            if (reserveAmount > 0 && scrips < reserveAmount + next.cost)
+            {
+                GatherBuddy.Log.Information($"[CollectableManager] Skipping purchase of {next.name} - would exceed scrip reserve (Current: {scrips}, Reserve: {reserveAmount}, Cost: {next.cost})");
+            }
             _purchaseQueue.Dequeue();
             _state = CollectableState.CheckingForMorePurchases;
             return;
