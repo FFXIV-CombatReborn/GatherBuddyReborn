@@ -1341,6 +1341,18 @@ public partial class Interface
                 GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect,
                 b => GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect = b);
         
+        public static void DrawScripReserveAmount()
+        {
+            var reserveAmount = GatherBuddy.Config.CollectableConfig.ReserveScripAmount;
+            ImGui.SetNextItemWidth(150);
+            if (ImGui.DragInt("Reserve Scrips", ref reserveAmount, 10, 0, 4000))
+            {
+                GatherBuddy.Config.CollectableConfig.ReserveScripAmount = Math.Max(0, Math.Min(4000, reserveAmount));
+                GatherBuddy.Config.Save();
+            }
+            ImGuiUtil.HoverTooltip("Minimum amount of scrips to keep when purchasing items from the scrip shop.\nPurchases will stop if buying would bring your scrips below this amount.");
+        }
+        
         public static void DrawScripShopItemManager()
         {
             var shopItems = ScripShopItemManager.ShopItems;
@@ -1631,6 +1643,10 @@ public partial class Interface
                     ConfigFunctions.DrawCollectableThreshold();
                 }
                 ConfigFunctions.DrawBuyAfterEachCollectBox();
+                if (GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect)
+                {
+                    ConfigFunctions.DrawScripReserveAmount();
+                }
                 
                 ImGui.Spacing();
                 ImGui.Separator();

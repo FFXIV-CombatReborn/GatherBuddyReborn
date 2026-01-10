@@ -12,6 +12,7 @@ public class CollectableConfig
     public bool UseInventoryFullThreshold { get; set; } = false;
     public int CollectableInventoryThreshold { get; set; } = 100;
     public int InventoryFullThreshold { get; set; } = 140;
+    public int ReserveScripAmount { get; set; } = 0;
     
     private CollectableShop? _preferredCollectableShop;
     
