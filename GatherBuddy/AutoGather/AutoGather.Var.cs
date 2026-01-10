@@ -207,9 +207,6 @@ namespace GatherBuddy.AutoGather
         public static unsafe AddonMaterializeDialog* MaterializeAddon
             => GetAddon<AddonMaterializeDialog>("Materialize");
 
-        public static unsafe AddonMaterializeDialog* MaterializeDialogAddon
-            => GetAddon<AddonMaterializeDialog>("MaterializeDialog");
-
         public static unsafe AddonSelectYesno* SelectYesnoAddon
             => GetAddon<AddonSelectYesno>("SelectYesno");
 
