@@ -15,7 +15,6 @@ using System.Linq;
 using System.Numerics;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using GatherBuddy.SeFunctions;
 using UmbralNodes = GatherBuddy.Data.UmbralNodes;
 using EnhancedCurrentWeather = GatherBuddy.SeFunctions.EnhancedCurrentWeather;
 namespace GatherBuddy.AutoGather.Lists
@@ -51,8 +50,7 @@ namespace GatherBuddy.AutoGather.Lists
         /// True if there are items that need to be gathered; otherwise, false.
         /// </value>
         public bool HasItemsToGather
-            => _listsManager.ActiveItems.Where(NeedsGathering).Any() 
-            || _listsManager.ActiveFish.Where(NeedsGathering).Any();
+            => _listsManager.ActiveItems.Where(NeedsGathering).Any();
 
         public bool IsInitialized
             => _lastUpdateTime != TimeStamp.MinValue;
@@ -201,8 +199,8 @@ namespace GatherBuddy.AutoGather.Lists
             _gatheredSomething = true;
             // In almost all cases, the target is the first item in the list, so it's O(1).
             var x = _gatherableItems.FirstOrDefault(x => 
-                (x.Node?.WorldPositions.ContainsKey(target.DataId) ?? false) ||
-                (x.FishingSpot?.WorldPositions.ContainsKey(target.DataId) ?? false));
+                (x.Node?.WorldPositions.ContainsKey(target.BaseId) ?? false) ||
+                (x.FishingSpot?.WorldPositions.ContainsKey(target.BaseId) ?? false));
             if (x != default && x.Time != TimeInterval.Always && x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
                 _visitedTimedNodes[x.Node] = x.Time;
         }
@@ -210,20 +208,14 @@ namespace GatherBuddy.AutoGather.Lists
         internal void DebugMarkVisited(GatherTarget x)
         {
             _gatheredSomething = true;
-            if (x.Time != TimeInterval.Always && x.Node.NodeType is NodeType.Legendary or NodeType.Unspoiled)
+            if (x.Time != TimeInterval.Always && x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
                 _visitedTimedNodes[x.Node] = x.Time;
         }
 
-        private bool NeedsGathering((Gatherable item, uint quantity) value)
+        private bool NeedsGathering((IGatherable item, uint quantity) value)
         {
             var (item, quantity) = value;
             return item.GetInventoryCount() < (item.IsTreasureMap ? 1 : quantity);
-        }
-
-        private bool NeedsGathering((Fish fish, uint quantity) value)
-        {
-            var (item, quantity) = value;
-            return item.GetInventoryCount() < quantity;
         }
 
         private bool NeedsGathering(GatherTarget target)
@@ -266,186 +258,160 @@ namespace GatherBuddy.AutoGather.Lists
             var territoryId = _lastTerritoryId;
             DateTime? nextAllowance = null;
 
-            var nodes = _listsManager.ActiveItems
+            var targets = _listsManager.ActiveItems
                 // Filter out items that are already gathered.
                 .Where(NeedsGathering)
-                .Where(x => (RequiresHomeWorld(x) && Functions.OnHomeWorld()) || !RequiresHomeWorld(x))
+                .Where(x => RequiresHomeWorld(x) && Functions.OnHomeWorld() || !RequiresHomeWorld(x))
                 // If treasure map, only gather if the allowance is up.
                 .Where(x => !x.Item.IsTreasureMap || (nextAllowance ??= DiscipleOfLand.NextTreasureMapAllowance) < adjustedServerTime.DateTime)
                 // Fetch preferred location.
                 .Select(x => (x.Item, x.Quantity, PreferredLocation: _listsManager.GetPreferredLocation(x.Item)))
-                // Flatten node list add calculate the next uptime.
-                .SelectMany(x => x.Item.NodeList.Select(Node
-                    => (x.Item, Node, Time: Node.Times.NextUptime(adjustedServerTime), x.Quantity, x.PreferredLocation)))
+                // Flatten node list and calculate the next uptime.
+                .SelectMany(x => x.Item.Locations.Select(Location
+                    => (x.Item, Location, Time: Location switch
+                    {
+                        GatheringNode node => node.Times.NextUptime(adjustedServerTime),
+                        FishingSpot spot => GatherBuddy.UptimeManager.NextUptime((x.Item as Fish)!, spot.Territory, adjustedServerTime),
+                        _ => throw new InvalidOperationException()
+                    }, x.Quantity, x.PreferredLocation)))
                 // Remove nodes with a level higher than the player can gather.
-                .Where(info => info.Node.GatheringType.ToGroup() switch
+                .Where(x => x.Location.GatheringType.ToGroup() switch
                 {
-                    GatheringType.Miner => info.Node.Level <= minerLevel,
-                    GatheringType.Botanist => info.Node.Level <= botanistLevel,
-                    _ => false
+                    GatheringType.Miner => (x.Location as GatheringNode)!.Level <= minerLevel,
+                    GatheringType.Botanist => (x.Location as GatheringNode)!.Level <= botanistLevel,
+                    _ => true
                 })
+                // Apply predators and mooch dependencies time restrictions
+                .Select(x => x with { Time = IntersectMoochUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
+                .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
+                .Select(x => x with { Location = CorrectForPredatorLocation(x.Item, x.Location) })
                 // Remove nodes that are not up.
                 .Where(x => x.Time.InRange(adjustedServerTime))
                 // Remove nodes that are already gathered.
-                .Where(x => !_visitedTimedNodes.ContainsKey(x.Node))
+                .Where(x => x.Location is not GatheringNode node || !_visitedTimedNodes.ContainsKey(node))
                 // Group by item and select the best node.
                 .GroupBy(x => x.Item, x => x, (_, g) => g
                     // Prioritize preferred location, then current job, then preferred job, then the rest.
                     .OrderBy(x =>
-                        x.Node == x.PreferredLocation ? 0
-                        : x.Node.GatheringType.ToGroup() == (Player.Job switch
+                        x.Location == x.PreferredLocation ? 0
+                        : x.Location.GatheringType.ToGroup() == Player.Job switch
                         {
                             16 /* MIN */ => GatheringType.Miner,
                             17 /* BTN */ => GatheringType.Botanist,
+                            18 /* FSH */ => GatheringType.Fisher,
                             _ => GatheringType.Unknown
-                        }) ? 1
-                        : x.Node.GatheringType.ToGroup() == GatherBuddy.Config.PreferredGatheringType ? 2
-                            : 3)
+                        } ? 1
+                        : x.Location.GatheringType.ToGroup() == GatherBuddy.Config.PreferredGatheringType ? 2
+                        : 3)
+                    // Bring Shadow Nodes to the end
+                    .ThenBy(x => x.Location is FishingSpot spot && spot.IsShadowNode)
                     // Prioritize closest nodes in the current territory.
-                    .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Node))
+                    .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Location))
                     // Order by end time, longest first as in the original UptimeManager.NextUptime().
                     .ThenByDescending(x => x.Time.End)
                     .ThenBy(x => GatherBuddy.Config.AetherytePreference switch
                     {
                         // Order by distance to the closest aetheryte.
-                        AetherytePreference.Distance => AutoGather.FindClosestAetheryte(x.Node)
-                                ?.WorldDistance(x.Node.Territory.Id, x.Node.IntegralXCoord, x.Node.IntegralYCoord)
+                        AetherytePreference.Distance => AutoGather.FindClosestAetheryte(x.Location)
+                                ?.WorldDistance(x.Location.Territory.Id, x.Location.IntegralXCoord, x.Location.IntegralYCoord)
                          ?? int.MaxValue,
                         // Order by teleportation cost.
-                        AetherytePreference.Cost => GetTeleportationCost(x.Node),
+                        AetherytePreference.Cost => GetTeleportationCost(x.Location),
                         _ => 0
                     })
                     .First()
                 )
+                .Select(x => new GatherTarget(x.Item, x.Location, x.Time, x.Quantity))
                 // Prioritize timed nodes first.
-                .OrderBy(x => x.Time == TimeInterval.Always)
-                .ThenBy(x => x.Node.GatheringType.ToGroup() != (Player.Job switch
-                {
-                    16 /* MIN */ => GatheringType.Miner,
-                    17 /* BTN */ => GatheringType.Botanist,
-                    _ => GatheringType.Unknown
-                }));
-
-            var fish = _listsManager.ActiveFish
-                .Where(NeedsGathering)
-                .Where(x => (RequiresHomeWorld(x) && Functions.OnHomeWorld()) || !RequiresHomeWorld(x))
-                .Select(x => (x.Fish, x.Quantity, PreferredLocation: _listsManager.GetPreferredLocation(x.Fish) ?? 
-                    x.Fish.FishingSpots.FirstOrDefault(spot => !spot.IsShadowNode) ?? x.Fish.Locations.FirstOrDefault()))
-                .Where(x => x.PreferredLocation != null)
-                .Select(x => (x.Fish, PreferredLocation: x.PreferredLocation!, Time: GatherBuddy.UptimeManager.NextUptime(x.Fish, adjustedServerTime).interval,
-                    x.Quantity))
-                .Where(x => x.Time.InRange(adjustedServerTime))
-                .Where(x => ArePredatorWindowsActive(x.Fish, x.PreferredLocation, adjustedServerTime))
-                .Where(x => AreMoochDependenciesUp(x.Fish, x.PreferredLocation, adjustedServerTime))
-                .GroupBy(x => x.Fish, x => x, (_, g) => g
-                    // Order by end time, longest first as in the original UptimeManager.NextUptime().
-                    .OrderByDescending(x => x.Time.End)
-                    .ThenBy(x => GatherBuddy.Config.AetherytePreference switch
-                    {
-                        // Order by distance to the closest aetheryte.
-                        AetherytePreference.Distance => AutoGather.FindClosestAetheryte(x.PreferredLocation)
-                                ?.WorldDistance(x.PreferredLocation.Territory.Id, x.PreferredLocation.IntegralXCoord,
-                                    x.PreferredLocation.IntegralYCoord)
-                         ?? int.MaxValue,
-                        // Order by teleportation cost.
-                        AetherytePreference.Cost => GetTeleportationCost(x.PreferredLocation),
-                        _ => 0
-                    })
-                    .First()
-                )
                 .OrderBy(x => x.Time == TimeInterval.Always);
 
             if (GatherBuddy.Config.AutoGatherConfig.SortingMethod == AutoGatherConfig.SortingType.Location)
             {
-                nodes = nodes
+                targets = targets
                     // Order by node type.
-                    .ThenBy(x => GetNodeTypeAsPriority(x.Item))
+                    .ThenBy(x => x.Gatherable != null ? GetNodeTypeAsPriority(x.Gatherable) : 9)
                     // Then by teleportation cost.
-                    .ThenBy(x => x.Node.Territory.Id == territoryId ? 0 : GetTeleportationCost(x.Node))
+                    .ThenBy(x => x.Location.Territory.Id == territoryId ? 0 : GetTeleportationCost(x.Location))
+                    // Try not to change job within the same territory.
+                    .ThenBy(x => x.Location.GatheringType.ToGroup() != Player.Job switch
+                    {
+                        16 /* MIN */ => GatheringType.Miner,
+                        17 /* BTN */ => GatheringType.Botanist,
+                        18 /* FSH */ => GatheringType.Fisher,
+                        _ => GatheringType.Unknown
+                    })
                     // Then by distance to the player (for current territory).
-                    .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Node));
+                    .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Location));
             }
 
-            _gatherableItems.Clear();
+            _gatherableItems.Clear();            
             
-            var nodeTargets = nodes.Select(x => new GatherTarget(x.Item, x.Node, x.Time, x.Quantity)).ToList();
-            
-            var fishTargets = new List<GatherTarget>();
-            foreach (var x in fish)
-            {
-                var location = x.PreferredLocation;
-                
-                // Check if THIS SPECIFIC FISH has predator requirements (not the whole shadow node)
-                if (x.Fish.Predators.Any())
-                {
-                    // Only check FIRST predator for shadow node spawning (rest are caught within shadow node)
-                    var (firstPredator, requiredCount) = x.Fish.Predators.First();
-                    var caughtCount = _autoGather.SpearfishingSessionCatches.GetValueOrDefault(firstPredator.ItemId, 0);
-                    var firstPredatorMet = caughtCount >= requiredCount;
-                    
-                    var shadowSpot = x.Fish.FishingSpots.FirstOrDefault(fs => fs.IsShadowNode);
-                    if (shadowSpot != null)
-                    {
-                        if (firstPredatorMet)
-                        {
-                            // First predator met - shadow node spawns, use it
-                            location = shadowSpot;
-                            GatherBuddy.Log.Debug($"[ActiveItemList] First predator met for {x.Fish.Name[GatherBuddy.Language]}, using shadow node");
-                        }
-                        else if (shadowSpot.ParentNode != null)
-                        {
-                            // First predator not met - use parent node to gather it
-                            location = shadowSpot.ParentNode;
-                            GatherBuddy.Log.Debug($"[ActiveItemList] First predator not met for {x.Fish.Name[GatherBuddy.Language]}, using parent node");
-                        }
-                    }
-                }
-                // Fallback: if preferred location is a shadow node, check its requirements
-                else if (location is FishingSpot spot && spot.IsShadowNode && spot.ParentNode != null)
-                {
-                    if (!_autoGather.AreSpawnRequirementsMet(spot))
-                    {
-                        location = spot.ParentNode;
-                    }
-                }
-                
-                fishTargets.Add(new GatherTarget(x.Fish, location, x.Time, x.Quantity));
-            }
-            
-            _gatherableItems.AddRange(nodeTargets.Concat(fishTargets)
-                .OrderBy(x => x.Time == TimeInterval.Always)
-                .ThenBy(x => x.Gatherable != null ? GetNodeTypeAsPriority(x.Gatherable) : 99)
-                .ThenBy(x => x.Location.GatheringType.ToGroup() != (Player.Job switch
-                {
-                    16 => GatheringType.Miner,
-                    17 => GatheringType.Botanist,
-                    18 => GatheringType.Fisher,
-                    _ => GatheringType.Unknown
-                })));
-            
-            
+            _gatherableItems.AddRange(targets);
+
             AddUmbralItemsIfAvailable(adjustedServerTime, minerLevel, botanistLevel);
             
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
         }
 
-        private bool RequiresHomeWorld((Gatherable Item, uint Quantity) valueTuple)
+        private ILocation CorrectForPredatorLocation(IGatherable item, ILocation location)
         {
-            var item = valueTuple.Item1;
-            return item.NodeType == NodeType.Legendary
-             || item.NodeType == NodeType.Unspoiled
-             || item.NodeList.Any(nl => nl.Territory.Id is 901 or 929 or 939); // The Diadem
+            if (item is not Fish fish)
+                return location;
+
+            // Check if THIS SPECIFIC FISH has predator requirements (not the whole shadow node)
+            if (fish.Predators.Length != 0)
+            {
+                // Only check FIRST predator for shadow node spawning (rest are caught within shadow node)
+                var (firstPredator, requiredCount) = fish.Predators.First();
+                var caughtCount = _autoGather.SpearfishingSessionCatches.GetValueOrDefault(firstPredator.ItemId, 0);
+                var firstPredatorMet = caughtCount >= requiredCount;
+
+                var shadowSpot = fish.FishingSpots.FirstOrDefault(fs => fs.IsShadowNode);
+                if (shadowSpot != null)
+                {
+                    if (firstPredatorMet)
+                    {
+                        // First predator met - shadow node spawns, use it
+                        location = shadowSpot;
+                        GatherBuddy.Log.Debug($"[ActiveItemList] First predator met for {fish.Name[GatherBuddy.Language]}, using shadow node");
+                    }
+                    else if (shadowSpot.ParentNode != null)
+                    {
+                        // First predator not met - use parent node to gather it
+                        location = shadowSpot.ParentNode;
+                        GatherBuddy.Log.Debug($"[ActiveItemList] First predator not met for {fish.Name[GatherBuddy.Language]}, using parent node");
+                    }
+                }
+            }
+            // Fallback: if preferred location is a shadow node, check its requirements
+            else if (location is FishingSpot spot && spot.IsShadowNode && spot.ParentNode != null)
+            {
+                if (!_autoGather.AreSpawnRequirementsMet(spot))
+                {
+                    location = spot.ParentNode;
+                }
+            }
+            return location;
         }
 
-        private bool RequiresHomeWorld((Fish fish, uint quantity) valueTuple)
+        private static bool RequiresHomeWorld((IGatherable Item, uint Quantity) valueTuple)
         {
-            return false;
+            if (valueTuple.Item is Gatherable item)
+            {
+                return item.NodeType == NodeType.Legendary
+                 || item.NodeType == NodeType.Unspoiled
+                 || item.NodeList.Any(nl => nl.Territory.Id is 901 or 929 or 939); // The Diadem
+            }
+            else
+            {
+                return false;
+            }
         }
 
-        private bool ArePredatorWindowsActive(Fish fish, ILocation location, TimeStamp now)
+        private static TimeInterval IntersectPredatorUptime(IGatherable item, ILocation location, TimeInterval time, TimeStamp now)
         {
-            if (fish.Predators.Length == 0)
-                return true;
+            if (item is not Fish fish || fish.Predators.Length == 0)
+                return time;
 
             var territory = location switch
             {
@@ -456,27 +422,26 @@ namespace GatherBuddy.AutoGather.Lists
             if (territory == Territory.Invalid)
             {
                 GatherBuddy.Log.Debug($"[ActiveItemList] Could not determine territory for {fish.Name[GatherBuddy.Language]}");
-                return true;
+                return time;
             }
 
             foreach (var (predatorFish, _) in fish.Predators)
             {
                 var predatorUptime = GatherBuddy.UptimeManager.NextUptime(predatorFish, territory, now);
-                
-                if (!predatorUptime.InRange(now))
+
+                if (predatorUptime != TimeInterval.Always)
                 {
-                    GatherBuddy.Log.Debug($"[ActiveItemList] Predator {predatorFish.Name[GatherBuddy.Language]} window not active for {fish.Name[GatherBuddy.Language]}");
-                    return false;
+                    time = time.Overlap(predatorUptime);
                 }
             }
 
-            return true;
+            return time;
         }
 
-        private bool AreMoochDependenciesUp(Fish fish, ILocation location, TimeStamp now)
+        private static TimeInterval IntersectMoochUptime(IGatherable item, ILocation location, TimeInterval time, TimeStamp now)
         {
-            if (fish.Mooches.Length == 0)
-                return true;
+            if (item is not Fish fish || fish.Mooches.Length == 0)
+                return time;
 
             var territory = location switch
             {
@@ -487,30 +452,31 @@ namespace GatherBuddy.AutoGather.Lists
             if (territory == Territory.Invalid)
             {
                 GatherBuddy.Log.Debug($"[ActiveItemList] Could not determine territory for {fish.Name[GatherBuddy.Language]}");
-                return true;
+                return time;
             }
 
             foreach (var moochFish in fish.Mooches)
             {
                 var moochUptime = GatherBuddy.UptimeManager.NextUptime(moochFish, territory, now);
-                
-                if (!moochUptime.InRange(now))
+
+                if (moochUptime != TimeInterval.Always)
                 {
-                    GatherBuddy.Log.Debug($"[ActiveItemList] Mooch {moochFish.Name[GatherBuddy.Language]} window not active for {fish.Name[GatherBuddy.Language]}");
-                    return false;
+                    time = time.Overlap(moochUptime);
                 }
             }
 
-            return true;
+            return time;
         }
 
-        private static float GetHorizontalSquaredDistanceToPlayer(GatheringNode node)
+        private static float GetHorizontalSquaredDistanceToPlayer(ILocation node)
         {
             if (node.Territory.Id != Dalamud.ClientState.TerritoryType)
                 return float.MaxValue;
 
+            var player = Player.Object;
+            if (player == null) return float.MaxValue;
             // Node coordinates are map coordinates multiplied by 100.
-            var playerPos3D = Player.Object.GetMapCoordinates();
+            var playerPos3D = player.GetMapCoordinates();
             var playerPos   = new Vector2(playerPos3D.X * 100f,             playerPos3D.Y * 100f);
             return Vector2.DistanceSquared(new Vector2(node.IntegralXCoord, node.IntegralYCoord), playerPos);
         }
@@ -685,7 +651,9 @@ namespace GatherBuddy.AutoGather.Lists
             var umbralWeatherType = (UmbralNodes.UmbralWeatherType)currentWeather;
             
             var umbralItemsToGather = _listsManager.ActiveItems
+                .Where(x => x.Item is Gatherable)
                 .Where(NeedsGathering)
+                .Select(x => (Item: (x.Item as Gatherable)!, x.Quantity))
                 .Where(x => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(x.Item.ItemId)))
                 .Where(x => (RequiresHomeWorld(x) && Plugin.Functions.OnHomeWorld()) || !RequiresHomeWorld(x))
                 .ToList();
@@ -755,13 +723,8 @@ namespace GatherBuddy.AutoGather.Lists
 
 
 
-    public record struct GatherTarget(IGatherable Item, ILocation Location, TimeInterval Time, uint Quantity)
+    public readonly record struct GatherTarget(IGatherable Item, ILocation Location, TimeInterval Time, uint Quantity)
     {
-        public readonly uint         Quantity = Quantity;
-        public readonly TimeInterval Time     = Time;
-        public readonly ILocation    Location = Location;
-        public readonly IGatherable  Item     = Item;
-
         public GatheringNode? Node
             => Location as GatheringNode;
 

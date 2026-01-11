@@ -2670,7 +2670,7 @@ namespace GatherBuddy.AutoGather
                 && listsManager.ActiveItems.Any(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)));
         }
         
-        private (Gatherable Item, uint Quantity) GetFirstUmbralItemFromActiveList()
+        private (IGatherable Item, uint Quantity) GetFirstUmbralItemFromActiveList()
         {
             if (_activeItemList.GetType()
                 .GetField("_listsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -2682,12 +2682,12 @@ namespace GatherBuddy.AutoGather
                 .FirstOrDefault(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)));
         }
         
-        private IEnumerable<(Gatherable Item, uint Quantity)> GetActiveItemsNeedingGathering()
+        private IEnumerable<(IGatherable Item, uint Quantity)> GetActiveItemsNeedingGathering()
         {
             if (_activeItemList.GetType()
                 .GetField("_listsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 ?.GetValue(_activeItemList) is not AutoGatherListsManager listsManager)
-                return Enumerable.Empty<(Gatherable, uint)>();
+                return Enumerable.Empty<(IGatherable, uint)>();
                 
             return listsManager.ActiveItems
                 .Where(item => item.Item.GetInventoryCount() < item.Quantity); // Only items that need gathering
