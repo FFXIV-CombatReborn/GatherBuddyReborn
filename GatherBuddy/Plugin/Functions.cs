@@ -121,7 +121,7 @@ public static class Functions
          || Dalamud.Conditions[ConditionFlag.BetweenAreas51];
 
     public static bool InTheDiadem()
-        => Dalamud.ClientState.TerritoryType is 901 or 929 or 939;
+        => Dalamud.ClientState.TerritoryType == 939;
 
     public static bool OnHomeWorld()
     {

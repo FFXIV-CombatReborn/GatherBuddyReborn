@@ -54,7 +54,15 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
         var nodeList = gatheringPoint.TryGetValue(node.RowId, out var nl) ? (IReadOnlyList<uint>)nl : Array.Empty<uint>();
         var nodeRow  = nodeList.Count > 0 ? nodes.GetRowOrDefault(nodeList[0]) : null;
         Territory = data.FindOrAddTerritory(nodeRow?.TerritoryType.Value) ?? Territory.Invalid;
-        Name      = MultiString.ParseSeStringLumina(nodeRow?.PlaceName.ValueNullable?.Name);
+        if (nodeRow?.PlaceName.RowId == 0 && Territory.Id == 939)
+        {
+            // The Diadem Umbral items hack: replace empty PlaceName with "The Diadem"
+            Name = MultiString.ParseSeStringLumina(data.DataManager.GetExcelSheet<PlaceName>().GetRow(1647).Name);
+        }
+        else
+        {
+            Name = MultiString.ParseSeStringLumina(nodeRow?.PlaceName.ValueNullable?.Name);
+        }
         // Obtain the center of the coordinates. We do not care for the radius.
         var coords   = data.DataManager.GetExcelSheet<ExportedGatheringPoint>();
         var coordRow = coords.GetRowOrDefault(node.RowId);
