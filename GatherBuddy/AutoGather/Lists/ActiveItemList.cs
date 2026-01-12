@@ -28,6 +28,7 @@ namespace GatherBuddy.AutoGather.Lists
         private readonly Dictionary<GatheringNode, TimeInterval> _visitedTimedNodes  = [];
         private          TimeStamp                               _lastUpdateTime     = TimeStamp.MinValue;
         private          uint                                    _lastTerritoryId;
+        private          int                                     _lastWeatherId;
         private          bool                                    _activeItemsChanged;
         private          bool                                    _gatheredSomething;
         private          bool                                    _forceUpdateUnconditionally;
@@ -82,112 +83,7 @@ namespace GatherBuddy.AutoGather.Lists
             if (IsUpdateNeeded())
                 DoUpdate();
 
-            //GatherBuddy.Log.Verbose($"Nearby nodes: {string.Join(", ", nearbyNodes.Select(x => x.ToString("X8")))}.");
-            
-            GatherTarget firstItemNeedingGathering;
-            if (Plugin.Functions.InTheDiadem())
-            {
-                var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
-                
-                if (isUmbralWeather)
-                {
-                    var umbralWeatherType = (UmbralNodes.UmbralWeatherType)currentWeather;
-                    var currentJob = Player.Job switch
-                    {
-                        16 /* MIN */ => GatheringType.Miner,
-                        17 /* BTN */ => GatheringType.Botanist,
-                        _ => GatheringType.Unknown
-                    };
-                    
-                    var priorityUmbralItem = _gatherableItems
-                        .Where(NeedsGathering)
-                        .Where(target => target.Gatherable != null && UmbralNodes.IsUmbralItem(target.Gatherable.ItemId))
-                        .FirstOrDefault(target => 
-                        {
-                            var umbralInfo = UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId);
-                            return umbralInfo.HasValue && 
-                                   umbralInfo.Value.Weather == umbralWeatherType;
-                        });
-                    
-                    if (priorityUmbralItem != default)
-                    {
-                        firstItemNeedingGathering = priorityUmbralItem;
-                    }
-                    else
-                    {
-                        firstItemNeedingGathering = _gatherableItems
-                            .Where(NeedsGathering)
-                            .FirstOrDefault(target => target.Gatherable == null || !UmbralNodes.IsUmbralItem(target.Gatherable.ItemId));
-                    }
-                }
-                else
-                {
-                    firstItemNeedingGathering = _gatherableItems.FirstOrDefault(NeedsGathering);
-                }
-            }
-            else
-            {
-                firstItemNeedingGathering = _gatherableItems.FirstOrDefault(NeedsGathering);
-            }
-            
-            if (firstItemNeedingGathering == default)
-                return [];
-            
-            IEnumerable<GatherTarget> nearbyItems = [];
-            
-            if (this.Any(n => n.Time != TimeInterval.Always))
-            {
-                nearbyItems = [this.First(n => n.Time.InRange(AutoGather.AdjustedServerTime))];
-            }
-            else
-            {
-                var isUmbralItem = firstItemNeedingGathering.Gatherable != null && 
-                                  UmbralNodes.IsUmbralItem(firstItemNeedingGathering.Gatherable.ItemId);
-                                  
-                if (isUmbralItem && Plugin.Functions.InTheDiadem())
-                {
-                    var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                    var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
-                    
-                    if (isUmbralWeather)
-                    {
-                        
-                        var currentJob = Player.Job switch
-                        {
-                            16 /* MIN */ => GatheringType.Miner,
-                            17 /* BTN */ => GatheringType.Botanist,
-                            _ => GatheringType.Unknown
-                        };
-                        var umbralWeather = (UmbralNodes.UmbralWeatherType)currentWeather;
-                        
-                        nearbyItems = _gatherableItems
-                            .Where(target => target.Gatherable != null && UmbralNodes.IsUmbralItem(target.Gatherable.ItemId))
-                            .Where(target => 
-                            {
-                                var umbralInfo = UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId);
-                                return umbralInfo.HasValue && 
-                                       umbralInfo.Value.Weather == umbralWeather &&
-                                       UmbralNodes.GetGatheringType(umbralInfo.Value.NodeType) == currentJob;
-                            })
-                            .Where(NeedsGathering);
-                    }
-                    else
-                    {
-                        nearbyItems = [];
-                    }
-                }
-                else
-                {
-                    nearbyItems = this
-                        .Where(i => i.Item == firstItemNeedingGathering.Item)
-                        .Where(i => i.Node?.WorldPositions.Keys.Any(nearbyNodes.Contains) ?? false);
-                }
-                    
-            }
-
-            var result = nearbyItems.Any() ? nearbyItems : [firstItemNeedingGathering];
-            return result;
+            return _gatherableItems.Where(NeedsGathering).Take(1);
         }
 
         /// <summary>
@@ -256,6 +152,7 @@ namespace GatherBuddy.AutoGather.Lists
             var botanistLevel = (DiscipleOfLand.BotanistLevel + 5) / 5 * 5;
             var adjustedServerTime = _lastUpdateTime;
             var territoryId = _lastTerritoryId;
+            var weatherId = _lastWeatherId;
             DateTime? nextAllowance = null;
 
             var targets = _listsManager.ActiveItems
@@ -348,7 +245,22 @@ namespace GatherBuddy.AutoGather.Lists
             
             _gatherableItems.AddRange(targets);
 
-            AddUmbralItemsIfAvailable(adjustedServerTime, minerLevel, botanistLevel);
+            if (Functions.InTheDiadem())
+            {
+                // For The Diadem items in the front of the list put umbral items with matching weather first and other umbral items last
+                var numDiademItems = _gatherableItems.FindIndex(x => x.Item.Locations.All(l => l.Territory.Id != 939));
+
+                if (numDiademItems < 0)
+                    numDiademItems = _gatherableItems.Count;
+
+                if (numDiademItems > 1)
+                {
+                    // Use LINQ for stable sort
+                    var sortedRange = _gatherableItems.Take(numDiademItems).OrderBy(x => PrioritizeUmbralItems(x.Item, weatherId)).ToList();
+                    for (var i = 0; i < numDiademItems; i++)
+                        _gatherableItems[i] = sortedRange[i];
+                }
+            }
             
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
         }
@@ -566,6 +478,7 @@ namespace GatherBuddy.AutoGather.Lists
             if (_activeItemsChanged
              || _lastUpdateTime.TotalEorzeaHours() != AutoGather.AdjustedServerTime.TotalEorzeaHours()
              || _lastTerritoryId != Dalamud.ClientState.TerritoryType
+             || Functions.InTheDiadem() && _lastWeatherId != EnhancedCurrentWeather.GetCurrentWeatherId()
              || _lastJob != currentJob)
                 return true;
 
@@ -596,6 +509,7 @@ namespace GatherBuddy.AutoGather.Lists
         private void DoUpdate()
         {
             var territoryId        = Dalamud.ClientState.TerritoryType;
+            var weatherId          = Functions.InTheDiadem() ? EnhancedCurrentWeather.GetCurrentWeatherId() : 0;
             var adjustedServerTime = AutoGather.AdjustedServerTime;
             var eorzeaHour         = adjustedServerTime.TotalEorzeaHours();
             var lastTerritoryId    = _lastTerritoryId;
@@ -613,6 +527,7 @@ namespace GatherBuddy.AutoGather.Lists
             _forceUpdateUnconditionally = false;
             _lastUpdateTime     = adjustedServerTime;
             _lastTerritoryId    = territoryId;
+            _lastWeatherId      = weatherId;
             _lastJob            = currentJob;
 
             if (territoryId != lastTerritoryId)
@@ -632,84 +547,24 @@ namespace GatherBuddy.AutoGather.Lists
         internal void Reset()
         {
             _lastTerritoryId = 0;
-            _lastUpdateTime  = TimeStamp.MinValue;
+            _lastWeatherId = 0;
+            _lastUpdateTime = TimeStamp.MinValue;
             _gatherableItems.Clear();
             _gatherableItems.TrimExcess();
             _teleportationCosts.Clear();
             _teleportationCosts.TrimExcess();
         }
 
-        private void AddUmbralItemsIfAvailable(TimeStamp adjustedServerTime, int minerLevel, int botanistLevel)
+        private static int PrioritizeUmbralItems(IGatherable item, int currentWeather)
         {
-            var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-            var isInDiadem = Plugin.Functions.InTheDiadem();
-            var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
-            
-            if (!isUmbralWeather || !isInDiadem)
-                return;
-                
-            var umbralWeatherType = (UmbralNodes.UmbralWeatherType)currentWeather;
-            
-            var umbralItemsToGather = _listsManager.ActiveItems
-                .Where(x => x.Item is Gatherable)
-                .Where(NeedsGathering)
-                .Select(x => (Item: (x.Item as Gatherable)!, x.Quantity))
-                .Where(x => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(x.Item.ItemId)))
-                .Where(x => (RequiresHomeWorld(x) && Plugin.Functions.OnHomeWorld()) || !RequiresHomeWorld(x))
-                .ToList();
-                
-            if (!umbralItemsToGather.Any())
-                return;
-                
-            foreach (var itemEntry in umbralItemsToGather)
-            {
-                var item = itemEntry.Item;
-                var quantity = itemEntry.Quantity;
-                
-                var umbralNodeEntry = UmbralNodes.UmbralNodeData.FirstOrDefault(entry => 
-                    entry.ItemIds.Contains(item.ItemId));
-                    
-                if (umbralNodeEntry.NodeId == 0)
-                    continue;
-                    
-                var itemGatheringType = item.GatheringType.ToGroup();
-                
-                var umbralGatheringType = umbralNodeEntry.NodeType switch
-                {
-                    UmbralNodes.CloudedNodeType.CloudedRockyOutcrop => GatheringType.Miner,
-                    UmbralNodes.CloudedNodeType.CloudedMineralDeposit => GatheringType.Miner,
-                    UmbralNodes.CloudedNodeType.CloudedMatureTree => GatheringType.Botanist,
-                    UmbralNodes.CloudedNodeType.CloudedLushVegetation => GatheringType.Botanist,
-                    _ => itemGatheringType
-                };
-                
-                if (umbralNodeEntry.Weather != umbralWeatherType)
-                    continue;
-                
-                var requiredLevel = item.Level;
-                var playerLevel = umbralGatheringType switch
-                {
-                    GatheringType.Miner => minerLevel,
-                    GatheringType.Botanist => botanistLevel,
-                    _ => 0
-                };
-                
-                if (requiredLevel > playerLevel)
-                    continue;
-                    
-                var currentTerritoryId = Dalamud.ClientState.TerritoryType;
-                var templateNode = GatherBuddy.GameData.GatheringNodes.Values
-                    .Where(node => node.Territory.Id is 901 or 929 or 939 && 
-                        node.GatheringType.ToGroup() == umbralGatheringType)
-                    .OrderBy(node => node.Territory.Id == currentTerritoryId ? 0 : 1)
-                    .FirstOrDefault();
-                        
-                if (templateNode != null)
-                {
-                    var gatherTarget = new GatherTarget(item, templateNode, TimeInterval.Always, quantity);
-                    _gatherableItems.Add(gatherTarget);
-                }
-            }
+            if (item is not Gatherable g)
+                return 0;
+
+            foreach (var node in UmbralNodes.UmbralNodeData)
+                if (node.ItemIds.Contains(g.ItemId))
+            return currentWeather == (int)node.Weather ? -1 : 1;
+
+            return 0;
         }
 
         public void Dispose()
