@@ -67,6 +67,12 @@ public partial class Interface
                 "Toggle whether to automatically gather items. (Disable this for 'nav only mode')",
                 GatherBuddy.Config.AutoGatherConfig.DoGathering, b => GatherBuddy.Config.AutoGatherConfig.DoGathering = b);
 
+        public static void DrawTeleportToNextNodeBox()
+            => DrawCheckbox("Teleport to next timed item",
+                "Teleport to an upcoming timed node or fishing spot and wait at the Aetheryte when there is nothing else to gather\n" +
+                "This option has priority over going home when idle.",
+                GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode, b => GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode = b);
+
         public static void DrawGoHomeBox()
         {
             DrawCheckbox("Go home when done",                       "Uses the '/li auto' command to take you home when done gathering",
@@ -1562,6 +1568,7 @@ public partial class Interface
                     ConfigFunctions.DrawHonkVolumeSlider();
                 }
                 ConfigFunctions.DrawCheckRetainersBox();
+                ConfigFunctions.DrawTeleportToNextNodeBox();
                 ConfigFunctions.DrawGoHomeBox();
                 ConfigFunctions.DrawUseGivingLandOnCooldown();
                 ConfigFunctions.DrawUseSkillsForFallabckBox();

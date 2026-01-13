@@ -506,7 +506,7 @@ namespace GatherBuddy.AutoGather
 
             if (IsGathering && Player.Job == 18 /* FSH */ && _activeItemList.ShouldUpdateWhileFishing())
             {
-                var nextAfterRefresh = _activeItemList.GetNextOrDefault(new List<uint>());
+                var nextAfterRefresh = _activeItemList.GetNextOrDefault();
                 var currentFishId = _currentAutoHookTarget?.Fish?.ItemId ?? 0;
                 var currentFishIsTimed = _currentAutoHookTarget?.Time != Time.TimeInterval.Always;
                 
@@ -538,32 +538,13 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (_activeItemList.GetNextOrDefault(new List<uint>()).Any(g => g.Fish != null))
-            {
-                if (!GatherBuddy.Config.AutoGatherConfig.FishDataCollection)
-                {
-                    Communicator.PrintError(
-                        "You have fish on your auto-gather list but you have not opted in to fishing data collection. Auto-gather cannot continue. Please enable fishing data collection in your configuration options or remove fish from your auto-gather lists.");
-                    AbortAutoGather();
-                    return;
-                }
-                
-                if (!AutoHook.Enabled)
-                {
-                    Communicator.PrintError(
-                        "[GatherBuddyReborn] You have fish on your auto-gather list but AutoHook is not installed or enabled. Auto-gather cannot continue. Please install and enable AutoHook or remove fish from your auto-gather lists.");
-                    AbortAutoGather();
-                    return;
-                }
-            }
-
             if (IsGathering)
             {
                 // Set the current gather target when entering a node
                 if (_currentGatherTarget == null)
                 {
                     if (!_activeItemList.IsInitialized)
-                        _currentGatherTarget = _activeItemList.GetNextOrDefault([Dalamud.Targets.Target!.DataId]).FirstOrDefault();
+                        _currentGatherTarget = _activeItemList.GetNextOrDefault().FirstOrDefault();
                     else
                         _currentGatherTarget = _activeItemList.CurrentOrDefault;
                 }
@@ -576,7 +557,7 @@ namespace GatherBuddy.AutoGather
                 AutoStatus = "Gathering...";
                 StopNavigation();
 
-                var fish = _activeItemList.GetNextOrDefault(new List<uint>()).Where(g => g.Fish != null);
+                var fish = _activeItemList.GetNextOrDefault().Where(g => g.Fish != null);
                 if (fish.Any() && Player.Job == 18 /* FSH */)
                 {
                     var isSpearfishing = fish.First().Fish?.IsSpearFish == true;
@@ -808,21 +789,28 @@ namespace GatherBuddy.AutoGather
             var hasNormalDiademItemsInList = _activeItemList.Any(target => target.Gatherable != null && 
                 !UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)) &&
                 target.Location.Territory.Id is 901 or 929 or 939);
-            
-            var next = _activeItemList.GetNextOrDefault(nearbyNodes)
-                .Where(target => {
-                    if (Functions.InTheDiadem() && _hasGatheredUmbralThisSession && hasNormalDiademItemsInList)
-                    {
-                        var isUmbralItem = IsUmbralItem(target.Item);
-                        if (isUmbralItem)
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                })
-                .OrderByDescending(nodes => nodes.Item.ItemId);
-            
+
+            var next = _activeItemList.GetNextOrDefault();
+
+            if (next.Any(x => x.Fish != null))
+            {
+                if (!GatherBuddy.Config.AutoGatherConfig.FishDataCollection)
+                {
+                    Communicator.PrintError(
+                        "You have fish on your auto-gather list but you have not opted in to fishing data collection. Auto-gather cannot continue. Please enable fishing data collection in your configuration options or remove fish from your auto-gather lists.");
+                    AbortAutoGather();
+                    return;
+                }
+
+                if (!AutoHook.Enabled)
+                {
+                    Communicator.PrintError(
+                        "[GatherBuddyReborn] You have fish on your auto-gather list but AutoHook is not installed or enabled. Auto-gather cannot continue. Please install and enable AutoHook or remove fish from your auto-gather lists.");
+                    AbortAutoGather();
+                    return;
+                }
+            }
+
             if (Functions.InTheDiadem() && _hasGatheredUmbralThisSession)
             {
                 var hasUmbralItems = HasUmbralItemsInActiveList();
@@ -886,7 +874,7 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                 }
-                
+
                 if (!next.Any())
                 {
                     if (HasReducibleItems())
@@ -913,7 +901,7 @@ namespace GatherBuddy.AutoGather
                                         AutoHook.SetAutoStartFishing?.Invoke(false);
                                     });
                                 }
-                                
+
                                 ReduceItems(true, () =>
                                 {
                                     if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
@@ -931,13 +919,13 @@ namespace GatherBuddy.AutoGather
 
                         return;
                     }
-                    
+
                     if (GatherBuddy.CollectableManager?.IsRunning == true)
                     {
                         AutoStatus = "Turning in collectables...";
                         return;
                     }
-                    
+
                     if (HasCollectables())
                     {
                         AutoStatus = "Turning in collectables...";
@@ -945,18 +933,33 @@ namespace GatherBuddy.AutoGather
                         return;
                     }
 
-                    if (GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
+                    var waitAtAetheryte = false;
+                    if (GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode)
+                    {
+                        var nextTimed = _activeItemList.PeekNextTimed();
+                        waitAtAetheryte = nextTimed != default;
+                        if (waitAtAetheryte && nextTimed.Location.Territory.Id != currentTerritory)
+                        {
+                            // Replace next target and fall through to teleport to its location
+                            next = [nextTimed];
+                        }
+                    }
+
+                    if (!waitAtAetheryte && GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
                         if (GoHome())
                             return;
 
-                    if (!Waiting)
+                    if (!next.Any())
                     {
-                        Waiting = true;
-                        _plugin.Ipc.AutoGatherWaiting();
-                    }
+                        if (!Waiting)
+                        {
+                            Waiting = true;
+                            _plugin.Ipc.AutoGatherWaiting();
+                        }
 
-                    AutoStatus = "No available items to gather";
-                    return;
+                        AutoStatus = "No available items to gather";
+                        return;
+                    }
                 }
             }
 
@@ -991,7 +994,7 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            var territoryId = Dalamud.ClientState.TerritoryType;
+            var territoryId = currentTerritory;
             var targetTerritoryId = next.First().Node?.Territory.Id ?? next.First().FishingSpot?.Territory.Id ?? 0;
             
             if (((territoryId == 129 && targetTerritoryId == 128)
@@ -2777,7 +2780,7 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     
-                    var nextItems = _activeItemList.GetNextOrDefault(new List<uint>());
+                    var nextItems = _activeItemList.GetNextOrDefault();
                     if (nextItems.Any())
                     {
                         var nextItem = nextItems.First();

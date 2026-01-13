@@ -21,7 +21,7 @@ namespace GatherBuddy.AutoGather.Lists
 {
     internal class ActiveItemList : IEnumerable<GatherTarget>, IDisposable
     {
-        private readonly List<GatherTarget>                      _gatherableItems = [];
+        private readonly List<GatherTarget>                      _gatherableItems    = [];
         private readonly AutoGatherListsManager                  _listsManager;
         private readonly AutoGather                              _autoGather;
         private readonly Dictionary<uint, int>                   _teleportationCosts = [];
@@ -33,6 +33,7 @@ namespace GatherBuddy.AutoGather.Lists
         private          bool                                    _gatheredSomething;
         private          bool                                    _forceUpdateUnconditionally;
         private          GatheringType                           _lastJob            = GatheringType.Unknown;
+        private          GatherTarget                            _currentItem;
 
         internal ReadOnlyDictionary<GatheringNode, TimeInterval> DebugVisitedTimedLocations
             => _visitedTimedNodes.AsReadOnly();
@@ -41,7 +42,7 @@ namespace GatherBuddy.AutoGather.Lists
         /// First item on the list as of the last enumeration or default.
         /// </summary>
         public GatherTarget CurrentOrDefault
-            => _gatherableItems.FirstOrDefault();
+            => _currentItem;
 
         /// <summary>
         /// Determines whether there are any items that need to be gathered,
@@ -78,12 +79,25 @@ namespace GatherBuddy.AutoGather.Lists
         /// Refreshes the list of items to gather (if needed) and returns the first item.
         /// </summary>
         /// <returns>The next item to gather. </returns>
-        public IEnumerable<GatherTarget> GetNextOrDefault(IEnumerable<uint> nearbyNodes)
+        public IEnumerable<GatherTarget> GetNextOrDefault()
         {
             if (IsUpdateNeeded())
                 DoUpdate();
 
-            return _gatherableItems.Where(NeedsGathering).Take(1);
+            _currentItem = _gatherableItems.FirstOrDefault(x => x.Time.InRange(_lastUpdateTime) && NeedsGathering(x));
+            if (_currentItem == default)
+                return [];
+            else
+                return [_currentItem];
+        }
+
+        /// <summary>
+        /// Returns next timed item that is not up yet
+        /// </summary>
+        /// <returns></returns>
+        public GatherTarget PeekNextTimed()
+        {
+            return _gatherableItems.Where(x => !x.Time.InRange(_lastUpdateTime)).DefaultIfEmpty().MinBy(x => x.Time.Start);
         }
 
         /// <summary>
@@ -135,6 +149,7 @@ namespace GatherBuddy.AutoGather.Lists
         internal void DebugClearVisited()
         {
             _visitedTimedNodes.Clear();
+            _forceUpdateUnconditionally = true;
         }
 
         public void ForceRefresh()
@@ -181,9 +196,9 @@ namespace GatherBuddy.AutoGather.Lists
                 // Apply predators and mooch dependencies time restrictions
                 .Select(x => x with { Time = IntersectMoochUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
                 .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
+                // Remove fish with non-overlapping dependency windows
+                .Where(x => x.Time != TimeInterval.Never)
                 .Select(x => x with { Location = CorrectForPredatorLocation(x.Item, x.Location) })
-                // Remove nodes that are not up.
-                .Where(x => x.Time.InRange(adjustedServerTime))
                 // Remove nodes that are already gathered.
                 .Where(x => x.Location is not GatheringNode node || !_visitedTimedNodes.ContainsKey(node))
                 // Group by item and select the best node.
@@ -202,6 +217,8 @@ namespace GatherBuddy.AutoGather.Lists
                         : 3)
                     // Bring Shadow Nodes to the end
                     .ThenBy(x => x.Location is FishingSpot spot && spot.IsShadowNode)
+                    // Prioritize active nodes
+                    .ThenBy(x => !x.Time.InRange(adjustedServerTime))
                     // Prioritize closest nodes in the current territory.
                     .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Location))
                     // Order by end time, longest first as in the original UptimeManager.NextUptime().
@@ -219,8 +236,10 @@ namespace GatherBuddy.AutoGather.Lists
                     .First()
                 )
                 .Select(x => new GatherTarget(x.Item, x.Location, x.Time, x.Quantity))
-                // Prioritize timed nodes first.
-                .OrderBy(x => x.Time == TimeInterval.Always);
+                // Put inactive timed nodes to the end.
+                .OrderBy(x => !x.Time.InRange(adjustedServerTime))
+                // Bring active timed nodes to the front.
+                .ThenBy(x => x.Time == TimeInterval.Always);
 
             if (GatherBuddy.Config.AutoGatherConfig.SortingMethod == AutoGatherConfig.SortingType.Location)
             {
@@ -491,9 +510,7 @@ namespace GatherBuddy.AutoGather.Lists
                     if (item == current)
                         return false;
 
-                    if (item.Node != null && item.Node.Territory.Id != _lastTerritoryId)
-                        break;
-                    if (item.FishingSpot != null && item.FishingSpot.Territory.Id != _lastTerritoryId)
+                    if (item.Location.Territory.Id != _lastTerritoryId)
                         break;
                 }
 
@@ -562,7 +579,7 @@ namespace GatherBuddy.AutoGather.Lists
 
             foreach (var node in UmbralNodes.UmbralNodeData)
                 if (node.ItemIds.Contains(g.ItemId))
-            return currentWeather == (int)node.Weather ? -1 : 1;
+                    return currentWeather == (int)node.Weather ? -1 : 1;
 
             return 0;
         }

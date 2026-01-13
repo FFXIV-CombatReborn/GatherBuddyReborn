@@ -894,11 +894,11 @@ public partial class Interface
         {
             foreach (var x in GatherBuddy.AutoGather.ItemsToGather)
             {
-                ImGui.Text($"Item: {x.Item.Name}; Location: {x.Node.Name}; Valid until: {(x.Time == TimeInterval.Always ? "Always" : x.Time.End.ConvertToEorzea().DateTime.ToString("HH:mm", CultureInfo.InvariantCulture))} ET; Quantity: {x.Quantity}");
-                if (x.Time == TimeInterval.Always || x.Node.NodeType is not Enums.NodeType.Unspoiled and not Enums.NodeType.Legendary)
+                ImGui.Text($"Item: {x.Item.Name}; Location: {x.Location.Name}; Valid until: {(x.Time == TimeInterval.Always ? "Always" : x.Time.End.ConvertToEorzea().DateTime.ToString("HH:mm", CultureInfo.InvariantCulture))} ET; Quantity: {x.Quantity}");
+                if (x.Time == TimeInterval.Always || x.Node == null || x.Node.NodeType is not Enums.NodeType.Unspoiled and not Enums.NodeType.Legendary)
                     continue;
                 ImGui.SameLine();
-                if (ImGui.Button("Mark Visited"))
+                if (ImGui.Button($"Mark Visited##{x.Item.ItemId}"))
                     GatherBuddy.AutoGather.DebugMarkVisited(x);
             }
         }
