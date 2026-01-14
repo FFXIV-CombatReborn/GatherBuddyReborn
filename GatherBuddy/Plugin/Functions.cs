@@ -1,12 +1,13 @@
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Keys;
+using ElliLib.Classes;
+using GatherBuddy.AutoGather.Helpers;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
-using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Keys;
-using Lumina.Excel.Sheets;
-using ElliLib.Classes;
 
 namespace GatherBuddy.Plugin;
 
@@ -114,14 +115,11 @@ public static class Functions
              || Dalamud.Conditions[ConditionFlag.WatchingCutscene78]
              || Dalamud.Conditions[ConditionFlag.InDeepDungeon])
          && !InIslandSanctuary()
-         && !InTheDiadem();
+         && !Diadem.IsInside;
 
     public static bool BetweenAreas()
         => Dalamud.Conditions[ConditionFlag.BetweenAreas]
          || Dalamud.Conditions[ConditionFlag.BetweenAreas51];
-
-    public static bool InTheDiadem()
-        => Dalamud.ClientState.TerritoryType == 939;
 
     public static bool OnHomeWorld()
     {

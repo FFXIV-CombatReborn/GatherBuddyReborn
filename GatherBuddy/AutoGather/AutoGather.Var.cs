@@ -4,6 +4,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.AutoGather.AtkReaders;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
@@ -105,7 +106,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (Functions.InTheDiadem())
+            if (Diadem.IsInside)
             {
                 return Vector3.Distance(Dalamud.Objects.LocalPlayer.Position, destination)
                  >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance;

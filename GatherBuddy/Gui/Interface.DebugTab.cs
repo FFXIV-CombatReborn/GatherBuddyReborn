@@ -792,7 +792,7 @@ public partial class Interface
             {
                 ImGui.PushID(obj.GameObjectId.ToString());
                 var node = GatherBuddy.GameData.GatheringNodes.TryGetValue((uint)obj.GameObjectId, out var n) ? n : null;
-                ImGui.Text($"{obj.GameObjectId}: {obj.Name ?? "Unknown"} - DataId: {obj.DataId}");
+                ImGui.Text($"{obj.GameObjectId}: {obj.Name ?? "Unknown"} - BaseId: {obj.BaseId}");
                 ImGui.SameLine();
                 if (ImGui.SmallButton("NavTo"))
                 {

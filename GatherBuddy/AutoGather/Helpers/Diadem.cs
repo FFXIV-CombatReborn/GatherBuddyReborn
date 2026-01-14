@@ -36,13 +36,15 @@ namespace GatherBuddy.AutoGather.Helpers
         private uint _lastNode;
         private readonly byte[] _indexes = new byte[TotalPaths];
         private int _initialized; // bitfield
-        public static FrozenDictionary<GatheringType, ImmutableArray<uint>> ShortestPaths { get; private set; }
-        public static FrozenSet<GatheringNode> RegularBaseNodes { get; private set; }
-        public static FrozenSet<Gatherable> RegularItems { get; private set; }
-        public static FrozenSet<Gatherable> OddlyDelicateItems { get; private set; }
-        public static FrozenDictionary<uint, uint> RawToApprovedItemIds { get; private set; }
-        public static FrozenDictionary<uint, uint> ApprovedToRawItemIds { get; private set; }
-        public static ImmutableArray<(Vector3 From, Vector3 To)> Windmires { get; private set; } = [
+        public static Territory Territory { get; } = GatherBuddy.GameData.Territories[939];
+        public static bool IsInside => Dalamud.ClientState.TerritoryType == 939;
+        public static FrozenDictionary<GatheringType, ImmutableArray<uint>> ShortestPaths { get; }
+        public static FrozenSet<GatheringNode> RegularBaseNodes { get; }
+        public static FrozenSet<Gatherable> RegularItems { get; }
+        public static FrozenSet<Gatherable> OddlyDelicateItems { get; }
+        public static FrozenDictionary<uint, uint> RawToApprovedItemIds { get; }
+        public static FrozenDictionary<uint, uint> ApprovedToRawItemIds { get; }
+        public static ImmutableArray<(Vector3 From, Vector3 To)> Windmires { get; } = [
             (Vector3.Create(-724.649f,270.846f,-27.428f),Vector3.Create(-540.327f,317.677f,323.471f)),
             (Vector3.Create(-558.688f,318.068f,308.976f),Vector3.Create(-723.915f,271.008f,-49.867f)),
             (Vector3.Create(-287.557f,318.234f,558.728f),Vector3.Create(-118.239f,114.119f,537.373f)),
@@ -171,7 +173,7 @@ namespace GatherBuddy.AutoGather.Helpers
 
         private void OnUpdate(IFramework _)
         {
-            if (!Functions.InTheDiadem())
+            if (!IsInside)
             {
                 Array.Fill(_indexes, (byte)0);
                 _initialized = (1 << (int)TotalPaths) - 1;

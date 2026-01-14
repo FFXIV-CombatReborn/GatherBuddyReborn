@@ -1,11 +1,14 @@
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Utility;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.AutoGather.Extensions;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
+using GatherBuddy.Helpers;
+using GatherBuddy.Interfaces;
+using GatherBuddy.Plugin;
 using GatherBuddy.Time;
 using System;
 using System.Collections;
@@ -13,10 +16,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
-using GatherBuddy.Interfaces;
-using GatherBuddy.Plugin;
-using UmbralNodes = GatherBuddy.Data.UmbralNodes;
 using EnhancedCurrentWeather = GatherBuddy.SeFunctions.EnhancedCurrentWeather;
+using UmbralNodes = GatherBuddy.Data.UmbralNodes;
 namespace GatherBuddy.AutoGather.Lists
 {
     internal class ActiveItemList : IEnumerable<GatherTarget>, IDisposable
@@ -79,16 +80,12 @@ namespace GatherBuddy.AutoGather.Lists
         /// Refreshes the list of items to gather (if needed) and returns the first item.
         /// </summary>
         /// <returns>The next item to gather. </returns>
-        public IEnumerable<GatherTarget> GetNextOrDefault()
+        public GatherTarget GetNextOrDefault()
         {
             if (IsUpdateNeeded())
                 DoUpdate();
 
-            _currentItem = _gatherableItems.FirstOrDefault(x => x.Time.InRange(_lastUpdateTime) && NeedsGathering(x));
-            if (_currentItem == default)
-                return [];
-            else
-                return [_currentItem];
+            return _currentItem = _gatherableItems.FirstOrDefault(x => x.Time.InRange(_lastUpdateTime) && NeedsGathering(x));
         }
 
         /// <summary>
@@ -260,27 +257,25 @@ namespace GatherBuddy.AutoGather.Lists
                     .ThenBy(x => GetHorizontalSquaredDistanceToPlayer(x.Location));
             }
 
-            _gatherableItems.Clear();            
-            
-            _gatherableItems.AddRange(targets);
+            _gatherableItems.Clear();
 
-            if (Functions.InTheDiadem())
+            if (Diadem.IsInside)
             {
-                // For The Diadem items in the front of the list put umbral items with matching weather first and other umbral items last
-                var numDiademItems = _gatherableItems.FindIndex(x => x.Item.Locations.All(l => l.Territory.Id != 939));
-
-                if (numDiademItems < 0)
-                    numDiademItems = _gatherableItems.Count;
-
-                if (numDiademItems > 1)
-                {
-                    // Use LINQ for stable sort
-                    var sortedRange = _gatherableItems.Take(numDiademItems).OrderBy(x => PrioritizeUmbralItems(x.Item, weatherId)).ToList();
-                    for (var i = 0; i < numDiademItems; i++)
-                        _gatherableItems[i] = sortedRange[i];
-                }
+                var frontDiadem = true;
+                var frontUmbral = false;
+                // Bring the current-weather umbral items to the front.
+                // Within the leading Diadem items, move umbral items without matching weather to the back.
+                var targetsDiadem = targets
+                    .Select(x => (Target: x, Priority: GetDiademPriority(x, weatherId, ref frontDiadem, ref frontUmbral)))
+                    .OrderBy(x => x.Priority)
+                    .Select(x => x.Target);
+                _gatherableItems.AddRange(targetsDiadem);
             }
-            
+            else
+            {
+                _gatherableItems.AddRange(targets);
+            }
+
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
         }
 
@@ -293,7 +288,7 @@ namespace GatherBuddy.AutoGather.Lists
             if (fish.Predators.Length != 0)
             {
                 // Only check FIRST predator for shadow node spawning (rest are caught within shadow node)
-                var (firstPredator, requiredCount) = fish.Predators.First();
+                var (firstPredator, requiredCount) = fish.Predators[0];
                 var caughtCount = _autoGather.SpearfishingSessionCatches.GetValueOrDefault(firstPredator.ItemId, 0);
                 var firstPredatorMet = caughtCount >= requiredCount;
 
@@ -331,7 +326,7 @@ namespace GatherBuddy.AutoGather.Lists
             {
                 return item.NodeType == NodeType.Legendary
                  || item.NodeType == NodeType.Unspoiled
-                 || item.NodeList.Any(nl => nl.Territory.Id is 901 or 929 or 939); // The Diadem
+                 || item.NodeList.Any(nl => nl.Territory.Id == Diadem.Territory.Id);
             }
             else
             {
@@ -497,7 +492,7 @@ namespace GatherBuddy.AutoGather.Lists
             if (_activeItemsChanged
              || _lastUpdateTime.TotalEorzeaHours() != AutoGather.AdjustedServerTime.TotalEorzeaHours()
              || _lastTerritoryId != Dalamud.ClientState.TerritoryType
-             || Functions.InTheDiadem() && _lastWeatherId != EnhancedCurrentWeather.GetCurrentWeatherId()
+             || Diadem.IsInside && _lastWeatherId != EnhancedCurrentWeather.GetCurrentWeatherId()
              || _lastJob != currentJob)
                 return true;
 
@@ -526,7 +521,7 @@ namespace GatherBuddy.AutoGather.Lists
         private void DoUpdate()
         {
             var territoryId        = Dalamud.ClientState.TerritoryType;
-            var weatherId          = Functions.InTheDiadem() ? EnhancedCurrentWeather.GetCurrentWeatherId() : 0;
+            var weatherId          = Diadem.IsInside ? EnhancedCurrentWeather.GetCurrentWeatherId() : 0;
             var adjustedServerTime = AutoGather.AdjustedServerTime;
             var eorzeaHour         = adjustedServerTime.TotalEorzeaHours();
             var lastTerritoryId    = _lastTerritoryId;
@@ -572,16 +567,34 @@ namespace GatherBuddy.AutoGather.Lists
             _teleportationCosts.TrimExcess();
         }
 
-        private static int PrioritizeUmbralItems(IGatherable item, int currentWeather)
+        private static int GetDiademPriority(in GatherTarget target, int currentWeather, ref bool frontDiadem, ref bool frontUmbral)
         {
-            if (item is not Gatherable g)
-                return 0;
+            // Priority (lower values come first):
+            // 0 = Umbral items that match the current weather (rush to the node).
+            // 1 = Diadem regular item within the leading Diadem block (gather while waiting for weather).
+            // 2 = Trailing Diadem regular items, if there were umbral items in front (gather while waiting for weather).
+            // 3 = Umbral items that do NOT match the current weather, within the leading Diadem block (wait for weather).
+            // 4 = All other trailing non-Diadem items and everything after that (leave The Diadem).
 
-            foreach (var node in UmbralNodes.UmbralNodeData)
-                if (node.ItemIds.Contains(g.ItemId))
-                    return currentWeather == (int)node.Weather ? -1 : 1;
+            if (target.Location.Territory != Diadem.Territory)
+            {
+                // Non-Diadem item.
+                frontDiadem = false;
+                return 4;
+            }
 
-            return 0;
+            if (target.Location is GatheringNode node)
+            {
+                ref readonly var data = ref UmbralNodes.GetUmbralBaseNodeInfo(node.Id);
+
+                if (data.NodeId != 0)
+                {
+                    frontUmbral |= frontDiadem;
+                    return currentWeather == (int)data.Weather ? 0 : (frontDiadem ? 3 : 4);
+                }
+            }
+
+            return frontDiadem ? 1 : (frontUmbral ? 2 : 4);
         }
 
         public void Dispose()

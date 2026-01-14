@@ -6,14 +6,9 @@ using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Utility;
-
-using GatherBuddy.Automation;
-using GatherBuddy.Helpers;
-using GatherBuddy.Utilities;
-using GatherBuddy.Automation;
+using ElliLib.Extensions;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -21,13 +16,16 @@ using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.AutoGather.Movement;
+using GatherBuddy.Automation;
 using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Data;
 using GatherBuddy.Enums;
+using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
+using GatherBuddy.Utilities;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -38,7 +36,6 @@ using Fish = GatherBuddy.Classes.Fish;
 using GatheringType = GatherBuddy.Enums.GatheringType;
 using NodeType = GatherBuddy.Enums.NodeType;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
-using ElliLib.Extensions;
 
 namespace GatherBuddy.AutoGather
 {
@@ -340,8 +337,8 @@ namespace GatherBuddy.AutoGather
             {
                 _lastTerritory = currentTerritory;
                 
-                var isInDiademOrFirmament = currentTerritory is 901 or 929 or 939 or 886;
-                var wasInDiademOrFirmament = _lastTerritory is 901 or 929 or 939 or 886;
+                var isInDiademOrFirmament = currentTerritory == Diadem.Territory.Id;
+                var wasInDiademOrFirmament = _lastTerritory == Diadem.Territory.Id;
                 
                 if (isInDiademOrFirmament && !wasInDiademOrFirmament)
                 {
@@ -362,7 +359,7 @@ namespace GatherBuddy.AutoGather
                     }
                 }
                 
-                if (currentTerritory is 901 or 929 or 939)
+                if (currentTerritory == Diadem.Territory.Id)
                 {
                     _hasGatheredUmbralThisSession = false;
                     _lastUmbralWeather = 0;
@@ -390,25 +387,23 @@ namespace GatherBuddy.AutoGather
                     var gatherable = gatherTarget.Value.Gatherable;
                     var node = gatherTarget.Value.Node;
                     
-                    if (Functions.InTheDiadem())
+                    if (Diadem.IsInside)
                     {
-                        var isUmbralNode = UmbralNodes.UmbralNodeData.Any(entry => entry.NodeId == targetNode.DataId);
-                        
-                        if (isUmbralNode)
+                        if (UmbralNodes.IsUmbralNode(targetNode.BaseId))
                         {
                             _hasGatheredUmbralThisSession = true;
-                            
-                            FarNodesSeenSoFar.Clear();
                         }
                     }
                     
                     if (gatherable != null && (gatherable.NodeType == NodeType.Regular || gatherable.NodeType == NodeType.Ephemeral)
-                        && (VisitedNodes.Last?.Value != targetNode.DataId)
-                        && node != null && node.WorldPositions.ContainsKey(targetNode.DataId))
+                        && (VisitedNodes.Last?.Value != targetNode.BaseId)
+                        && node != null && node.WorldPositions.ContainsKey(targetNode.BaseId))
                     {
-                        if (!Functions.InTheDiadem())
-                            FarNodesSeenSoFar.Clear();
-                        VisitedNodes.AddLast(targetNode.DataId);
+                        FarNodesSeenSoFar.Clear();
+
+                        if (node.WorldPositions.Count > 2)
+                            VisitedNodes.AddLast(targetNode.BaseId);
+
                         while (VisitedNodes.Count > (node.WorldPositions.Count <= 4 ? 2 : 4))
                             VisitedNodes.RemoveFirst();
                     }
@@ -510,11 +505,11 @@ namespace GatherBuddy.AutoGather
                 var currentFishId = _currentAutoHookTarget?.Fish?.ItemId ?? 0;
                 var currentFishIsTimed = _currentAutoHookTarget?.Time != Time.TimeInterval.Always;
                 
-                var currentTargetStillAvailable = nextAfterRefresh.Any(g => g.Fish?.ItemId == currentFishId);
+                var currentTargetStillAvailable = nextAfterRefresh.Fish?.ItemId == currentFishId;
                 
-                var hasNewTimedTarget = nextAfterRefresh.Any(g => g.Fish != null
-                    && g.Time != Time.TimeInterval.Always
-                    && g.Fish!.ItemId != currentFishId);
+                var hasNewTimedTarget = nextAfterRefresh.Fish != null
+                    && nextAfterRefresh.Time != Time.TimeInterval.Always
+                    && nextAfterRefresh.Fish.ItemId != currentFishId;
                 
                 var shouldSwitchToNewTimed = !currentFishIsTimed && hasNewTimedTarget;
                 var shouldQuitExpiredTimed = currentFishIsTimed && !currentTargetStillAvailable;
@@ -544,7 +539,7 @@ namespace GatherBuddy.AutoGather
                 if (_currentGatherTarget == null)
                 {
                     if (!_activeItemList.IsInitialized)
-                        _currentGatherTarget = _activeItemList.GetNextOrDefault().FirstOrDefault();
+                        _currentGatherTarget = _activeItemList.GetNextOrDefault();
                     else
                         _currentGatherTarget = _activeItemList.CurrentOrDefault;
                 }
@@ -557,29 +552,29 @@ namespace GatherBuddy.AutoGather
                 AutoStatus = "Gathering...";
                 StopNavigation();
 
-                var fish = _activeItemList.GetNextOrDefault().Where(g => g.Fish != null);
-                if (fish.Any() && Player.Job == 18 /* FSH */)
+                var fish = _activeItemList.GetNextOrDefault();
+                if (fish.Fish != null && Player.Job == 18 /* FSH */)
                 {
-                    var isSpearfishing = fish.First().Fish?.IsSpearFish == true;
+                    var isSpearfishing = fish.Fish.IsSpearFish == true;
                     
                     if (isSpearfishing)
                     {
                         _wasGatheringSpearfish = true;
                         _wasAtShadowNode = _currentGatherTarget?.FishingSpot?.IsShadowNode == true;
                         
-                        var currentFishId = fish.First().Fish?.ItemId ?? 0;
+                        var currentFishId = fish.Fish.ItemId;
                         var targetFishId = _currentAutoHookTarget?.Fish?.ItemId ?? 0;
                         var now = DateTime.Now;
                         
                         if (!_currentAutoHookTarget.HasValue || targetFishId != currentFishId)
                         {
-                            SetupAutoHookForFishing(fish.First());
+                            SetupAutoHookForFishing(fish);
                             _lastAutoHookSetupTime = now;
                             _autoHookSetupComplete = false;
                         }
                         else if (!_autoHookSetupComplete && (now - _lastAutoHookSetupTime).TotalSeconds >= 1.0)
                         {
-                            SetupAutoHookForFishing(fish.First());
+                            SetupAutoHookForFishing(fish);
                             _lastAutoHookSetupTime = now;
                         }
                         return;
@@ -601,7 +596,7 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
 
-                if (!fish.Any() && Player.Job == 18 /* FSH */)
+                if (fish.Fish == null && Player.Job == 18 /* FSH */)
                 {
                     QueueQuitFishingTasks();
                 }
@@ -719,7 +714,9 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (Functions.InTheDiadem())
+            var next = _activeItemList.GetNextOrDefault();
+
+            if (Diadem.IsInside)
             {
                 if (TryUseAetherCannon()) return;
                 
@@ -737,16 +734,15 @@ namespace GatherBuddy.AutoGather
                 var hasUmbralItems = HasUmbralItemsInActiveList();
                 var hasNormalDiademItems = _activeItemList.Any(target => target.Gatherable != null && 
                     !UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)) &&
-                    target.Location.Territory.Id is 901 or 929 or 939);
+                    target.Location.Territory.Id == Diadem.Territory.Id);
                 
                 var umbralItemsInListManager = GetActiveItemsNeedingGathering()
                     .Where(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)))
                     .ToList();
                 
                 var requiredUmbralWeathers = umbralItemsInListManager
-                    .Select(item => UmbralNodes.GetUmbralItemInfo(item.Item.ItemId)?.Weather)
-                    .Where(w => w.HasValue)
-                    .Select(w => (uint)w.Value)
+                    .Select(item => (uint)UmbralNodes.GetUmbralItemInfo(item.Item.ItemId).Weather)
+                    .Where(w => w != 0)
                     .Distinct()
                     .ToList();
                 
@@ -784,15 +780,7 @@ namespace GatherBuddy.AutoGather
                 _lastUmbralWeather = currentWeather;
             }
 
-            var nearbyNodes = Dalamud.Objects.Where(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable).Select(o => o.DataId);
-            
-            var hasNormalDiademItemsInList = _activeItemList.Any(target => target.Gatherable != null && 
-                !UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)) &&
-                target.Location.Territory.Id is 901 or 929 or 939);
-
-            var next = _activeItemList.GetNextOrDefault();
-
-            if (next.Any(x => x.Fish != null))
+            if (next.Fish != null)
             {
                 if (!GatherBuddy.Config.AutoGatherConfig.FishDataCollection)
                 {
@@ -811,7 +799,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (Functions.InTheDiadem() && _hasGatheredUmbralThisSession)
+            if (Diadem.IsInside && _hasGatheredUmbralThisSession)
             {
                 var hasUmbralItems = HasUmbralItemsInActiveList();
                 
@@ -823,7 +811,7 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
             }
-            if (!next.Any())
+            if (next == default)
             {
                 if (!_activeItemList.HasItemsToGather)
                 {
@@ -831,142 +819,95 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
                 
-                var hasUmbralItemsInList = HasUmbralItemsInActiveList();
-                if (hasUmbralItemsInList)
+                if (HasReducibleItems())
                 {
-                    if (Functions.InTheDiadem())
+                    if (Player.Job == 18 /* FSH */)
                     {
-                        var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                        var requiredWeathers = _activeItemList
-                            .Where(target => target.Gatherable != null && 
-                                UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
-                            .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
-                            .Where(w => w.HasValue)
-                            .Select(w => (uint)w.Value)
-                            .Distinct()
-                            .ToList();
-                        
-                        var isCorrectUmbralWeather = requiredWeathers.Contains(currentWeather);
-                        
-                        if (!isCorrectUmbralWeather)
+                        if (GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
                         {
-                            AutoStatus = "Waiting in Diadem for correct umbral weather...";
-                            if (!Waiting)
-                            {
-                                Waiting = true;
-                                _plugin.Ipc.AutoGatherWaiting();
-                            }
                             return;
-                        }
-                    }
-                    
-                    var firstUmbralItem = GetFirstUmbralItemFromActiveList();
-                    if (firstUmbralItem.Item != null)
-                    {
-                        var diademNode = GatherBuddy.GameData.GatheringNodes.Values
-                            .FirstOrDefault(node => node.Territory.Id is 901 or 929 or 939);
-                            
-                        if (diademNode != null)
-                        {
-                            var syntheticTarget = new GatherTarget(firstUmbralItem.Item, diademNode, Time.TimeInterval.Always, firstUmbralItem.Quantity);
-                            next = new[] { syntheticTarget }.OrderByDescending(nodes => nodes.Item.ItemId);
-                            AutoStatus = "Traveling to Diadem for umbral items...";
-                        }
-                    }
-                }
-
-                if (!next.Any())
-                {
-                    if (HasReducibleItems())
-                    {
-                        if (Player.Job == 18 /* FSH */)
-                        {
-                            if (GatherBuddy.Config.AutoGatherConfig.DeferReductionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
-                            {
-                                return;
-                            }
-                            else
-                            {
-                                if (IsGathering)
-                                {
-                                    QueueQuitFishingTasks();
-                                    return;
-                                }
-
-                                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                                {
-                                    TaskManager.Enqueue(() =>
-                                    {
-                                        AutoHook.SetPluginState?.Invoke(false);
-                                        AutoHook.SetAutoStartFishing?.Invoke(false);
-                                    });
-                                }
-
-                                ReduceItems(true, () =>
-                                {
-                                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                                    {
-                                        AutoHook.SetPluginState?.Invoke(true);
-                                        AutoHook.SetAutoStartFishing?.Invoke(true);
-                                    }
-                                });
-                            }
                         }
                         else
                         {
-                            ReduceItems(true);
-                        }
+                            if (IsGathering)
+                            {
+                                QueueQuitFishingTasks();
+                                return;
+                            }
 
-                        return;
-                    }
+                            if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                            {
+                                TaskManager.Enqueue(() =>
+                                {
+                                    AutoHook.SetPluginState?.Invoke(false);
+                                    AutoHook.SetAutoStartFishing?.Invoke(false);
+                                });
+                            }
 
-                    if (GatherBuddy.CollectableManager?.IsRunning == true)
-                    {
-                        AutoStatus = "Turning in collectables...";
-                        return;
-                    }
-
-                    if (HasCollectables())
-                    {
-                        AutoStatus = "Turning in collectables...";
-                        GatherBuddy.CollectableManager?.Start();
-                        return;
-                    }
-
-                    var waitAtAetheryte = false;
-                    if (GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode)
-                    {
-                        var nextTimed = _activeItemList.PeekNextTimed();
-                        waitAtAetheryte = nextTimed != default;
-                        if (waitAtAetheryte && nextTimed.Location.Territory.Id != currentTerritory)
-                        {
-                            // Replace next target and fall through to teleport to its location
-                            next = [nextTimed];
+                            ReduceItems(true, () =>
+                            {
+                                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                                {
+                                    AutoHook.SetPluginState?.Invoke(true);
+                                    AutoHook.SetAutoStartFishing?.Invoke(true);
+                                }
+                            });
                         }
                     }
-
-                    if (!waitAtAetheryte && GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
-                        if (GoHome())
-                            return;
-
-                    if (!next.Any())
+                    else
                     {
-                        if (!Waiting)
-                        {
-                            Waiting = true;
-                            _plugin.Ipc.AutoGatherWaiting();
-                        }
-
-                        AutoStatus = "No available items to gather";
-                        return;
+                        ReduceItems(true);
                     }
+
+                    return;
+                }
+
+                if (GatherBuddy.CollectableManager?.IsRunning == true)
+                {
+                    AutoStatus = "Turning in collectables...";
+                    return;
+                }
+
+                if (HasCollectables())
+                {
+                    AutoStatus = "Turning in collectables...";
+                    GatherBuddy.CollectableManager?.Start();
+                    return;
+                }
+
+                var waitAtAetheryte = false;
+                if (GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode)
+                {
+                    var nextTimed = _activeItemList.PeekNextTimed();
+                    waitAtAetheryte = nextTimed != default;
+                    if (waitAtAetheryte && nextTimed.Location.Territory.Id != currentTerritory)
+                    {
+                        // Replace next target and fall through to teleport to its location.
+                        next = nextTimed;
+                    }
+                }
+
+                if (!waitAtAetheryte && GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
+                    if (GoHome())
+                        return;
+
+                if (next == default)
+                {
+                    if (!Waiting)
+                    {
+                        Waiting = true;
+                        _plugin.Ipc.AutoGatherWaiting();
+                    }
+
+                    AutoStatus = "No available items to gather";
+                    return;
                 }
             }
 
             Waiting = false;
 
-            if (next.Any(n => n.Item.ItemData.IsCollectable
-                 && !CheckCollectablesUnlocked(n.Fish != null ? GatheringType.Fisher : n.Gatherable!.GatheringType.ToGroup())))
+            if (next.Item.ItemData.IsCollectable
+                 && !CheckCollectablesUnlocked(next.Location.GatheringType.ToGroup()))
             {
                 AbortAutoGather();
                 return;
@@ -995,7 +936,7 @@ namespace GatherBuddy.AutoGather
             }
 
             var territoryId = currentTerritory;
-            var targetTerritoryId = next.First().Node?.Territory.Id ?? next.First().FishingSpot?.Territory.Id ?? 0;
+            var targetTerritoryId = next.Location.Territory.Id;
             
             if (((territoryId == 129 && targetTerritoryId == 128)
              || (territoryId == 128 && targetTerritoryId == 129)
@@ -1101,7 +1042,7 @@ namespace GatherBuddy.AutoGather
             }
             
             //Idyllshire to The Dravanian Hinterlands
-            if (territoryId == 478 && (next.First().Node?.Territory.Id == 399 || next.First().FishingSpot?.Territory.Id == 399))
+            if (territoryId == 478 && next.Location.Territory.Id == 399)
             {
                 var aetheryte = Dalamud.Objects.Where(x => x.ObjectKind == ObjectKind.Aetheryte && x.IsTargetable)
                     .OrderBy(x => x.Position.DistanceToPlayer()).FirstOrDefault();
@@ -1123,7 +1064,7 @@ namespace GatherBuddy.AutoGather
                         }
                         AutoStatus = "Teleporting...";
                         StopNavigation();
-                        var xCoord = next.First().Node?.DefaultXCoord ?? next.First().FishingSpot?.DefaultXCoord ?? 0;
+                        var xCoord = next.Location.DefaultXCoord;
                         var exit = xCoord < 2000 ? 91u : 92u;
                         var name = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Aetheryte>().GetRow(exit).AethernetName.Value.Name.ToString();
 
@@ -1136,11 +1077,11 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (territoryId == 886 && (next.First().Node?.Territory.Id is 901 or 929 or 939 || next.First().FishingSpot?.Territory.Id is 901 or 929 or 939))
+            if (territoryId == 886 && next.Location.Territory.Id == Diadem.Territory.Id)
             {
                 if (JobAsGatheringType == GatheringType.Unknown)
                 {
-                    var requiredGatheringType = next.First().Location.GatheringType.ToGroup();
+                    var requiredGatheringType = next.Location.GatheringType.ToGroup();
                     if (ChangeGearSet(requiredGatheringType, 2400))
                     {
                         return;
@@ -1152,7 +1093,7 @@ namespace GatherBuddy.AutoGather
                     }
                 }
                 
-                var dutyNpc                    = Dalamud.Objects.FirstOrDefault(o => o.DataId == 1031694);
+                var dutyNpc                    = Dalamud.Objects.FirstOrDefault(o => o.BaseId == 1031694);
                 var selectStringAddon          = Dalamud.GameGui.GetAddonByName("SelectString");
                 var talkAddon                  = Dalamud.GameGui.GetAddonByName("Talk");
                 var selectYesNoAddon           = Dalamud.GameGui.GetAddonByName("SelectYesno");
@@ -1219,7 +1160,7 @@ namespace GatherBuddy.AutoGather
                     }
             }
 
-            if (territoryId is not 939 and not 886 && (next.First().Node?.Territory.Id is 901 or 929 or 939 || next.First().FishingSpot?.Territory.Id is 901 or 929 or 939) && Lifestream.Enabled)
+            if (territoryId != Diadem.Territory.Id && territoryId != 886 && next.Location.Territory == Diadem.Territory && Lifestream.Enabled)
             {
                 if (!Lifestream.IsBusy())
                 {
@@ -1232,13 +1173,13 @@ namespace GatherBuddy.AutoGather
             }
 
             var forcedAetheryte = ForcedAetherytes.ZonesWithoutAetherytes
-                .FirstOrDefault(z => z.ZoneId == next.First().Location.Territory.Id);
+                .FirstOrDefault(z => z.ZoneId == next.Location.Territory.Id);
             if (forcedAetheryte.ZoneId != 0
              && GatherBuddy.GameData.Aetherytes[forcedAetheryte.AetheryteId].Territory.Id == territoryId)
             {
                 var needsLifestream = territoryId == 478 || territoryId == 129 || territoryId == 128 || territoryId == 132 || territoryId == 133 || territoryId == 130 || territoryId == 131;
                 if (needsLifestream && !Lifestream.Enabled)
-                    AutoStatus = $"Install Lifestream or teleport to {next.First().Location.Territory.Name} manually";
+                    AutoStatus = $"Install Lifestream or teleport to {next.Location.Territory.Name} manually";
                 else
                     AutoStatus = "Manual teleporting required";
                 return;
@@ -1256,26 +1197,25 @@ namespace GatherBuddy.AutoGather
                 Lifestream.Abort();
             WentHome = false;
             
-            var isTimedNode = next.First().Node?.Times.AlwaysUp() == false;
-            if (!isTimedNode && next.First().Location.Territory.Id == territoryId)
+            var isTimedNode = next.Node?.Times.AlwaysUp() == false;
+            if (!isTimedNode && next.Location.Territory.Id == territoryId)
             {
                 _lastNonTimedNodeTerritory = territoryId;
             }
 
             
-            // fuck Diadem. Covering all zoneIDs for Diadem to gather g2/3/4.
-            var isCurrentDiadem = territoryId is 901 or 929 or 939;
-            var isTargetDiadem = next.First().Location.Territory.Id is 901 or 929 or 939;
+            var isCurrentDiadem = territoryId == Diadem.Territory.Id;
+            var isTargetDiadem = next.Location.Territory.Id == Diadem.Territory.Id;
             
             var isInSameCityPair = (territoryId is 128 or 129 && targetTerritoryId is 128 or 129)
                                 || (territoryId is 132 or 133 && targetTerritoryId is 132 or 133)
                                 || (territoryId is 130 or 131 && targetTerritoryId is 130 or 131);
             
-            if (next.First().Location.Territory.Id != territoryId && !(isCurrentDiadem && isTargetDiadem) && !isInSameCityPair)
+            if (next.Location.Territory.Id != territoryId && !(isCurrentDiadem && isTargetDiadem) && !isInSameCityPair)
             {
                 if (GatherBuddy.Config.AutoGatherConfig.SortingMethod == AutoGatherConfig.SortingType.Location)
                 {
-                    var nextIsTimedNode = next.First().Node?.Times.AlwaysUp() == false;
+                    var nextIsTimedNode = next.Node?.Times.AlwaysUp() == false;
                     
                     if (!nextIsTimedNode)
                     {
@@ -1327,38 +1267,13 @@ namespace GatherBuddy.AutoGather
                     }
                 }
                 
-                if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Functions.InTheDiadem())
+                if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Diadem.IsInside)
                 {
                     AutoStatus = "Can not teleport when bound by duty";
                     return;
                 }
-                else if (Functions.InTheDiadem())
+                else if (Diadem.IsInside)
                 {
-                    var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                    var hasUmbralItems = next.Any(target => target.Gatherable != null && 
-                        UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)));
-                    
-                    if (hasUmbralItems)
-                    {
-                        var requiredWeathers = next
-                            .Where(target => target.Gatherable != null && 
-                                UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId)))
-                            .Select(target => UmbralNodes.GetUmbralItemInfo(target.Gatherable.ItemId)?.Weather)
-                            .Where(w => w.HasValue)
-                            .Select(w => (uint)w.Value)
-                            .Distinct()
-                            .ToList();
-                        
-                        var isCorrectUmbralWeather = requiredWeathers.Contains(currentWeather);
-                        
-                        if (!isCorrectUmbralWeather)
-                        {
-                            _hasGatheredUmbralThisSession = false;
-                            AutoStatus = "Waiting in Diadem for correct umbral weather...";
-                            return;
-                        }
-                    }
-                    
                     LeaveTheDiadem();
                     return;
                 }
@@ -1390,7 +1305,7 @@ namespace GatherBuddy.AutoGather
             AutoStatus = "Teleporting...";
             StopNavigation();
 
-            if (!MoveToTerritory(next.First().Location))
+            if (!MoveToTerritory(next.Location))
                 AbortAutoGather();
 
                 // Reset target to pick up closest item after teleport
@@ -1399,13 +1314,13 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            var targetGatheringType = next.First().Location.GatheringType.ToGroup();
+            var targetGatheringType = next.Location.GatheringType.ToGroup();
             
-            var config = MatchConfigPreset(next.First().Gatherable);
+            var config = MatchConfigPreset(next.Gatherable);
 
             if (DoUseConsumablesWithoutCastTime(config))
                 return;
-            var firstItem = next.First().Gatherable;
+            var firstItem = next.Gatherable;
             
             if (firstItem != null && UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(firstItem.ItemId)))
             {
@@ -1424,7 +1339,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
             
-            var shouldSkipJobSwitch = Functions.InTheDiadem() && _hasGatheredUmbralThisSession;
+            var shouldSkipJobSwitch = Diadem.IsInside && _hasGatheredUmbralThisSession;
             
             if (shouldSkipJobSwitch)
             {
@@ -1438,9 +1353,9 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (next.First().Fish != null)
+            if (next.Fish != null)
             {
-                if (next.First().FishingSpot?.Spearfishing == true)
+                if (next.FishingSpot?.Spearfishing == true)
                 {
                     DoNodeMovement(next, config);
                     return;
@@ -1451,7 +1366,7 @@ namespace GatherBuddy.AutoGather
             }
 
             
-            if (next.First().Gatherable != null)
+            if (next.Gatherable != null)
             {
                 DoNodeMovement(next, config);
                 return;
@@ -1464,12 +1379,12 @@ namespace GatherBuddy.AutoGather
         public readonly Dictionary<GatherTarget, (Vector3 Position, Angle Rotation, DateTime Expiration)> FishingSpotData = new();
         private readonly Dictionary<Vector3, DateTime> _fishingSpotDismountAttempts = new();
 
-        private void DoFishMovement(IEnumerable<GatherTarget> next)
+        private void DoFishMovement(GatherTarget next)
         {
-            var fish = next.First(ne => ne.Fish != null);
+            var fish = next;
             var territoryId = Dalamud.ClientState.TerritoryType;
-            var isCurrentDiadem = territoryId is 901 or 929 or 939;
-            var isTargetDiadem = fish.FishingSpot?.Territory.Id is 901 or 929 or 939;
+            var isCurrentDiadem = territoryId == Diadem.Territory.Id;
+            var isTargetDiadem = fish.FishingSpot?.Territory.Id == Diadem.Territory.Id;
             
             var isPathGenerating = IsPathGenerating;
             var isPathing = IsPathing;
@@ -1527,7 +1442,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            if (territoryId == 418 && fish.FishingSpot?.Territory.Id is 901 or 929 or 939 && Lifestream.Enabled)
+            if (territoryId == 418 && fish.FishingSpot?.Territory.Id == Diadem.Territory.Id && Lifestream.Enabled)
             {
                 if (IsFishing)
                 {
@@ -1552,18 +1467,18 @@ namespace GatherBuddy.AutoGather
             
             if (fish.FishingSpot?.Territory.Id != territoryId && !(isCurrentDiadem && isTargetDiadem))
             {
-                if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Functions.InTheDiadem())
+                if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Diadem.IsInside)
                 {
                     AutoStatus = "Can not teleport when bound by duty";
                     return;
                 }
-                else if (Functions.InTheDiadem())
+                else if (Diadem.IsInside)
                 {
                     LeaveTheDiadem();
                     return;
                 }
                 
-                if (territoryId == 886 && fish.FishingSpot?.Territory.Id is 901 or 929 or 939)
+                if (territoryId == 886 && fish.FishingSpot?.Territory.Id == Diadem.Territory.Id)
                 {
                     if (JobAsGatheringType == GatheringType.Unknown)
                     {
@@ -1578,7 +1493,7 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     
-                    var dutyNpc                    = Dalamud.Objects.FirstOrDefault(o => o.DataId == 1031694);
+                    var dutyNpc                    = Dalamud.Objects.FirstOrDefault(o => o.BaseId == 1031694);
                     var selectStringAddon          = Dalamud.GameGui.GetAddonByName("SelectString");
                     var talkAddon                  = Dalamud.GameGui.GetAddonByName("Talk");
                     var selectYesNoAddon           = Dalamud.GameGui.GetAddonByName("SelectYesno");
@@ -1990,157 +1905,25 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private bool DoNodeMovementDiadem(IEnumerable<GatherTarget> next, ConfigPreset config)
+        private bool DoNodeMovementDiadem(GatherTarget next, ConfigPreset config)
         {
-            var targetGatheringType = next.First().Location.GatheringType;
             var currentJob = JobAsGatheringType;
             var player = Player.Position;
-            
+
+            // ActiveItemsList prioritizes umbral items with matching weather,
+            // so we only need to check whether the first item.
+            // Let the normal navigation logic handle Skybuilders' Tools quest items and Umbral nodes.
+
             var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-            var isUmbralWeather = UmbralNodes.IsUmbralWeather(currentWeather);
-            
-            var hasUmbralItems = HasUmbralItemsInActiveList();
+            ref readonly var nodeData = ref UmbralNodes.GetUmbralItemInfo(next.Item.ItemId);
+            if (nodeData.NodeId != 0 && (int)nodeData.Weather == currentWeather)
+                return false;
 
-            if (isUmbralWeather && hasUmbralItems)
-            {
-                var currentUmbralWeather = (UmbralNodes.UmbralWeatherType)currentWeather;
-                var relevantUmbralNodes = UmbralNodes.GetNodesForWeatherAndType(currentUmbralWeather, currentJob);
-                
-                foreach (var nodeId in relevantUmbralNodes)
-                {
-                    var nodeItems = UmbralNodes.GetItemsForNode(nodeId);
-                    var hasNeededItems = GetActiveItemsNeedingGathering()
-                        .Any(item => nodeItems.Contains(item.Item.ItemId));
-                    
-                    if (hasNeededItems && GatherBuddy.GameData.WorldCoords.TryGetValue(nodeId, out var umbralPositions))
-                    {
-                        var validPositions = umbralPositions
-                            .Where(pos => !IsBlacklisted(pos))
-                            .OrderBy(pos => Vector3.Distance(player, pos))
-                            .ToList();
-                        
-                        if (validPositions.Any())
-                        {
-                            var targetPosition = validPositions.First();
-                            var distance = Vector3.Distance(player, targetPosition);
-                            
-                            if (distance > NodeVisibilityDistance)
-                            {
-                                AutoStatus = $"Rushing to umbral node {nodeId} (Weather: {currentUmbralWeather}, {distance:F0}y)...";
-
-                                var jump = TryWindmireJump(ref targetPosition);
-                                Navigate(targetPosition, ShouldFly(targetPosition), direct: jump);
-                                return true;
-                            }
-                            else
-                            {
-                                // Don't return - let the normal node detection logic below handle finding the actual spawned node
-                            }
-                        }
-                    }
-                }
-            }
-            
-            var allVisibleNodes = Dalamud.Objects
-                .Where(o => o.ObjectKind == ObjectKind.GatheringPoint)
-                .Where(o => !IsBlacklisted(o.Position))
-                .Where(o => 
-                {
-                    if (!GatherBuddy.GameData.WorldCoords.TryGetValue(o.BaseId, out _))
-                        return false;
-                    
-                    var gatheringPoint = Dalamud.GameData.GetExcelSheet<GatheringPoint>()?.GetRow(o.BaseId);
-                    if (gatheringPoint == null || !gatheringPoint.HasValue)
-                        return false;
-                    
-                    var nodeBase = gatheringPoint.Value.GatheringPointBase;
-                    if (nodeBase.RowId == 0)
-                        return false;
-                    
-                    var nodeGatheringType = (GatheringType)nodeBase.Value.GatheringType.RowId;
-                    return nodeGatheringType.ToGroup() == currentJob;
-                })
-                .ToList();
-            
-            var nonUmbralNodes = allVisibleNodes
-                .Where(o => !UmbralNodes.UmbralNodeData.Any(entry => entry.NodeId == o.BaseId))
-                .OrderBy(o => Vector3.Distance(player, o.Position))
-                .ToList();
-                
-            if (isUmbralWeather && hasUmbralItems)
-            {
-                var umbralNodes = allVisibleNodes
-                    .Where(o => UmbralNodes.UmbralNodeData.Any(entry => entry.NodeId == o.BaseId))
-                    .OrderBy(o => Vector3.Distance(player, o.Position))
-                    .ToList();
-                
-                if (umbralNodes.Any())
-                {
-                    allVisibleNodes = umbralNodes;
-                    AutoStatus = $"Targeting umbral nodes (Weather: {(UmbralNodes.UmbralWeatherType)currentWeather})...";
-                }
-                else
-                {
-                    allVisibleNodes = nonUmbralNodes;
-                }
-            }
-            else
-            {
-                allVisibleNodes = nonUmbralNodes;
-            }
-
-            if (ActivateGatheringBuffs(hasUmbralItems))
-                return true;
-
-            foreach (var visibleNode in allVisibleNodes.Where(node => !node.IsTargetable))
-            {
-                var nodePosition = visibleNode.Position;
-                if (Vector3.Distance(player, nodePosition) < NodeVisibilityDistance)
-                {
-                    FarNodesSeenSoFar.Add(nodePosition);
-                }
-            }
-            
-            const int MaxSeenNodes = 100;
-            if (FarNodesSeenSoFar.Count > MaxSeenNodes)
-                FarNodesSeenSoFar.Clear();
-
-            var targetableNodes = allVisibleNodes.Where(o => o.IsTargetable).ToList();
-            
-            if (targetableNodes.Any())
-            {
-                var closestNode = targetableNodes.First();
-                var distance = Vector3.Distance(player, closestNode.Position);
-                
-                AutoStatus = $"Moving to Diadem node ({distance:F0}y)...";
-                
-                Gatherable targetItem;
-                if (isUmbralWeather && hasUmbralItems && UmbralNodes.UmbralNodeData.Any(entry => entry.NodeId == closestNode.BaseId))
-                {
-                    var currentUmbralWeather = (UmbralNodes.UmbralWeatherType)currentWeather;
-                    var matchingUmbralItem = next
-                        .Where(target => target.Gatherable != null)
-                        .Where(target => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(target.Gatherable.ItemId) &&
-                                                                                entry.Weather == currentUmbralWeather &&
-                                                                                UmbralNodes.GetGatheringType(entry.NodeType) == currentJob))
-                        .Select(target => target.Gatherable)
-                        .FirstOrDefault();
-
-                    if (matchingUmbralItem != null)
-                    {
-                        targetItem = matchingUmbralItem;
-                        MoveToCloseNode(closestNode, targetItem, config);
-                        return true;
-                    }
-                }
-            }
-
-            // Let normal navigation logic handle Skybuilders' Tools quest items.
-            if (Diadem.OddlyDelicateItems.Any(i => i == next.First().Item))
+            if (Diadem.OddlyDelicateItems.Contains(next.Item))
                 return false;
 
             // For regular nodes, we go in a full circle along the pre-calculated optimal path.
-            if (_activeItemList.Any(t => Diadem.RegularItems.Contains(t.Item)))
+            if (Diadem.RegularItems.Contains(next.Item))
             {
                 var availableNodes = _diadem.GetAvailableNodes(currentJob).ToHashSet();
                 var path = Diadem.ShortestPaths[currentJob];
@@ -2194,7 +1977,7 @@ namespace GatherBuddy.AutoGather
                         if (TryWindmireJump(ref pos))
                             Navigate(pos, ShouldFly(pos), direct: true);
                         else
-                            MoveToCloseNode(nextNode, next.First().Gatherable!, config);
+                            MoveToCloseNode(nextNode, next.Gatherable!, config);
                         return true;
                     }
                 }
@@ -2214,44 +1997,43 @@ namespace GatherBuddy.AutoGather
 
             AutoStatus = "No suitable Diadem nodes found, waiting...";
             return true;
-
-            bool TryWindmireJump(ref Vector3 destination)
-            {
-                if (!GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps)
-                    return false;
-
-                var pos = destination;
-
-                var ((windmire, _), windmireDistance) = Diadem.Windmires
-                        .Select(w => (w, Distance: Vector3.Distance(player, w.From) + Vector3.Distance(w.To, pos)))
-                        .MinBy(x => x.Distance);
-
-                var directDistance = Vector3.Distance(player, pos);
-
-                // Use Windmire only if it provides a 2x advantage in distance.
-                if (windmireDistance * 2f < directDistance)
-                {
-                    destination = windmire;
-                    return true;
-                }
-                return false;
-            }
         }
 
-        private void DoNodeMovement(IEnumerable<GatherTarget> next, ConfigPreset config)
+        bool TryWindmireJump(ref Vector3 destination)
         {
-            if (Functions.InTheDiadem())
+            if (!GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps)
+                return false;
+
+            var pos = destination;
+            var player = Player.Position;
+
+            var ((windmire, _), windmireDistance) = Diadem.Windmires
+                    .Select(w => (w, Distance: Vector3.Distance(player, w.From) + Vector3.Distance(w.To, pos)))
+                    .MinBy(x => x.Distance);
+
+            var directDistance = Vector3.Distance(player, pos);
+
+            // Use Windmire only if it provides a 2x advantage in distance.
+            if (windmireDistance * 2f < directDistance)
+            {
+                destination = windmire;
+                return true;
+            }
+            return false;
+        }
+
+        private void DoNodeMovement(GatherTarget next, ConfigPreset config)
+        {
+            if (Diadem.IsInside)
             {
                 if (DoNodeMovementDiadem(next, config))
                     return;
             }
 
-            var allPositions = next.Where(n => n.Location.Territory.Id == Player.Territory)
-                .SelectMany(ne => (ne.Node?.WorldPositions ?? ne.FishingSpot?.WorldPositions)
-                        ?.ExceptBy(VisitedNodes, n => n.Key)
-                        .SelectMany(w => w.Value)
-                        .Where(v => !IsBlacklisted(v))
-                 ?? [])
+            var allPositions = next.Location.WorldPositions
+                .ExceptBy(VisitedNodes, n => n.Key)
+                .SelectMany(w => w.Value)
+                .Where(v => !IsBlacklisted(v))
                 .ToHashSet();
 
             var visibleNodes = Dalamud.Objects
@@ -2259,13 +2041,13 @@ namespace GatherBuddy.AutoGather
                 .ToList();
 
             var closestTargetableNode = visibleNodes
-                .Where(o => o.IsTargetable)
+                .Where(o => o.IsTargetable && allPositions.Contains(o.Position))
                 .MinBy(o => Vector3.Distance(Player.Position, o.Position));
 
-            var isSpearfishing = next.First().Fish?.IsSpearFish == true;
+            var isSpearfishing = next.Fish?.IsSpearFish == true;
             if (!isSpearfishing)
             {
-                var isTimedNode = next.First().Gatherable?.NodeType is NodeType.Unspoiled or NodeType.Legendary;
+                var isTimedNode = next.Gatherable?.NodeType is NodeType.Unspoiled or NodeType.Legendary;
                 if (ActivateGatheringBuffs(isTimedNode))
                     return;
             }
@@ -2273,17 +2055,14 @@ namespace GatherBuddy.AutoGather
             if (closestTargetableNode != null)
             {
                 AutoStatus = "Moving to node...";
-                var targetGather = next.First(ti => 
-                    (ti.Node != null && ti.Node.WorldPositions.ContainsKey(closestTargetableNode.DataId)) ||
-                    (ti.FishingSpot != null && ti.FishingSpot.WorldPositions.ContainsKey(closestTargetableNode.DataId)));
                 
-                if (targetGather.Gatherable != null)
+                if (next.Gatherable != null)
                 {
-                    MoveToCloseNode(closestTargetableNode, targetGather.Gatherable, config);
+                    MoveToCloseNode(closestTargetableNode, next.Gatherable, config);
                 }
-                else if (targetGather.Fish != null)
+                else if (next.Fish != null)
                 {
-                    MoveToCloseSpearfishingNode(closestTargetableNode, targetGather.Fish);
+                    MoveToCloseSpearfishingNode(closestTargetableNode, next.Fish);
                 }
                 return;
             }
@@ -2315,12 +2094,11 @@ namespace GatherBuddy.AutoGather
             Vector3 selectedFarNode;
 
             // only Legendary and Unspoiled show marker
-            var timedNode = next.FirstOrDefault(n => n.Time.Start > GatherBuddy.Time.ServerTime.AddSeconds(-8));
-            if (ShouldUseFlag && timedNode != default)
+            if (ShouldUseFlag && next.Gatherable?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
             {
                 var pos = TimedNodePosition;
                 // marker not yet loaded on game
-                if (pos == null || timedNode.Time.Start > GatherBuddy.Time.ServerTime.AddSeconds(-8))
+                if (pos == null || next.Time.Start > GatherBuddy.Time.ServerTime.AddSeconds(-8))
                 {
                     AutoStatus = "Waiting on flag show up";
                     return;
@@ -2340,7 +2118,6 @@ namespace GatherBuddy.AutoGather
             {
                 //Select the closest node
                 selectedFarNode = allPositions
-                    .Where(fn => !visibleNodes.Select(vn => vn.Position).Contains(fn))
                     .OrderBy(v => Vector3.Distance(Player.Position, v))
                     .FirstOrDefault(n => !FarNodesSeenSoFar.Contains(n));
 
@@ -2352,7 +2129,9 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            MoveToFarNode(selectedFarNode);
+            var jump = Diadem.IsInside && TryWindmireJump(ref selectedFarNode);
+
+            Navigate(selectedFarNode, ShouldFly(selectedFarNode), direct: jump);
         }
 
         private unsafe void LeaveTheDiadem()
@@ -2392,7 +2171,7 @@ namespace GatherBuddy.AutoGather
 
         private void AbortAutoGather(string? status = null)
         {
-            if (Functions.InTheDiadem())
+            if (Diadem.IsInside)
             {
                 LeaveTheDiadem();
                 return;
@@ -2667,33 +2446,12 @@ namespace GatherBuddy.AutoGather
         
         private bool HasUmbralItemsInActiveList()
         {
-            return _activeItemList.GetType()
-                .GetField("_listsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.GetValue(_activeItemList) is AutoGatherListsManager listsManager
-                && listsManager.ActiveItems.Any(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)));
-        }
-        
-        private (IGatherable Item, uint Quantity) GetFirstUmbralItemFromActiveList()
-        {
-            if (_activeItemList.GetType()
-                .GetField("_listsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.GetValue(_activeItemList) is not AutoGatherListsManager listsManager)
-                return (null, 0);
-                
-            return listsManager.ActiveItems
-                .Where(item => item.Item.GetInventoryCount() < item.Quantity)
-                .FirstOrDefault(item => UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.Item.ItemId)));
+            return _activeItemList.Any(x => x.Item is Gatherable g && UmbralNodes.IsUmbralItem(g.ItemId));
         }
         
         private IEnumerable<(IGatherable Item, uint Quantity)> GetActiveItemsNeedingGathering()
         {
-            if (_activeItemList.GetType()
-                .GetField("_listsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.GetValue(_activeItemList) is not AutoGatherListsManager listsManager)
-                return Enumerable.Empty<(IGatherable, uint)>();
-                
-            return listsManager.ActiveItems
-                .Where(item => item.Item.GetInventoryCount() < item.Quantity); // Only items that need gathering
+            return _activeItemList.Select(x => (x.Item, x.Quantity));
         }
         
         private bool ValidateActiveItemsPerception()
@@ -2760,11 +2518,6 @@ namespace GatherBuddy.AutoGather
             }
         }
         
-        private bool IsUmbralItem(IGatherable item)
-        {
-            return UmbralNodes.UmbralNodeData.Any(entry => entry.ItemIds.Contains(item.ItemId));
-        }
-
         private bool ShouldWaitForAutoRetainer()
         {
             try
@@ -2780,10 +2533,9 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     
-                    var nextItems = _activeItemList.GetNextOrDefault();
-                    if (nextItems.Any())
+                    var nextItem = _activeItemList.GetNextOrDefault();
+                    if (nextItem != default)
                     {
-                        var nextItem = nextItems.First();
                         if (nextItem.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
                         {
                             if (nextItem.Time.InRange(AdjustedServerTime) && 

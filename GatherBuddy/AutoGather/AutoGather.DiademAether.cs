@@ -1,13 +1,14 @@
-using System;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.AutoGather.Helpers;
+using GatherBuddy.Helpers;
+using System;
+using System.Linq;
+using System.Numerics;
 
 namespace GatherBuddy.AutoGather
 {
@@ -90,7 +91,9 @@ namespace GatherBuddy.AutoGather
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon)
                 return false;
-            if (!Plugin.Functions.InTheDiadem())
+            if (!Diadem.IsInside)
+                return false;
+            if (Dalamud.Conditions[ConditionFlag.Mounted])
                 return false;
             if (IsPathing)
                 return false;

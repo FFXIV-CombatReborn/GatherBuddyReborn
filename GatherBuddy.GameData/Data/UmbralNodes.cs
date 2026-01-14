@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -28,21 +29,25 @@ public static class UmbralNodes
         CloudedLushVegetation,   
     }
 
-    public static readonly (uint NodeId, CloudedNodeType NodeType, UmbralWeatherType Weather, uint[] ItemIds)[] UmbralNodeData =
-    {
-        (33836, CloudedNodeType.CloudedMineralDeposit, UmbralWeatherType.UmbralFlare, [29946, 31318, 32047]),
-        (33838, CloudedNodeType.CloudedMatureTree, UmbralWeatherType.UmbralTempest, [29944, 31316, 32045]),
-        (33837, CloudedNodeType.CloudedRockyOutcrop, UmbralWeatherType.UmbralLevin, [29947, 31319, 32048]),
-        (33839, CloudedNodeType.CloudedLushVegetation, UmbralWeatherType.UmbralDuststorms, [29945, 31317, 32046]),
-    };
+    public readonly record struct UmbralNodeDataRecord(uint BaseNodeId, uint NodeId, CloudedNodeType NodeType, UmbralWeatherType Weather, ImmutableArray<uint> ItemIds);
 
-    public static readonly Dictionary<CloudedNodeType, string> NodeNames = new()
+    public static readonly ImmutableArray<UmbralNodeDataRecord> UmbralNodeData =
+    [
+        new(798, 33836, CloudedNodeType.CloudedMineralDeposit, UmbralWeatherType.UmbralFlare,      [29946, 31318, 32047]),
+        new(799, 33837, CloudedNodeType.CloudedRockyOutcrop,   UmbralWeatherType.UmbralLevin,      [29947, 31319, 32048]),
+        new(800, 33838, CloudedNodeType.CloudedMatureTree,     UmbralWeatherType.UmbralTempest,    [29944, 31316, 32045]),
+        new(801, 33839, CloudedNodeType.CloudedLushVegetation, UmbralWeatherType.UmbralDuststorms, [29945, 31317, 32046]),
+    ];
+
+    private static readonly UmbralNodeDataRecord DefaultUmbralNodeData = default;
+
+    public static readonly FrozenDictionary<CloudedNodeType, string> NodeNames = new Dictionary<CloudedNodeType, string>()
     {
         { CloudedNodeType.CloudedRockyOutcrop, "Clouded Rocky Outcrop" },
         { CloudedNodeType.CloudedMineralDeposit, "Clouded Mineral Deposit" },
         { CloudedNodeType.CloudedMatureTree, "Clouded Mature Tree" },
         { CloudedNodeType.CloudedLushVegetation, "Clouded Lush Vegetation" },
-    };
+    }.ToFrozenDictionary();
 
     public static GatheringType GetGatheringType(CloudedNodeType nodeType)
     {
@@ -68,10 +73,10 @@ public static class UmbralNodes
             .Select(entry => entry.NodeId);
     }
 
-    public static uint[] GetItemsForNode(uint nodeId)
+    public static ImmutableArray<uint> GetItemsForNode(uint nodeId)
     {
         var entry = UmbralNodeData.FirstOrDefault(data => data.NodeId == nodeId);
-        return entry.ItemIds ?? [];
+        return entry.NodeId != 0 ? entry.ItemIds : [];
     }
 
     public static UmbralWeatherType? GetRequiredWeatherForNode(uint nodeId)
@@ -93,7 +98,7 @@ public static class UmbralNodes
         
         data.Log.Information($"Validating umbral system with {UmbralNodeData.Length} configurations...");
         
-        foreach (var (nodeId, nodeType, weather, itemIds) in UmbralNodeData)
+        foreach (var (_, nodeId, nodeType, weather, itemIds) in UmbralNodeData)
         {
             data.Log.Debug($"Validating umbral configuration {nodeId} ({nodeType}) for {weather} weather");
             
@@ -124,15 +129,37 @@ public static class UmbralNodes
         data.Log.Information($"Umbral validation complete. {validItems} valid items, {validWeatherPositions} nodes with positions.");
         data.Log.Information($"Umbral items will be handled by AutoGather umbral logic.");
     }
-    
-    public static bool IsUmbralItem(uint itemId)
+
+    public static bool IsUmbralItem(uint itemId) => GetUmbralItemInfo(itemId).NodeId != 0;
+
+    public static bool IsUmbralNode(uint nodeId) => GetUmbralNodeInfo(nodeId).NodeId != 0;
+    public static bool IsUmbralBaseNode(uint baseNodeId) => GetUmbralBaseNodeInfo(baseNodeId).NodeId != 0;
+
+    public static ref readonly UmbralNodeDataRecord GetUmbralItemInfo(uint itemId)
     {
-        return UmbralNodeData.Any(entry => entry.ItemIds.Contains(itemId));
+        for (var i = 0; i < UmbralNodeData.Length; i++)
+            for (var j = 0; j < UmbralNodeData[i].ItemIds.Length; j++)
+                if (UmbralNodeData[i].ItemIds[j] == itemId)
+                    return ref UmbralNodeData.ItemRef(i);
+
+        return ref DefaultUmbralNodeData;
     }
-    
-    public static (uint NodeId, CloudedNodeType NodeType, UmbralWeatherType Weather)? GetUmbralItemInfo(uint itemId)
+
+    public static ref readonly UmbralNodeDataRecord GetUmbralNodeInfo(uint nodeId)
     {
-        var entry = UmbralNodeData.FirstOrDefault(data => data.ItemIds.Contains(itemId));
-        return entry.NodeId == 0 ? null : (entry.NodeId, entry.NodeType, entry.Weather);
+        for (var i = 0; i < UmbralNodeData.Length; i++)
+            if (UmbralNodeData[i].NodeId == nodeId)
+                return ref UmbralNodeData.ItemRef(i);
+
+        return ref DefaultUmbralNodeData;
+    }
+
+    public static ref readonly UmbralNodeDataRecord GetUmbralBaseNodeInfo(uint baseNodeId)
+    {
+        for (var i = 0; i < UmbralNodeData.Length; i++)
+            if (UmbralNodeData[i].BaseNodeId == baseNodeId)
+                return ref UmbralNodeData.ItemRef(i);
+
+        return ref DefaultUmbralNodeData;
     }
 }

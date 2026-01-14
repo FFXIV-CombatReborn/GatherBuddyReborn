@@ -75,13 +75,7 @@ public partial class Interface
         {
             var all = GatherBuddy.GameData.Gatherables.Values
                 .Where(g => g.NodeList.SelectMany(l => l.WorldPositions.Values)
-                    .SelectMany(p => p).Any() 
-                    || UmbralNodes.IsUmbralItem(g.ItemId) // Include umbral items
-                    || (g.NodeList.Any(n => n.Territory.Id is 901 or 929 or 939) // Include Diadem items
-                        && (g.Name[GatherBuddy.Language].Contains("Grade 4") // Grade 4: include all
-                            || (g.Name[GatherBuddy.Language].Contains("Artisanal") // Grade 2/3: only Artisanal
-                                && (g.Name[GatherBuddy.Language].Contains("Grade 2") 
-                                    || g.Name[GatherBuddy.Language].Contains("Grade 3"))))))
+                    .SelectMany(p => p).Any())
                 .Cast<IGatherable>()
                 .Concat(GatherBuddy.GameData.Fishes.Values)
                 .GroupBy(g => g.ItemId)
@@ -222,13 +216,7 @@ public partial class Interface
                         
                         if (gatherableItem != null)
                         {
-                            if (gatherableItem.NodeList.Count == 0 
-                                && !UmbralNodes.IsUmbralItem(gatherableItem.ItemId) 
-                                && !(gatherableItem.NodeList.Any(n => n.Territory.Id is 901 or 929 or 939)
-                                    && (gatherableItem.Name[Dalamud.ClientState.ClientLanguage].Contains("Grade 4")
-                                        || (gatherableItem.Name[Dalamud.ClientState.ClientLanguage].Contains("Artisanal")
-                                            && (gatherableItem.Name[Dalamud.ClientState.ClientLanguage].Contains("Grade 2") 
-                                                || gatherableItem.Name[Dalamud.ClientState.ClientLanguage].Contains("Grade 3"))))))
+                            if (gatherableItem.NodeList.Count == 0)
                                 continue;
                         }
                         else

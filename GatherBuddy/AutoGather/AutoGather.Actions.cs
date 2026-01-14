@@ -136,7 +136,7 @@ namespace GatherBuddy.AutoGather
 
         public FishingState LastState = FishingState.None;
 
-        private unsafe void DoFishingTasks(IEnumerable<GatherTarget> targets)
+        private unsafe void DoFishingTasks(GatherTarget target)
         {
         if (TryUseFoodAndMedicine())
             return;
@@ -210,7 +210,7 @@ namespace GatherBuddy.AutoGather
                 return;
 
             var state  = GatherBuddy.EventFramework.FishingState;
-            var config = MatchConfigPreset(targets.First(t => t.Fish != null).Fish!);
+            var config = MatchConfigPreset(target.Fish!);
             
             if (!GatherBuddy.Config.AutoGatherConfig.UseAutoHook || !AutoHook.Enabled)
             {
@@ -227,7 +227,7 @@ namespace GatherBuddy.AutoGather
                 {
                     case FishingState.None:
                     case FishingState.PoleReady:
-                        HandleReady(targets.First(t => t.Fish != null), config);
+                        HandleReady(target, config);
                         break;
                 }
             }
@@ -570,11 +570,7 @@ namespace GatherBuddy.AutoGather
             if (action.EffectType is Actions.EffectType.Integrity && GatheringWindowReader.IntegrityRemaining > Math.Min(2, GatheringWindowReader.IntegrityMax - 1))
                 return false;
             if (action.EffectType is not Actions.EffectType.Other and not Actions.EffectType.GatherChance && slot.IsRare)
-            {
-                var isUmbralItem = Data.UmbralNodes.IsUmbralItem(item.ItemId);
-                if (!isUmbralItem)
                     return false;
-            }
             if (config is ConfigPreset.ActionConfigIntegrity config2
              && (!autoMode && config2.MinIntegrity > GatheringWindowReader.IntegrityMax || (config2.FirstStepOnly || autoMode) && GatheringWindowReader.Touched))
                 return false;
