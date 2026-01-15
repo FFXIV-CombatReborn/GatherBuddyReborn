@@ -1829,7 +1829,7 @@ namespace GatherBuddy.AutoGather
             return true;
         }
 
-        bool TryWindmireJump(ref Vector3 destination)
+        private bool TryWindmireJump(ref Vector3 destination)
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps)
                 return false;
@@ -1872,7 +1872,7 @@ namespace GatherBuddy.AutoGather
                 .ToList();
 
             var closestTargetableNode = visibleNodes
-                .Where(o => o.IsTargetable && allPositions.Contains(o.Position))
+                .Where(o => o.IsTargetable)
                 .MinBy(o => Vector3.Distance(Player.Position, o.Position));
 
             var isSpearfishing = next.Fish?.IsSpearFish == true;
