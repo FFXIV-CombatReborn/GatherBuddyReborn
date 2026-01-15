@@ -172,12 +172,7 @@ namespace GatherBuddy.AutoGather
 
         private int _diademPathIndex = -1;
         
-        private uint _lastUmbralWeather = 0;
-        private bool _hasGatheredUmbralThisSession = false;
         private uint _lastTerritory = 0;
-        
-        private uint _lastNonTimedNodeTerritory = 0;
-        private GatheringType _lastJob = GatheringType.Unknown;
         
         public readonly Dictionary<uint, int> SpearfishingSessionCatches = new();
         private readonly Dictionary<uint, int> _spearfishingInventorySnapshot = new();

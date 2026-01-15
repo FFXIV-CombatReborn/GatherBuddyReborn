@@ -104,6 +104,7 @@ namespace GatherBuddy.AutoGather
         public bool AutoCollectablesFishing { get; set; } = true;
         public bool DiademAutoAetherCannon { get; set; } = false;
         public bool DiademWindmireJumps { get; set; } = false;
+        public bool DiademFarmCloudedNodes { get; set; } = true;
         public bool DeferRepairDuringFishingBuffs { get; set; } = true;
         public bool DeferReductionDuringFishingBuffs { get; set; } = true;
         public bool DeferMateriaExtractionDuringFishingBuffs { get; set; } = true;
@@ -213,6 +214,7 @@ namespace GatherBuddy.AutoGather
                 public NodeConfig UnspoiledNode { get; set; } = new();
                 public NodeConfig EphemeralNode { get; set; } = new();
                 public NodeConfig LegendaryNode { get; set; } = new();
+                public NodeConfig CloudedNode   { get; set; } = new();
 
                 public NodeConfig GetNodeConfig(Enums.NodeType nodeType)
                 {
@@ -222,7 +224,8 @@ namespace GatherBuddy.AutoGather
                         Enums.NodeType.Unspoiled => UnspoiledNode,
                         Enums.NodeType.Ephemeral => EphemeralNode,
                         Enums.NodeType.Legendary => LegendaryNode,
-                        _                  => RegularNode
+                        Enums.NodeType.Clouded   => CloudedNode,
+                        _                        => RegularNode
                     };
                 }
             }

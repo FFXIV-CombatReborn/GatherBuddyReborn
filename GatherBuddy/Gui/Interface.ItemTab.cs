@@ -249,7 +249,7 @@ public partial class Interface
                 => _typeColumnWidth * ImGuiHelpers.GlobalScale;
 
             public TypeColumn()
-                => SetFlagsAndNames(ItemFilter.Regular, ItemFilter.Unspoiled, ItemFilter.Ephemeral, ItemFilter.Legendary);
+                => SetFlagsAndNames(ItemFilter.Regular, ItemFilter.Unspoiled, ItemFilter.Ephemeral, ItemFilter.Legendary, ItemFilter.Clouded);
 
             public override void DrawColumn(ExtendedGatherable item, int _)
                 => ImGui.Text(item.Data.NodeType.ToString());
@@ -265,6 +265,7 @@ public partial class Interface
                     NodeType.Unspoiled => FilterValue.HasFlag(ItemFilter.Unspoiled),
                     NodeType.Ephemeral => FilterValue.HasFlag(ItemFilter.Ephemeral),
                     NodeType.Legendary => FilterValue.HasFlag(ItemFilter.Legendary),
+                    NodeType.Clouded   => FilterValue.HasFlag(ItemFilter.Clouded),
                     _                  => false,
                 };
             }

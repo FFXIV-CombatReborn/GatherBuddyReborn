@@ -540,9 +540,13 @@ namespace GatherBuddy.Gui
                 ImGui.SameLine(0, ImGui.CalcTextSize("Collectables").X - ImGui.CalcTextSize("Unspoiled").X + ItemSpacing.X);
                 if (ImGuiUtil.Checkbox("Legendary", "", preset.NodeType.Legendary, x => preset.NodeType.Legendary = x))
                     selector.Save();
-                ImGui.SameLine();
+                ImGui.SameLine(0, ImGui.CalcTextSize("Gatherables").X - ImGui.CalcTextSize("Legendary").X + ItemSpacing.X);
                 if (ImGuiUtil.Checkbox("Ephemeral", "", preset.NodeType.Ephemeral, x => preset.NodeType.Ephemeral = x))
                     selector.Save();
+                ImGui.SameLine();
+                if (ImGuiUtil.Checkbox("Clouded", "", preset.NodeType.Clouded, x => preset.NodeType.Clouded = x))
+                    selector.Save();
+
 
                 ImGui.Text("Item types:");
                 ImGui.SameLine(0, ImGui.CalcTextSize("Node types:").X - ImGui.CalcTextSize("Item types:").X + ItemSpacing.X);
@@ -552,7 +556,7 @@ namespace GatherBuddy.Gui
                 if (ImGuiUtil.Checkbox("Collectables", "", preset.ItemType.Collectables, x => preset.ItemType.Collectables = x))
                     selector.Save();
                 ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Other", "", preset.ItemType.Other, x => preset.ItemType.Other = x))
+                if (ImGuiUtil.Checkbox("Gatherables", "", preset.ItemType.Other, x => preset.ItemType.Other = x))
                     selector.Save();
                 ImGui.SameLine();
                 if (ImGuiUtil.Checkbox("Fish", "", preset.ItemType.Fish, x => preset.ItemType.Fish = x))

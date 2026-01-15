@@ -1287,6 +1287,12 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps = b);
         
+        public static void DrawDiademFarmCloudedNodes()
+            => DrawCheckbox("Re-enter The Diadem to Reset Clouded Nodes",
+                "After gathering umbral items from a clouded node, re-enter the instance to make the node reappear.",
+                GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes,
+                b => GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes = b);
+
         public static void DrawCollectableAutoTurninBox()
             => DrawCheckbox("Auto-turn in collectables",
                 "Automatically turn in collectables when inventory threshold is reached during gathering",
@@ -1617,6 +1623,7 @@ public partial class Interface
                 }
                 ConfigFunctions.DrawDiademAutoAetherCannonBox();
                 ConfigFunctions.DrawDiademWindmireJumps();
+                ConfigFunctions.DrawDiademFarmCloudedNodes();
                 ConfigFunctions.DrawSortingMethodCombo();
                 ConfigFunctions.DrawLifestreamCommandTextInput();
                 ConfigFunctions.DrawAntiStuckCooldown();

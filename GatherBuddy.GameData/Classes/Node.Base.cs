@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using GatherBuddy.Data;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Structs;
@@ -9,6 +10,7 @@ using GatherBuddy.Time;
 using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
 using GatheringType = GatherBuddy.Enums.GatheringType;
+using Weather = GatherBuddy.Structs.Weather;
 
 namespace GatherBuddy.Classes;
 
@@ -42,6 +44,8 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
         => GatheringType.ToGroup() == GatheringType.Botanist;
 
     public string Folklore { get; init; }
+
+    public Weather UmbralWeather { get; init; } = Weather.Invalid;
 
 
     public GatheringNode(GameData data, IReadOnlyDictionary<uint, List<uint>> gatheringPoint,
@@ -89,9 +93,12 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
         // Obtain additional information.
         Folklore = MultiString.ParseSeStringLumina(nodeRow?.GatheringSubCategory.ValueNullable?.FolkloreBook);
         var extendedRow = nodeRow == null ? null : data.DataManager.GetExcelSheet<GatheringPointTransient>()?.GetRow(nodeRow.Value.RowId);
-        (Times, NodeType) = GetTimes(extendedRow);
+        (Times, NodeType) = nodeRow?.Type == 8 ? (BitfieldUptime.AllHours, NodeType.Clouded) : GetTimes(extendedRow);
         if (Folklore.Length > 0 && NodeType == NodeType.Unspoiled && nodeRow!.Value.GatheringSubCategory.Value!.Item.RowId != 0)
             NodeType = NodeType.Legendary;
+
+        if (NodeType == NodeType.Clouded)
+            UmbralWeather = data.Weathers[(uint)UmbralNodes.UmbralNodeData.First(data => data.BaseNodeId == node.RowId).Weather];
 
         // Obtain the items and add the node to their individual lists.
         Items = node.Item

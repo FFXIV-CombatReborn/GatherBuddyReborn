@@ -7,4 +7,5 @@ public enum NodeType : byte
     Unspoiled = 1,
     Ephemeral = 2,
     Legendary = 3,
+    Clouded   = 4,
 };

@@ -17,7 +17,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
 using EnhancedCurrentWeather = GatherBuddy.SeFunctions.EnhancedCurrentWeather;
-using UmbralNodes = GatherBuddy.Data.UmbralNodes;
 namespace GatherBuddy.AutoGather.Lists
 {
     internal class ActiveItemList : IEnumerable<GatherTarget>, IDisposable
@@ -32,6 +31,7 @@ namespace GatherBuddy.AutoGather.Lists
         private          int                                     _lastWeatherId;
         private          bool                                    _activeItemsChanged;
         private          bool                                    _gatheredSomething;
+        private          bool                                    _consumedCloudedNode;
         private          bool                                    _forceUpdateUnconditionally;
         private          GatheringType                           _lastJob            = GatheringType.Unknown;
         private          GatherTarget                            _currentItem;
@@ -53,7 +53,10 @@ namespace GatherBuddy.AutoGather.Lists
         /// True if there are items that need to be gathered; otherwise, false.
         /// </value>
         public bool HasItemsToGather
-            => _listsManager.ActiveItems.Where(NeedsGathering).Any();
+            => this.Any();
+
+        public bool IsCloudedNodeConsumed
+            => _consumedCloudedNode;
 
         public bool IsInitialized
             => _lastUpdateTime != TimeStamp.MinValue;
@@ -73,7 +76,7 @@ namespace GatherBuddy.AutoGather.Lists
         /// </returns>
         public IEnumerator<GatherTarget> GetEnumerator()
         {
-            return _gatherableItems.GetEnumerator();
+            return _gatherableItems.Where(NeedsGathering).GetEnumerator();
         }
 
         /// <summary>
@@ -85,7 +88,8 @@ namespace GatherBuddy.AutoGather.Lists
             if (IsUpdateNeeded())
                 DoUpdate();
 
-            return _currentItem = _gatherableItems.FirstOrDefault(x => x.Time.InRange(_lastUpdateTime) && NeedsGathering(x));
+            return _currentItem = this
+                .FirstOrDefault(x => x.Time.InRange(_lastUpdateTime));
         }
 
         /// <summary>
@@ -94,7 +98,10 @@ namespace GatherBuddy.AutoGather.Lists
         /// <returns></returns>
         public GatherTarget PeekNextTimed()
         {
-            return _gatherableItems.Where(x => !x.Time.InRange(_lastUpdateTime)).DefaultIfEmpty().MinBy(x => x.Time.Start);
+            return this
+                .Where(x => !x.Time.InRange(_lastUpdateTime) && x.Time != TimeInterval.Invalid)
+                .DefaultIfEmpty()
+                .MinBy(x => x.Time.Start);
         }
 
         /// <summary>
@@ -108,8 +115,10 @@ namespace GatherBuddy.AutoGather.Lists
             var x = _gatherableItems.FirstOrDefault(x => 
                 (x.Node?.WorldPositions.ContainsKey(target.BaseId) ?? false) ||
                 (x.FishingSpot?.WorldPositions.ContainsKey(target.BaseId) ?? false));
-            if (x != default && x.Time != TimeInterval.Always && x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
+            if (x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
                 _visitedTimedNodes[x.Node] = x.Time;
+            if (x.Node?.NodeType == NodeType.Clouded)
+                _consumedCloudedNode = true;
         }
 
         internal void DebugMarkVisited(GatherTarget x)
@@ -117,6 +126,8 @@ namespace GatherBuddy.AutoGather.Lists
             _gatheredSomething = true;
             if (x.Time != TimeInterval.Always && x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
                 _visitedTimedNodes[x.Node] = x.Time;
+            if (x.Node?.NodeType == NodeType.Clouded)
+                _consumedCloudedNode = EnhancedCurrentWeather.GetCurrentWeatherId() == x.Node.UmbralWeather.Id;
         }
 
         private bool NeedsGathering((IGatherable item, uint quantity) value)
@@ -126,9 +137,7 @@ namespace GatherBuddy.AutoGather.Lists
         }
 
         private bool NeedsGathering(GatherTarget target)
-        {
-            return target.Item.GetInventoryCount() < target.Quantity;
-        }
+            => NeedsGathering((target.Item, target.Quantity));
 
 
         private void OnActiveItemsChanged()
@@ -159,6 +168,7 @@ namespace GatherBuddy.AutoGather.Lists
         /// </summary>
         private void UpdateItemsToGather()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             // Items are unlocked in tiers of 5 levels, so we round up to the nearest 5.
             var minerLevel = (DiscipleOfLand.MinerLevel + 5) / 5 * 5;
             var botanistLevel = (DiscipleOfLand.BotanistLevel + 5) / 5 * 5;
@@ -170,7 +180,6 @@ namespace GatherBuddy.AutoGather.Lists
             var targets = _listsManager.ActiveItems
                 // Filter out items that are already gathered.
                 .Where(NeedsGathering)
-                .Where(x => RequiresHomeWorld(x) && Functions.OnHomeWorld() || !RequiresHomeWorld(x))
                 // If treasure map, only gather if the allowance is up.
                 .Where(x => !x.Item.IsTreasureMap || (nextAllowance ??= DiscipleOfLand.NextTreasureMapAllowance) < adjustedServerTime.DateTime)
                 // Fetch preferred location.
@@ -183,6 +192,8 @@ namespace GatherBuddy.AutoGather.Lists
                         FishingSpot spot => GatherBuddy.UptimeManager.NextUptime((x.Item as Fish)!, spot.Territory, adjustedServerTime),
                         _ => throw new InvalidOperationException()
                     }, x.Quantity, x.PreferredLocation)))
+                // Remove nodes that require the player to be on the home world.
+                .Where(x => !RequiresHomeWorld(x.Location) || Functions.OnHomeWorld())
                 // Remove nodes with a level higher than the player can gather.
                 .Where(x => x.Location.GatheringType.ToGroup() switch
                 {
@@ -190,14 +201,12 @@ namespace GatherBuddy.AutoGather.Lists
                     GatheringType.Botanist => (x.Location as GatheringNode)!.Level <= botanistLevel,
                     _ => true
                 })
-                // Apply predators and mooch dependencies time restrictions
+                // Apply predators and mooch dependencies time restrictions.
                 .Select(x => x with { Time = IntersectMoochUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
                 .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
-                // Remove fish with non-overlapping dependency windows
-                .Where(x => x.Time != TimeInterval.Never)
                 .Select(x => x with { Location = CorrectForPredatorLocation(x.Item, x.Location) })
-                // Remove nodes that are already gathered.
-                .Where(x => x.Location is not GatheringNode node || !_visitedTimedNodes.ContainsKey(node))
+                // Remove uptime for nodes that have already been gathered.
+                .Select(x => x.Location is GatheringNode node && _visitedTimedNodes.ContainsKey(node) ? x with { Time = TimeInterval.Invalid } : x)
                 // Group by item and select the best node.
                 .GroupBy(x => x.Item, x => x, (_, g) => g
                     // Prioritize preferred location, then current job, then preferred job, then the rest.
@@ -266,7 +275,7 @@ namespace GatherBuddy.AutoGather.Lists
                 // Bring the current-weather umbral items to the front.
                 // Within the leading Diadem items, move umbral items without matching weather to the back.
                 var targetsDiadem = targets
-                    .Select(x => (Target: x, Priority: GetDiademPriority(x, weatherId, ref frontDiadem, ref frontUmbral)))
+                    .Select(x => (Target: x, Priority: GetDiademPriority(x, ref frontDiadem, ref frontUmbral)))
                     .OrderBy(x => x.Priority)
                     .Select(x => x.Target);
                 _gatherableItems.AddRange(targetsDiadem);
@@ -276,6 +285,9 @@ namespace GatherBuddy.AutoGather.Lists
                 _gatherableItems.AddRange(targets);
             }
 
+            sw.Stop();
+            GatherBuddy.Log.Verbose(
+                $"UpdateItemsToGather() took {sw.Elapsed.TotalMilliseconds:F3} ms");
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
         }
 
@@ -320,13 +332,13 @@ namespace GatherBuddy.AutoGather.Lists
             return location;
         }
 
-        private static bool RequiresHomeWorld((IGatherable Item, uint Quantity) valueTuple)
+        private static bool RequiresHomeWorld(ILocation loc)
         {
-            if (valueTuple.Item is Gatherable item)
+            if (loc is GatheringNode node)
             {
-                return item.NodeType == NodeType.Legendary
-                 || item.NodeType == NodeType.Unspoiled
-                 || item.NodeList.Any(nl => nl.Territory.Id == Diadem.Territory.Id);
+                return node.NodeType == NodeType.Legendary
+                 || node.NodeType == NodeType.Unspoiled
+                 || node.Territory == Diadem.Territory;
             }
             else
             {
@@ -361,7 +373,7 @@ namespace GatherBuddy.AutoGather.Lists
                 }
             }
 
-            return time;
+            return time == TimeInterval.Never ? TimeInterval.Invalid : time;
         }
 
         private static TimeInterval IntersectMoochUptime(IGatherable item, ILocation location, TimeInterval time, TimeStamp now)
@@ -391,7 +403,7 @@ namespace GatherBuddy.AutoGather.Lists
                 }
             }
 
-            return time;
+            return time == TimeInterval.Never ? TimeInterval.Invalid : time;
         }
 
         private static float GetHorizontalSquaredDistanceToPlayer(ILocation node)
@@ -417,6 +429,7 @@ namespace GatherBuddy.AutoGather.Lists
                 NodeType.Legendary => 0,
                 NodeType.Unspoiled => 1,
                 NodeType.Ephemeral => 2,
+                NodeType.Clouded   => 3,
                 NodeType.Regular   => 9,
                 _                  => 99,
             };
@@ -500,7 +513,7 @@ namespace GatherBuddy.AutoGather.Lists
             {
                 _gatheredSomething = false;
                 var current = CurrentOrDefault;
-                foreach (var item in _gatherableItems.Where(NeedsGathering).Where(x => x.Node == null || !_visitedTimedNodes.ContainsKey(x.Node)))
+                foreach (var item in this.Where(x => x.Node == null || !_visitedTimedNodes.ContainsKey(x.Node)))
                 {
                     if (item == current)
                         return false;
@@ -525,6 +538,7 @@ namespace GatherBuddy.AutoGather.Lists
             var adjustedServerTime = AutoGather.AdjustedServerTime;
             var eorzeaHour         = adjustedServerTime.TotalEorzeaHours();
             var lastTerritoryId    = _lastTerritoryId;
+            var lastWeatherId      = _lastWeatherId;
             var lastEorzeaHour     = _lastUpdateTime.TotalEorzeaHours();
             var currentJob = Player.Job switch
             {
@@ -544,6 +558,9 @@ namespace GatherBuddy.AutoGather.Lists
 
             if (territoryId != lastTerritoryId)
                 UpdateTeleportationCosts();
+
+            if (lastWeatherId != weatherId)
+                _consumedCloudedNode = false;
 
             if (eorzeaHour != lastEorzeaHour)
                 RemoveExpiredVisited(adjustedServerTime);
@@ -567,7 +584,7 @@ namespace GatherBuddy.AutoGather.Lists
             _teleportationCosts.TrimExcess();
         }
 
-        private static int GetDiademPriority(in GatherTarget target, int currentWeather, ref bool frontDiadem, ref bool frontUmbral)
+        private int GetDiademPriority(in GatherTarget target, ref bool frontDiadem, ref bool frontUmbral)
         {
             // Priority (lower values come first):
             // 0 = Umbral items that match the current weather (rush to the node).
@@ -583,15 +600,10 @@ namespace GatherBuddy.AutoGather.Lists
                 return 4;
             }
 
-            if (target.Location is GatheringNode node)
+            if (target.Location is GatheringNode node && node.NodeType == NodeType.Clouded)
             {
-                ref readonly var data = ref UmbralNodes.GetUmbralBaseNodeInfo(node.Id);
-
-                if (data.NodeId != 0)
-                {
-                    frontUmbral |= frontDiadem;
-                    return currentWeather == (int)data.Weather ? 0 : (frontDiadem ? 3 : 4);
-                }
+                frontUmbral |= frontDiadem;
+                return _lastWeatherId == node.UmbralWeather.Id && !_consumedCloudedNode ? 0 : (frontDiadem ? 3 : 4);
             }
 
             return frontDiadem ? 1 : (frontUmbral ? 2 : 4);
