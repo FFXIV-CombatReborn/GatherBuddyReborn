@@ -1,8 +1,10 @@
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Game.Inventory;
-using Lumina.Excel.Sheets;
 using GatherBuddy.Plugin;
+using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace GatherBuddy.AutoGather.Collectables;
 
@@ -10,12 +12,12 @@ public static class ItemHelper
 {
     public static List<GameInventoryItem> GetCurrentInventoryItems()
     {
-        var inventoriesToFetch = new GameInventoryType[]
-        {
-            GameInventoryType.Inventory1, GameInventoryType.Inventory2, GameInventoryType.Inventory3,
-            GameInventoryType.Inventory4
-        };
-        var inventoryItems = new List<GameInventoryItem>();
+        ReadOnlySpan<GameInventoryType> inventoriesToFetch = [
+            GameInventoryType.Inventory1, GameInventoryType.Inventory2,
+            GameInventoryType.Inventory3, GameInventoryType.Inventory4
+        ];
+
+        var inventoryItems = new List<GameInventoryItem>(140);
         for (int i = 0; i < inventoriesToFetch.Length; i++)
         {
             inventoryItems.AddRange(Dalamud.GameInventory.GetInventoryItems(inventoriesToFetch[i]));

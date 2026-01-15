@@ -379,16 +379,17 @@ namespace GatherBuddy.AutoGather
                     var node = gatherTarget.Value.Node;
                     
                     if (gatherable != null && (gatherable.NodeType == NodeType.Regular || gatherable.NodeType == NodeType.Ephemeral)
-                        && (VisitedNodes.Last?.Value != targetNode.BaseId)
+                        && VisitedNodes.LastOrDefault() != targetNode.BaseId
                         && node != null && node.WorldPositions.ContainsKey(targetNode.BaseId))
                     {
                         FarNodesSeenSoFar.Clear();
 
-                        if (node.WorldPositions.Count > 2)
-                            VisitedNodes.AddLast(targetNode.BaseId);
+                        while (VisitedNodes.Count > (node.WorldPositions.Count <= 4 ? 2 : 4) - 1)
+                            VisitedNodes.RemoveAt(0);
 
-                        while (VisitedNodes.Count > (node.WorldPositions.Count <= 4 ? 2 : 4))
-                            VisitedNodes.RemoveFirst();
+                        if (node.WorldPositions.Count > 2)
+                            VisitedNodes.Add(targetNode.BaseId);
+
                     }
                 }
                 // Unset the current gather target when leaving the node
@@ -1862,10 +1863,10 @@ namespace GatherBuddy.AutoGather
             }
 
             var allPositions = next.Location.WorldPositions
-                .ExceptBy(VisitedNodes, n => n.Key)
+                .Where(n => !VisitedNodes.Contains(n.Key))
                 .SelectMany(w => w.Value)
                 .Where(v => !IsBlacklisted(v))
-                .ToHashSet();
+                .ToList();
 
             var visibleNodes = Dalamud.Objects
                 .Where(o => allPositions.Contains(o.Position))

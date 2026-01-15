@@ -165,8 +165,8 @@ namespace GatherBuddy.AutoGather
         internal ReadOnlyDictionary<GatheringNode, TimeInterval> DebugVisitedTimedLocations
             => _activeItemList.DebugVisitedTimedLocations;
 
-        public readonly HashSet<Vector3> FarNodesSeenSoFar = [];
-        public readonly LinkedList<uint> VisitedNodes      = [];        
+        public readonly HashSet<Vector3> FarNodesSeenSoFar = new(8);
+        public readonly List<uint>       VisitedNodes      = new(4);        
         // Distance at which a node is expected to become visible, and it is given up on if it does not.
         public const float NodeVisibilityDistance = 50f;
 
