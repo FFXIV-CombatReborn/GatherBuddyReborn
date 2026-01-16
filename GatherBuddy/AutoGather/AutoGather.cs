@@ -1,6 +1,7 @@
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Gui.Toast;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
@@ -25,6 +26,7 @@ using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
+using GatherBuddy.Time;
 using GatherBuddy.Utilities;
 using Lumina.Excel.Sheets;
 using System;
@@ -1746,8 +1748,19 @@ namespace GatherBuddy.AutoGather
             // Let the normal navigation logic handle Skybuilders' Tools quest items and Umbral nodes.
 
             var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-            if (next.Node?.NodeType == NodeType.Clouded && next.Node?.UmbralWeather.Id == currentWeather && !_activeItemList.IsCloudedNodeConsumed)
+            if (next.Node?.NodeType == NodeType.Clouded && next.Node.UmbralWeather.Id == currentWeather && !_activeItemList.IsCloudedNodeConsumed)
+            {
+                // Check if the node hasn't spawned due to a game bug.
+                var flag = TimedNodePosition;
+                if (flag.HasValue && Vector2.Distance(flag.Value, player.ToVector2()) < NodeVisibilityDistance
+                    && !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable && next.Node.WorldPositions.ContainsKey(o.BaseId)))
+                {
+                    Communicator.PrintError($"[{GatherBuddy.InternalName}] Looks like the clouded node hasn't spawned due to a game bug. Abandoning gathering attempt.");
+                    _activeItemList.DebugMarkVisited(next);
+                    return true;
+                }
                 return false;
+            }
 
             if (Diadem.OddlyDelicateItems.Contains(next.Item))
                 return false;
