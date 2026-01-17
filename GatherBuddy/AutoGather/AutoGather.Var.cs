@@ -251,7 +251,7 @@ namespace GatherBuddy.AutoGather
                  || Dalamud.Conditions[ConditionFlag.Occupied39]
                  || Dalamud.Conditions[ConditionFlag.Unconscious]
                  || Dalamud.Conditions[ConditionFlag.ExecutingGatheringAction]
-                 || Dalamud.Conditions[ConditionFlag.Mounting] // Mounting up
+                 || Dalamud.Conditions[ConditionFlag.MountOrOrnamentTransition] // Protection against Pandora's auto mounting
                     //Node is open? Fades off shortly after closing the node, can't use items (but can mount) while it's set
                  || Dalamud.Conditions[85] && !Dalamud.Conditions[ConditionFlag.Gathering]
                  || Dalamud.Objects.LocalPlayer.IsDead
