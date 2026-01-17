@@ -1134,7 +1134,7 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
                 else if (Diadem.IsInside)
-                {
+                { 
                     LeaveTheDiadem();
                     return;
                 }
@@ -1938,24 +1938,27 @@ namespace GatherBuddy.AutoGather
 
             Vector3 selectedFarNode;
 
-            // only Legendary, Unspoiled and Clouded show marker.
-            if (ShouldUseFlag && next.Gatherable?.NodeType is NodeType.Legendary or NodeType.Unspoiled or NodeType.Clouded)
+            // Only Legendary, Unspoiled, and Clouded nodes show a map marker.
+            var mapMarkerAvailable = next.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled or NodeType.Clouded;
+            // Wait an additional 8 seconds because it takes a few seconds for the previous flag to disappear.
+            var gracePeriod = next.Time == TimeInterval.Always ? 0 : next.Time.Start - GatherBuddy.Time.ServerTime.AddSeconds(-8);
+            var mapMarker = mapMarkerAvailable && gracePeriod <= 0 ? TimedNodePosition : null;
+
+            if (mapMarkerAvailable && ShouldUseFlag)
             {
-                var pos = TimedNodePosition;
-                // marker not yet loaded on game
-                if (pos == null || next.Time.Start > GatherBuddy.Time.ServerTime.AddSeconds(-8))
+                if (mapMarker == null)
                 {
-                    AutoStatus = "Waiting on flag show up";
+                    AutoStatus = "Waiting for map marker to show up" + (gracePeriod > 0 ? $" (grace period: {gracePeriod / RealTime.MillisecondsPerSecond}s)" : "");
                     return;
                 }
 
                 selectedFarNode = allPositions
-                    .Where(o => Vector2.Distance(pos.Value, new Vector2(o.X, o.Z)) < 10)
-                    .OrderBy(o => Vector2.Distance(pos.Value, new Vector2(o.X, o.Z)))
-                    .FirstOrDefault();
-                if (selectedFarNode == default)
+                    .DefaultIfEmpty()
+                    .MinBy(o => Vector2.DistanceSquared(mapMarker.Value, o.ToVector2()));
+
+                if (selectedFarNode == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.ToVector2()) > 10 * 10)
                 {
-                    var point = new Vector3(pos.Value.X, 0, pos.Value.Y);
+                    var point = new Vector3(mapMarker.Value.X, 0, mapMarker.Value.Y);
                     selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point);
                 }
             }
@@ -1963,8 +1966,9 @@ namespace GatherBuddy.AutoGather
             {
                 //Select the closest node
                 selectedFarNode = allPositions
-                    .OrderBy(v => Vector3.Distance(Player.Position, v))
-                    .FirstOrDefault(n => !FarNodesSeenSoFar.Contains(n));
+                    .Where(n => !FarNodesSeenSoFar.Contains(n))
+                    .DefaultIfEmpty()
+                    .MinBy(v => Vector2.DistanceSquared(mapMarker ?? Player.Position.ToVector2(), v.ToVector2()));
 
                 if (selectedFarNode == default)
                 {

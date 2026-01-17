@@ -134,22 +134,12 @@ namespace GatherBuddy.AutoGather
             get
             {
                 var map     = FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentMap.Instance();
-                var markers = map->MiniMapGatheringMarkers;
-                if (markers == null)
-                    return null;
 
-                Vector2? result = null;
-                foreach (var miniMapGatheringMarker in markers)
-                {
-                    if (miniMapGatheringMarker.MapMarker.X != 0 && miniMapGatheringMarker.MapMarker.Y != 0)
-                    {
-                        // ReSharper disable twice PossibleLossOfFraction
-                        result = new Vector2(miniMapGatheringMarker.MapMarker.X / 16, miniMapGatheringMarker.MapMarker.Y / 16);
-                        break;
-                    }
-                }
+                foreach (var marker in map->MiniMapGatheringMarkers)
+                    if (marker.MapMarker.X != 0 && marker.MapMarker.Y != 0)
+                        return new Vector2(marker.MapMarker.X / 16f, marker.MapMarker.Y / 16f);
 
-                return result;
+                return null;
             }
         }
 
