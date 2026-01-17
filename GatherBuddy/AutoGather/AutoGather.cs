@@ -1752,11 +1752,26 @@ namespace GatherBuddy.AutoGather
             {
                 // Check if the node hasn't spawned due to a game bug.
                 var flag = TimedNodePosition;
+                var nodeId = next.Node.WorldPositions.Keys.First();
                 if (flag.HasValue && Vector2.Distance(flag.Value, player.ToVector2()) < NodeVisibilityDistance
-                    && !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable && next.Node.WorldPositions.ContainsKey(o.BaseId)))
+                    && !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable && nodeId == o.BaseId))
                 {
-                    Communicator.PrintError($"[{GatherBuddy.InternalName}] Looks like the clouded node hasn't spawned due to a game bug. Abandoning gathering attempt.");
-                    _activeItemList.DebugMarkVisited(next);
+                    GatherBuddy.Log.Warning("Looks like the Clouded node hasn't spawned due to a game bug. Trying to move away.");
+
+                    // Pick a random node far away and move there.
+                    var pos = GatherBuddy.GameData.GatheringNodes.Values
+                        .Where(n => n.Territory == Diadem.Territory)
+                        .SelectMany(n => n.WorldPositions.Values.SelectMany(x => x))
+                        .Where(pos => Vector2.DistanceSquared(pos.ToVector2(), flag.Value) > 200f*200f)
+                        .Aggregate((Count: 0, Item: Vector3.Zero), (acc, current) => (acc.Count + 1, (Random.Shared.Next(acc.Count + 1) == 0) ? current : acc.Item))
+                        .Item;
+
+                    Navigate(pos, true, direct: true);
+                    TaskManager.Enqueue(() => !IsPathGenerating);
+                    TaskManager.Enqueue(() => !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && nodeId == o.BaseId) || !IsPathing, 10000);
+                    TaskManager.Enqueue(StopNavigation);
+
+                    AutoStatus = "Trying to reset the bugged Clouded node";
                     return true;
                 }
                 return false;
