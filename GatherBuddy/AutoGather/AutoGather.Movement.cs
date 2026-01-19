@@ -64,7 +64,7 @@ namespace GatherBuddy.AutoGather
         private unsafe bool CanMount()
         {
             var am = ActionManager.Instance();
-            return am->GetActionStatus(ActionType.GeneralAction, 24) == 0;
+            return am->GetActionStatus(ActionType.Mount, 0) == 0;
         }
 
         private unsafe bool IsMountUnlocked(uint mount)
