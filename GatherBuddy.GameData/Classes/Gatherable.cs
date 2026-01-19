@@ -5,6 +5,7 @@ using GatherBuddy.Interfaces;
 using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
 using GatheringType = GatherBuddy.Enums.GatheringType;
+using Weather = GatherBuddy.Structs.Weather;
 
 namespace GatherBuddy.Classes;
 
@@ -36,6 +37,8 @@ public class Gatherable : IComparable<Gatherable>, IGatherable
     public GatheringType GatheringType { get; internal set; } = GatheringType.Unknown;
 
     public uint ExpansionIdx { get; internal set; } = uint.MaxValue;
+
+    public Weather UmbralWeather => NodeList.Count > 0 ? NodeList[0].UmbralWeather : Weather.Invalid;
 
     public Gatherable(GameData gameData, GatheringItem gatheringData)
     {

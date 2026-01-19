@@ -1,4 +1,5 @@
 using System;
+using GatherBuddy.Data;
 using GatherBuddy.Utility;
 using LuminaWeather = Lumina.Excel.Sheets.Weather;
 
@@ -17,6 +18,8 @@ public readonly struct Weather : IComparable<Weather>
 
     public int CompareTo(Weather other)
         => Id.CompareTo(other.Id);
+
+    public bool IsUmbral => Enum.IsDefined((UmbralNodes.UmbralWeatherType)Id);
 
     public Weather(in LuminaWeather weather)
     {

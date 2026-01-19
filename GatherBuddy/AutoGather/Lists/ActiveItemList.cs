@@ -42,7 +42,7 @@ namespace GatherBuddy.AutoGather.Lists
         /// First item on the list as of the last enumeration or default.
         /// </summary>
         public GatherTarget CurrentOrDefault
-            => _currentItem;
+            => IsInitialized ? _currentItem : GetNextOrDefault();
 
         /// <summary>
         /// Determines whether there are any items that need to be gathered,
@@ -473,20 +473,6 @@ namespace GatherBuddy.AutoGather.Lists
         }
 
         /// <summary>
-        /// Checks if the active item list should be updated while fishing.
-        /// This is used to detect when timed/weather fish become available.
-        /// </summary>
-        /// <returns>
-        /// True if the list should update (e.g., hour changed, active items changed); otherwise, false.
-        /// </returns>
-        public bool ShouldUpdateWhileFishing()
-        {
-            return _activeItemsChanged
-                || _forceUpdateUnconditionally
-                || _lastUpdateTime.TotalEorzeaHours() != AutoGather.AdjustedServerTime.TotalEorzeaHours();
-        }
-
-        /// <summary>
         /// Returns true in the following cases:
         /// 1) The active item list has changed.
         /// 2) The Eorzea hour has changed.
@@ -588,10 +574,12 @@ namespace GatherBuddy.AutoGather.Lists
                 return 4;
             }
 
-            if (target.Location is GatheringNode node && node.NodeType == NodeType.Clouded)
+            var requiredWeather = target.Item.UmbralWeather.Id; // 0 if not umbral (Weather.Invalid)
+
+            if (requiredWeather != 0)
             {
                 frontUmbral |= frontDiadem;
-                return _lastWeatherId == node.UmbralWeather.Id && !_consumedCloudedNode ? 0 : (frontDiadem ? 3 : 4);
+                return _lastWeatherId == requiredWeather && !(_consumedCloudedNode && target.Node != null) ? 0 : (frontDiadem ? 3 : 4);
             }
 
             return frontDiadem ? 1 : (frontUmbral ? 2 : 4);

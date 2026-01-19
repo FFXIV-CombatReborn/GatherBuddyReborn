@@ -10,6 +10,7 @@ using ItemRow = Lumina.Excel.Sheets.Item;
 using FishRow = Lumina.Excel.Sheets.FishParameter;
 using SpearFishRow = Lumina.Excel.Sheets.SpearfishingItem;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using Weather = GatherBuddy.Structs.Weather;
 
 namespace GatherBuddy.Classes;
 
@@ -72,6 +73,8 @@ public partial class Fish : IComparable<Fish>, IGatherable
     public FishRestrictions FishRestrictions { get; set; }
 
     public string Folklore { get; init; }
+
+    public Weather UmbralWeather => CurrentWeather.Length > 0 && CurrentWeather[0].IsUmbral ? CurrentWeather[0] : Weather.Invalid;
 
     public Fish(IDataManager gameData, SpearFishRow fishRow, ExcelSheet<FishingNoteInfo> catchData)
     {
