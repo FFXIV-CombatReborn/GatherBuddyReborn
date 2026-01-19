@@ -24,32 +24,17 @@ namespace GatherBuddy.AutoGather
         private unsafe bool HandleFishingCollectable()
         {
             if (!GatherBuddy.Config.AutoGatherConfig.AutoCollectablesFishing)
-            {
-                GatherBuddy.Log.Debug("[AutoCollectable] Feature disabled in config");
                 return false;
-            }
 
             var addon = SelectYesnoAddon;
-            if (addon == null)
+            if (addon == null || !addon->IsReady)
                 return false;
-            
-            if (!addon->IsReady)
-            {
-                GatherBuddy.Log.Debug("[AutoCollectable] SelectYesno addon not ready");
-                return false;
-            }
-            
-            GatherBuddy.Log.Debug("[AutoCollectable] SelectYesno addon found and ready");
 
             var master = new AddonMaster.SelectYesno(addon);
             var text = master.TextLegacy;
-            GatherBuddy.Log.Debug($"[AutoCollectable] Read text: '{text}' (length={text.Length})");
 
             if (!CollectablePatterns.Any(text.Contains))
-            {
-                GatherBuddy.Log.Debug($"[AutoCollectable] Text does not match any collectable patterns");
                 return false;
-            }
 
             GatherBuddy.Log.Debug($"[AutoCollectable] Detected collectable dialog with text: {text}");
 

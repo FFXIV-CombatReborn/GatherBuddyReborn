@@ -26,6 +26,7 @@ enum CollectableState
     SelectingJob,
     SelectingItem,
     SubmittingItem,
+    CheckingOvercapDialog,
     WaitingForSubmit,
     CheckingForMore,
     MovingToScripShop,
@@ -68,6 +69,8 @@ public class CollectableManager : IDisposable
     private bool _lifestreamAttempted = false;
     private Queue<(uint itemId, string name, int remaining, int cost, int page, int subPage)> _purchaseQueue = new();
     private int _currentPurchaseAmount = 0;
+    private bool _overcapInterrupted = false;
+    private DateTime _overcapCheckStartTime = DateTime.MinValue;
     
     public CollectableManager(IFramework framework, ICondition condition, Configuration config)
     {
@@ -149,6 +152,10 @@ public class CollectableManager : IDisposable
                     
                 case CollectableState.SubmittingItem:
                     SubmitItem();
+                    break;
+                    
+                case CollectableState.CheckingOvercapDialog:
+                    CheckOvercapDialog();
                     break;
                     
                 case CollectableState.WaitingForSubmit:
@@ -511,7 +518,52 @@ public class CollectableManager : IDisposable
         
         _windowHandler.SubmitItem();
         _lastAction = DateTime.UtcNow;
-        _state = CollectableState.WaitingForSubmit;
+        _overcapCheckStartTime = DateTime.UtcNow;
+        _state = CollectableState.CheckingOvercapDialog;
+    }
+    
+    private unsafe void CheckOvercapDialog()
+    {
+        if (Automation.GenericHelpers.TryGetAddonByName<FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno>("SelectYesno", out var addon) &&
+            Automation.GenericHelpers.IsAddonReady((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon))
+        {
+            GatherBuddy.Log.Information("[CollectableManager] Scrip overcap detected, declining turn-in and moving to scrip shop");
+            Automation.Callback.Fire((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon, true, 1);
+            _lastAction = DateTime.UtcNow;
+            _overcapInterrupted = true;
+            
+            _windowHandler.CloseWindow();
+            
+            if (_config.CollectableConfig.BuyAfterEachCollect && _config.CollectableConfig.ScripShopItems.Count > 0)
+            {
+                GatherBuddy.Log.Information("[CollectableManager] Moving to scrip shop to spend scrips");
+                PreparePurchaseQueue();
+                
+                if (_purchaseQueue.Count == 0)
+                {
+                    GatherBuddy.Log.Error("[CollectableManager] Scrip overcap detected but no items to purchase. Disabling auto-turnin.");
+                    _config.CollectableConfig.AutoTurnInCollectables = false;
+                    Communicator.PrintError("Scrip overcap detected but no scrip shop items need purchasing. Auto-turnin has been disabled. Please configure scrip shop items or spend scrips manually.");
+                    _state = CollectableState.Completed;
+                    return;
+                }
+                
+                _state = CollectableState.MovingToScripShop;
+            }
+            else
+            {
+                GatherBuddy.Log.Error("[CollectableManager] Scrip overcap but no scrip shop configuration. Disabling auto-turnin.");
+                _config.CollectableConfig.AutoTurnInCollectables = false;
+                Communicator.PrintError("Scrip overcap detected but scrip shopping is not configured. Auto-turnin has been disabled. Please enable scrip shopping and configure items to purchase.");
+                _state = CollectableState.Completed;
+            }
+            return;
+        }
+        
+        if ((DateTime.UtcNow - _overcapCheckStartTime) > TimeSpan.FromMilliseconds(500))
+        {
+            _state = CollectableState.WaitingForSubmit;
+        }
     }
     
     private void WaitForSubmit()
@@ -849,7 +901,20 @@ public class CollectableManager : IDisposable
         {
             GatherBuddy.Log.Information("[CollectableManager] Completed all purchases");
             _scripShopWindowHandler.CloseShop();
-            _state = CollectableState.Completed;
+            
+            if (_overcapInterrupted && HasCollectables())
+            {
+                GatherBuddy.Log.Information("[CollectableManager] Collectables still exist after scrip purchases, resuming turn-ins");
+                _overcapInterrupted = false;
+                _teleportAttempted = false;
+                _lifestreamAttempted = false;
+                _lastAction = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+                _state = CollectableState.CheckingInventory;
+            }
+            else
+            {
+                _state = CollectableState.Completed;
+            }
         }
     }
     
