@@ -1,6 +1,7 @@
-using System;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Plugin;
+using System;
 
 namespace GatherBuddy.SeFunctions;
 
@@ -25,7 +26,7 @@ public sealed class CurrentWeather : SeAddressBase
         {
             try
             {
-                if (Functions.InTheDiadem())
+                if (Diadem.IsInside)
                 {
                     var weatherManager = WeatherManager.Instance();
                     if (weatherManager != null)

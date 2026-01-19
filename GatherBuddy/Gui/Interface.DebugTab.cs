@@ -792,7 +792,7 @@ public partial class Interface
             {
                 ImGui.PushID(obj.GameObjectId.ToString());
                 var node = GatherBuddy.GameData.GatheringNodes.TryGetValue((uint)obj.GameObjectId, out var n) ? n : null;
-                ImGui.Text($"{obj.GameObjectId}: {obj.Name ?? "Unknown"} - DataId: {obj.DataId}");
+                ImGui.Text($"{obj.GameObjectId}: {obj.Name ?? "Unknown"} - BaseId: {obj.BaseId}");
                 ImGui.SameLine();
                 if (ImGui.SmallButton("NavTo"))
                 {
@@ -894,11 +894,11 @@ public partial class Interface
         {
             foreach (var x in GatherBuddy.AutoGather.ItemsToGather)
             {
-                ImGui.Text($"Item: {x.Item.Name}; Location: {x.Node.Name}; Valid until: {(x.Time == TimeInterval.Always ? "Always" : x.Time.End.ConvertToEorzea().DateTime.ToString("HH:mm", CultureInfo.InvariantCulture))} ET; Quantity: {x.Quantity}");
-                if (x.Time == TimeInterval.Always || x.Node.NodeType is not Enums.NodeType.Unspoiled and not Enums.NodeType.Legendary)
+                ImGui.Text($"Item: {x.Item.Name}; Location: {x.Location.Name}; Valid until: {(x.Time == TimeInterval.Always ? "Always" : x.Time.End.ConvertToEorzea().DateTime.ToString("HH:mm", CultureInfo.InvariantCulture))} ET; Quantity: {x.Quantity}");
+                if (x.Time == TimeInterval.Always || x.Node == null || x.Node.NodeType is not NodeType.Unspoiled and not NodeType.Legendary and not NodeType.Clouded)
                     continue;
                 ImGui.SameLine();
-                if (ImGui.Button("Mark Visited"))
+                if (ImGui.Button($"Mark Visited##{x.Item.ItemId}"))
                     GatherBuddy.AutoGather.DebugMarkVisited(x);
             }
         }

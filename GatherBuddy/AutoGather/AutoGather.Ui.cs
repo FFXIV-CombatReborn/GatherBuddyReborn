@@ -82,7 +82,7 @@ namespace GatherBuddy.AutoGather
                     ImGui.TableSetColumnIndex(1);
                     ImGui.Text(node.IsTargetable ? "Y" : "N");
                     ImGui.TableSetColumnIndex(2);
-                    ImGui.Text(node.DataId.ToString());
+                    ImGui.Text(node.BaseId.ToString());
                     ImGui.TableSetColumnIndex(3);
                     ImGui.Text(node.Position.ToString());
                     ImGui.TableSetColumnIndex(4);

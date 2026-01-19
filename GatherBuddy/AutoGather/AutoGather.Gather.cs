@@ -4,6 +4,7 @@ using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using GatherBuddy.AutoGather.AtkReaders;
 using GatherBuddy.AutoGather.Extensions;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
@@ -219,7 +220,7 @@ namespace GatherBuddy.AutoGather
                 return (fallbackSkills && !slot.IsCollectable, slot);
             }
 
-            if (Functions.InTheDiadem() && gatherTarget.Any())
+            if (Diadem.IsInside && gatherTarget.Any())
             {
                 var targetLevels = gatherTarget
                     .Where(gt => gt.Gatherable != null)

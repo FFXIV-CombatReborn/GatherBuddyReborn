@@ -1,6 +1,7 @@
-using System;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Plugin;
+using System;
 
 namespace GatherBuddy.SeFunctions;
 
@@ -33,7 +34,7 @@ public sealed class EnhancedCurrentWeather
             return 0;
 
         var territoryType = Dalamud.ClientState.TerritoryType;
-        var isInDiadem = Functions.InTheDiadem();
+        var isInDiadem = Diadem.IsInside;
         
         var currentWeather = weatherManager->GetCurrentWeather();
         

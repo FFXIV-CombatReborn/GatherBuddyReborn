@@ -41,9 +41,9 @@ public partial class AutoGatherListsManager : IDisposable
     private const string FileNameFallback = "gather_window.json";
 
     private readonly FileSystem<AutoGatherList>             _fileSystem;
-    private readonly List<(Gatherable Item, uint Quantity)> _activeItems   = [];
-    private readonly List<(Gatherable Item, uint Quantity)> _fallbackItems = [];
-    private readonly List<(Fish Fish, uint Quantity)>       _activeFish    = [];
+    private readonly List<(IGatherable Item, uint Quantity)> _activeItems   = [];
+    private readonly List<(IGatherable Item, uint Quantity)> _fallbackItems = [];
+    private static readonly ManualOrderSortMode _manualOrderSortMode = new();
 
     public FileSystem<AutoGatherList> FileSystem
         => _fileSystem;
@@ -51,14 +51,11 @@ public partial class AutoGatherListsManager : IDisposable
     public IEnumerable<AutoGatherList> Lists
         => _fileSystem.Select(kvp => kvp.Key);
 
-    public ReadOnlyCollection<(Gatherable Item, uint Quantity)> ActiveItems
+    public ReadOnlyCollection<(IGatherable Item, uint Quantity)> ActiveItems
         => _activeItems.AsReadOnly();
 
-    public ReadOnlyCollection<(Gatherable Item, uint Quantity)> FallbackItems
+    public ReadOnlyCollection<(IGatherable Item, uint Quantity)> FallbackItems
         => _fallbackItems.AsReadOnly();
-
-    public ReadOnlyCollection<(Fish Fish, uint Quantity)> ActiveFish
-        => _activeFish.AsReadOnly();
 
     public AutoGatherListsManager()
     {
@@ -161,9 +158,11 @@ public partial class AutoGatherListsManager : IDisposable
     public void SetActiveItems()
     {
         _activeItems.Clear();
-        _activeFish.Clear();
         _fallbackItems.Clear();
-        var items = _fileSystem.Select(kvp => kvp.Key)
+
+        var items = _fileSystem.Root.GetAllDescendants(_manualOrderSortMode)
+            .OfType<FileSystem<AutoGatherList>.Leaf>()
+            .Select(leaf => leaf.Value)
             .Where(l => l.Enabled)
             .SelectMany(l => l.Items.Select(i => (Item: i, Quantity: l.Quantities[i], l.Fallback, ItemEnabled: l.EnabledItems[i])))
             .Where(i => i.ItemEnabled)
@@ -172,21 +171,13 @@ public partial class AutoGatherListsManager : IDisposable
 
         foreach (var (item, quantity, fallback) in items)
         {
-            if (item is Fish fish)
+            if (fallback)
             {
-                _activeFish.Add((fish, quantity));
+                _fallbackItems.Add((item, quantity));
             }
-
-            if (item is Gatherable gatherable)
+            else
             {
-                if (fallback)
-                {
-                    _fallbackItems.Add((gatherable, quantity));
-                }
-                else
-                {
-                    _activeItems.Add((gatherable, quantity));
-                }
+                _activeItems.Add((item, quantity));
             }
         }
 

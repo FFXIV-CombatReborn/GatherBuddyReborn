@@ -126,45 +126,8 @@ namespace GatherBuddy.AutoGather
                         // Otherwise, stop once in range to interact.
                         if (vSeparation < 3 && !(_navState.offset && Dalamud.Conditions[ConditionFlag.InFlight] && IsPathing))
                         {
-
                             StopNavigation();
-
-                            var targetGatheringType = targetItem.GatheringType.ToGroup();
-                            var isUmbralItem = UmbralNodes.IsUmbralItem(targetItem.ItemId);
-                            if (isUmbralItem && Functions.InTheDiadem())
-                            {
-                                var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                                if (UmbralNodes.IsUmbralWeather(currentWeather))
-                                {
-                                    var umbralWeather = (UmbralNodes.UmbralWeatherType)currentWeather;
-                                    targetGatheringType = umbralWeather switch
-                                    {
-                                        UmbralNodes.UmbralWeatherType.UmbralFlare => GatheringType.Miner,
-                                        UmbralNodes.UmbralWeatherType.UmbralLevin => GatheringType.Miner,
-                                        UmbralNodes.UmbralWeatherType.UmbralDuststorms => GatheringType.Botanist,
-                                        UmbralNodes.UmbralWeatherType.UmbralTempest => GatheringType.Botanist,
-                                        _ => targetGatheringType
-                                    };
-                                }
-                            }
-                            
-                            var shouldSkipJobSwitch = Functions.InTheDiadem() && _hasGatheredUmbralThisSession;
-                            
-                            if (targetGatheringType != JobAsGatheringType && targetGatheringType != GatheringType.Multiple && !shouldSkipJobSwitch) {
-                                if (ChangeGearSet(targetGatheringType, 0)){
-                                    EnqueueNodeInteraction(gameObject, targetItem);
-                                } else {
-                                    AbortAutoGather();
-                                }
-                            }
-                            else
-                            {
-                                if (shouldSkipJobSwitch && targetGatheringType != JobAsGatheringType)
-                                {
-                                    GatherBuddy.Log.Information($"[Umbral] Skipping job switch at node after umbral gathering (staying on {JobAsGatheringType})");
-                                }
-                                EnqueueNodeInteraction(gameObject, targetItem);
-                            }
+                            EnqueueNodeInteraction(gameObject, targetItem);
                         } 
                         else
                         {
@@ -529,13 +492,6 @@ namespace GatherBuddy.AutoGather
             catch (Exception) { }
 
             return destination;
-        }
-
-        private void MoveToFarNode(Vector3 position)
-        {
-            var farNode = position;
-
-            Navigate(farNode, ShouldFly(farNode));
         }
 
         private unsafe void MoveToFishingSpot(Vector3 position, Angle angle)

@@ -10,7 +10,6 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
-using UmbralNodes = GatherBuddy.Data.UmbralNodes;
 using GatherBuddy.Interfaces;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Time;
@@ -150,17 +149,6 @@ public class Executor
 
         if (!item.Locations.Any())
         {
-            // Special handling for umbral items - they don't have regular locations
-            if (UmbralNodes.IsUmbralItem(item.ItemId))
-            {
-                var umbralInfo = UmbralNodes.GetUmbralItemInfo(item.ItemId);
-                if (umbralInfo.HasValue)
-                {
-                    Communicator.Print($"Umbral item {item.Name[GatherBuddy.Language]} will be gathered during {umbralInfo.Value.Weather} weather in Diadem.");
-                    return null; // Return null but don't show "no location" error
-                }
-            }
-            
             Communicator.LocationNotFound(item, _gatheringType);
             return null;
         }

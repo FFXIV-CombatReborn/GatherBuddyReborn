@@ -136,11 +136,7 @@ namespace GatherBuddy.AutoGather.Helpers
                 if (_action.EffectType is Actions.EffectType.BoonChance or Actions.EffectType.BoonYield && slot.BoonChance <= 0)
                     return false;
                 if (_action.EffectType is not Actions.EffectType.Other and not Actions.EffectType.GatherChance && slot.IsRare)
-                {
-                    var isUmbralItem = slot.Item != null && Data.UmbralNodes.IsUmbralItem(slot.Item.ItemId);
-                    if (!isUmbralItem)
-                        return false;
-                }
+                    return false;
                 if (_action == Actions.GivingLand && !AutoGather.IsGivingLandOffCooldown)
                     return false;
                 if (_action == Actions.TwelvesBounty && (Player.Level < 50 && slot.Item.Level == 50 || Player.Level < 41 && slot.Item.Level == 25))
@@ -257,9 +253,8 @@ namespace GatherBuddy.AutoGather.Helpers
         {
             Debug.Assert(Dalamud.Framework.IsInFrameworkUpdateThread);
 
-            var isUmbralItem = slot.Item != null && Data.UmbralNodes.IsUmbralItem(slot.Item.ItemId);
-            if (slot.IsRare && !isUmbralItem)
-                return Array.Empty<Actions.BaseAction>();
+            if (slot.IsRare)
+                return [];
 
             var timer = new Stopwatch();
             timer.Start();
@@ -299,15 +294,11 @@ namespace GatherBuddy.AutoGather.Helpers
                     | (Player.Status.Any(s => s.StatusId == Actions.BountifulII.EffectId) ? EffectType.Bountiful : EffectType.None)
             };
 
-            if (slot.Item.NodeType is Enums.NodeType.Unspoiled or Enums.NodeType.Legendary)
+            if (slot.Item.NodeType is Enums.NodeType.Unspoiled or Enums.NodeType.Legendary or Enums.NodeType.Clouded)
             {
                 await Task.Run(() => SolveInternal(state));
             }
             else if (slot.Item.NodeType is Enums.NodeType.Regular)
-            {
-                await SolveForRegularNodes(state);
-            }
-            else if (isUmbralItem)
             {
                 await SolveForRegularNodes(state);
             }
@@ -356,7 +347,7 @@ namespace GatherBuddy.AutoGather.Helpers
             //When Bountiful's yield is 3 and the item is not a crystal, we can skip all the calculations,
             //because nothing can beat that, except actions for crystals.
             //Exception: In Diadem, +5 integrity nodes (10 total) may beat Bountiful +3, so always simulate.
-            var inTheDiadem = Plugin.Functions.InTheDiadem();
+            var inTheDiadem = Diadem.IsInside;
             if (bountifulYield < 3000 || bounty != null || inTheDiadem)
             {
                 state.Global.AvailableActions.RemoveAll(x => x.Action == Actions.Bountiful || x.Action == Actions.GivingLand);

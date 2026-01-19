@@ -103,6 +103,7 @@ namespace GatherBuddy.AutoGather
             public bool Unspoiled { get; set; } = true;
             public bool Legendary { get; set; } = true;
             public bool Ephemeral { get; set; } = true;
+            public bool Clouded { get; set; } = true;
         }
         public record class GatheringActionsRec
         {
@@ -211,16 +212,13 @@ namespace GatherBuddy.AutoGather
             if (!levelMatch)
                 return false;
 
-            // Treat umbral items as Legendary for preset matching
-            var isUmbralItem = Data.UmbralNodes.IsUmbralItem(item.ItemId);
-            var nodeTypeMatch = isUmbralItem
-                ? NodeType.Legendary
-                : item.NodeType switch
+            var nodeTypeMatch = item.NodeType switch
                 {
                     Enums.NodeType.Regular => NodeType.Regular,
                     Enums.NodeType.Unspoiled => NodeType.Unspoiled,
                     Enums.NodeType.Legendary => NodeType.Legendary,
                     Enums.NodeType.Ephemeral => NodeType.Ephemeral,
+                    Enums.NodeType.Clouded => NodeType.Clouded,
                     _ => false
                 };
             if (!nodeTypeMatch)

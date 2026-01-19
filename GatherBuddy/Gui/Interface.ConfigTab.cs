@@ -67,6 +67,12 @@ public partial class Interface
                 "Toggle whether to automatically gather items. (Disable this for 'nav only mode')",
                 GatherBuddy.Config.AutoGatherConfig.DoGathering, b => GatherBuddy.Config.AutoGatherConfig.DoGathering = b);
 
+        public static void DrawTeleportToNextNodeBox()
+            => DrawCheckbox("Teleport to next timed item",
+                "Teleport to an upcoming timed node or fishing spot and wait at the Aetheryte when there is nothing else to gather\n" +
+                "This option has priority over going home when idle.",
+                GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode, b => GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode = b);
+
         public static void DrawGoHomeBox()
         {
             DrawCheckbox("Go home when done",                       "Uses the '/li auto' command to take you home when done gathering",
@@ -1281,6 +1287,12 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps = b);
         
+        public static void DrawDiademFarmCloudedNodes()
+            => DrawCheckbox("Re-enter The Diadem to Reset Clouded Nodes",
+                "After gathering umbral items from a clouded node, re-enter the instance to make the node reappear.",
+                GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes,
+                b => GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes = b);
+
         public static void DrawCollectableAutoTurninBox()
             => DrawCheckbox("Auto-turn in collectables",
                 "Automatically turn in collectables when inventory threshold is reached during gathering",
@@ -1574,6 +1586,7 @@ public partial class Interface
                     ConfigFunctions.DrawHonkVolumeSlider();
                 }
                 ConfigFunctions.DrawCheckRetainersBox();
+                ConfigFunctions.DrawTeleportToNextNodeBox();
                 ConfigFunctions.DrawGoHomeBox();
                 ConfigFunctions.DrawUseGivingLandOnCooldown();
                 ConfigFunctions.DrawUseSkillsForFallabckBox();
@@ -1622,6 +1635,7 @@ public partial class Interface
                 }
                 ConfigFunctions.DrawDiademAutoAetherCannonBox();
                 ConfigFunctions.DrawDiademWindmireJumps();
+                ConfigFunctions.DrawDiademFarmCloudedNodes();
                 ConfigFunctions.DrawSortingMethodCombo();
                 ConfigFunctions.DrawLifestreamCommandTextInput();
                 ConfigFunctions.DrawAntiStuckCooldown();

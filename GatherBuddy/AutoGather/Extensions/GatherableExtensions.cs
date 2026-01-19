@@ -4,6 +4,7 @@ using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using System.Collections.Immutable;
 
 namespace GatherBuddy.AutoGather.Extensions;
 
@@ -12,7 +13,7 @@ namespace GatherBuddy.AutoGather.Extensions;
 /// </summary>
 public static class GatherableExtensions
 {
-    private static IReadOnlyList<InventoryType> _inventoryTypes { get; } =
+    private static readonly ImmutableArray<InventoryType> _inventoryTypes =
         [
             InventoryType.RetainerCrystals,
             InventoryType.RetainerPage1,
@@ -28,6 +29,7 @@ public static class GatherableExtensions
             InventoryType.Inventory4,
             InventoryType.Crystals
         ];
+    private static readonly uint[] _inventoryTypesArray = [.. _inventoryTypes.Cast<uint>()];
 
     /// <summary>
     /// Gets the inventory count for a gatherable item.
@@ -39,7 +41,7 @@ public static class GatherableExtensions
     {
         if (GatherBuddy.Config.AutoGatherConfig.CheckRetainers && AllaganTools.Enabled)
         {
-            return (int)AllaganTools.ItemCountOwned(gatherable.ItemId, true, _inventoryTypes.Select(it => (uint)it).ToArray());
+            return (int)AllaganTools.ItemCountOwned(gatherable.ItemId, true, _inventoryTypesArray);
         }
 
         var inventory = InventoryManager.Instance();

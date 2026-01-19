@@ -4,6 +4,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.AutoGather.AtkReaders;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
@@ -105,7 +106,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (Functions.InTheDiadem())
+            if (Diadem.IsInside)
             {
                 return Vector3.Distance(Dalamud.Objects.LocalPlayer.Position, destination)
                  >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance;
@@ -133,22 +134,12 @@ namespace GatherBuddy.AutoGather
             get
             {
                 var map     = FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentMap.Instance();
-                var markers = map->MiniMapGatheringMarkers;
-                if (markers == null)
-                    return null;
 
-                Vector2? result = null;
-                foreach (var miniMapGatheringMarker in markers)
-                {
-                    if (miniMapGatheringMarker.MapMarker.X != 0 && miniMapGatheringMarker.MapMarker.Y != 0)
-                    {
-                        // ReSharper disable twice PossibleLossOfFraction
-                        result = new Vector2(miniMapGatheringMarker.MapMarker.X / 16, miniMapGatheringMarker.MapMarker.Y / 16);
-                        break;
-                    }
-                }
+                foreach (var marker in map->MiniMapGatheringMarkers)
+                    if (marker.MapMarker.X != 0 && marker.MapMarker.Y != 0)
+                        return new Vector2(marker.MapMarker.X / 16f, marker.MapMarker.Y / 16f);
 
-                return result;
+                return null;
             }
         }
 
@@ -164,19 +155,14 @@ namespace GatherBuddy.AutoGather
         internal ReadOnlyDictionary<GatheringNode, TimeInterval> DebugVisitedTimedLocations
             => _activeItemList.DebugVisitedTimedLocations;
 
-        public readonly HashSet<Vector3> FarNodesSeenSoFar = [];
-        public readonly LinkedList<uint> VisitedNodes      = [];        
+        public readonly HashSet<Vector3> FarNodesSeenSoFar = new(8);
+        public readonly List<uint>       VisitedNodes      = new(4);        
         // Distance at which a node is expected to become visible, and it is given up on if it does not.
         public const float NodeVisibilityDistance = 50f;
 
         private int _diademPathIndex = -1;
         
-        private uint _lastUmbralWeather = 0;
-        private bool _hasGatheredUmbralThisSession = false;
         private uint _lastTerritory = 0;
-        
-        private uint _lastNonTimedNodeTerritory = 0;
-        private GatheringType _lastJob = GatheringType.Unknown;
         
         public readonly Dictionary<uint, int> SpearfishingSessionCatches = new();
         private readonly Dictionary<uint, int> _spearfishingInventorySnapshot = new();

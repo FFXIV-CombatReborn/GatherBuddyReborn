@@ -131,7 +131,11 @@ public class GameData
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
             var tmpGatheringPoints = DataManager.GetExcelSheet<GatheringPoint>()
-                .Where(row => row.PlaceName.RowId > 0)
+                // The Diadem Umbral nodes have PlaceName.RowId == 0, so we have to disable this filter
+                // and filter by TerritoryType.RowId instead.
+                //.Where(row => row.PlaceName.RowId > 0)
+                // Filter out invalid or deleted territories (0 or 1) and old instances of The Diadem (901 or 929).
+                .Where(row => row.TerritoryType.RowId is not (0 or 1 or 901 or 929))
                 .GroupBy(row => row.GatheringPointBase.RowId)
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
@@ -192,7 +196,6 @@ public class GameData
 
             HiddenMaps.Apply(this);
             ForcedAetherytes.Apply(this);
-            UmbralNodes.Apply(this);
 
             OceanRoutes   = SetupOceanRoutes(gameData, FishingSpots);
             OceanTimeline = new OceanTimeline(gameData, OceanRoutes);
@@ -227,10 +230,6 @@ public class GameData
     {
         if (t == null || t.Value.RowId < 2)
             return null;
-
-        // Upgrade The Diadem territory to the latest instance
-        if (t.Value.RowId is 901 or 929)
-            t = DataManager.GetExcelSheet<TerritoryType>().GetRow(939);
 
         if (Territories.TryGetValue(t.Value.RowId, out var territory))
             return territory;
