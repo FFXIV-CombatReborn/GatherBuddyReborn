@@ -339,18 +339,21 @@ public class AutoHookPresetBuilder
         uint lureId = 0;
         int gpThreshold = 0;
         bool gpThresholdAbove = true;
+        bool isRequiredLure = false;
         
         if (requiredLure == Lure.Ambitious)
         {
             lureId = AmbitiousLureId;
             gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
             gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+            isRequiredLure = true;
         }
         else if (requiredLure == Lure.Modest)
         {
             lureId = ModestLureId;
             gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
             gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+            isRequiredLure = true;
         }
         else if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
         {
@@ -375,8 +378,8 @@ public class AutoHookPresetBuilder
             GpThreshold = gpThreshold,
             GpThresholdAbove = gpThresholdAbove,
             LureStacks = 3,
-            CancelAttempt = false,
-            LureTarget = 0,
+            CancelAttempt = isRequiredLure,
+            LureTarget = isRequiredLure ? 1 : 0,
             OnlyWhenActiveSlap = false,
             OnlyWhenNotActiveSlap = false,
             OnlyWhenActiveIdentical = false,
