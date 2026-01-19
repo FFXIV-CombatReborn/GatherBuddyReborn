@@ -24,7 +24,7 @@ namespace GatherBuddy.AutoGather.Helpers
     // At any given time, only 6 nodes in each path are visible: one per chain, all with the same index within the chain.
     // Gathering a node increments the visible node index in all chains in the given path.
 
-    internal class Diadem : IDisposable
+    internal sealed class Diadem : IDisposable
     {
         private const uint FirstNode = 33644;
         private const uint LastNode = FirstNode + TotalPaths * NodesPerPath - 1;
@@ -116,18 +116,16 @@ namespace GatherBuddy.AutoGather.Helpers
             Dalamud.Framework.Update -= OnUpdate;
         }
 
-        public IEnumerable<uint> GetAvailableNodes(GatheringType type)
+        public bool IsNodeAvailable(uint nodeId)
         {
-            var offset = type switch
-            {
-                GatheringType.Miner => 0u,
-                GatheringType.Botanist => PathsPerJob,
-                _ => throw new System.ComponentModel.InvalidEnumArgumentException(nameof(type), (int)type, typeof(GatheringType)),
-            };
-            return Enumerable.Range(0, (int)(ChainsPerPath * PathsPerJob))
-                .Select(chain => FirstNode + offset * NodesPerPath + (uint)chain * NodesPerChain + _indexes[offset + (uint)chain / ChainsPerPath]);
-        }
+            if (nodeId < FirstNode || nodeId > LastNode)
+                throw new ArgumentOutOfRangeException(nameof(nodeId));
 
+            var offset = nodeId - FirstNode;
+            var path = offset / NodesPerPath;
+            var index = offset % NodesPerChain;
+            return _indexes[path] == index;
+        }
 
         private static (float, ImmutableArray<byte>) FindShortestPath(PathCache cache, Vector3 pos, uint job, uint path0, uint path1)
         {

@@ -1783,15 +1783,14 @@ namespace GatherBuddy.AutoGather
             // For regular nodes, we go in a full circle along the pre-calculated optimal path.
             if (Diadem.RegularItems.Contains(next.Item))
             {
-                var availableNodes = _diadem.GetAvailableNodes(currentJob).ToHashSet();
                 var path = Diadem.ShortestPaths[currentJob];
                 if (_diademPathIndex == -1)
                 {
-                    // Find the closest node to start the path
+                    // Find the closest node to start the path.
                     var closestDist = float.PositiveInfinity;
                     for (var i = 0; i < path.Length; i++)
                     {
-                        if (!availableNodes.Contains(path[i])) continue;
+                        if (!_diadem.IsNodeAvailable(path[i])) continue;
 
                         try
                         {
@@ -1812,7 +1811,7 @@ namespace GatherBuddy.AutoGather
                 else
                 {
                     var prevIndex = _diademPathIndex;
-                    while (!availableNodes.Contains(path[_diademPathIndex]) || WorldData.WorldLocationsByNodeId[path[_diademPathIndex]].All(IsBlacklisted))
+                    while (!_diadem.IsNodeAvailable(path[_diademPathIndex]) || WorldData.WorldLocationsByNodeId[path[_diademPathIndex]].All(IsBlacklisted))
                     {
                         _diademPathIndex = (_diademPathIndex + 1) % path.Length;
                         if (prevIndex == _diademPathIndex)
