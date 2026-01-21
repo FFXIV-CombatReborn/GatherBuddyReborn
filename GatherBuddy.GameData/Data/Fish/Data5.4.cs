@@ -358,7 +358,8 @@ public static partial class Fish
             .Bite      (data, HookSet.Precise, BiteType.Weak);
         data.Apply     (32901, Patch.FuturesRewritten) // Grade 4 Artisanal Skybuilders' Sculptor
             .Bait      (data, 30280)
-            .Bite      (data, HookSet.Powerful, BiteType.Strong);
+            .Bite      (data, HookSet.Powerful, BiteType.Strong)
+            .Predators (data, 120, (32897, 2));
         data.Apply     (32902, Patch.FuturesRewritten) // Grade 4 Artisanal Skybuilders' Little Thalaos
             .Mooch     (data, 32894)
             .Bite      (data, HookSet.Powerful, BiteType.Strong);

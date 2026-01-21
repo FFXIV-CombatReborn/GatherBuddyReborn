@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using GatherBuddy.Classes;
 using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
+using Weather = GatherBuddy.Structs.Weather;
 
 namespace GatherBuddy.Interfaces;
 
@@ -24,4 +25,6 @@ public interface IGatherable
     public bool IsCrystal { get; }
 
     public bool IsTreasureMap { get; }
+
+    public Weather UmbralWeather { get; }
 }
