@@ -1548,7 +1548,14 @@ public partial class Interface
             
             if (success)
             {
-                Dalamud.Chat.Print($"[GatherBuddy] Generated preset '{presetName}' for {fish.Name[GatherBuddy.Language]}");
+                if (fish.Predators.Length > 0 && fish.Predators.All(p => !p.Item1.IsSpearFish))
+                {
+                    Dalamud.Chat.Print($"[GatherBuddy] Generated 2 presets for {fish.Name[GatherBuddy.Language]}: '{presetName}_Predators' and '{presetName}_Target'");
+                }
+                else
+                {
+                    Dalamud.Chat.Print($"[GatherBuddy] Generated preset '{presetName}' for {fish.Name[GatherBuddy.Language]}");
+                }
             }
             else
             {

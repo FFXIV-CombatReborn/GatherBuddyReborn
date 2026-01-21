@@ -13,6 +13,7 @@ public partial class AutoGather
 {
     private GatherTarget? _currentAutoHookTarget;
     private string? _currentAutoHookPresetName;
+    private string? _currentAutoHookTargetPresetName;
     private bool _isCurrentPresetUserOwned;
 
     private void CleanupAutoHookIfNeeded(GatherTarget newTarget)
@@ -63,10 +64,13 @@ public partial class AutoGather
 
         try
         {
-            var presetFish = target.Fish;
+            // Check if the target fish is an intuition fish
+            bool isIntuitionFish = target.Fish.Predators.Length > 0 && target.Fish.Predators.All(p => !p.Item1.IsSpearFish);
             
-            // Check if THIS SPECIFIC target fish has predator requirements
-            if (target.Fish != null && target.Fish.Predators.Any())
+            // For intuition fish, always use target fish (two-preset system handles predators)
+            // For non-intuition fish with predators, check if we should use predator instead
+            var presetFish = target.Fish;
+            if (!isIntuitionFish && target.Fish != null && target.Fish.Predators.Any())
             {
                 // Only check FIRST predator for shadow node spawning (rest are caught within shadow node)
                 var (firstPredator, requiredCount) = target.Fish.Predators.First();
@@ -92,7 +96,22 @@ public partial class AutoGather
 
             if (GatherBuddy.Config.AutoGatherConfig.UseExistingAutoHookPresets)
             {
-                var userPresetName = FindAutoHookPreset(fishId.ToString());
+                string? userPresetName = null;
+                if (isIntuitionFish)
+                {
+                    // For intuition fish, look for presets named after target fish ID
+                    var targetFishId = target.Fish.ItemId;
+                    userPresetName = FindAutoHookPreset($"{targetFishId}_Predators");
+                    if (userPresetName == null)
+                    {
+                        userPresetName = FindAutoHookPreset(targetFishId.ToString());
+                    }
+                }
+                else
+                {
+                    userPresetName = FindAutoHookPreset(fishId.ToString());
+                }
+                
                 if (userPresetName != null)
                 {
                     presetName = userPresetName;
@@ -120,18 +139,27 @@ public partial class AutoGather
                 }
                 
                 presetName = $"GBR_{fishName.Replace(" ", "")}_{DateTime.Now:HHmmss}";
-                
-                GatherBuddy.Log.Information($"[AutoGather] Creating AutoHook preset '{presetName}' for {fishName}");
+
+                // For intuition fish generator will generate _Predators and _Target presets
+                if (isIntuitionFish)
+                {
+                    GatherBuddy.Log.Information($"[AutoGather] Creating intuition presets for {fishName}");
+                    presetName = presetName + "_Predators";
+                }
+                else
+                {
+                    GatherBuddy.Log.Information($"[AutoGather] Creating AutoHook preset '{presetName}' for {fishName}");
+                }
                 
                 bool success;
                 if (presetFish.IsSpearFish)
                 {
-                    success = AutoHookService.ExportSpearfishingPresetToAutoHook(presetName, fishList);
+                    success = AutoHookService.ExportSpearfishingPresetToAutoHook(presetName.Replace("_Predators", ""), fishList);
                 }
                 else
                 {
                     var gbrPreset = MatchConfigPreset(presetFish);
-                    success = AutoHookService.ExportPresetToAutoHook(presetName, fishList, gbrPreset);
+                    success = AutoHookService.ExportPresetToAutoHook(presetName.Replace("_Predators", ""), fishList, gbrPreset, selectPreset: true);
                 }
                 
                 if (!success)
@@ -139,13 +167,21 @@ public partial class AutoGather
                     GatherBuddy.Log.Error($"[AutoGather] Failed to create AutoHook preset");
                     return;
                 }
-                
-                AutoHook.SetPreset?.Invoke(presetName);
             }
 
             _currentAutoHookTarget = target;
             _currentAutoHookPresetName = presetName;
             _isCurrentPresetUserOwned = isUserPreset;
+            
+            if (isIntuitionFish && !isUserPreset)
+            {
+                var baseName = presetName.Replace("_Predators", "");
+                _currentAutoHookTargetPresetName = baseName + "_Target";
+            }
+            else
+            {
+                _currentAutoHookTargetPresetName = null;
+            }
             
             if (target.Fish.IsSpearFish)
             {
@@ -202,6 +238,13 @@ public partial class AutoGather
                     AutoHook.SetPreset?.Invoke(_currentAutoHookPresetName);
                     AutoHook.DeleteSelectedPreset?.Invoke();
                     GatherBuddy.Log.Debug($"[AutoGather] Deleted GBR-generated preset '{_currentAutoHookPresetName}'");
+                    
+                    if (_currentAutoHookTargetPresetName != null)
+                    {
+                        AutoHook.SetPreset?.Invoke(_currentAutoHookTargetPresetName);
+                        AutoHook.DeleteSelectedPreset?.Invoke();
+                        GatherBuddy.Log.Debug($"[AutoGather] Deleted GBR-generated preset '{_currentAutoHookTargetPresetName}'");
+                    }
                 }
             }
             
@@ -218,6 +261,7 @@ public partial class AutoGather
             
             _currentAutoHookTarget = null;
             _currentAutoHookPresetName = null;
+            _currentAutoHookTargetPresetName = null;
             _isCurrentPresetUserOwned = false;
             _autoHookSetupComplete = false;
         }

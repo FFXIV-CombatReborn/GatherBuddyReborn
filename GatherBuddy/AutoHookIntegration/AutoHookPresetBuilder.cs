@@ -67,6 +67,26 @@ public class AutoHookPresetBuilder
         return allFish;
     }
     
+    private static HashSet<Fish> CollectFishInMoochChainsOnly(Fish[] fishList)
+    {
+        var allFish = new HashSet<Fish>();
+        
+        foreach (var fish in fishList)
+        {
+            allFish.Add(fish);
+
+            if (fish.Mooches.Length > 0)
+            {
+                foreach (var moochFish in fish.Mooches)
+                {
+                    allFish.Add(moochFish);
+                }
+            }
+        }
+        
+        return allFish;
+    }
+    
     private static HashSet<Fish> CollectFishFromSameFishingSpots(Fish[] targetFish, HashSet<Fish> existingFish)
     {
         var additionalFish = new HashSet<Fish>();
@@ -108,10 +128,221 @@ public class AutoHookPresetBuilder
         return additionalFish;
     }
     
+    public static List<AHCustomPresetConfig> BuildPresetsFromFish(string presetName, IEnumerable<Fish> fishList, ConfigPreset? gbrPreset = null)
+    {
+        var fishArray = fishList.ToArray();
+        var presets = new List<AHCustomPresetConfig>();
+        
+        var hasIntuitionFish = fishArray.Any(f => f.Predators.Length > 0 && f.Predators.All(p => !p.Item1.IsSpearFish));
+        
+        if (hasIntuitionFish)
+        {
+            GatherBuddy.Log.Information($"[AutoHook] Detected intuition fish, generating two presets for {presetName}");
+            
+            var predatorPresetName = $"{presetName}_Predators";
+            var targetPresetName = $"{presetName}_Target";
+            
+            var predatorPreset = BuildPredatorPreset(predatorPresetName, targetPresetName, fishArray, gbrPreset);
+            presets.Add(predatorPreset);
+            
+            var targetPreset = BuildTargetPreset(targetPresetName, predatorPresetName, fishArray, gbrPreset);
+            presets.Add(targetPreset);
+        }
+        else
+        {
+            var preset = BuildSinglePreset(presetName, fishArray, gbrPreset);
+            presets.Add(preset);
+        }
+        
+        return presets;
+    }
+    
     public static AHCustomPresetConfig BuildPresetFromFish(string presetName, IEnumerable<Fish> fishList, ConfigPreset? gbrPreset = null)
     {
+        var presets = BuildPresetsFromFish(presetName, fishList, gbrPreset);
+        return presets[0];
+    }
+    
+    private static AHCustomPresetConfig BuildPredatorPreset(string presetName, string targetPresetName, Fish[] targetFish, ConfigPreset? gbrPreset)
+    {
         var preset = new AHCustomPresetConfig(presetName);
-        var fishArray = fishList.ToArray();
+        
+        var predators = new HashSet<Fish>();
+        foreach (var fish in targetFish)
+        {
+            if (fish.Predators.Length == 0)
+                continue;
+                
+            foreach (var (predatorFish, _) in fish.Predators)
+            {
+                if (predatorFish.IsSpearFish)
+                    continue;
+                    
+                predators.Add(predatorFish);
+                
+                if (predatorFish.Mooches.Length > 0)
+                {
+                    foreach (var moochFish in predatorFish.Mooches)
+                    {
+                        predators.Add(moochFish);
+                    }
+                }
+            }
+        }
+        
+        GatherBuddy.Log.Debug($"[AutoHook] Predator preset '{presetName}': {predators.Count} fish total");
+        
+        var fishWithBait = predators.Where(f => f.Mooches.Length == 0).ToList();
+        var fishWithMooch = predators.Where(f => f.Mooches.Length > 0).ToList();
+        
+        uint? actualBaitId = null;
+        
+        var baitGroups = fishWithBait.GroupBy(f => f.InitialBait.Id);
+        foreach (var group in baitGroups)
+        {
+            var baitId = group.Key;
+            if (baitId == 0) continue;
+
+            var effectiveBaitId = baitId;
+            if (GetInventoryItemCount(baitId) == 0)
+            {
+                GatherBuddy.Log.Warning($"[AutoHook] User does not have bait {baitId} in inventory, using Versatile Lure ({VersatileLureId}) instead");
+                effectiveBaitId = VersatileLureId;
+            }
+
+            if (actualBaitId == null)
+                actualBaitId = effectiveBaitId;
+
+            var hookConfig = new AHHookConfig((int)effectiveBaitId);
+            
+            foreach (var fish in group)
+            {
+                ConfigureHookForFish(hookConfig, fish);
+            }
+            
+            preset.ListOfBaits.Add(hookConfig);
+        }
+        
+        var moochGroups = fishWithMooch.GroupBy(f => f.Mooches[^1].ItemId);
+        foreach (var group in moochGroups)
+        {
+            var moochFishId = group.Key;
+            var hookConfig = new AHHookConfig((int)moochFishId);
+            
+            foreach (var fish in group)
+            {
+                ConfigureHookForFish(hookConfig, fish, configureLures: false);
+            }
+            
+            preset.ListOfMooch.Add(hookConfig);
+        }
+        
+        var finalPredatorFish = new HashSet<Fish>();
+        foreach (var target in targetFish)
+        {
+            if (target.Predators.Length == 0)
+                continue;
+            foreach (var (predatorFish, _) in target.Predators)
+            {
+                if (!predatorFish.IsSpearFish)
+                    finalPredatorFish.Add(predatorFish);
+            }
+        }
+        
+        foreach (var fish in predators)
+        {
+            AddFishConfig(preset, fish, finalPredatorFish.ToArray(), predators);
+        }
+
+        ConfigureExtraCfg(preset, actualBaitId);
+        
+        preset.ExtraCfg.SwapPresetIntuitionGain = true;
+        preset.ExtraCfg.PresetToSwapIntuitionGain = targetPresetName;
+        
+        ConfigureAutoCasts(preset, predators.ToArray(), gbrPreset);
+        
+        return preset;
+    }
+    
+    private static AHCustomPresetConfig BuildTargetPreset(string presetName, string predatorPresetName, Fish[] targetFish, ConfigPreset? gbrPreset)
+    {
+        var preset = new AHCustomPresetConfig(presetName);
+        
+        var allFishWithMooches = CollectFishInMoochChainsOnly(targetFish);
+        
+        if (GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
+        {
+            var additionalFish = CollectFishFromSameFishingSpots(targetFish, allFishWithMooches);
+            foreach (var fish in additionalFish)
+            {
+                allFishWithMooches.Add(fish);
+            }
+        }
+        
+        var moochChainFish = CollectFishInMoochChainsOnly(targetFish);
+        var fishWithBait = moochChainFish.Where(f => f.Mooches.Length == 0).ToList();
+        var fishWithMooch = moochChainFish.Where(f => f.Mooches.Length > 0).ToList();
+        
+        uint? actualBaitId = null;
+        
+        var baitGroups = fishWithBait.GroupBy(f => f.InitialBait.Id);
+        foreach (var group in baitGroups)
+        {
+            var baitId = group.Key;
+            if (baitId == 0) continue;
+
+            var effectiveBaitId = baitId;
+            if (GetInventoryItemCount(baitId) == 0)
+            {
+                GatherBuddy.Log.Warning($"[AutoHook] User does not have bait {baitId} in inventory, using Versatile Lure ({VersatileLureId}) instead");
+                effectiveBaitId = VersatileLureId;
+            }
+
+            if (actualBaitId == null)
+                actualBaitId = effectiveBaitId;
+
+            var hookConfig = new AHHookConfig((int)effectiveBaitId);
+            
+            foreach (var fish in group)
+            {
+                ConfigureHookForFish(hookConfig, fish);
+            }
+            
+            preset.ListOfBaits.Add(hookConfig);
+        }
+        
+        var moochGroups = fishWithMooch.GroupBy(f => f.Mooches[^1].ItemId);
+        foreach (var group in moochGroups)
+        {
+            var moochFishId = group.Key;
+            var hookConfig = new AHHookConfig((int)moochFishId);
+            
+            foreach (var fish in group)
+            {
+                ConfigureHookForFish(hookConfig, fish, configureLures: false);
+            }
+            
+            preset.ListOfMooch.Add(hookConfig);
+        }
+        
+        foreach (var fish in allFishWithMooches)
+        {
+            AddFishConfig(preset, fish, targetFish, allFishWithMooches);
+        }
+
+        ConfigureExtraCfg(preset, actualBaitId);
+        
+        preset.ExtraCfg.SwapPresetIntuitionLost = true;
+        preset.ExtraCfg.PresetToSwapIntuitionLost = predatorPresetName;
+        
+        ConfigureAutoCasts(preset, targetFish, gbrPreset);
+        
+        return preset;
+    }
+    
+    private static AHCustomPresetConfig BuildSinglePreset(string presetName, Fish[] fishArray, ConfigPreset? gbrPreset)
+    {
+        var preset = new AHCustomPresetConfig(presetName);
         
         var allFishWithMooches = CollectAllFishInMoochChains(fishArray);
         
@@ -279,15 +510,12 @@ public class AutoHookPresetBuilder
 
         if (patienceConfig == null) return;
         
-        // Set Patience hookset
         patienceConfig.HooksetEnabled = true;
         patienceConfig.HooksetType = hookType;
         
-        // Set Double hookset
         doubleConfig!.HooksetEnabled = true;
         doubleConfig.HooksetType = hookType;
         
-        // Set Triple hookset
         tripleConfig!.HooksetEnabled = true;
         tripleConfig.HooksetType = hookType;
 
@@ -339,18 +567,21 @@ public class AutoHookPresetBuilder
         uint lureId = 0;
         int gpThreshold = 0;
         bool gpThresholdAbove = true;
+        bool isRequiredLure = false;
         
         if (requiredLure == Lure.Ambitious)
         {
             lureId = AmbitiousLureId;
             gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
             gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+            isRequiredLure = true;
         }
         else if (requiredLure == Lure.Modest)
         {
             lureId = ModestLureId;
             gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
             gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+            isRequiredLure = true;
         }
         else if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
         {
@@ -375,8 +606,8 @@ public class AutoHookPresetBuilder
             GpThreshold = gpThreshold,
             GpThresholdAbove = gpThresholdAbove,
             LureStacks = 3,
-            CancelAttempt = false,
-            LureTarget = 0,
+            CancelAttempt = isRequiredLure,
+            LureTarget = isRequiredLure ? 1 : 0,
             OnlyWhenActiveSlap = false,
             OnlyWhenNotActiveSlap = false,
             OnlyWhenActiveIdentical = false,
@@ -503,13 +734,11 @@ public class AutoHookPresetBuilder
     
     private static AHAutoIdenticalCast DetermineIdenticalCast(Fish fish, Fish[] targetFishList)
     {
-        // Check if Identical Cast auto-configuration is enabled
         if (!GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast)
         {
             return new AHAutoIdenticalCast(false);
         }
         
-        // Check if this fish is a target fish (Identical Cast ONLY for targets)
         bool isTargetFish = targetFishList.Any(f => f.ItemId == fish.ItemId);
         if (!isTargetFish)
         {
