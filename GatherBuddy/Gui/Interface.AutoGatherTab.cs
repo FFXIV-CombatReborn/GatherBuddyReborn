@@ -9,8 +9,6 @@ using Dalamud.Interface;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
-using GatherBuddy.Data;
-using GatherBuddy.Config;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
@@ -18,7 +16,8 @@ using ElliLib;
 using ElliLib.Widgets;
 using ImRaii = ElliLib.Raii.ImRaii;
 using GatherBuddy.Interfaces;
-using GatherBuddy.Automation;
+using Lumina.Text.ReadOnly;
+using GatherBuddy.AutoGather.Helpers;
 
 namespace GatherBuddy.Gui;
 
@@ -193,41 +192,47 @@ public partial class Interface
             {
                 try
                 {
-                    Dictionary<string, int> items = new Dictionary<string, int>();
-
                     // Regex pattern
                     var pattern = @"\b(\d+)x\s(.+)\b";
                     var matches = Regex.Matches(clipboardText, pattern);
 
-                    // Loop through matches and add them to dictionary
-                    foreach (Match match in matches)
-                    {
-                        var quantity = int.Parse(match.Groups[1].Value);
-                        var itemName = match.Groups[2].Value;
-                        items[itemName] = quantity;
-                    }
-
                     var list = _autoGatherListsCache.Selector.Selected!;
 
-                    foreach (var (itemName, quantity) in items)
+                    Dictionary<ReadOnlySeString, uint>? diademItems = null;
+                    Lumina.Excel.ExcelSheet<Lumina.Excel.Sheets.Item>? itemSheet = null;
+                    Dictionary<string, IGatherable> normalItems = new(GatherBuddy.GameData.Gatherables.Count + GatherBuddy.GameData.Fishes.Count);
+                    foreach (var item in ((IEnumerable<IGatherable>)GatherBuddy.GameData.Gatherables.Values).Concat(GatherBuddy.GameData.Fishes.Values))
+                        normalItems[item.Name[GatherBuddy.Language]] = item;
+
+                    foreach (Match match in matches)
                     {
-                        var gatherableItem = GatherBuddy.GameData.Gatherables.Values.FirstOrDefault(g => g.Name[Dalamud.ClientState.ClientLanguage] == itemName);
-                        IGatherable? gatherable = gatherableItem;
-                        
-                        if (gatherableItem != null)
+                        var quantity = uint.Parse(match.Groups[1].Value);
+                        var itemName = match.Groups[2].Value;
+
+                        if (normalItems.TryGetValue(itemName, out var item))
                         {
-                            if (gatherableItem.NodeList.Count == 0)
+                            if (!item.Locations.Any())
                                 continue;
                         }
                         else
                         {
-                            gatherable = GatherBuddy.GameData.Fishes.Values.FirstOrDefault(f => f.Name[Dalamud.ClientState.ClientLanguage] == itemName);
-                            
-                            if (gatherable == null)
+                            itemSheet ??= Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Item>(GatherBuddy.Language);
+                            diademItems ??= Diadem.ApprovedToRawItemIds
+                                .Select(kv => (itemSheet.GetRow(kv.Key).Name, kv.Value))
+                                .ToDictionary();
+
+                            if (!diademItems.TryGetValue(itemName, out var rawId))
+                                continue;
+
+                            if (GatherBuddy.GameData.Gatherables.TryGetValue(rawId, out var gatherable))
+                                item = gatherable;
+                            else if (GatherBuddy.GameData.Fishes.TryGetValue(rawId, out var fish))
+                                item = fish;
+                            else
                                 continue;
                         }
 
-                        list.Add(gatherable, (uint)quantity);
+                        list.Add(item, quantity);
                     }
 
                     _plugin.AutoGatherListsManager.Save();

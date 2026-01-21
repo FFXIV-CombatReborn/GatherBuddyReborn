@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Dalamud.Plugin;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Gui;
+using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Utility;
 
@@ -84,10 +85,19 @@ namespace GatherBuddy.AutoGather.Helpers
                         list.Description = "Imported from Artisan";
                         foreach (var (itemId, quantity) in matList)
                         {
-                            var gatherable = GatherBuddy.GameData.Gatherables.FirstOrDefault(g => g.Key == itemId);
-                            if (gatherable.Value == null || gatherable.Value.NodeList.Count == 0)
+                            if (!Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var mappedItemId))
+                                mappedItemId = itemId;
+
+                            IGatherable? item = null;
+                            if (GatherBuddy.GameData.Gatherables.TryGetValue(mappedItemId, out var gatherable))
+                                item = gatherable;
+                            else if (GatherBuddy.GameData.Fishes.TryGetValue(mappedItemId, out var fish))
+                                item = fish;
+
+                            if (item == null || !item.Locations.Any())
                                 continue;
-                            list.Add(gatherable.Value, (uint)quantity);
+
+                            list.Add(item, (uint)quantity);
                         }
                         _listsManager.AddList(list);
                         Communicator.Print($"List '{listKvp.Value}' imported successfully!");
