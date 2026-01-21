@@ -232,7 +232,8 @@ public partial class Interface
                                 continue;
                         }
 
-                        list.Add(item, quantity);
+                        if(!list.Add(item, quantity))
+                            list.SetQuantity(item, quantity + list.Quantities[item]);
                     }
 
                     _plugin.AutoGatherListsManager.Save();
