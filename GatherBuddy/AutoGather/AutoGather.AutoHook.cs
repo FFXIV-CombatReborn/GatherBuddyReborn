@@ -13,6 +13,7 @@ public partial class AutoGather
 {
     private GatherTarget? _currentAutoHookTarget;
     private string? _currentAutoHookPresetName;
+    private string? _currentAutoHookTargetPresetName;
     private bool _isCurrentPresetUserOwned;
 
     private void CleanupAutoHookIfNeeded(GatherTarget newTarget)
@@ -172,6 +173,16 @@ public partial class AutoGather
             _currentAutoHookPresetName = presetName;
             _isCurrentPresetUserOwned = isUserPreset;
             
+            if (isIntuitionFish && !isUserPreset)
+            {
+                var baseName = presetName.Replace("_Predators", "");
+                _currentAutoHookTargetPresetName = baseName + "_Target";
+            }
+            else
+            {
+                _currentAutoHookTargetPresetName = null;
+            }
+            
             if (target.Fish.IsSpearFish)
             {
                 if (AutoHook.SetAutoGigState == null)
@@ -227,6 +238,13 @@ public partial class AutoGather
                     AutoHook.SetPreset?.Invoke(_currentAutoHookPresetName);
                     AutoHook.DeleteSelectedPreset?.Invoke();
                     GatherBuddy.Log.Debug($"[AutoGather] Deleted GBR-generated preset '{_currentAutoHookPresetName}'");
+                    
+                    if (_currentAutoHookTargetPresetName != null)
+                    {
+                        AutoHook.SetPreset?.Invoke(_currentAutoHookTargetPresetName);
+                        AutoHook.DeleteSelectedPreset?.Invoke();
+                        GatherBuddy.Log.Debug($"[AutoGather] Deleted GBR-generated preset '{_currentAutoHookTargetPresetName}'");
+                    }
                 }
             }
             
@@ -243,6 +261,7 @@ public partial class AutoGather
             
             _currentAutoHookTarget = null;
             _currentAutoHookPresetName = null;
+            _currentAutoHookTargetPresetName = null;
             _isCurrentPresetUserOwned = false;
             _autoHookSetupComplete = false;
         }
