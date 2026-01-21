@@ -15,7 +15,7 @@ public class AutoHookService
         return AutoHook.Enabled;
     }
 
-    public static bool ExportPresetToAutoHook(string presetName, IEnumerable<Fish> fishList, ConfigPreset? gbrPreset = null)
+    public static bool ExportPresetToAutoHook(string presetName, IEnumerable<Fish> fishList, ConfigPreset? gbrPreset = null, bool selectPreset = false)
     {
         if (!IsAutoHookAvailable())
         {
@@ -25,15 +25,33 @@ public class AutoHookService
 
         try
         {
-            var preset = AutoHookPresetBuilder.BuildPresetFromFish(presetName, fishList, gbrPreset);
-            GatherBuddy.Log.Debug($"[AutoHook Integration] Preset built, starting export...");
-            var exportString = AutoHookExporter.ExportPreset(preset);
-            GatherBuddy.Log.Debug($"[AutoHook Integration] Export string created, length: {exportString?.Length ?? 0}");
+            var presets = AutoHookPresetBuilder.BuildPresetsFromFish(presetName, fishList, gbrPreset);
+            GatherBuddy.Log.Debug($"[AutoHook Integration] Built {presets.Count} preset(s), starting export...");
             
-            AutoHook.ImportAndSelectPreset?.Invoke(exportString);
-            GatherBuddy.Log.Debug($"[AutoHook Integration] IPC call completed");
+            foreach (var preset in presets)
+            {
+                var exportString = AutoHookExporter.ExportPreset(preset);
+                GatherBuddy.Log.Debug($"[AutoHook Integration] Export string for '{preset.PresetName}' created, length: {exportString?.Length ?? 0}");
+                
+                AutoHook.ImportAndSelectPreset?.Invoke(exportString);
+            }
             
-            GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported preset '{presetName}' to AutoHook");
+            if (selectPreset)
+            {
+                var firstPresetName = presets[0].PresetName;
+                AutoHook.SetPreset?.Invoke(firstPresetName);
+                GatherBuddy.Log.Debug($"[AutoHook Integration] Selected preset '{firstPresetName}'");
+            }
+            
+            if (presets.Count > 1)
+            {
+                GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported {presets.Count} presets: '{presets[0].PresetName}' and '{presets[1].PresetName}'");
+            }
+            else
+            {
+                GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported preset '{presets[0].PresetName}' to AutoHook");
+            }
+            
             return true;
         }
         catch (Exception ex)
