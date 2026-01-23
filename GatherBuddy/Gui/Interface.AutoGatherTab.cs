@@ -233,10 +233,11 @@ public partial class Interface
 
         ImGui.SetCursorPosX(ImGui.GetWindowSize().X - 50);
         string agHelpText =
-            "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in the list, " +
+            "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in each list, " +
             "but timed nodes and fish are always prioritized.\n" +
-            "You can drag and drop lists to move them inside or outside a folder.\n" +
+            "You can drag and drop lists to move them.\n" +
             "You can drag and drop items within a specific list to rearrange them.\n" +
+            "You can drag and drop an item onto a different list from the selector to move it between lists.\n" +
             "In the Gather Window, you can hold Control and Right-Click an item to delete it from the list it belongs to.";
 
 
