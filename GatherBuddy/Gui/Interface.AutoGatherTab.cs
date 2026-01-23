@@ -24,21 +24,10 @@ namespace GatherBuddy.Gui;
 
 public partial class Interface
 {
-    private class AutoGatherListsDragDropData
+    private record class AutoGatherListsDragDropData(AutoGatherList List, IGatherable Item, int ItemIdx)
     {
-        public AutoGatherList list;
-        public IGatherable    Item;
-        public int            ItemIdx;
-
-        public AutoGatherListsDragDropData(AutoGatherList list, IGatherable item, int idx)
-        {
-            this.list = list;
-            Item      = item;
-            ItemIdx   = idx;
-        }
+        public static string Label => "AutoGatherListItem";
     }
-
-    private static AutoGatherListsDragDropData? _dragDropData;
 
     private class AutoGatherListsCache : IDisposable
     {
@@ -336,8 +325,8 @@ public partial class Interface
             {
                 if (source.Success)
                 {
-                    _dragDropData = new AutoGatherListsDragDropData(list, item, i);
-                    ImGui.SetDragDropPayload("AutoGatherListItem", ReadOnlySpan<byte>.Empty);
+                    _autoGatherListsCache.Selector.DragDropItem = new AutoGatherListsDragDropData(list, item, i);
+                    ImGui.SetDragDropPayload(AutoGatherListsDragDropData.Label, []);
                     ImGui.TextUnformatted(item.Name[GatherBuddy.Language]);
                 }
             }
@@ -345,10 +334,11 @@ public partial class Interface
             var localIdx = i;
             using (var target = ImRaii.DragDropTarget())
             {
-                if (target.Success && ImGuiUtil.IsDropping("AutoGatherListItem") && _dragDropData != null)
+                var dragDropData = _autoGatherListsCache.Selector.DragDropItem;
+                if (target.Success && ImGuiUtil.IsDropping(AutoGatherListsDragDropData.Label) && dragDropData != null)
                 {
-                    _plugin.AutoGatherListsManager.MoveItem(_dragDropData.list, _dragDropData.ItemIdx, localIdx);
-                    _dragDropData = null;
+                    _plugin.AutoGatherListsManager.MoveItem(dragDropData.List, dragDropData.ItemIdx, localIdx);
+                    _autoGatherListsCache.Selector.DragDropItem = null;
                 }
             }
         }
