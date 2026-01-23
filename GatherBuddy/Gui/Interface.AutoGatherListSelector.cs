@@ -1,31 +1,26 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
-using Dalamud.Bindings.ImGui;
-using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Config;
-using GatherBuddy.Classes;
-using GatherBuddy.Plugin;
 using ElliLib;
-using ElliLib.Classes;
 using ElliLib.Filesystem;
 using ElliLib.Filesystem.Selector;
 using ElliLib.Log;
 using ElliLib.Raii;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Config;
+using GatherBuddy.Plugin;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace GatherBuddy.Gui;
 
 public partial class Interface
 {
-    private class AutoGatherListFileSystemSelector : FileSystemSelector<AutoGatherList, int>
+    private sealed class AutoGatherListFileSystemSelector : FileSystemSelector<AutoGatherList, int>
     {
-        private static readonly ManualOrderSortMode _manualOrderSortMode = new();
-
         public override ISortMode<AutoGatherList> SortMode
-            => _manualOrderSortMode;
+            => AutoGatherListsManager.SortMode;
 
         public void RefreshView()
         {
@@ -57,6 +52,71 @@ public partial class Interface
             SubscribeRightClickFolder(CreateFolderContext, 500);
             SubscribeRightClickFolder(DeleteFolderContext, 600);
             UnsubscribeRightClickLeaf(RenameLeaf);
+
+            PathDropped += OnPathDropped;
+        }
+
+        public AutoGatherListsDragDropData? DragDropItem { set; get; }
+
+        private void OnPathDropped(List<KeyValuePair<string, FileSystem<AutoGatherList>.IPath>> movedPaths, FileSystem<AutoGatherList>.IPath targetPath)
+        {
+            if (movedPaths.Count == 0)
+                return;
+            if (movedPaths.Count > 1)
+                throw new NotImplementedException();
+            if (movedPaths[0].Value is not FileSystem<AutoGatherList>.Leaf movedLeaf || targetPath is not FileSystem<AutoGatherList>.Leaf targetLeaf)
+                return;
+
+            var movedFromUpperPart = false;
+            if (!FileSystem.Find(movedPaths[0].Key, out var sourceFolder))
+            {  // If Find() returns true, the item was moved within the same folder
+
+                if (IsAncestor(targetLeaf.Parent, sourceFolder))
+                {
+                    // Subfolders are rendered before leaves
+                    movedFromUpperPart = true;
+                }
+                else if (!IsAncestor(sourceFolder, targetLeaf))
+                {
+                    foreach (var node in FileSystem.Root.GetAllDescendants(SortMode))
+                    {
+                        if (node == sourceFolder)
+                        {
+                            movedFromUpperPart = true;
+                            break;
+                        }
+                        else if (node == targetLeaf.Parent)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            _plugin.AutoGatherListsManager.MoveList(movedLeaf, targetLeaf, movedFromUpperPart);
+            Select(movedLeaf, true);
+
+            static bool IsAncestor(FileSystem<AutoGatherList>.IPath ancestor, FileSystem<AutoGatherList>.IPath descendant)
+            {
+                do
+                {
+                    if (descendant.Parent == ancestor)
+                        return true;
+                    descendant = descendant.Parent;
+                } while (descendant != null);
+                return false;
+            }
+        }
+
+        protected override void HandleDragDrop(FileSystem<AutoGatherList>.IPath path)
+        {
+            if (DragDropItem != null && ImGuiUtil.IsDropping(AutoGatherListsDragDropData.Label) && path is FileSystem<AutoGatherList>.Leaf leaf)
+            {
+                var sourceList = DragDropItem.List;
+                var targetList = leaf.Value;
+                var index = DragDropItem.ItemIdx;
+                _plugin.AutoGatherListsManager.MoveItem(sourceList, targetList, index);
+            }
         }
 
         protected override bool FoldersDefaultOpen
@@ -123,13 +183,13 @@ public partial class Interface
         private void MoveUpContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             if (ImGui.MenuItem("Move Up"))
-                _plugin.AutoGatherListsManager.MoveListUp(leaf.Value);
+                _plugin.AutoGatherListsManager.MoveListUp(leaf);
         }
 
         private void MoveDownContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             if (ImGui.MenuItem("Move Down"))
-                _plugin.AutoGatherListsManager.MoveListDown(leaf.Value);
+                _plugin.AutoGatherListsManager.MoveListDown(leaf);
         }
 
         private void DeleteListContext(FileSystem<AutoGatherList>.Leaf leaf)

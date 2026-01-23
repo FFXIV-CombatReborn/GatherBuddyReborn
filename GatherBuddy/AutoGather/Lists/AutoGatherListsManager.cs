@@ -1,15 +1,12 @@
+using ElliLib.Filesystem;
+using GatherBuddy.Interfaces;
+using GatherBuddy.Plugin;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Classes;
-using GatherBuddy.Interfaces;
-using GatherBuddy.Plugin;
-using Newtonsoft.Json;
-using ElliLib;
-using ElliLib.Filesystem;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.AutoGather.Lists;
@@ -43,7 +40,7 @@ public partial class AutoGatherListsManager : IDisposable
     private readonly FileSystem<AutoGatherList>             _fileSystem;
     private readonly List<(IGatherable Item, uint Quantity)> _activeItems   = [];
     private readonly List<(IGatherable Item, uint Quantity)> _fallbackItems = [];
-    private static readonly ManualOrderSortMode _manualOrderSortMode = new();
+    public static ManualOrderSortMode SortMode { get; } = new();
 
     public FileSystem<AutoGatherList> FileSystem
         => _fileSystem;
@@ -63,92 +60,13 @@ public partial class AutoGatherListsManager : IDisposable
         _fileSystem.Changed += OnFileSystemChanged;
     }
 
-    private FileSystem<AutoGatherList>.IPath? _dropTarget = null;
-    private FileSystem<AutoGatherList>.IPath? _movedPath = null;
-
-    public void SetDropTarget(FileSystem<AutoGatherList>.IPath dropTarget, FileSystem<AutoGatherList>.IPath? movedPath)
-    {
-        _dropTarget = dropTarget;
-        _movedPath = movedPath;
-    }
-
     private void OnFileSystemChanged(FileSystemChangeType type, FileSystem<AutoGatherList>.IPath changedObject, FileSystem<AutoGatherList>.IPath? previousParent, FileSystem<AutoGatherList>.IPath? newParent)
     {
-        if (type == FileSystemChangeType.ObjectMoved)
+        // Not renumbering the source folder on ObjectRemoved or ObjectMoved makes the numbering sparse, but it's fine for ordering.
+        if (type is FileSystemChangeType.ObjectMoved or FileSystemChangeType.LeafAdded && changedObject is FileSystem<AutoGatherList>.Leaf newLeaf)
         {
-            
-            if (changedObject is FileSystem<AutoGatherList>.Leaf movedLeaf && _dropTarget != null && changedObject == _movedPath)
-            {
-                ReorderAfterDrop(movedLeaf, _dropTarget);
-                _dropTarget = null;
-                _movedPath = null;
-            }
-            else
-            {
-                ReorderListsInFolder(newParent as FileSystem<AutoGatherList>.Folder ?? _fileSystem.Root);
-            }
-            
-            if (previousParent != newParent && previousParent is FileSystem<AutoGatherList>.Folder oldFolder)
-            {
-                ReorderListsInFolder(oldFolder);
-            }
+            newLeaf.Value.Order = newLeaf.Parent.GetLeaves().Where(leaf => leaf != newLeaf).Select(leaf => leaf.Value.Order).DefaultIfEmpty().Max() + 1;
             Save();
-        }
-        else if (type == FileSystemChangeType.LeafAdded)
-        {
-            if (changedObject is FileSystem<AutoGatherList>.Leaf leaf)
-            {
-                var parent = leaf.Parent;
-                var siblings = parent.GetLeaves().Where(l => l != leaf).ToList();
-                
-                if (siblings.Count > 0 && siblings.Any(l => l.Value.Order == leaf.Value.Order))
-                {
-                    var maxOrder = siblings.Select(l => l.Value.Order).Max();
-                    leaf.Value.Order = maxOrder + 1;
-                }
-            }
-        }
-    }
-
-    private void ReorderAfterDrop(FileSystem<AutoGatherList>.Leaf movedLeaf, FileSystem<AutoGatherList>.IPath dropTarget)
-    {
-        var targetFolder = dropTarget as FileSystem<AutoGatherList>.Folder ?? dropTarget.Parent;
-        
-        if (dropTarget is FileSystem<AutoGatherList>.Leaf targetLeaf && targetLeaf != movedLeaf)
-        {
-            var leaves = targetFolder.GetLeaves().Where(l => l != movedLeaf).OrderBy(l => l.Value.Order).ToList();
-            var targetIndex = leaves.IndexOf(targetLeaf);
-            
-            for (int i = 0; i < leaves.Count; i++)
-            {
-                if (i < targetIndex)
-                {
-                    leaves[i].Value.Order = i;
-                }
-                else if (i == targetIndex)
-                {
-                    leaves[i].Value.Order = i + 1;
-                }
-                else
-                {
-                    leaves[i].Value.Order = i + 1;
-                }
-            }
-            
-            movedLeaf.Value.Order = targetIndex;
-        }
-        else
-        {
-            ReorderListsInFolder(targetFolder);
-        }
-    }
-
-    private void ReorderListsInFolder(FileSystem<AutoGatherList>.Folder folder)
-    {
-        var leaves = folder.GetLeaves().OrderBy(l => l.Value.Order).ToList();
-        for (int i = 0; i < leaves.Count; i++)
-        {
-            leaves[i].Value.Order = i;
         }
     }
 
@@ -160,7 +78,7 @@ public partial class AutoGatherListsManager : IDisposable
         _activeItems.Clear();
         _fallbackItems.Clear();
 
-        var items = _fileSystem.Root.GetAllDescendants(_manualOrderSortMode)
+        var items = _fileSystem.Root.GetAllDescendants(SortMode)
             .OfType<FileSystem<AutoGatherList>.Leaf>()
             .Select(leaf => leaf.Value)
             .Where(l => l.Enabled)
