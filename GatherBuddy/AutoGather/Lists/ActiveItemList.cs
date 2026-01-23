@@ -190,8 +190,6 @@ namespace GatherBuddy.AutoGather.Lists
             var targets = _listsManager.ActiveItems
                 // Filter out items that are already gathered.
                 .Where(NeedsGathering)
-                // If treasure map, only gather if the allowance is up.
-                .Where(x => !x.Item.IsTreasureMap || (nextAllowance ??= DiscipleOfLand.NextTreasureMapAllowance) < adjustedServerTime.DateTime)
                 // Fetch preferred location.
                 .Select(x => (x.Item, x.Quantity, PreferredLocation: _listsManager.GetPreferredLocation(x.Item)))
                 // Flatten node list and calculate the next uptime.
@@ -202,6 +200,8 @@ namespace GatherBuddy.AutoGather.Lists
                         FishingSpot spot => GatherBuddy.UptimeManager.NextUptime((x.Item as Fish)!, spot.Territory, adjustedServerTime),
                         _ => throw new InvalidOperationException()
                     }, x.Quantity, x.PreferredLocation)))
+                // If treasure map, only gather if the allowance is up.
+                .Select(x => x.Item.IsTreasureMap && (nextAllowance ??= DiscipleOfLand.NextTreasureMapAllowance) > adjustedServerTime.DateTime ? x with { Time = TimeInterval.Invalid } : x)
                 // Remove nodes that require the player to be on the home world.
                 .Where(x => !RequiresHomeWorld(x.Location) || Functions.OnHomeWorld())
                 // Remove nodes with a level higher than the player can gather.

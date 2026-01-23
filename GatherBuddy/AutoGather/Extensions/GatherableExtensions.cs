@@ -39,7 +39,7 @@ public static class GatherableExtensions
     /// <returns>The count of the item in the inventory.</returns>
     public unsafe static int GetInventoryCount(this IGatherable gatherable)
     {
-        if (GatherBuddy.Config.AutoGatherConfig.CheckRetainers && AllaganTools.Enabled)
+        if (GatherBuddy.Config.AutoGatherConfig.CheckRetainers && !gatherable.IsTreasureMap && AllaganTools.Enabled)
         {
             return (int)AllaganTools.ItemCountOwned(gatherable.ItemId, true, _inventoryTypesArray);
         }
