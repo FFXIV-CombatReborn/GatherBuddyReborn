@@ -105,6 +105,7 @@ namespace GatherBuddy.AutoGather
         private GatherTarget? _currentGatherTarget;
         private volatile bool _fishDetectedPlayer = false;
         private volatile bool _fishWaryDetected = false;
+        private volatile bool _processingFishingToast = false;
         private int _consecutiveAmissCount = 0;
         
         private const uint FishWaryMessageId = 5517;
@@ -130,11 +131,23 @@ namespace GatherBuddy.AutoGather
                 {
                     if (logMsg.RowId == FishWaryMessageId)
                     {
+                        if (_processingFishingToast)
+                        {
+                            GatherBuddy.Log.Debug($"[AutoGather] Ignoring duplicate wary toast while processing previous one.");
+                            return;
+                        }
+                        
                         GatherBuddy.Log.Warning($"[AutoGather] Fish wary warning (ID: {logMsg.RowId}): '{text}' - simple relocation.");
                         _fishWaryDetected = true;
                     }
                     else if (logMsg.RowId == FishAmissMessageId)
                     {
+                        if (_processingFishingToast)
+                        {
+                            GatherBuddy.Log.Debug($"[AutoGather] Ignoring duplicate amiss toast while processing previous one.");
+                            return;
+                        }
+                        
                         _consecutiveAmissCount++;
                         GatherBuddy.Log.Warning($"[AutoGather] Fish amiss detected (ID: {logMsg.RowId}, count: {_consecutiveAmissCount}): '{text}'");
                         _fishDetectedPlayer = true;
@@ -223,6 +236,7 @@ namespace GatherBuddy.AutoGather
                     _diademPathIndex = -1;
                     _fishDetectedPlayer = false;
                     _fishWaryDetected = false;
+                    _processingFishingToast = false;
                     _consecutiveAmissCount = 0;
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
 
@@ -1465,6 +1479,7 @@ namespace GatherBuddy.AutoGather
                 if (_fishWaryDetected)
                 {
                     _fishWaryDetected = false;
+                    _processingFishingToast = true;
                     GatherBuddy.Log.Information($"[AutoGather] Fish wary warning - doing simple relocation (not counted toward amiss)...");
                     
                     var oldPosition = fishingSpotData.Position;
@@ -1491,9 +1506,17 @@ namespace GatherBuddy.AutoGather
                         
                         AutoStatus = "Fish wary - relocating...";
                         QueueQuitFishingTasks();
+                        
+                        TaskManager.Enqueue(() =>
+                        {
+                            _processingFishingToast = false;
+                            GatherBuddy.Log.Debug("[AutoGather] Wary processing complete, ready for new toasts.");
+                            return true;
+                        });
                     }
                     else
                     {
+                        _processingFishingToast = false;
                         GatherBuddy.Log.Warning("[AutoGather] No alternate position for wary relocation, continuing...");
                     }
                     
@@ -1502,7 +1525,8 @@ namespace GatherBuddy.AutoGather
                 
                 if (_fishDetectedPlayer)
                 {
-                    _fishDetectedPlayer = false; 
+                    _fishDetectedPlayer = false;
+                    _processingFishingToast = true;
 
                     if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
                     {
@@ -1523,6 +1547,7 @@ namespace GatherBuddy.AutoGather
 
                         if (!positionData.HasValue)
                         {
+                            _processingFishingToast = false;
                             Communicator.PrintError(
                                 $"No alternate position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue.");
                             AbortAutoGather();
@@ -1544,6 +1569,7 @@ namespace GatherBuddy.AutoGather
                         TaskManager.DelayNext(30000);
                         TaskManager.Enqueue(() => 
                         {
+                            _processingFishingToast = false;
                             GatherBuddy.Log.Information("[AutoGather] Wait complete, resuming fishing...");
                             return true;
                         });
@@ -1574,6 +1600,7 @@ namespace GatherBuddy.AutoGather
                         TaskManager.Enqueue(() => 
                         {
                             _consecutiveAmissCount = 0;
+                            _processingFishingToast = false;
                             WentHome = false;
                             GatherBuddy.Log.Information("[AutoGather] Amiss cleared by zone teleport. Returning to fishing spot...");
                             AutoStatus = "Returning to fishing spot...";
