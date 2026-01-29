@@ -64,7 +64,7 @@ public unsafe partial class AutoGather
 
     private bool RepairIfNeeded()
     {
-        if (Dalamud.Conditions[ConditionFlag.Mounted] || Player.Job is not 17 /* BTN */ and not 16 /* MIN */)
+        if (Dalamud.Conditions[ConditionFlag.Mounted] || Player.Job is not 16 /* MIN */ and not 17 /* BTN */ and not 18 /* FSH */)
             return false;
 
         var itemToRepair = EquipmentNeedingRepair();
