@@ -33,7 +33,7 @@ public unsafe abstract class AddonMasterBase<T> where T : unmanaged
         {
             var btnRes = button->AtkComponentBase.OwnerNode->AtkResNode;
             var evt = (AtkEvent*)btnRes.AtkEventManager.Event;
-            Base->ReceiveEvent(AtkEventType.MouseClick, (int)evt->Param, evt);
+            Base->ReceiveEvent(evt->State.EventType, (int)evt->Param, btnRes.AtkEventManager.Event);
             return true;
         }
         return false;
