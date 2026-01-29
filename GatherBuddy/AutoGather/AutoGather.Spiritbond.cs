@@ -36,7 +36,6 @@ public partial class AutoGather
         }
     }
 
-    private Random _rng = new();
     unsafe void DoMateriaExtraction()
     {
         if (!QuestManager.IsQuestComplete(66174))
@@ -55,7 +54,7 @@ public partial class AutoGather
 
         EnqueueActionWithDelay(() => { if (MaterializeAddon is var addon and not null) Callback.Fire(&addon->AtkUnitBase, true, 2, 0); });
         TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Occupied39], "!Dalamud.Conditions[ConditionFlag.Occupied39]");
-        TaskManager.DelayNext(_rng.Next(500, 2000));
+        EnqueueActionWithDelay(() => { });
 
         if (SpiritbondMax == 1) 
         {
