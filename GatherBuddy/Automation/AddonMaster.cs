@@ -147,8 +147,8 @@ public static unsafe class AddonMaster
             GatherBuddy.Log.Debug($"[Repair] RepairAllButton: null={btn == null}, enabled={btn != null && btn->IsEnabled}, visible={btn != null && btn->AtkComponentBase.OwnerNode->AtkResNode.IsVisible()}");
             if (btn != null && Base != null && Base->IsReady)
             {
-                Callback.Fire(Base, true, 1);
-                GatherBuddy.Log.Debug("[Repair] Fired callback(1) on Repair addon");
+                Callback.Fire(Base, true, 0);
+                GatherBuddy.Log.Debug("[Repair] Fired callback(0) on Repair addon");
             }
         }
     }
