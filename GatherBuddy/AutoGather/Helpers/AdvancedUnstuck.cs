@@ -9,11 +9,6 @@ using GatherBuddy.Plugin;
 
 namespace GatherBuddy.AutoGather.Movement
 {
-    public enum AdvancedUnstuckCheckResult
-    {
-        Pass,
-        Fail
-    }
     public sealed class AdvancedUnstuck : IDisposable
     {
         private const double UnstuckDuration = 1.0;
@@ -28,10 +23,10 @@ namespace GatherBuddy.AutoGather.Movement
 
         public bool IsRunning => _movementController.Enabled;
 
-        public AdvancedUnstuckCheckResult Check(Vector3 destination, bool isPathing)
+        public bool Check(Vector3 destination, bool isPathing)
         {
             if (IsRunning)
-                return AdvancedUnstuckCheckResult.Fail;
+                return false;
 
             var now = DateTime.Now;
 
@@ -40,7 +35,7 @@ namespace GatherBuddy.AutoGather.Movement
                 || destination == default)
             {
                 _lastCheck = DateTime.MinValue;
-                return AdvancedUnstuckCheckResult.Pass;
+                return true;
             }
 
             var lastCheck = _lastCheck;
@@ -51,7 +46,7 @@ namespace GatherBuddy.AutoGather.Movement
             {
                 _lastPosition = Player.Position;
                 _lastMovement = now;
-                return AdvancedUnstuckCheckResult.Pass;
+                return true;
             }
 
             //vnavmesh is moving...
@@ -77,7 +72,7 @@ namespace GatherBuddy.AutoGather.Movement
                 _lastPosition = Player.Position;
                 _lastMovement = now;
             }
-            return IsRunning ? AdvancedUnstuckCheckResult.Fail : AdvancedUnstuckCheckResult.Pass;
+            return !IsRunning;
         }
 
         public void Force()
