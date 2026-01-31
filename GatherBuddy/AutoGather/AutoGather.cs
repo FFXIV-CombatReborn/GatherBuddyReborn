@@ -369,6 +369,10 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
+            // Reset readers that have cached state from the previous tick
+            GatheringWindowReader = null;
+            MasterpieceReader = null;
+
             // If we are not gathering and _currentGatherTarget is set, we just finished gathering or left the node
             if (!IsGathering && _currentGatherTarget != null)
             {
