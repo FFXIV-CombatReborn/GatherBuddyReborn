@@ -4,12 +4,24 @@ using System.Collections.Generic;
 using System.Linq;
 using GatherBuddy.Automation;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Enums;
+using System.Collections.Immutable;
 
 namespace GatherBuddy.AutoGather.AtkReaders;
 
-public unsafe class GatheringReader(AtkUnitBase* addon) : AtkReader(addon)
+public unsafe class GatheringReader : AtkReader
 {
+    public GatheringReader(AtkUnitBase* addon) : base(addon)
+    {
+        var builder = ImmutableArray.CreateBuilder<ItemSlot>(8);
+        for (var i = 0; i < 8; ++i)
+        {
+            var slot = ItemSlotReaders[i];
+            //GatherBuddy.Log.Debug($"GatheringReader: Slot {i} - Item: {slot.Item?.Name.English ?? "None"} - HasBonus: {slot.HasBonus} - RequiresPerception: {slot.RequiresPerception} - HasGivingLandBuff: {slot.HasGivingLandBuff} - IsCollectable: {slot.IsCollectable} - Yield: {slot.Yield} - BoonChance: {slot.BoonChance}");
+            builder.Add(new ItemSlot(i, slot, ItemSlotFlags, GatherChances, ItemLevel));
+        }
+        ItemSlots = builder.MoveToImmutable();
+    }
+
     private uint GatherChancesRaw1
         => ReadUInt(1).GetValueOrDefault();
 
@@ -31,21 +43,7 @@ public unsafe class GatheringReader(AtkUnitBase* addon) : AtkReader(addon)
     private List<ItemSlotReader> ItemSlotReaders
         => Loop<ItemSlotReader>(5, 11, 8);
 
-    public List<ItemSlot> ItemSlots
-    {
-        get
-        {
-            var result = new List<ItemSlot>();
-            for (var i = 0; i < 8; ++i)
-            {
-                var slot = ItemSlotReaders[i];
-                //GatherBuddy.Log.Debug($"GatheringReader: Slot {i} - Item: {slot.Item?.Name.English ?? "None"} - HasBonus: {slot.HasBonus} - RequiresPerception: {slot.RequiresPerception} - HasGivingLandBuff: {slot.HasGivingLandBuff} - IsCollectable: {slot.IsCollectable} - Yield: {slot.Yield} - BoonChance: {slot.BoonChance}");
-                result.Add(new ItemSlot(i, slot, ItemSlotFlags, GatherChances, ItemLevel));
-            }
-
-            return result;
-        }
-    }
+    public readonly ImmutableArray<ItemSlot> ItemSlots;
 
     private uint ItemSlotFlags
         => ReadUInt(98).GetValueOrDefault();
