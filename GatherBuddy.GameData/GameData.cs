@@ -213,6 +213,7 @@ public class GameData
             foreach (var fish in Fishes.Values)
             {
                 if (fish.FishingSpots.Count > 0 && !fish.OceanFish && fish.FishRestrictions != FishRestrictions.None
+                    && (fish.CurrentWeather.Length == 0 || !fish.CurrentWeather[0].IsUmbral)
                  || fish is { OceanFish: true, FishRestrictions: FishRestrictions.Time })
                     fish.InternalLocationId = ++TimedGatherables;
                 else if (fish.FishingSpots.Count > 0)
