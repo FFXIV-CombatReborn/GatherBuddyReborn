@@ -12,14 +12,7 @@ public unsafe class GatheringReader : AtkReader
 {
     public GatheringReader(AtkUnitBase* addon) : base(addon)
     {
-        var builder = ImmutableArray.CreateBuilder<ItemSlot>(8);
-        for (var i = 0; i < 8; ++i)
-        {
-            var slot = ItemSlotReaders[i];
-            //GatherBuddy.Log.Debug($"GatheringReader: Slot {i} - Item: {slot.Item?.Name.English ?? "None"} - HasBonus: {slot.HasBonus} - RequiresPerception: {slot.RequiresPerception} - HasGivingLandBuff: {slot.HasGivingLandBuff} - IsCollectable: {slot.IsCollectable} - Yield: {slot.Yield} - BoonChance: {slot.BoonChance}");
-            builder.Add(new ItemSlot(i, slot, ItemSlotFlags, GatherChances, ItemLevel));
-        }
-        ItemSlots = builder.MoveToImmutable();
+        ItemSlots = [.. ItemSlotReaders.Select((slot, i) => new ItemSlot(i, slot, ItemSlotFlags, GatherChances, ItemLevel))];
     }
 
     private uint GatherChancesRaw1
@@ -40,7 +33,7 @@ public unsafe class GatheringReader : AtkReader
     private uint ItemLevel
         => (ItemLevelRaw1 != 0 && ItemLevelRaw1 != 0xFFFFFFFF ? BinaryPrimitives.ReverseEndianness(ItemLevelRaw1) : BinaryPrimitives.ReverseEndianness(ItemLevelRaw2));
 
-    private List<ItemSlotReader> ItemSlotReaders
+    private IEnumerable<ItemSlotReader> ItemSlotReaders
         => Loop<ItemSlotReader>(5, 11, 8);
 
     public readonly ImmutableArray<ItemSlot> ItemSlots;
