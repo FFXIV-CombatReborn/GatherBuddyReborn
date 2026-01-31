@@ -910,7 +910,7 @@ public partial class Interface
             if (tr != null)
             {
                 text.AppendLine($"Touched: {tr.Touched}");
-                text.AppendLine($"HiddenRevealed: {tr.HiddenRevealed}");
+                text.AppendLine($"HasUnhidden: {tr.HasUnhidden}");
                 text.AppendLine($"Integrty: {tr.IntegrityRemaining}/{tr.IntegrityMax}");
                 text.Append($"Quick gathering: {(!tr.QuickGatheringAllowed ? "not" : "")} allowed");
                 if (tr.QuickGatheringAllowed) text.Append($", {(!tr.QuickGatheringEnabled ? "not" : "")} checked");

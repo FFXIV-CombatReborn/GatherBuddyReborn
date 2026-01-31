@@ -69,6 +69,6 @@ public unsafe class GatheringReader : AtkReader
     public bool Touched
         => IntegrityRemaining != IntegrityMax;
 
-    public bool HiddenRevealed
+    public bool HasUnhidden
         => ItemSlots.Any(i => i.IsHidden);
 }
