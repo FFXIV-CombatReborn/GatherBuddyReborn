@@ -293,7 +293,8 @@ public partial class Interface
             }
 
             ImGuiUtil.HoverTooltip(
-                "The distance at which you will try to land.\n\n" +
+                "The fixed distance from the node at which you will try to land.\n\n" +
+                "Used when random landing positions are disabled, or when no collected data is available.\n\n" +
                 "Low values increase the chance of being unable to dismount properly.\n" +
                 "High values may produce weird-looking paths.\n" +
                 "Reasonable values are between 4 and 8 yalms."
@@ -322,6 +323,13 @@ public partial class Interface
         public static void DrawForceWalkingBox()
             => DrawCheckbox("Force Walking",                      "Force walking to nodes instead of using mounts.",
                 GatherBuddy.Config.AutoGatherConfig.ForceWalking, b => GatherBuddy.Config.AutoGatherConfig.ForceWalking = b);
+
+        public static void DrawDisableRandomLandingPositionsBox()
+            => DrawCheckbox("Disable Random Landing Positions",
+                "GBR automatically collects player gathering positions as landing positions (offsets).\n" +
+                "When unchecked: Lands at random position where players were observed gathering.\n" +
+                "When checked: Uses the fixed landing distance instead.\n",
+                GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions, b => GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions = b);
 
         public static void DrawUseNavigationBox()
             => DrawCheckbox("Use vnavmesh Navigation",             "Use vnavmesh Navigation to move your character automatically",
@@ -1653,6 +1661,7 @@ public partial class Interface
                 ConfigFunctions.DrawUseFlagBox();
                 ConfigFunctions.DrawUseNavigationBox();
                 ConfigFunctions.DrawForceWalkingBox();
+                ConfigFunctions.DrawDisableRandomLandingPositionsBox();
                 ImGui.TreePop();
             }
             

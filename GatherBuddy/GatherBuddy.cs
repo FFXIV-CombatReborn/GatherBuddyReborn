@@ -30,6 +30,7 @@ using ElliLib.Classes;
 using ElliLib.Log;
 using GatherBuddy.AutoGather;
 using Dalamud.IoC;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 
 namespace GatherBuddy;
 
@@ -172,7 +173,7 @@ public partial class GatherBuddy : IDalamudPlugin
     private int      LastObjectsLength;
     private DateTime LastObjectsScan = DateTime.Now;
 
-    private void Update(IFramework framework)
+    private unsafe void Update(IFramework framework)
     {
         var prev = LastObjectsLength;
         LastObjectsLength = Dalamud.Objects.Length;
@@ -180,9 +181,33 @@ public partial class GatherBuddy : IDalamudPlugin
         if (prev != LastObjectsLength || (DateTime.Now - LastObjectsScan).TotalSeconds >= 5)
         {
             LastObjectsScan = DateTime.Now;
-            var objs = Dalamud.Objects.Where(o => o.ObjectKind == ObjectKind.GatheringPoint);
-            foreach (var obj in objs)
-                WorldData.AddLocation(obj.BaseId, obj.Position);
+
+            foreach (var obj in Dalamud.Objects)
+            {
+                // Add gathering node locations
+                if (obj.ObjectKind == ObjectKind.GatheringPoint)
+                {
+                    WorldData.AddLocation(obj.BaseId, obj.Position);
+                }
+                // Detect other players gathering and add their positions as offsets
+                else if (obj is IPlayerCharacter player)
+                {
+                    var character = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)player.Address;
+                    if (character == null) continue;
+
+                    // Only add offsets if player is gathering and is not flying
+                    // (I've seen glitches where the flying character would gather, let's exclude those)
+                    if (character->Mode == FFXIVClientStructs.FFXIV.Client.Game.Character.CharacterModes.Gathering
+                        && character->MovementState != FFXIVClientStructs.FFXIV.Client.Game.Character.MovementStateOptions.Flying)
+                    {
+                        var target = player.TargetObject;
+                        if (target != null && target.ObjectKind == ObjectKind.GatheringPoint)
+                        {
+                            AutoOffsets.AddOffset(target.BaseId, target.Position, player.Position);
+                        }
+                    }
+                }
+            }
         }
 
         try

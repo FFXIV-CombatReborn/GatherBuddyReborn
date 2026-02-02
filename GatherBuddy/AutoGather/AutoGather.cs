@@ -1833,21 +1833,22 @@ namespace GatherBuddy.AutoGather
                     AutoStatus = $"Moving to next Diadem node ({Vector3.Distance(player, nextNode.Position):F0}y)...";
                     var pos = nextNode.Position;
                     if (TryWindmireJump(ref pos))
-                        Navigate(pos, ShouldFly(pos), direct: true);
+                        Navigate(pos, ShouldFly(pos), direct: true, nodeId: nextNode.BaseId);
                     else
                         MoveToCloseNode(nextNode, next.Gatherable!, config);
                 }
             }
             else
             {
-                var pos = WorldData.WorldLocationsByNodeId[path[_diademPathIndex]]
+                var nodeId = path[_diademPathIndex];
+                var pos = WorldData.WorldLocationsByNodeId[nodeId]
                     .OrderBy(pos => Vector3.DistanceSquared(pos, player))
                     .First();
 
                 AutoStatus = $"Moving to next Diadem node ({Vector3.Distance(player, pos):F0}y)...";
 
                 var jump = TryWindmireJump(ref pos);
-                Navigate(pos, ShouldFly(pos), direct: jump);
+                Navigate(pos, ShouldFly(pos), direct: jump, nodeId: nodeId);
             }
             return true;
         }
@@ -1886,12 +1887,12 @@ namespace GatherBuddy.AutoGather
 
             var allPositions = next.Location.WorldPositions
                 .Where(n => !VisitedNodes.Contains(n.Key))
-                .SelectMany(w => w.Value)
-                .Where(v => !IsBlacklisted(v))
+                .SelectMany(w => w.Value.Select(n => (id: w.Key, Position: n)))
+                .Where(v => !IsBlacklisted(v.Position))
                 .ToList();
 
             var visibleNodes = Dalamud.Objects
-                .Where(o => allPositions.Contains(o.Position))
+                .Where(o => allPositions.Contains((o.BaseId, o.Position)))
                 .ToList();
 
             var closestTargetableNode = visibleNodes
@@ -1932,8 +1933,8 @@ namespace GatherBuddy.AutoGather
                 //It takes some time (roundtrip to the server) before a node becomes targetable after it becomes visible,
                 //so we need to delay excluding it. But instead of measuring time, we use distance, since character is traveling at a constant speed.
                 //Value 50 was determined empirically.
-                foreach (var node in allPositions.Where(o => o.DistanceToPlayer() < NodeVisibilityDistance))
-                    FarNodesSeenSoFar.Add(node);
+                foreach (var node in allPositions.Where(o => o.Position.DistanceToPlayer() < NodeVisibilityDistance))
+                    FarNodesSeenSoFar.Add(node.Position);
 
                 if (CurrentDestination.DistanceToPlayer() < NodeVisibilityDistance)
                 {
@@ -1945,7 +1946,7 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            Vector3 selectedFarNode;
+            (uint? Id, Vector3 Position) selectedFarNode;
 
             // Only Legendary, Unspoiled, and Clouded nodes show a map marker.
             var mapMarkerAvailable = next.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled or NodeType.Clouded;
@@ -1963,21 +1964,21 @@ namespace GatherBuddy.AutoGather
 
                 selectedFarNode = allPositions
                     .DefaultIfEmpty()
-                    .MinBy(o => Vector2.DistanceSquared(mapMarker.Value, o.ToVector2()));
+                    .MinBy(o => Vector2.DistanceSquared(mapMarker.Value, o.Position.ToVector2()));
 
-                if (selectedFarNode == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.ToVector2()) > 10 * 10)
+                if (selectedFarNode == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.Position.ToVector2()) > 10 * 10)
                 {
                     var point = new Vector3(mapMarker.Value.X, 0, mapMarker.Value.Y);
-                    selectedFarNode = VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point);
+                    selectedFarNode = (null, VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point));
                 }
             }
             else
             {
                 //Select the closest node
                 selectedFarNode = allPositions
-                    .Where(n => !FarNodesSeenSoFar.Contains(n))
+                    .Where(n => !FarNodesSeenSoFar.Contains(n.Position))
                     .DefaultIfEmpty()
-                    .MinBy(v => Vector2.DistanceSquared(mapMarker ?? Player.Position.ToVector2(), v.ToVector2()));
+                    .MinBy(v => Vector2.DistanceSquared(mapMarker ?? Player.Position.ToVector2(), v.Position.ToVector2()));
 
                 if (selectedFarNode == default)
                 {
@@ -1987,9 +1988,9 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            var jump = Diadem.IsInside && TryWindmireJump(ref selectedFarNode);
+            var jump = Diadem.IsInside && TryWindmireJump(ref selectedFarNode.Position);
 
-            Navigate(selectedFarNode, ShouldFly(selectedFarNode), direct: jump);
+            Navigate(selectedFarNode.Position, ShouldFly(selectedFarNode.Position), direct: jump, nodeId: jump ? null : selectedFarNode.Id);
         }
 
         private unsafe void LeaveTheDiadem()
