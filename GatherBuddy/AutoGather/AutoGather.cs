@@ -197,7 +197,6 @@ namespace GatherBuddy.AutoGather
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
-        private           bool             _disabledBySystem = false;
 
         public bool Waiting
         {
@@ -230,7 +229,6 @@ namespace GatherBuddy.AutoGather
                     CleanupAutoHook();
 
                     StopNavigation();
-                    CurrentFarNodeLocation   = null;
                     _homeWorldWarning        = false;
                     _diademQueuingInProgress = false;
                     FarNodesSeenSoFar.Clear();
@@ -269,8 +267,6 @@ namespace GatherBuddy.AutoGather
                         GatherBuddy.Log.Debug("[AutoGather] Stopping collectable turn-in (user disabled AutoGather)");
                         GatherBuddy.CollectableManager?.Stop();
                     }
-                    
-                    _disabledBySystem = false;
                 }
             else
             {
@@ -1021,7 +1017,7 @@ namespace GatherBuddy.AutoGather
                     }
                     return;
                 }
-                else
+                else if (dutyNpc != null)
                     switch (Dalamud.Conditions[ConditionFlag.OccupiedInQuestEvent])
                     {
                         case false when contentsFinderConfirmAddon > 0:
@@ -2042,7 +2038,6 @@ namespace GatherBuddy.AutoGather
             CloseGatheringAddons();
             if (GatherBuddy.Config.AutoGatherConfig.GoHomeWhenDone)
                 EnqueueActionWithDelay(() => { GoHome(); });
-            _disabledBySystem = true;
             TaskManager.Enqueue(() =>
             {
                 Enabled    = false;

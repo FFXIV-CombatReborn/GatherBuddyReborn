@@ -13,7 +13,7 @@ namespace GatherBuddy.CustomInfo
     {
         public static float DistanceToPlayer(this Vector3 vector)
         {
-            var distance = Vector3.Distance(vector, Player.Object.Position);
+            var distance = Vector3.Distance(vector, Player.Position);
             return distance;
         }
     }

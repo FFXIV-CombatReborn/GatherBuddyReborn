@@ -70,7 +70,7 @@ public partial class AutoGather
             // For intuition fish, always use target fish (two-preset system handles predators)
             // For non-intuition fish with predators, check if we should use predator instead
             var presetFish = target.Fish;
-            if (!isIntuitionFish && target.Fish != null && target.Fish.Predators.Any())
+            if (!isIntuitionFish && target.Fish.Predators.Any())
             {
                 // Only check FIRST predator for shadow node spawning (rest are caught within shadow node)
                 var (firstPredator, requiredCount) = target.Fish.Predators.First();

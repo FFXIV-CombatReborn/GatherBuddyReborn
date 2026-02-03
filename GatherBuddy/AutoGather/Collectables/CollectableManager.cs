@@ -435,7 +435,7 @@ public class CollectableManager : IDisposable
                 return;
                 
             var shop = _config.CollectableConfig.PreferredCollectableShop;
-            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.DataId == shop.NpcId);
+            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.BaseId == shop.NpcId);
             
             if (gameObj == null)
             {
@@ -764,7 +764,7 @@ public class CollectableManager : IDisposable
                 return;
             
             var shop = _config.CollectableConfig.PreferredCollectableShop;
-            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.DataId == shop.ScripShopNpcId);
+            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.BaseId == shop.ScripShopNpcId);
             
             if (gameObj == null)
             {

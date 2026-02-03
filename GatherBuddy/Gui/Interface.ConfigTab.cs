@@ -544,8 +544,6 @@ public partial class Interface
                         _plugin.AlarmManager.Disable();
                 });
 
-        private static bool _gatherDebug = false;
-
         public static void DrawAlarmsInDutyToggle()
             => DrawCheckbox("Enable Alarms in Duty", "Set whether alarms should trigger while you are bound by a duty.",
                 GatherBuddy.Config.AlarmsInDuty,     b => GatherBuddy.Config.AlarmsInDuty = b);

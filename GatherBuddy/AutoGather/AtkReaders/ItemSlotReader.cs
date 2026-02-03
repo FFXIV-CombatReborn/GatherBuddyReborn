@@ -1,15 +1,13 @@
 using System;
 using Dalamud.Game.Text.SeStringHandling;
 using GatherBuddy.Automation;
-using GatherBuddy.Classes;
 
 namespace GatherBuddy.AutoGather.AtkReaders;
 
 public class ItemSlotReader(IntPtr addon, int beginOffset = 0) : AtkReader(addon, beginOffset)
 {
     //public  bool        Enabled                => ReadBool(0).GetValueOrDefault();
-    private uint        ItemId                 => ReadUInt(1).GetValueOrDefault();
-    public  Gatherable? Item                   => ItemId > 0 ? GatherBuddy.GameData.Gatherables[ItemId] : null;
+    public  uint        ItemId                 => ReadUInt(1).GetValueOrDefault();
     private uint        FlagsRaw               => ReadUInt(5).GetValueOrDefault();
     public  bool        HasBonus               => (FlagsRaw & 4) != 0;
     public  bool        RequiresPerception     => (FlagsRaw & 1) != 0;

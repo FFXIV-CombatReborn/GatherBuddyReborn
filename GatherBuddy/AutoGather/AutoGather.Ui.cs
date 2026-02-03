@@ -23,8 +23,6 @@ namespace GatherBuddy.AutoGather
 {
     public static class AutoGatherUI
     {
-        private static bool _gatherDebug;
-
         public static void DrawAutoGatherStatus()
         {
             var enabled = GatherBuddy.AutoGather.Enabled;

@@ -284,8 +284,8 @@ namespace GatherBuddy.AutoGather
             if (GatheringWindowReader == null)
                 throw new InvalidOperationException("GatheringWindowReader is null");
             return GatheringWindowReader.ItemSlots
-                .Where(s => s.Item != null)
-                .Where(s => s.Item!.IsCrystal)
+                .Where(s => !s.IsEmpty)
+                .Where(s => s.Item.IsCrystal)
                 .Where(CheckItemOvercap)
                 //Prioritize crystals in the gathering list
                 .GroupJoin(_activeItemList.Where(i => i.Gatherable?.IsCrystal ?? false), s => s.Item, i => i.Item, (s, x) => (Slot: s, Order: x.Any()?1:0))

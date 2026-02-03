@@ -1,7 +1,7 @@
-using FFXIVClientStructs.FFXIV.Client.Graphics.Render;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Classes;
 using GatherBuddy.Automation;
+using GatherBuddy.Classes;
+using System;
 
 namespace GatherBuddy.AutoGather.AtkReaders;
 
@@ -21,8 +21,8 @@ public class ItemSlot(int index, ItemSlotReader reader, uint itemSlotFlags, uint
     public bool IsCollectable => reader.IsCollectable;
     public sbyte Yield => reader.Yield;
     public sbyte BoonChance => reader.BoonChance;
-    public bool        IsEmpty => reader.Item == null;
-    public Gatherable? Item    => reader.Item;
+    public bool IsEmpty => reader.ItemId == 0;
+    public Gatherable Item => field ??= !IsEmpty ? GatherBuddy.GameData.Gatherables[reader.ItemId] : throw new IndexOutOfRangeException("Item slot is empty.");
 
     public int GatherChance
         => (sbyte)((gatherChances >> (index * 8)) & 0xFF);

@@ -213,9 +213,9 @@ public class AutoGatherList
     public static bool FromConfig(Config cfg, out AutoGatherList list)
     {
         //Migrate Individual Enabled
-        if ((cfg.EnabledItems?.Count ?? 0) == 0)
+        if (cfg.EnabledItems == null || cfg.EnabledItems.Count == 0)
         {
-            cfg.EnabledItems = new Dictionary<uint, bool>(cfg.ItemIds.Length);
+            cfg.EnabledItems = new(cfg.ItemIds.Length);
             foreach (var item in cfg.ItemIds)
             {
                 cfg.EnabledItems[item] = true;

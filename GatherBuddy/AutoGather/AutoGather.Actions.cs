@@ -550,7 +550,7 @@ namespace GatherBuddy.AutoGather
         private bool CheckConditions(Actions.BaseAction action, ConfigPreset.ActionConfig config, Gatherable item, ItemSlot slot,
             bool autoMode = false)
         {
-            if (GatheringWindowReader == null)
+            if (GatheringWindowReader == null || Player.Object == null)
                 return false;
             // autoMode = true is used for TGL out-of-order check that occurs before the rotation solver kicks in.
             if (config.Enabled == false && !autoMode)

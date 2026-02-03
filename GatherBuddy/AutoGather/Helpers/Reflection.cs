@@ -38,6 +38,7 @@ namespace GatherBuddy.AutoGather.Helpers
                 {
                     if (TouchArtisanAssembly)
                     {
+#pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
                         System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
                         foreach (var list in artisanCraftingLists)
                         {
@@ -46,6 +47,7 @@ namespace GatherBuddy.AutoGather.Helpers
                             if (name != null)
                                 listNames.Add(id, name);
                         }
+#pragma warning restore CS8600, CS8602, CS8604, CS8605
                     }
                     return listNames;
                 }
@@ -65,6 +67,7 @@ namespace GatherBuddy.AutoGather.Helpers
             {
                 try
                 {
+#pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
                     if (TouchArtisanAssembly)
                     {
                         System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
@@ -104,6 +107,7 @@ namespace GatherBuddy.AutoGather.Helpers
                         return true;
                     }
                     return false;
+#pragma warning restore CS8600, CS8602, CS8604, CS8605
                 }
                 catch (Exception e)
                 {

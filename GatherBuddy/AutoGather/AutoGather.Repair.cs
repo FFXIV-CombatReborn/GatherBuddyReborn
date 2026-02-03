@@ -5,7 +5,6 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using System;
 using Dalamud.Game.ClientState.Conditions;
 using GatherBuddy.Automation;
-using GatherBuddy.Automation;
 using GatherBuddy.Helpers;
 
 namespace GatherBuddy.AutoGather;
