@@ -394,14 +394,14 @@ namespace GatherBuddy.AutoGather
             // If we are not gathering and _currentGatherTarget is set, we just finished gathering or left the node
             if (!IsGathering && _currentGatherTarget != null)
             {
-                var gatherTarget = _currentGatherTarget;
+                var gatherTarget = _currentGatherTarget.Value;
                 // Mark the node as visited if possible
                 var targetNode = Dalamud.Targets.Target ?? Dalamud.Targets.PreviousTarget;
                 if (targetNode != null && targetNode.ObjectKind is ObjectKind.GatheringPoint)
                 {
                     _activeItemList.MarkVisited(targetNode);
-                    var gatherable = gatherTarget.Value.Gatherable;
-                    var node = gatherTarget.Value.Node;
+                    var gatherable = gatherTarget.Gatherable;
+                    var node = gatherTarget.Node;
                     
                     if (gatherable != null && (gatherable.NodeType == NodeType.Regular || gatherable.NodeType == NodeType.Ephemeral)
                         && VisitedNodes.LastOrDefault() != targetNode.BaseId
@@ -517,8 +517,6 @@ namespace GatherBuddy.AutoGather
                     _currentGatherTarget = _activeItemList.CurrentOrDefault;
                 }
 
-                IEnumerable<GatherTarget> gatherTarget = _currentGatherTarget != null ? new[] { (GatherTarget)_currentGatherTarget } : Array.Empty<GatherTarget>();
-
                 if (!GatherBuddy.Config.AutoGatherConfig.DoGathering)
                     return;
 
@@ -581,7 +579,7 @@ namespace GatherBuddy.AutoGather
 
                 try
                 {
-                    DoActionTasks(gatherTarget);
+                    DoActionTasks(_currentGatherTarget.Value);
                 }
                 catch (NoGatherableItemsInNodeException)
                 {

@@ -110,7 +110,7 @@ namespace GatherBuddy.AutoGather
         }
 
 
-        private unsafe void DoActionTasks(IEnumerable<GatherTarget> target)
+        private unsafe void DoActionTasks(GatherTarget target)
         {
             if (MasterpieceReader?.IsValid == true)
             {
@@ -327,8 +327,10 @@ namespace GatherBuddy.AutoGather
             return null;
         }
 
-        private unsafe void DoGatherWindowActions(IEnumerable<GatherTarget> target)
+        private unsafe void DoGatherWindowActions(GatherTarget target)
         {
+            System.Diagnostics.Debug.Assert(target == default || target.Gatherable != null);
+
             if (GatheringWindowReader == null)
                 return;
 
@@ -338,14 +340,11 @@ namespace GatherBuddy.AutoGather
             }
             LastIntegrity = GatheringWindowReader.IntegrityRemaining;
 
-            foreach (var t in target)
+            //Use The Giving Land out of order to gather random crystals.
+            if (target != default && ShouldUseGivingLandOutOfOrder(target.Gatherable))
             {
-                //Use The Giving Land out of order to gather random crystals.
-                if (ShouldUseGivingLandOutOfOrder(t.Gatherable))
-                {
-                    EnqueueActionWithDelay(() => UseAction(Actions.GivingLand));
-                    return;
-                }
+                EnqueueActionWithDelay(() => UseAction(Actions.GivingLand));
+                return;
             }
 
             if (!LuckUsed && GatheringWindowReader.HasUnhidden)
@@ -354,14 +353,11 @@ namespace GatherBuddy.AutoGather
                 LuckUsed = true;
             }
 
-            foreach (var t in target)
+            if (target != default && !HasGivingLandBuff && ShouldUseLuck(target.Gatherable))
             {
-                if (!HasGivingLandBuff && ShouldUseLuck(t.Gatherable))
-                {
-                    LuckUsed = true;
-                    EnqueueActionWithDelay(() => UseAction(Actions.Luck));
-                    return;
-                }
+                LuckUsed = true;
+                EnqueueActionWithDelay(() => UseAction(Actions.Luck));
+                return;
             }
 
             var (useSkills, slot) = GetItemSlotToGather(target);
