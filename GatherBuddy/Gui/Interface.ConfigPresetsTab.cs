@@ -154,84 +154,18 @@ namespace GatherBuddy.Gui
                     }
 
                     if (items != null && items.Count > 0)
-                {
-                    foreach (var item in items)
                     {
-                        MigrateHQItemIds(item);
-                        Items.Add(item);
-                    }
-                }
-                else
-                {
-                    //Convert old settings to the new Default preset
-                    if (GatherBuddy.Config.AutoGatherConfig != null)
-                    {
-                        Items.Add(GatherBuddy.Config.AutoGatherConfig.ConvertToPreset());
-                        var firstItem = Items.FirstOrDefault();
-                        if (firstItem != null)
+                        foreach (var item in items)
                         {
-                            firstItem.ChooseBestActionsAutomatically = true;
-                            Save();
-                            GatherBuddy.Config.AutoGatherConfig.ConfigConversionFixed        = true;
-                            GatherBuddy.Config.AutoGatherConfig.RotationSolverConversionDone = true;
-                            GatherBuddy.Config.Save();
+                            MigrateHQItemIds(item);
+                            Items.Add(item);
                         }
+
+                        Items[Items.Count - 1] = Items[Items.Count - 1].MakeDefault();
                     }
                     else
                     {
-                        Items.Add(new ConfigPreset { Name = "Default" });
-                    }
-                }
-
-                var lastItem = Items.LastOrDefault();
-                if (lastItem != null)
-                {
-                    var idx = Items.IndexOf(lastItem);
-                    Items[idx] = lastItem.MakeDefault();
-                }
-
-                if (GatherBuddy.Config.AutoGatherConfig != null && !GatherBuddy.Config.AutoGatherConfig.RotationSolverConversionDone)
-                {
-                    var last = Items.LastOrDefault();
-                    if (last != null)
-                    {
-                        last.ChooseBestActionsAutomatically = true;
-                        GatherBuddy.Config.AutoGatherConfig.RotationSolverConversionDone = true;
-                        Save();
-                        GatherBuddy.Config.Save();
-                    }
-                }
-
-                if (GatherBuddy.Config.AutoGatherConfig != null && !GatherBuddy.Config.AutoGatherConfig.ConfigConversionFixed)
-                {
-                    var def = Items.LastOrDefault();
-                    if (def == null)
-                        return;
-                    fixAction(def.GatherableActions.Bountiful);
-                    fixAction(def.GatherableActions.Yield1);
-                    fixAction(def.GatherableActions.Yield2);
-                    fixAction(def.GatherableActions.SolidAge);
-                    fixAction(def.GatherableActions.TwelvesBounty);
-                    fixAction(def.GatherableActions.GivingLand);
-                    fixAction(def.GatherableActions.Gift1);
-                    fixAction(def.GatherableActions.Gift2);
-                    fixAction(def.GatherableActions.Tidings);
-                    fixAction(def.GatherableActions.Bountiful);
-                    fixAction(def.CollectableActions.Scrutiny);
-                    fixAction(def.CollectableActions.Scour);
-                    fixAction(def.CollectableActions.Brazen);
-                    fixAction(def.CollectableActions.Meticulous);
-                    fixAction(def.CollectableActions.SolidAge);
-                    fixAction(def.Consumables.Cordial);
-                    Save();
-                    GatherBuddy.Config.AutoGatherConfig.ConfigConversionFixed = true;
-                    GatherBuddy.Config.Save();
-                }
-
-                    void fixAction(ConfigPreset.ActionConfig action)
-                    {
-                        if (action.MaxGP == 0)
-                            action.MaxGP = ConfigPreset.MaxGP;
+                        Items.Add(new ConfigPreset().MakeDefault());
                     }
                 }
                 catch (Exception ex)
@@ -240,13 +174,7 @@ namespace GatherBuddy.Gui
                     Items.Clear();
                     try
                     {
-                        Items.Add(new ConfigPreset { Name = "Default" });
-                        var fallbackItem = Items.LastOrDefault();
-                        if (fallbackItem != null)
-                        {
-                            var idx = Items.IndexOf(fallbackItem);
-                            Items[idx] = fallbackItem.MakeDefault();
-                        }
+                        Items.Add(new ConfigPreset().MakeDefault());
                     }
                     catch (Exception fallbackEx)
                     {
