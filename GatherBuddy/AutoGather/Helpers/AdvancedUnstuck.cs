@@ -9,11 +9,6 @@ using GatherBuddy.Plugin;
 
 namespace GatherBuddy.AutoGather.Movement
 {
-    public enum AdvancedUnstuckCheckResult
-    {
-        Pass,
-        Fail
-    }
     public sealed class AdvancedUnstuck : IDisposable
     {
         private const double UnstuckDuration = 1.0;
@@ -24,14 +19,15 @@ namespace GatherBuddy.AutoGather.Movement
         private DateTime _lastMovement;
         private DateTime _unstuckStart;
         private DateTime _lastCheck;
+        private DateTime _lastJumpAttempt;
         private Vector3 _lastPosition;
 
         public bool IsRunning => _movementController.Enabled;
 
-        public AdvancedUnstuckCheckResult Check(Vector3 destination, bool isPathing)
+        public bool Check(Vector3 destination, bool isPathing)
         {
             if (IsRunning)
-                return AdvancedUnstuckCheckResult.Fail;
+                return false;
 
             var now = DateTime.Now;
 
@@ -40,7 +36,7 @@ namespace GatherBuddy.AutoGather.Movement
                 || destination == default)
             {
                 _lastCheck = DateTime.MinValue;
-                return AdvancedUnstuckCheckResult.Pass;
+                return true;
             }
 
             var lastCheck = _lastCheck;
@@ -51,7 +47,7 @@ namespace GatherBuddy.AutoGather.Movement
             {
                 _lastPosition = Player.Position;
                 _lastMovement = now;
-                return AdvancedUnstuckCheckResult.Pass;
+                return true;
             }
 
             //vnavmesh is moving...
@@ -60,14 +56,27 @@ namespace GatherBuddy.AutoGather.Movement
                 //...and quite fast: update current position
                 if (_lastPosition.DistanceToPlayer() >= MinMovementDistance)
                 {
-                    _lastPosition = Player.Object.Position;
+                    _lastPosition = Player.Position;
                     _lastMovement = now;
                 }
                 //...but not fast enough: unstuck
                 else if (now.Subtract(_lastMovement).TotalSeconds > GatherBuddy.Config.AutoGatherConfig.NavResetThreshold)
                 {
                     GatherBuddy.Log.Warning($"Advanced Unstuck: the character is stuck. Moved {_lastPosition.DistanceToPlayer()} yalms in {now.Subtract(_lastMovement).TotalSeconds} seconds.");
-                    Start();
+                    
+                    // Try jumping first if not flying/diving and haven't tried jumping recently
+                    if (now.Subtract(_lastJumpAttempt).TotalSeconds > GatherBuddy.Config.AutoGatherConfig.NavResetCooldown * 2.0 && IsJumpPossible())
+                    {
+                        _lastMovement = _lastJumpAttempt = now;
+                        _lastPosition = Player.Position;
+
+                        Jump();
+                    }
+                    else
+                    {
+                        // Either flying/diving, or jump didn't work - use normal unstuck
+                        Start();
+                    }
                 }
             } 
             else
@@ -77,7 +86,7 @@ namespace GatherBuddy.AutoGather.Movement
                 _lastPosition = Player.Position;
                 _lastMovement = now;
             }
-            return IsRunning ? AdvancedUnstuckCheckResult.Fail : AdvancedUnstuckCheckResult.Pass;
+            return !IsRunning;
         }
 
         public void Force()
@@ -96,6 +105,28 @@ namespace GatherBuddy.AutoGather.Movement
                 GatherBuddy.Log.Warning("Advanced Unstuck: force start for fishing (finding landable spot).");
                 StartFishing();
             }
+        }
+
+        private unsafe bool IsJumpPossible()
+        {
+            if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving] || Dalamud.Conditions[ConditionFlag.Jumping])
+                return false;
+
+            var amInstance = FFXIVClientStructs.FFXIV.Client.Game.ActionManager.Instance();
+            if (amInstance == null)
+                return false;
+
+            var actionStatus = amInstance->GetActionStatus(FFXIVClientStructs.FFXIV.Client.Game.ActionType.GeneralAction, 2);
+            return actionStatus == 0;
+        }
+
+        private unsafe void Jump()
+        {
+            GatherBuddy.Log.Debug($"Advanced Unstuck: trying jump.");
+
+            var amInstance = FFXIVClientStructs.FFXIV.Client.Game.ActionManager.Instance();
+
+            amInstance->UseAction(FFXIVClientStructs.FFXIV.Client.Game.ActionType.GeneralAction, 2);
         }
 
         private void Start()

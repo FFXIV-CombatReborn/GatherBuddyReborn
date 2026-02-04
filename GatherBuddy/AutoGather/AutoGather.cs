@@ -615,13 +615,11 @@ namespace GatherBuddy.AutoGather
             var isPathGenerating = IsPathGenerating;
             var isPathing        = IsPathing;
 
-            switch (_advancedUnstuck.Check(CurrentDestination, isPathing))
+            if (!_advancedUnstuck.Check(CurrentDestination, isPathing))
             {
-                case AdvancedUnstuckCheckResult.Pass: break;
-                case AdvancedUnstuckCheckResult.Fail:
-                    StopNavigation();
-                    AutoStatus = $"Advanced unstuck in progress!";
-                    return;
+                StopNavigation();
+                AutoStatus = $"Advanced unstuck in progress!";
+                return;
             }
 
             if (isPathGenerating)
