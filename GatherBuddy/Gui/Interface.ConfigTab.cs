@@ -215,9 +215,17 @@ public partial class Interface
 
         public static void DrawAetherialReduction()
             => DrawCheckbox("Enable Aetherial Reduction",
-                "Automatically perform Aetherial Reduction when idling or the inventory is full",
+                "Automatically perform Aetherial Reduction when idling or if the number of free inventory slots drops below 20",
                 GatherBuddy.Config.AutoGatherConfig.DoReduce,
                 b => GatherBuddy.Config.AutoGatherConfig.DoReduce = b);
+
+        public static void DrawAlwaysReduceAllItemsBox()
+            => DrawCheckbox("Always Reduce All Items",
+                "When unchecked: If the number of free inventory slots drops below 20 while gathering,\n" +
+                "emergency aetherial reduction is performed for only one item type.\n"
+              + "When checked: Emergency aetherial reduction is performed for all items at once.",
+                GatherBuddy.Config.AutoGatherConfig.AlwaysReduceAllItems,
+                b => GatherBuddy.Config.AutoGatherConfig.AlwaysReduceAllItems = b);
 
         public static void DrawUseFlagBox()
             => DrawCheckbox("Disable map marker navigation",            "Whether or not to navigate using map markers (timed nodes only)",
@@ -1634,6 +1642,7 @@ public partial class Interface
                 }
                 ConfigFunctions.DrawMaterialExtraction();
                 ConfigFunctions.DrawAetherialReduction();
+                ConfigFunctions.DrawAlwaysReduceAllItemsBox();
                 ConfigFunctions.DrawAutoretainerBox();
                 if (GatherBuddy.Config.AutoGatherConfig.AutoRetainerMultiMode)
                 {

@@ -664,7 +664,7 @@ namespace GatherBuddy.AutoGather
                     }
                     else
                     {
-                        ReduceItems(false);
+                        ReduceItems(GatherBuddy.Config.AutoGatherConfig.AlwaysReduceAllItems);
                         return;
                     }
                 }
