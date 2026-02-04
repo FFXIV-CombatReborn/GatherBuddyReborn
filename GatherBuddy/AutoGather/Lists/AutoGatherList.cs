@@ -237,13 +237,21 @@ public class AutoGatherList
         foreach (var itemId in cfg.ItemIds)
         {
             uint quantity;
-            if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var item)
-             && list.Add(item, quantity = cfg.Quantities.GetValueOrDefault(item.ItemId)))
+            IGatherable? item;
+
+            if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
+                item = gatherable;
+            else if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
+                item = fish;
+            else
+                continue;
+
+            if (list.Add(item, quantity = cfg.Quantities.GetValueOrDefault(item.ItemId)))
             {
                 changes |= list.quantities[item] != quantity;
                 if (cfg.PrefferedLocations.TryGetValue(itemId, out var locId))
                 {
-                    if (item.NodeList.FirstOrDefault(n => n.Id == locId) is var loc and not null)
+                    if (item.Locations.FirstOrDefault(n => n.Id == locId) is var loc and not null)
                         list.SetPreferredLocation(item, loc);
                     else
                         changes = true;
@@ -251,27 +259,6 @@ public class AutoGatherList
 
                 if (cfg.EnabledItems.TryGetValue(itemId, out var enabled))
                     list.SetEnabled(item, enabled);
-            }
-
-            if (GatherBuddy.GameData.Fishes.Where(f => !f.Value.IsTreasureMap).ToDictionary().TryGetValue(itemId, out var fish)
-             && list.Add(fish, quantity = cfg.Quantities.GetValueOrDefault(fish.ItemId)))
-            {
-                changes |= list.quantities[fish] != quantity;
-
-                if (cfg.PrefferedLocations.TryGetValue(itemId, out var locId))
-                {
-                    if (fish.FishingSpots.FirstOrDefault(n => n.Id == locId) is var loc and not null)
-                        list.SetPreferredLocation(fish, loc);
-                    else
-                        changes = true;
-                }
-
-                if (cfg.EnabledItems.TryGetValue(itemId, out var enabled))
-                    list.SetEnabled(fish, enabled);
-            }
-            else
-            {
-                changes = true;
             }
         }
 
