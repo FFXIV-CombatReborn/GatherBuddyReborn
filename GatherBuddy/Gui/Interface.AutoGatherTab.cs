@@ -24,21 +24,10 @@ namespace GatherBuddy.Gui;
 
 public partial class Interface
 {
-    private class AutoGatherListsDragDropData
+    private record class AutoGatherListsDragDropData(AutoGatherList List, IGatherable Item, int ItemIdx)
     {
-        public AutoGatherList list;
-        public IGatherable    Item;
-        public int            ItemIdx;
-
-        public AutoGatherListsDragDropData(AutoGatherList list, IGatherable item, int idx)
-        {
-            this.list = list;
-            Item      = item;
-            ItemIdx   = idx;
-        }
+        public static string Label => "AutoGatherListItem";
     }
-
-    private static AutoGatherListsDragDropData? _dragDropData;
 
     private class AutoGatherListsCache : IDisposable
     {
@@ -244,10 +233,11 @@ public partial class Interface
 
         ImGui.SetCursorPosX(ImGui.GetWindowSize().X - 50);
         string agHelpText =
-            "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in the list, " +
+            "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in each list, " +
             "but timed nodes and fish are always prioritized.\n" +
-            "You can drag and drop lists to move them inside or outside a folder.\n" +
+            "You can drag and drop lists to move them.\n" +
             "You can drag and drop items within a specific list to rearrange them.\n" +
+            "You can drag and drop an item onto a different list from the selector to move it between lists.\n" +
             "In the Gather Window, you can hold Control and Right-Click an item to delete it from the list it belongs to.";
 
 
@@ -336,8 +326,8 @@ public partial class Interface
             {
                 if (source.Success)
                 {
-                    _dragDropData = new AutoGatherListsDragDropData(list, item, i);
-                    ImGui.SetDragDropPayload("AutoGatherListItem", ReadOnlySpan<byte>.Empty);
+                    _autoGatherListsCache.Selector.DragDropItem = new AutoGatherListsDragDropData(list, item, i);
+                    ImGui.SetDragDropPayload(AutoGatherListsDragDropData.Label, []);
                     ImGui.TextUnformatted(item.Name[GatherBuddy.Language]);
                 }
             }
@@ -345,10 +335,11 @@ public partial class Interface
             var localIdx = i;
             using (var target = ImRaii.DragDropTarget())
             {
-                if (target.Success && ImGuiUtil.IsDropping("AutoGatherListItem") && _dragDropData != null)
+                var dragDropData = _autoGatherListsCache.Selector.DragDropItem;
+                if (target.Success && ImGuiUtil.IsDropping(AutoGatherListsDragDropData.Label) && dragDropData != null)
                 {
-                    _plugin.AutoGatherListsManager.MoveItem(_dragDropData.list, _dragDropData.ItemIdx, localIdx);
-                    _dragDropData = null;
+                    _plugin.AutoGatherListsManager.MoveItem(dragDropData.List, dragDropData.ItemIdx, localIdx);
+                    _autoGatherListsCache.Selector.DragDropItem = null;
                 }
             }
         }

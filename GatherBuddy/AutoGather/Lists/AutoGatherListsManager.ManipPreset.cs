@@ -1,10 +1,12 @@
-using System;
-using System.Linq;
+using ElliLib.Filesystem;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using ElliLib.Filesystem;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 
 namespace GatherBuddy.AutoGather.Lists;
 
@@ -36,22 +38,6 @@ public partial class AutoGatherListsManager
         Save();
         if (enabled)
             SetActiveItems();
-    }
-
-    public void MoveList(AutoGatherList list, FileSystem<AutoGatherList>.Folder targetFolder)
-    {
-        if (!_fileSystem.TryGetValue(list, out var leaf))
-            return;
-
-        try
-        {
-            _fileSystem.Move(leaf, targetFolder);
-            Save();
-        }
-        catch (Exception e)
-        {
-            GatherBuddy.Log.Warning($"Failed to move list: {e.Message}");
-        }
     }
 
     public void CreateFolder(string name, FileSystem<AutoGatherList>.Folder? parent = null)
@@ -466,6 +452,25 @@ public partial class AutoGatherListsManager
         }
     }
 
+    public void MoveItem(AutoGatherList source, AutoGatherList destination, int idx)
+    {
+        var item = source.Items[idx];
+        var quantity = source.Quantities[item];
+        if (destination.Add(item, quantity))
+        {
+            destination.SetEnabled(item, source.EnabledItems[item]);
+            destination.SetPreferredLocation(item, source.PreferredLocations.GetValueOrDefault(item));
+        }
+        else
+        {
+            destination.SetQuantity(item, destination.Quantities[item] + quantity);
+        }
+        source.RemoveAt(idx);
+        Save();
+        if (source.Enabled || destination.Enabled)
+            SetActiveItems();
+    }
+
     public void ChangePreferredLocation(AutoGatherList list, IGatherable? item, ILocation? location)
     {
         if (item == null)
@@ -478,41 +483,44 @@ public partial class AutoGatherListsManager
 
     public event Action? ListOrderChanged;
 
-    public void MoveListUp(AutoGatherList list)
+    public void MoveList(FileSystem<AutoGatherList>.Leaf movedList, FileSystem<AutoGatherList>.Leaf insertAt, bool movedFromUpperPart)
     {
-        if (!_fileSystem.TryGetValue(list, out var leaf))
-            return;
+        if (movedList.Parent != insertAt.Parent)
+            throw new InvalidOperationException();
 
-        var parent = leaf.Parent;
-        var siblings = parent.GetLeaves().OrderBy(l => l.Value.Order).ToList();
-        var index = siblings.IndexOf(leaf);
-        
-        if (index > 0)
+        var insertIdx = insertAt.Value.Order;
+        if (movedFromUpperPart || movedList.Value.Order < insertIdx) insertIdx++;
+
+        // Using an O(n) algorithm makes the numbering sparse, but it's fine for ordering.
+        foreach (var leaf in movedList.Parent.GetLeaves())
         {
-            var prevList = siblings[index - 1].Value;
-            var temp = prevList.Order;
-            prevList.Order = list.Order;
-            list.Order = temp;
-            Save();
-            ListOrderChanged?.Invoke();
+            if (leaf.Value.Order >= insertIdx)
+                leaf.Value.Order++;
         }
+        movedList.Value.Order = insertIdx;
+        Save();
+        ListOrderChanged?.Invoke();        
     }
 
-    public void MoveListDown(AutoGatherList list)
-    {
-        if (!_fileSystem.TryGetValue(list, out var leaf))
-            return;
+    public void MoveListUp(FileSystem<AutoGatherList>.Leaf list)
+        => MoveListOnce(list, false);
 
-        var parent = leaf.Parent;
-        var siblings = parent.GetLeaves().OrderBy(l => l.Value.Order).ToList();
-        var index = siblings.IndexOf(leaf);
-        
-        if (index < siblings.Count - 1)
+    public void MoveListDown(FileSystem<AutoGatherList>.Leaf list)
+        => MoveListOnce(list, true);
+
+    private void MoveListOnce(FileSystem<AutoGatherList>.Leaf list, bool down)
+    {
+        FileSystem<AutoGatherList>.Leaf? neighbor = null;
+        // XOR flips the comparison, finding the right neighbor instead of the left when true.
+        foreach (var sibling in list.Parent.GetLeaves())
         {
-            var nextList = siblings[index + 1].Value;
-            var temp = nextList.Order;
-            nextList.Order = list.Order;
-            list.Order = temp;
+            if (sibling != list && sibling.Value.Order < list.Value.Order ^ down && (neighbor == null || neighbor.Value.Order < sibling.Value.Order ^ down))
+                neighbor = sibling;
+        }
+
+        if (neighbor != null)
+        {
+            (list.Value.Order, neighbor.Value.Order) = (neighbor.Value.Order, list.Value.Order);
             Save();
             ListOrderChanged?.Invoke();
         }
