@@ -69,7 +69,8 @@ namespace GatherBuddy.AutoGather
                 return false;
             if (!IsGivingLandOffCooldown)
                 return false;
-            if (slot.Item.GetInventoryCount() > 9999 - GivingLandYield - slot.Yield)
+            // TGL's provided bonus no longer overcaps in Dawntrail, but keep it at least 5 to avoid wasting GP.
+            if (slot.Item.GetInventoryCount() > 9999 - 5 - slot.Yield)
                 return false;
 
             return true;
@@ -79,7 +80,7 @@ namespace GatherBuddy.AutoGather
         {
             if (!CheckConditions(Actions.TwelvesBounty, config.TwelvesBounty, slot.Item, slot))
                 return false;
-            if (slot.Item.GetInventoryCount() > 9999 - 3)
+            if (slot.Item.GetInventoryCount() > 9999 - 3 - slot.Yield)
                 return false;
 
             return true;

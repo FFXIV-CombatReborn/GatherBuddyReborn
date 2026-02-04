@@ -277,9 +277,6 @@ namespace GatherBuddy.AutoGather
         public static unsafe bool IsGivingLandOffCooldown
             => ActionManager.Instance()->IsActionOffCooldown(ActionType.Action, Actions.GivingLand.ActionId);
 
-        //Should be near the upper bound to reduce the probability of overcapping.
-        private const int GivingLandYield = 30;
-
         private static unsafe uint FreeInventorySlots
             => InventoryManager.Instance()->GetEmptySlotsInBag();
 
