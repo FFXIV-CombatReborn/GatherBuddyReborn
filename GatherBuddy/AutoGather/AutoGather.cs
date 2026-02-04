@@ -360,10 +360,6 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            // Reset readers that have cached state from the previous tick.
-            GatheringWindowReader = null;
-            MasterpieceReader = null;
-
             // Reset the flag before checking Enabled to get correct state even if auto-gather is disabled.
             // Integrity == 0 is checked to ensure we can use Luck if Revisit triggers.
             if (LuckUsed && (!IsGathering || (GatheringWindowReader?.IntegrityRemaining ?? 0) == 0))

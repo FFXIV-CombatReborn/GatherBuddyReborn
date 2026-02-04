@@ -60,17 +60,23 @@ namespace GatherBuddy.AutoGather
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 
+        private DateTime _gatheringWindowReaderLastUpdate = DateTime.MinValue;
+        private DateTime _masterpieceReaderLastUpdate = DateTime.MinValue;
+
         public unsafe GatheringReader? GatheringWindowReader
         {
             get
             {
+                var currentUpdate = Dalamud.Framework.LastUpdate;
+                if (_gatheringWindowReaderLastUpdate != currentUpdate)
+                {
+                    _gatheringWindowReaderLastUpdate = currentUpdate;
+                    field = null;
+                }
+                
                 return field ??= (Automation.GenericHelpers.TryGetAddonByName("Gathering", out AtkUnitBase* addon)
                         ? new GatheringReader(addon)
                         : null);
-            }
-            set
-            {
-                field = value;
             }
         }
 
@@ -78,13 +84,16 @@ namespace GatherBuddy.AutoGather
         {
             get
             {
+                var currentUpdate = Dalamud.Framework.LastUpdate;
+                if (_masterpieceReaderLastUpdate != currentUpdate)
+                {
+                    _masterpieceReaderLastUpdate = currentUpdate;
+                    field = null;
+                }
+                
                 return field ??= (Automation.GenericHelpers.TryGetAddonByName("GatheringMasterpiece", out AtkUnitBase* add)
                         ? new GatheringMasterpieceReader(add)
                         : null);
-            }
-            set
-            {
-                field = value;
             }
         }
 
