@@ -1192,209 +1192,31 @@ namespace GatherBuddy.AutoGather
             
             var isPathGenerating = IsPathGenerating;
             var isPathing = IsPathing;
-            
-            var targetFishTerritoryId = fish.FishingSpot?.Territory.Id ?? 0;
-            var housingWardTerritoriesFish = new uint[] { 339, 340, 341, 649, 641 };
-            var isTargetHousingWard = housingWardTerritoriesFish.Contains((uint)targetFishTerritoryId);
-            
-            if (isTargetHousingWard && Lifestream.Enabled)
-            {
-                var canAccessFromCurrentTerritory = (territoryId == 129 && targetFishTerritoryId == 339)  // Limsa -> Mist
-                                                  || (territoryId is 130 or 131 && targetFishTerritoryId == 341)  // Ul'dah -> Goblet
-                                                  || (territoryId == 132 && targetFishTerritoryId == 340)  // Gridania -> Lavender
-                                                  || (territoryId == 418 && targetFishTerritoryId == 649)  // Foundation -> Empyreum
-                                                  || (territoryId == 628 && targetFishTerritoryId == 641); // Kugane -> Shirogane
-                
-                if (canAccessFromCurrentTerritory)
-                {
-                    if (!Lifestream.IsBusy())
-                    {
-                        if (IsFishing)
-                        {
-                            if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                            {
-                                AutoHook.SetPluginState?.Invoke(false);
-                                AutoHook.SetAutoStartFishing?.Invoke(false);
-                            }
-                            AutoStatus = "Closing fishing before teleport...";
-                            QueueQuitFishingTasks();
-                            return;
-                        }
-                        
-                        AutoStatus = "Teleporting to housing ward...";
-                        StopNavigation();
-                        
-                        string wardCommand = targetFishTerritoryId switch
-                        {
-                            339 => "mist 1 1",
-                            341 => "goblet 1 1",
-                            340 => "lavender 1 1",
-                            649 => "empyreum 1 1",
-                            641 => "shirogane 1 1",
-                            _ => ""
-                        };
-                        
-                        if (!string.IsNullOrEmpty(wardCommand))
-                        {
-                            TaskManager.Enqueue(() => Lifestream.ExecuteCommand(wardCommand));
-                            TaskManager.DelayNext(1000);
-                            TaskManager.Enqueue(() => GenericHelpers.IsScreenReady());
-                        }
-                    }
-                    
-                    return;
-                }
-            }
 
-            if (territoryId == 418 && fish.FishingSpot?.Territory.Id == Diadem.Territory.Id && Lifestream.Enabled)
+            if (!FishingSpotData.TryGetValue(fish, out var fishingSpotData))
             {
-                if (IsFishing)
-                {
-                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                    {
-                        AutoHook.SetPluginState?.Invoke(false);
-                        AutoHook.SetAutoStartFishing?.Invoke(false);
-                    }
-                    AutoStatus = "Closing fishing before teleport...";
-                    QueueQuitFishingTasks();
-                    return;
-                }
-                if (!Lifestream.IsBusy())
-                {
-                    AutoStatus = "Teleporting...";
-                    StopNavigation();
-                    TaskManager.Enqueue(() => Lifestream.ExecuteCommand("firmament"));
-                    TaskManager.Enqueue(() => !Lifestream.IsBusy(), 30000);
-                }
-                return;
-            }
-            
-            if (fish.FishingSpot?.Territory.Id != territoryId)
-            {
-                if (Dalamud.Conditions[ConditionFlag.BoundByDuty] && !Diadem.IsInside)
-                {
-                    AutoStatus = "Can not teleport when bound by duty";
-                    return;
-                }
-                else if (Diadem.IsInside)
-                {
-                    LeaveTheDiadem();
-                    return;
-                }
-                
-                if (territoryId == 886 && fish.FishingSpot?.Territory.Id == Diadem.Territory.Id)
-                {
-                    if (JobAsGatheringType == GatheringType.Unknown)
-                    {
-                        if (ChangeGearSet(GatheringType.Fisher, 2400))
-                        {
-                            return;
-                        }
-                        else
-                        {
-                            AbortAutoGather();
-                            return;
-                        }
-                    }
-                    
-                    var dutyNpc                    = Dalamud.Objects.FirstOrDefault(o => o.BaseId == 1031694);
-                    var selectStringAddon          = Dalamud.GameGui.GetAddonByName("SelectString");
-                    var talkAddon                  = Dalamud.GameGui.GetAddonByName("Talk");
-                    var selectYesNoAddon           = Dalamud.GameGui.GetAddonByName("SelectYesno");
-                    var contentsFinderConfirmAddon = Dalamud.GameGui.GetAddonByName("ContentsFinderConfirm");
-                    
-                    if (dutyNpc != null && dutyNpc.Position.DistanceToPlayer() > 3)
-                    {
-                        AutoStatus = "Moving to Diadem NPC...";
-                        var point = VNavmesh.Query.Mesh.NearestPoint(dutyNpc.Position, 10, 10000).GetValueOrDefault(dutyNpc.Position);
-                        if (CurrentDestination != point || (!IsPathGenerating && !IsPathing))
-                        {
-                            Navigate(point, false);
-                        }
-                        return;
-                    }
-                    else
-                        switch (Dalamud.Conditions[ConditionFlag.OccupiedInQuestEvent])
-                        {
-                            case false when contentsFinderConfirmAddon > 0:
-                            {
-                                var contents = new AddonMaster.ContentsFinderConfirm(contentsFinderConfirmAddon);
-                                contents.Commence();
-                                TaskManager.DelayNext(500);
-                                TaskManager.Enqueue(() => _diademQueuingInProgress = false);
-                                TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.BoundByDuty]);
-                                return;
-                            }
-                            case false when contentsFinderConfirmAddon == nint.Zero
-                             && selectStringAddon == nint.Zero
-                             && selectYesNoAddon == nint.Zero:
-                                unsafe
-                                {
-                                    var targetSystem = TargetSystem.Instance();
-                                    if (targetSystem == null)
-                                        return;
+                var existingEntryForSameSpot = FishingSpotData
+                    .FirstOrDefault(kvp => kvp.Key.FishingSpot?.Id == fish.FishingSpot?.Id);
 
-                                    TaskManager.Enqueue(StopNavigation);
-                                    TaskManager.Enqueue(()
-                                        => targetSystem->OpenObjectInteraction(
-                                            (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)dutyNpc.Address));
-                                    TaskManager.Enqueue(() => Dalamud.Conditions[ConditionFlag.OccupiedInQuestEvent]);
-                                    TaskManager.Enqueue(() => _diademQueuingInProgress = true);
-                                    return;
-                                }
-                            case true when selectStringAddon > 0:
-                            {
-                                var select = new AddonMaster.SelectString(selectStringAddon);
-                                TaskManager.Enqueue(() => select.Entries[0].Select());
-                                return;
-                            }
-                            case true when selectYesNoAddon > 0:
-                            {
-                                var yesNo = new AddonMaster.SelectYesno(selectYesNoAddon);
-                                TaskManager.Enqueue(yesNo.Yes);
-                                TaskManager.DelayNext(5000);
-                                return;
-                            }
-                            case true when talkAddon > 0:
-                            {
-                                var talk = new AddonMaster.Talk(talkAddon);
-                                TaskManager.Enqueue(talk.Click);
-                                return;
-                            }
-                        }
-                }
-                
-            if (IsFishing)
-            {
-                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                if (existingEntryForSameSpot.Key.Fish != null)
                 {
-                    AutoHook.SetPluginState?.Invoke(false);
-                    AutoHook.SetAutoStartFishing?.Invoke(false);
-                }
-                AutoStatus = "Closing fishing before teleport...";
-                QueueQuitFishingTasks();
-                return;
-            }
-                
-                AutoStatus = "Teleporting...";
-                StopNavigation();
-                
-                if (!MoveToTerritory(fish.Location))
-                    AbortAutoGather();
-                
-                return;
-            }
+                    GatherBuddy.Log.Information($"[AutoGather] Reusing position for same fishing spot (switching from {existingEntryForSameSpot.Key.Fish.Name[GatherBuddy.Language]} to {fish.Fish!.Name[GatherBuddy.Language]})");
+                    FishingSpotData.Add(fish, existingEntryForSameSpot.Value);
 
-        if (!FishingSpotData.TryGetValue(fish, out var fishingSpotData))
-        {
-            var existingEntryForSameSpot = FishingSpotData
-                .FirstOrDefault(kvp => kvp.Key.FishingSpot?.Id == fish.FishingSpot?.Id);
-            
-            if (existingEntryForSameSpot.Key.Fish != null)
-            {
-                GatherBuddy.Log.Information($"[AutoGather] Reusing position for same fishing spot (switching from {existingEntryForSameSpot.Key.Fish.Name[GatherBuddy.Language]} to {fish.Fish!.Name[GatherBuddy.Language]})");
-                FishingSpotData.Add(fish, existingEntryForSameSpot.Value);
-                
+                    if (IsFishing)
+                    {
+                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                        {
+                            AutoHook.SetPluginState?.Invoke(false);
+                            AutoHook.SetAutoStartFishing?.Invoke(false);
+                        }
+                        AutoStatus = "Stopping fishing to change target...";
+                        QueueQuitFishingTasks();
+                    }
+
+                    return;
+                }
+
                 if (IsFishing)
                 {
                     if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
@@ -1404,35 +1226,21 @@ namespace GatherBuddy.AutoGather
                     }
                     AutoStatus = "Stopping fishing to change target...";
                     QueueQuitFishingTasks();
+                    return;
                 }
-                
-                return;
-            }
-            
-            if (IsFishing)
-            {
-                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                {
-                    AutoHook.SetPluginState?.Invoke(false);
-                    AutoHook.SetAutoStartFishing?.Invoke(false);
-                }
-                AutoStatus = "Stopping fishing to change target...";
-                QueueQuitFishingTasks();
-                return;
-            }
-            
-            var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(fish!.FishingSpot);
-            if (!positionData.HasValue)
-            {
-                Communicator.PrintError(
-                    $"No position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue. Please, manually fish at least once at {fish.FishingSpot.Name} so GBR can know its location.");
-                AbortAutoGather();
-                return;
-            }
 
-            FishingSpotData.Add(fish, (positionData.Value.Position, positionData.Value.Rotation, DateTime.MaxValue));
-            return;
-        }
+                var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(fish!.FishingSpot);
+                if (!positionData.HasValue)
+                {
+                    Communicator.PrintError(
+                        $"No position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue. Please, manually fish at least once at {fish.FishingSpot.Name} so GBR can know its location.");
+                    AbortAutoGather();
+                    return;
+                }
+
+                FishingSpotData.Add(fish, (positionData.Value.Position, positionData.Value.Rotation, DateTime.MaxValue));
+                return;
+            }
 
             if (next.Fish.UmbralWeather.IsUmbral)
             {
