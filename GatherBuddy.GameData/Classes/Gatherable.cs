@@ -14,11 +14,11 @@ public class Gatherable : IComparable<Gatherable>, IGatherable
     public Item                 ItemData      { get; }
     public GatheringItem        GatheringData { get; }
     public MultiString          Name          { get; }
-    public IList<GatheringNode> NodeList      { get; } = new List<GatheringNode>();
+    public List<GatheringNode> NodeList      { get; } = new List<GatheringNode>();
 
     public int InternalLocationId { get; internal set; }
 
-    public IEnumerable<ILocation> Locations
+    public IReadOnlyList<ILocation> Locations
         => NodeList;
 
     public uint ItemId
