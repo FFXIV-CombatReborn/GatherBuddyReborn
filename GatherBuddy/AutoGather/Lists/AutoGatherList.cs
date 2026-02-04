@@ -132,8 +132,6 @@ public class AutoGatherList
             quantity = 1;
         if (quantity > 999999)
             quantity = 999999;
-        if (quantity > 1 && item.IsTreasureMap)
-            quantity = 1;
         return quantity;
     }
 

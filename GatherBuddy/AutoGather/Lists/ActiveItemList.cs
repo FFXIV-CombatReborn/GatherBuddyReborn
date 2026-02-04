@@ -144,12 +144,20 @@ namespace GatherBuddy.AutoGather.Lists
         private bool NeedsGathering((IGatherable item, uint quantity) value)
         {
             var (item, quantity) = value;
-            return item.GetInventoryCount() < (item.IsTreasureMap ? 1 : quantity);
+            return item.GetTotalCount() < quantity && CheckOvercap(item);
         }
 
         private bool NeedsGathering(GatherTarget target)
             => NeedsGathering((target.Item, target.Quantity));
 
+        private static bool CheckOvercap(IGatherable item)
+        {
+            if (item.IsTreasureMap)
+                return item.GetInventoryCount() < 1;
+            if (item.IsCrystal)
+                return item.GetInventoryCount() < 9999;
+            return true;
+        }
 
         private void OnActiveItemsChanged()
         {

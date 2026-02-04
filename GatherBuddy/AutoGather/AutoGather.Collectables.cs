@@ -113,7 +113,7 @@ namespace GatherBuddy.AutoGather
             public Actions.BaseAction GetNextAction(GatheringMasterpieceReader masterpieceReader)
             {
                 var player = Player.Object ?? throw new InvalidOperationException("Player object is null");
-                var itemsLeft = (int)(quantity - item.GetInventoryCount());
+                var itemsLeft = (int)(quantity - item.GetTotalCount());
 
                 if (itemsLeft <= 0 && GatherBuddy.Config.AutoGatherConfig.AbandonNodes)
                     throw new NoGatherableItemsInNodeException();

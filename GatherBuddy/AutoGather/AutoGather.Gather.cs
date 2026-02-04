@@ -186,7 +186,7 @@ namespace GatherBuddy.AutoGather
                     return (true, crystal);
             }
 
-            if (target != null && target.Item.GetInventoryCount() < gatherTarget.Quantity)
+            if (target != null && target.Item.GetTotalCount() < gatherTarget.Quantity)
             {
                 //The target item is found in the node, would not overcap and we need to gather more of it
                 return (!target.IsCollectable, target);
@@ -195,10 +195,7 @@ namespace GatherBuddy.AutoGather
             //Items in the gathering list
             var gatherList = ItemsToGather
                 //Join node slots, retaining list order
-                .Join(available, i => i.Item, s => s.Item, (i, s) => (Slot: s, i.Quantity))
-                //And we need more of them
-                .Where(x => x.Slot.Item.GetInventoryCount() < x.Quantity)
-                .Select(x => x.Slot);
+                .Join(available, i => i.Item, s => s.Item, (i, s) => s);
 
             //Items in the fallback list
             var fallbackList = _plugin.AutoGatherListsManager.FallbackItems
@@ -291,7 +288,7 @@ namespace GatherBuddy.AutoGather
                 .GroupJoin(_activeItemList.Where(i => i.Gatherable?.IsCrystal ?? false), s => s.Item, i => i.Item, (s, x) => (Slot: s, Order: x.Any()?1:0))
                 .OrderBy(x => x.Order)
                 //Prioritize crystals with a lower amount in the inventory
-                .ThenBy(x => x.Slot.Item!.GetInventoryCount())
+                .ThenBy(x => x.Slot.Item.GetInventoryCount())
                 .Select(x => x.Slot)
                 .FirstOrDefault();
         }
