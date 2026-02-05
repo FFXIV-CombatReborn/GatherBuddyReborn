@@ -61,13 +61,14 @@ namespace GatherBuddy.AutoGather
                 GatherBuddy.Log.Information("Node offsets exported to clipboard");
             }
             // First column: Nearby nodes table
-            if (ImGui.BeginTable("##nearbyNodesTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+            if (ImGui.BeginTable("##nearbyNodesTable", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
             {
                 ImGui.TableSetupColumn("Name");
                 ImGui.TableSetupColumn("Targetable");
                 ImGui.TableSetupColumn("NodeId");
                 ImGui.TableSetupColumn("Position");
                 ImGui.TableSetupColumn("Distance");
+                ImGui.TableSetupColumn("Auto Offsets");
                 ImGui.TableSetupColumn("Action");
 
                 ImGui.TableHeadersRow();
@@ -89,6 +90,9 @@ namespace GatherBuddy.AutoGather
                     var distance = Vector3.Distance(playerPosition, node.Position);
                     ImGui.Text(distance.ToString());
                     ImGui.TableSetColumnIndex(5);
+                    var autoOffsetCount = AutoOffsets.GetOffsetCount(node.BaseId, node.Position);
+                    ImGui.Text(autoOffsetCount.ToString());
+                    ImGui.TableSetColumnIndex(6);
 
                     var territoryId = Dalamud.ClientState.TerritoryType;
                     var isBlacklisted = GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId.TryGetValue(territoryId, out var list)

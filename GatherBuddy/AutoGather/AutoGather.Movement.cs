@@ -131,14 +131,14 @@ namespace GatherBuddy.AutoGather
                         } 
                         else
                         {
-                            Navigate(gameObject.Position, false);
+                            Navigate(gameObject.Position, false, nodeId: gameObject.BaseId);
                         }
                     }
                 }
             }
             else
             {
-                Navigate(gameObject.Position, ShouldFly(gameObject.Position));
+                Navigate(gameObject.Position, ShouldFly(gameObject.Position), nodeId: gameObject.BaseId);
             }
         }
 
@@ -178,16 +178,16 @@ namespace GatherBuddy.AutoGather
 
                 if (!Dalamud.Conditions[ConditionFlag.Diving])
                 {
-                    TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) Navigate(gameObject.Position, false); });
+                    TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) Navigate(gameObject.Position, false, nodeId: gameObject.BaseId); });
                 }
             }
             else if (hSeparation < Math.Max(GatherBuddy.Config.AutoGatherConfig.MountUpDistance, 5))
             {
-                Navigate(gameObject.Position, false);
+                Navigate(gameObject.Position, false, nodeId: gameObject.BaseId);
             }
             else
             {
-                Navigate(gameObject.Position, ShouldFly(gameObject.Position));
+                Navigate(gameObject.Position, ShouldFly(gameObject.Position), nodeId: gameObject.BaseId);
             }
         }
 
@@ -220,7 +220,7 @@ namespace GatherBuddy.AutoGather
             playerObject->SetRotation(angle.Rad);
         }
 
-        private void Navigate(Vector3 destination, bool shouldFly, bool direct = false)
+        private void Navigate(Vector3 destination, bool shouldFly, bool direct = false, uint? nodeId = null)
         {
             var canMount = Vector2.Distance(destination.ToVector2(), Player.Position.ToVector2()) >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance && CanMount();
             if (!Dalamud.Conditions[ConditionFlag.Mounted] && canMount)
@@ -253,7 +253,7 @@ namespace GatherBuddy.AutoGather
             shouldFly &= canMount || Dalamud.Conditions[ConditionFlag.Mounted];
             shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
 
-            var offsettedDestination = GetCorrectedDestination(destination);
+            var offsettedDestination = GetCorrectedDestination(destination, Player.Position, nodeId);
             _navState = default;
             _navState.destination = destination;
             _navState.flying = shouldFly;
@@ -467,15 +467,23 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private static Vector3 GetCorrectedDestination(Vector3 destination)
+        private static Vector3 GetCorrectedDestination(in Vector3 destination, in Vector3 player, uint? nodeId)
         {
             const float MaxHorizontalSeparation = 3.0f;
             const float MaxVerticalSeparation = 2.5f;
 
+            if (!GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions
+                && nodeId.HasValue 
+                && AutoOffsets.TryGetRandomOffset(nodeId.Value, destination, player, out var offset))
+            {
+                GatherBuddy.Log.Debug($"Using auto-offset for node {nodeId.Value}: {offset}. Distance to node: {Vector2.Distance(offset.ToVector2(), destination.ToVector2()):F2}y, angle: {Math.Acos(Vector2.Dot(Vector2.Normalize((player - destination).ToVector2()), Vector2.Normalize((offset - destination).ToVector2()))) * 180.0 / Math.PI:F1}°");
+                return offset;
+            }
+
             try
             {
                 float separation;
-                if (WorldData.NodeOffsets.TryGetValue(destination, out var offset))
+                if (WorldData.NodeOffsets.TryGetValue(destination, out offset))
                 {
                     offset = VNavmesh.Query.Mesh.NearestPoint(offset, MaxHorizontalSeparation, MaxVerticalSeparation).GetValueOrDefault(offset);
                     if ((separation = Vector2.Distance(offset.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)

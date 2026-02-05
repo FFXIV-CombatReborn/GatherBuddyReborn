@@ -122,6 +122,7 @@ namespace GatherBuddy.AutoGather
         public bool UseChum { get; set; } = false;
         public int ChumGPThreshold { get; set; } = 100;
         public bool ChumGPAbove { get; set; } = true;
+        public bool DisableRandomLandingPositions { get; set; } = false;
 
         public enum SortingType
         {
