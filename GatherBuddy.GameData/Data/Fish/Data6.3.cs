@@ -68,7 +68,7 @@ public static partial class Fish
             .Spear(data, SpearfishSize.Large, SpearfishSpeed.Slow);
         data.Apply(38841, Patch.GodsRevelLandsTremble) // Nosceasaur
             .Spear(data, SpearfishSize.Large, SpearfishSpeed.Fast)
-            .Predators(data, 60, (38939, 4))
+            .Predators(data, 20, (38939, 4))
             .Comment("Catch 4 Guppies in one node.");
         data.Apply(38935, Patch.GodsRevelLandsTremble) // Jhinga
             .Bait(data, 36593)

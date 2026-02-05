@@ -32,7 +32,7 @@ public static partial class Fish
             .Time(0, 240)
             .Transition(data, 2)
             .Weather(data, 3)
-            .Bite(data, HookSet.Unknown, BiteType.Legendary);
+            .Bite(data, HookSet.Powerful, BiteType.Legendary);
         data.Apply(46193, Patch.ThePromiseOfTomorrow) // Azure Diver
             .Bait(data, 43857)
             .Time(1080, 1440)
@@ -1006,8 +1006,7 @@ public static partial class Fish
             .Bait(data)
             .Mission(data, 1004)
             .Points(10000)
-            .Lure(Enums.Lure.Ambitious)
-            .Bite(data, HookSet.Unknown, BiteType.Unknown);
+            .Bite(data, HookSet.Powerful, BiteType.Legendary);
 
         // Capsule Pools EX+: Elemental-esque Chasm Specimens //TODO:Unfinished Data
         data.Apply(47656, Patch.ThePromiseOfTomorrow) // Glass Guppish
@@ -1033,7 +1032,7 @@ public static partial class Fish
         data.Apply(47661, Patch.ThePromiseOfTomorrow) // Encapsulated Impesctor
             .Bait(data)
             .Mission(data, 1005)
-            .Predators(data, 420, (47659,2))
+            .Predators(data, 420, (47659, 3))
             .Bite(data, HookSet.Powerful, BiteType.Strong);
 
         // Fusingway Flow EX+: Elemental-esque Vent Specimens //TODO: Unifinished Data, This is missing a fish?!
