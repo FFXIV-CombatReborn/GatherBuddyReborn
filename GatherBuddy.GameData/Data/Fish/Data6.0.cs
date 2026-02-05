@@ -477,7 +477,7 @@ public static partial class Fish
             .Spear     (data, SpearfishSize.Small, SpearfishSpeed.Slow);
         data.Apply     (36573, Patch.Endwalker) // Pipefish
             .Spear     (data, SpearfishSize.Small, SpearfishSpeed.Fast)
-            .Predators (data, 0, (36553, 10));
+            .Predators (data, 0, (36553, 7));
         data.Apply     (36574, Patch.Endwalker) // Righteye Flounder
             .Spear     (data, SpearfishSize.Average, SpearfishSpeed.Average);
         data.Apply     (36575, Patch.Endwalker) // Mini Yasha
@@ -488,7 +488,7 @@ public static partial class Fish
             .Spear     (data, SpearfishSize.Average, SpearfishSpeed.Slow);
         data.Apply     (36578, Patch.Endwalker) // Shogun's Kabuto
             .Spear     (data, SpearfishSize.Large, SpearfishSpeed.Slow)
-            .Predators (data, 0, (36553, 10));
+            .Predators (data, 0, (36553, 7));
         data.Apply     (36579, Patch.Endwalker) // Bluefin Trevally
             .Spear     (data, SpearfishSize.Large, SpearfishSpeed.Slow);
         data.Apply     (36580, Patch.Endwalker) // Kitefin Shark
