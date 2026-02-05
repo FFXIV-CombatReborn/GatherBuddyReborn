@@ -374,9 +374,10 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            // Always check these first
-            if (!IsGathering)
-                LuckUsed = false; //Reset the flag even if auto-gather was disabled mid-gathering
+            // Reset the flag before checking Enabled to get correct state even if auto-gather is disabled.
+            // Integrity == 0 is checked to ensure we can use Luck if Revisit triggers.
+            if (LuckUsed && (!IsGathering || (GatheringWindowReader?.IntegrityRemaining ?? 0) == 0))
+                LuckUsed = false; 
 
             if (!Enabled)
             {

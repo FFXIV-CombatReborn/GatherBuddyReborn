@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
@@ -72,16 +73,16 @@ public unsafe class AtkReader
         return SeString.Empty;
     }
 
-    protected List<T> Loop<T>(int startOffset, int stride, int count) where T : class
+    protected IEnumerable<T> Loop<T>(int startOffset, int stride, int count) where T : class
     {
-        var result = new List<T>();
-        for (var i = 0; i < count; i++)
-        {
-            var offset = startOffset + (i * stride);
-            var instance = Activator.CreateInstance(typeof(T), (IntPtr)addon, offset) as T;
-            if (instance != null)
-                result.Add(instance);
-        }
-        return result;
+        return Enumerable.Range(0, count)
+            .Select(i =>
+            {
+                var offset = startOffset + i * stride;
+                // Null should never occur in current usage (GatheringReader with 8 ItemSlotReaders).
+                // Fail-fast with NotImplementedException rather than silently skip if behavior changes,
+                // as handling null is not implemented.
+                return Activator.CreateInstance(typeof(T), (IntPtr)addon, offset) as T ?? throw new NotImplementedException();
+            });
     }
 }

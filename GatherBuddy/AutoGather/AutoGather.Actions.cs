@@ -26,7 +26,7 @@ namespace GatherBuddy.AutoGather
         {
             if (gatherable == null)
                 return false;
-            if (LuckUsed || GatheringWindowReader!.HiddenRevealed)
+            if (LuckUsed || GatheringWindowReader!.HasUnhidden)
                 return false;
             if (!gatherable.GatheringData.IsHidden && !gatherable.IsTreasureMap)
                 return false;
@@ -346,6 +346,12 @@ namespace GatherBuddy.AutoGather
                     EnqueueActionWithDelay(() => UseAction(Actions.GivingLand));
                     return;
                 }
+            }
+
+            if (!LuckUsed && GatheringWindowReader.HasUnhidden)
+            {
+                // If there are unhidden items, Luck skill won't reveal anything new.
+                LuckUsed = true;
             }
 
             foreach (var t in target)

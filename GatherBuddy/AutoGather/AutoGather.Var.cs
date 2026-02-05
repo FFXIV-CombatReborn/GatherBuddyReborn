@@ -60,15 +60,42 @@ namespace GatherBuddy.AutoGather
         private ILocation? CurrentFarNodeLocation;
         public bool LureSuccess { get; private set; } = false;
 
+        private DateTime _gatheringWindowReaderLastUpdate = DateTime.MinValue;
+        private DateTime _masterpieceReaderLastUpdate = DateTime.MinValue;
+
         public unsafe GatheringReader? GatheringWindowReader
-            => Automation.GenericHelpers.TryGetAddonByName("Gathering", out AtkUnitBase* addon)
-                ? new GatheringReader(addon)
-                : null;
+        {
+            get
+            {
+                var currentUpdate = Dalamud.Framework.LastUpdate;
+                if (_gatheringWindowReaderLastUpdate != currentUpdate)
+                {
+                    _gatheringWindowReaderLastUpdate = currentUpdate;
+                    field = null;
+                }
+                
+                return field ??= (Automation.GenericHelpers.TryGetAddonByName("Gathering", out AtkUnitBase* addon)
+                        ? new GatheringReader(addon)
+                        : null);
+            }
+        }
 
         public unsafe GatheringMasterpieceReader? MasterpieceReader
-            => Automation.GenericHelpers.TryGetAddonByName("GatheringMasterpiece", out AtkUnitBase* add)
-                ? new GatheringMasterpieceReader(add)
-                : null;
+        {
+            get
+            {
+                var currentUpdate = Dalamud.Framework.LastUpdate;
+                if (_masterpieceReaderLastUpdate != currentUpdate)
+                {
+                    _masterpieceReaderLastUpdate = currentUpdate;
+                    field = null;
+                }
+                
+                return field ??= (Automation.GenericHelpers.TryGetAddonByName("GatheringMasterpiece", out AtkUnitBase* add)
+                        ? new GatheringMasterpieceReader(add)
+                        : null);
+            }
+        }
 
         public static IReadOnlyList<InventoryType> InventoryTypes { get; } =
         [
