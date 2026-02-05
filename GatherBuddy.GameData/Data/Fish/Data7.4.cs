@@ -1,4 +1,4 @@
-using GatherBuddy.Enums;
+﻿using GatherBuddy.Enums;
 
 namespace GatherBuddy.Data;
 
@@ -57,7 +57,7 @@ public static partial class Fish
             .Bite(data, HookSet.Powerful, BiteType.Legendary);
 
 
-        // Foregone Oasis  Anomaly Impact Aquaculture Survey
+        // Foregone Oasis  Anomaly Impact Aquaculture Survey
         data.Apply(50090, Patch.IntoTheMist) // Voyaging Loach
             .Bait(data)
             .Mission(data, 1320)
@@ -71,7 +71,7 @@ public static partial class Fish
             .Mission(data, 1320)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Megalithopolis  Megalithopolis Specimen Survey
+        // Megalithopolis   Megalithopolis Specimen Survey
         data.Apply(50093, Patch.IntoTheMist) // Inverted Skipper
             .Bait(data)
             .Mission(data, 1321)
@@ -85,7 +85,7 @@ public static partial class Fish
             .Mission(data, 1321)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Foregone Oasis  Foregone Oasis Environmental Survey
+        // Foregone Oasis   Foregone Oasis Environmental Survey
         data.Apply(50096, Patch.IntoTheMist) // Voyaging Loach
             .Bait(data)
             .Mission(data, 1322)
@@ -99,7 +99,7 @@ public static partial class Fish
             .Mission(data, 1322)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Megalithopolis  Regular Base Resupply
+        // Megalithopolis   Regular Base Resupply
         data.Apply(50099, Patch.IntoTheMist) // Inverted Skipper
             .Bait(data)
             .Mission(data, 1323)
@@ -113,7 +113,7 @@ public static partial class Fish
             .Mission(data, 1323)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Foregone Oasis  Large Aquatic Life-form Distribution Survey
+        // Foregone Oasis   Large Aquatic Life-form Distribution Survey
         data.Apply(50102, Patch.IntoTheMist) // Voyaging Loach
             .Bait(data)
             .Mission(data, 1324)
@@ -131,7 +131,7 @@ public static partial class Fish
             .Mission(data, 1324)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Megalithopolis  Oizys Bait Suitability Testing
+        // Megalithopolis   Oizys Bait Suitability Testing
         data.Apply(50106, Patch.IntoTheMist) // Inverted Skipper
             .Bait(data)
             .Mission(data, 1325)
@@ -149,7 +149,7 @@ public static partial class Fish
             .Mission(data, 1325)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Foregone Oasis  Large Aquatic Resource Emergency
+        // Foregone Oasis   Large Aquatic Resource Emergency
         data.Apply(50110, Patch.IntoTheMist) // Voyaging Loach
             .Bait(data)
             .Mission(data, 1326)
@@ -167,7 +167,7 @@ public static partial class Fish
             .Mission(data, 1326)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Megalithopolis  Valuable Plains Specimens
+        // Megalithopolis   Valuable Plains Specimens
         data.Apply(50114, Patch.IntoTheMist) // Inverted Skipper
             .Bait(data)
             .Mission(data, 1327)
@@ -185,7 +185,7 @@ public static partial class Fish
             .Mission(data, 1327)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Magnetic Horizon  Magnetic Horizon Environmental Survey
+        // Magnetic Horizon   Magnetic Horizon Environmental Survey
         data.Apply(50118, Patch.IntoTheMist) // Inverted Anchovy
             .Bait(data)
             .Mission(data, 1328)
@@ -207,7 +207,7 @@ public static partial class Fish
             .Mission(data, 1328)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Collapsed Tunnel  Freshwater Arthrolure Testing
+        // Collapsed Tunnel   Freshwater Arthrolure Testing
         data.Apply(50123, Patch.IntoTheMist) // Upside-down Squeaker
             .Bait(data)
             .Mission(data, 1329)
@@ -229,7 +229,7 @@ public static partial class Fish
             .Mission(data, 1329)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Magnetic Horizon  Oceanic Impesctor Research
+        // Magnetic Horizon   Oceanic Impesctor Research
         data.Apply(50128, Patch.IntoTheMist) // Inverted Anchovy
             .Bait(data)
             .Mission(data, 1330)
@@ -251,7 +251,7 @@ public static partial class Fish
             .Mission(data, 1330)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Collapsed Tunnel  Valuable Ruin Specimens
+        // Collapsed Tunnel   Valuable Ruin Specimens
         data.Apply(50133, Patch.IntoTheMist) // Upside-down Squeaker
             .Bait(data)
             .Mission(data, 1331)
@@ -273,7 +273,7 @@ public static partial class Fish
             .Mission(data, 1331)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Magnetic Horizon  Anomaly Adaptation Aquaculture Survey
+        // Magnetic Horizon   Anomaly Adaptation Aquaculture Survey
         data.Apply(50138, Patch.IntoTheMist) // Inverted Anchovy
             .Bait(data)
             .Mission(data, 1332)
@@ -657,7 +657,7 @@ public static partial class Fish
             .Mission(data, 1347)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Magnetic Horizon  Iron Coral Collection
+        // Magnetic Horizon   Iron Coral Collection
         data.Apply(50226, Patch.IntoTheMist) // Inverted Anchovy
             .Bait(data)
             .Mission(data, 1368)
@@ -667,7 +667,7 @@ public static partial class Fish
             .Mission(data, 1368)
             .Bite(data, HookSet.Unknown, BiteType.Unknown);
 
-        // Megalithopolis  Sunken Relic Salvage
+        // Megalithopolis   Sunken Relic Salvage
         data.Apply(50228, Patch.IntoTheMist) // Inverted Skipper
             .Bait(data)
             .Mission(data, 1369)
