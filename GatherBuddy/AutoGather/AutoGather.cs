@@ -676,7 +676,7 @@ namespace GatherBuddy.AutoGather
                     }
                     else
                     {
-                        ReduceItems(true);
+                        ReduceItems(GatherBuddy.Config.AutoGatherConfig.AlwaysReduceAllItems);
                         return;
                     }
                 }
@@ -724,7 +724,36 @@ namespace GatherBuddy.AutoGather
                     AbortAutoGather();
                     return;
                 }
-                
+
+                if (GatherBuddy.CollectableManager?.IsRunning == true)
+                {
+                    AutoStatus = "Turning in collectables...";
+                    return;
+                }
+
+                if (HasCollectables())
+                {
+                    AutoStatus = "Turning in collectables...";
+                    GatherBuddy.CollectableManager?.Start();
+                    return;
+                }
+
+                var waitAtAetheryte = false;
+                if (GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode)
+                {
+                    var nextTimed = _activeItemList.PeekNextTimed();
+                    waitAtAetheryte = nextTimed != default;
+                    if (waitAtAetheryte && nextTimed.Location.Territory.Id != currentTerritory)
+                    {
+                        // Replace next target and fall through to teleport to its location.
+                        next = nextTimed;
+                    }
+                }
+
+                if (!waitAtAetheryte && GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
+                    if (GoHome())
+                        return;
+
                 if (HasReducibleItems())
                 {
                     if (Player.Job == 18 /* FSH */)
@@ -767,35 +796,6 @@ namespace GatherBuddy.AutoGather
 
                     return;
                 }
-
-                if (GatherBuddy.CollectableManager?.IsRunning == true)
-                {
-                    AutoStatus = "Turning in collectables...";
-                    return;
-                }
-
-                if (HasCollectables())
-                {
-                    AutoStatus = "Turning in collectables...";
-                    GatherBuddy.CollectableManager?.Start();
-                    return;
-                }
-
-                var waitAtAetheryte = false;
-                if (GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode)
-                {
-                    var nextTimed = _activeItemList.PeekNextTimed();
-                    waitAtAetheryte = nextTimed != default;
-                    if (waitAtAetheryte && nextTimed.Location.Territory.Id != currentTerritory)
-                    {
-                        // Replace next target and fall through to teleport to its location.
-                        next = nextTimed;
-                    }
-                }
-
-                if (!waitAtAetheryte && GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle)
-                    if (GoHome())
-                        return;
 
                 if (next == default)
                 {
