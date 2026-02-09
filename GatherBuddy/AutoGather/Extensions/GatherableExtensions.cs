@@ -37,22 +37,24 @@ public static class GatherableExtensions
     /// <param name="gatherable">The gatherable item to check.</param>
     /// <param name="checkRetainers">Check retainer inventory.</param>
     /// <returns>The count of the item in the inventory.</returns>
-    public unsafe static int GetInventoryCount(this IGatherable gatherable)
+    public static unsafe int GetInventoryCount(this IGatherable gatherable)
+    {
+        var inventory = InventoryManager.Instance();
+        var count = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
+
+        if (gatherable.ItemData.IsCollectable)
+            count += inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 1);
+
+        return count;
+    }
+
+    public static int GetTotalCount(this IGatherable gatherable)
     {
         if (GatherBuddy.Config.AutoGatherConfig.CheckRetainers && AllaganTools.Enabled)
         {
             return (int)AllaganTools.ItemCountOwned(gatherable.ItemId, true, _inventoryTypesArray);
         }
 
-        var inventory = InventoryManager.Instance();
-        
-        if (gatherable.ItemData.IsCollectable)
-        {
-            var collectableCount = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 1);
-            var normalCount = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
-            return collectableCount + normalCount;
-        }
-        
-        return inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
+        return gatherable.GetInventoryCount();
     }
 }

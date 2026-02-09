@@ -52,36 +52,36 @@ namespace GatherBuddy.CustomInfo
                 using (var reader = new StreamReader(stream))
                 {
                     var defaultContent = reader.ReadToEnd();
-                    defaultObj = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(defaultContent, settings);
+                    defaultObj = JsonConvert.DeserializeObject<T>(defaultContent, settings) ?? throw new InvalidDataException($"Failed to deserialize embedded resource {resourceName}.");
                 }
             }
 
             // Check if the file exists
             if (!File.Exists(path))
             {
-                File.WriteAllText(path, Newtonsoft.Json.JsonConvert.SerializeObject(defaultObj, Newtonsoft.Json.Formatting.Indented, settings));
+                File.WriteAllText(path, JsonConvert.SerializeObject(defaultObj, Formatting.Indented, settings));
             }
             else
             {
                 var fileContent = File.ReadAllText(path);
-                var existingObj = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(fileContent, settings)
+                var existingObj = JsonConvert.DeserializeObject<T>(fileContent, settings)
                  ?? Activator.CreateInstance<T>();
 
                 // Depending on the type of T, you might need to perform different operations here
                 // In this case we assume T is a Dictionary<uint, List<Vector3>>, but for other types T you might need other merge operations 
                 if (defaultObj is Dictionary<uint, List<Vector3>> defaultDict1 && existingObj is Dictionary<uint, List<Vector3>> existingDict1)
                 {
-                    File.WriteAllText(path, Newtonsoft.Json.JsonConvert.SerializeObject(MergeData(defaultDict1, existingDict1), Newtonsoft.Json.Formatting.Indented, settings));
+                    File.WriteAllText(path, JsonConvert.SerializeObject(MergeData(defaultDict1, existingDict1), Formatting.Indented, settings));
                 }
                 else if (defaultObj is List<OffsetPair> defaultDict2 && existingObj is List<OffsetPair> existingDict2)
                 {
-                    File.WriteAllText(path, Newtonsoft.Json.JsonConvert.SerializeObject(MergeData(defaultDict2, existingDict2), Newtonsoft.Json.Formatting.Indented, settings));
+                    File.WriteAllText(path, JsonConvert.SerializeObject(MergeData(defaultDict2, existingDict2), Formatting.Indented, settings));
                 }
             }
 
             // Read the content of the file
             var locJson = File.ReadAllText(path);
-            var obj     = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(locJson, settings);
+            var obj     = JsonConvert.DeserializeObject<T>(locJson, settings);
             return obj ?? Activator.CreateInstance<T>();
         }
 
@@ -128,7 +128,7 @@ namespace GatherBuddy.CustomInfo
         public static void SaveOffsetsToFile()
         {
             var settings = new JsonSerializerSettings();
-            var offsetJson = Newtonsoft.Json.JsonConvert.SerializeObject(NodeOffsets.Select(x => new OffsetPair(x.Key, x.Value)).ToList(), Formatting.Indented, settings);
+            var offsetJson = JsonConvert.SerializeObject(NodeOffsets.Select(x => new OffsetPair(x.Key, x.Value)).ToList(), Formatting.Indented, settings);
             
             File.WriteAllText(NodeOffsetsPath, offsetJson);
         }
@@ -158,7 +158,7 @@ namespace GatherBuddy.CustomInfo
 
         public static void SaveLocationsToFile()
         {
-            var locJson = Newtonsoft.Json.JsonConvert.SerializeObject(WorldLocationsByNodeId, Newtonsoft.Json.Formatting.Indented);
+            var locJson = JsonConvert.SerializeObject(WorldLocationsByNodeId, Formatting.Indented);
 
             File.WriteAllText(WorldLocationsPath, locJson);
         }

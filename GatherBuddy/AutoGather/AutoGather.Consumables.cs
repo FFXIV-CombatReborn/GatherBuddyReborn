@@ -100,7 +100,7 @@ namespace GatherBuddy.AutoGather
 
         public unsafe bool GetIsFoodBuffUp(uint itemId)
         {
-            var buff = Dalamud.ClientState?.LocalPlayer?.StatusList.FirstOrDefault(s => s.StatusId == 48);
+            var buff = Player.Status.FirstOrDefault(s => s.StatusId == 48);
             if (buff == null)
             {
                 return false;
@@ -121,7 +121,7 @@ namespace GatherBuddy.AutoGather
 
         public unsafe bool GetIsPotionBuffUp(uint itemId)
         {
-            var buff = Dalamud.ClientState?.LocalPlayer?.StatusList.FirstOrDefault(s => s.StatusId == 49);
+            var buff = Player.Status.FirstOrDefault(s => s.StatusId == 49);
             if (buff == null)
             {
                 return false;
@@ -140,13 +140,13 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public unsafe bool IsManualBuffUp => Dalamud.ClientState?.LocalPlayer?.StatusList.Any(s => s.StatusId == 46) ?? false;
+        public unsafe bool IsManualBuffUp => Player.Status.Any(s => s.StatusId == 46);
 
         public unsafe bool GetIsSquadronManualBuffUp(uint itemId)
         {
             if (SquadronManualItemIdBuffId.TryGetValue(itemId, out var requiredBuffId))
             {
-                return Dalamud.ClientState?.LocalPlayer?.StatusList.Any(s => s.StatusId == requiredBuffId) ?? false;
+                return Player.Status.Any(s => s.StatusId == requiredBuffId);
             }
             else
             {
@@ -158,7 +158,7 @@ namespace GatherBuddy.AutoGather
         {
             if (SquadronPassItemIdBuffId.TryGetValue(itemId, out var requiredBuffId))
             {
-                return Dalamud.ClientState?.LocalPlayer?.StatusList.Any(s => s.StatusId == requiredBuffId) ?? false;
+                return Player.Status.Any(s => s.StatusId == requiredBuffId);
             }
             else
             {
@@ -179,6 +179,7 @@ namespace GatherBuddy.AutoGather
                 if (config.Consumables.Cordial.Enabled
                     && config.Consumables.Cordial.ItemId > 0
                     && !IsCordialOnCooldown
+                    && Player.Object != null
                     && Player.Object.CurrentGp >= config.Consumables.Cordial.MinGP
                     && Player.Object.CurrentGp <= config.Consumables.Cordial.MaxGP
                     && Player.Object.CurrentGp < Player.Object.MaxGp

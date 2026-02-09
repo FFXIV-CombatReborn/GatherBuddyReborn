@@ -158,8 +158,10 @@ namespace GatherBuddy.AutoGather
         /// </summary>
         /// <returns>UseSkills: True if the selected item is in the gathering list; false if we gather a collectable or some unneeded junk
         /// Slot: ItemSlot of item to gather</returns>
-        private (bool UseSkills, ItemSlot Slot) GetItemSlotToGather(IEnumerable<GatherTarget> gatherTarget)
+        private (bool UseSkills, ItemSlot Slot) GetItemSlotToGather(GatherTarget gatherTarget)
         {
+            System.Diagnostics.Debug.Assert(gatherTarget == default || gatherTarget.Gatherable != null && gatherTarget.Node != null);
+
             if (GatheringWindowReader == null)
                 throw new InvalidOperationException("GatheringWindowReader is null");
             var available = GatheringWindowReader.ItemSlots
@@ -172,7 +174,9 @@ namespace GatherBuddy.AutoGather
                 return (false, available.First(i => i.Item.IsTreasureMap));
             }
 
-            var target = available.FirstOrDefault(a => gatherTarget.Any(i => i.Gatherable?.ItemId == a.Item.ItemId));
+            var target = gatherTarget != default
+                ? available.FirstOrDefault(a => gatherTarget.Gatherable?.ItemId == a.Item.ItemId)
+                : null;
 
             //Gather crystals when using The Giving Land
             if (HasGivingLandBuff && (target == null || !target.Item.IsCrystal))
@@ -182,7 +186,7 @@ namespace GatherBuddy.AutoGather
                     return (true, crystal);
             }
 
-            if (target != null && target.Item.GetInventoryCount() < gatherTarget.First(t => t.Gatherable?.ItemId == target.Item.ItemId).Quantity)
+            if (target != null && target.Item.GetTotalCount() < gatherTarget.Quantity)
             {
                 //The target item is found in the node, would not overcap and we need to gather more of it
                 return (!target.IsCollectable, target);
@@ -191,10 +195,7 @@ namespace GatherBuddy.AutoGather
             //Items in the gathering list
             var gatherList = ItemsToGather
                 //Join node slots, retaining list order
-                .Join(available, i => i.Item, s => s.Item, (i, s) => (Slot: s, i.Quantity))
-                //And we need more of them
-                .Where(x => x.Slot.Item.GetInventoryCount() < x.Quantity)
-                .Select(x => x.Slot);
+                .Join(available, i => i.Item, s => s.Item, (i, s) => s);
 
             //Items in the fallback list
             var fallbackList = _plugin.AutoGatherListsManager.FallbackItems
@@ -220,16 +221,12 @@ namespace GatherBuddy.AutoGather
                 return (fallbackSkills && !slot.IsCollectable, slot);
             }
 
-            if (Diadem.IsInside && gatherTarget.Any())
+            if (Diadem.IsInside && gatherTarget != default && gatherTarget.Gatherable != null)
             {
-                var targetLevels = gatherTarget
-                    .Where(gt => gt.Gatherable != null)
-                    .Select(gt => gt.Gatherable!.Level)
-                    .Distinct()
-                    .ToHashSet();
+                var targetLevel = gatherTarget.Gatherable.Level;
 
                 slot = available
-                    .Where(s => s.Item != null && targetLevels.Contains(s.Item.Level))
+                    .Where(s => s.Item != null && s.Item.Level == targetLevel)
                     .Where(s => !s.Item!.IsTreasureMap && !s.IsCollectable)
                     .OrderByDescending(s => s.ItemLevel)
                     .FirstOrDefault();
@@ -284,14 +281,14 @@ namespace GatherBuddy.AutoGather
             if (GatheringWindowReader == null)
                 throw new InvalidOperationException("GatheringWindowReader is null");
             return GatheringWindowReader.ItemSlots
-                .Where(s => s.Item != null)
-                .Where(s => s.Item!.IsCrystal)
+                .Where(s => !s.IsEmpty)
+                .Where(s => s.Item.IsCrystal)
                 .Where(CheckItemOvercap)
                 //Prioritize crystals in the gathering list
                 .GroupJoin(_activeItemList.Where(i => i.Gatherable?.IsCrystal ?? false), s => s.Item, i => i.Item, (s, x) => (Slot: s, Order: x.Any()?1:0))
                 .OrderBy(x => x.Order)
                 //Prioritize crystals with a lower amount in the inventory
-                .ThenBy(x => x.Slot.Item!.GetInventoryCount())
+                .ThenBy(x => x.Slot.Item.GetInventoryCount())
                 .Select(x => x.Slot)
                 .FirstOrDefault();
         }

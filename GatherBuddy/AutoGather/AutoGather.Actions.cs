@@ -69,7 +69,8 @@ namespace GatherBuddy.AutoGather
                 return false;
             if (!IsGivingLandOffCooldown)
                 return false;
-            if (slot.Item.GetInventoryCount() > 9999 - GivingLandYield - slot.Yield)
+            // TGL's provided bonus no longer overcaps in Dawntrail, but keep it at least 5 to avoid wasting GP.
+            if (slot.Item.GetInventoryCount() > 9999 - 5 - slot.Yield)
                 return false;
 
             return true;
@@ -79,7 +80,7 @@ namespace GatherBuddy.AutoGather
         {
             if (!CheckConditions(Actions.TwelvesBounty, config.TwelvesBounty, slot.Item, slot))
                 return false;
-            if (slot.Item.GetInventoryCount() > 9999 - 3)
+            if (slot.Item.GetInventoryCount() > 9999 - 3 - slot.Yield)
                 return false;
 
             return true;
@@ -110,7 +111,7 @@ namespace GatherBuddy.AutoGather
         }
 
 
-        private unsafe void DoActionTasks(IEnumerable<GatherTarget> target)
+        private unsafe void DoActionTasks(GatherTarget target)
         {
             if (MasterpieceReader?.IsValid == true)
             {
@@ -327,8 +328,10 @@ namespace GatherBuddy.AutoGather
             return null;
         }
 
-        private unsafe void DoGatherWindowActions(IEnumerable<GatherTarget> target)
+        private unsafe void DoGatherWindowActions(GatherTarget target)
         {
+            System.Diagnostics.Debug.Assert(target == default || target.Gatherable != null);
+
             if (GatheringWindowReader == null)
                 return;
 
@@ -338,14 +341,11 @@ namespace GatherBuddy.AutoGather
             }
             LastIntegrity = GatheringWindowReader.IntegrityRemaining;
 
-            foreach (var t in target)
+            //Use The Giving Land out of order to gather random crystals.
+            if (target != default && ShouldUseGivingLandOutOfOrder(target.Gatherable))
             {
-                //Use The Giving Land out of order to gather random crystals.
-                if (ShouldUseGivingLandOutOfOrder(t.Gatherable))
-                {
-                    EnqueueActionWithDelay(() => UseAction(Actions.GivingLand));
-                    return;
-                }
+                EnqueueActionWithDelay(() => UseAction(Actions.GivingLand));
+                return;
             }
 
             if (!LuckUsed && GatheringWindowReader.HasUnhidden)
@@ -354,14 +354,11 @@ namespace GatherBuddy.AutoGather
                 LuckUsed = true;
             }
 
-            foreach (var t in target)
+            if (target != default && !HasGivingLandBuff && ShouldUseLuck(target.Gatherable))
             {
-                if (!HasGivingLandBuff && ShouldUseLuck(t.Gatherable))
-                {
-                    LuckUsed = true;
-                    EnqueueActionWithDelay(() => UseAction(Actions.Luck));
-                    return;
-                }
+                LuckUsed = true;
+                EnqueueActionWithDelay(() => UseAction(Actions.Luck));
+                return;
             }
 
             var (useSkills, slot) = GetItemSlotToGather(target);
@@ -554,7 +551,7 @@ namespace GatherBuddy.AutoGather
         private bool CheckConditions(Actions.BaseAction action, ConfigPreset.ActionConfig config, Gatherable item, ItemSlot slot,
             bool autoMode = false)
         {
-            if (GatheringWindowReader == null)
+            if (GatheringWindowReader == null || Player.Object == null)
                 return false;
             // autoMode = true is used for TGL out-of-order check that occurs before the rotation solver kicks in.
             if (config.Enabled == false && !autoMode)

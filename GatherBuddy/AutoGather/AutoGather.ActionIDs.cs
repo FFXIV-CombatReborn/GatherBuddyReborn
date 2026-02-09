@@ -11,11 +11,11 @@ public partial class AutoGather
     {
         public class FishingAction(uint actionId, int minLevel = 1, int gpCost = 0, uint[]? statusProvide = null)
         {
-            public readonly uint    ActionId      = actionId;
-            public readonly int     MinLevel      = minLevel;
-            public readonly int     GpCost        = gpCost;
-            public readonly uint[]? StatusProvide = statusProvide;
-            public string  Name          => Dalamud.GameData.Excel.GetSheet<Action>().GetRow(actionId).Name.ExtractText();
+            public uint    ActionId      => actionId;
+            public int     MinLevel      => minLevel;
+            public int     GpCost        => gpCost;
+            public uint[]? StatusProvide => statusProvide;
+            public string  Name          => field ??= Dalamud.GameData.Excel.GetSheet<Action>().GetRow(actionId).Name.ExtractText();
         }
 
         public enum EffectType

@@ -26,10 +26,10 @@ public partial class Fish : IComparable<Fish>, IGatherable
     public SpearFishRow? SpearfishData
         => _fishData is SpearFishRow s ? s : null;
 
-    public IList<FishingSpot> FishingSpots { get; init; } = new List<FishingSpot>();
+    public List<FishingSpot> FishingSpots { get; init; } = new List<FishingSpot>();
     public MultiString        Name         { get; init; }
 
-    public IEnumerable<ILocation> Locations
+    public IReadOnlyList<ILocation> Locations
         => FishingSpots;
 
     public int InternalLocationId { get; internal set; }

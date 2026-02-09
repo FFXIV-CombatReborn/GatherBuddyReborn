@@ -925,7 +925,7 @@ public partial class Interface
                         text.AppendLine(" empty;");
                         continue;
                     }
-                    text.Append($" {n.Item?.Name[GatherBuddy.Language] ?? "None"};");
+                    text.Append($" {(!n.IsEmpty ? n.Item.Name[GatherBuddy.Language] : "None")};");
                     //if (!n.Enabled) text.Append(" disabled;");
                     text.Append($" level: {n.ItemLevel}; yield: {n.Yield}{(n.HasGivingLandBuff ? "+?" : "")}; chance: {n.GatherChance}; boon: {n.BoonChance};");
                     if (n.IsHidden) text.Append(" hidden;");

@@ -78,6 +78,8 @@ namespace GatherBuddy.AutoGather
 
         private void MoveToCloseNode(IGameObject gameObject, Gatherable targetItem, ConfigPreset config)
         {
+            if (!Player.Available) return;
+
             // We can open a node with less than 3 vertical and less than 3.5 horizontal separation
             var hSeparation = Vector2.Distance(gameObject.Position.ToVector2(), Player.Position.ToVector2());
             var vSeparation = Math.Abs(gameObject.Position.Y - Player.Position.Y);
@@ -215,6 +217,7 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void SetRotation(Angle angle)
         {
+            if (!Player.Available) return;
             var playerObject = (GameObject*)Player.Object.Address;
             GatherBuddy.Log.Debug($"Setting rotation to {angle.Rad}");
             playerObject->SetRotation(angle.Rad);

@@ -90,7 +90,7 @@ namespace GatherBuddy.AutoGather.Helpers
         //because many decimal numbers can't be represented by float.
         private readonly record struct State()
         {
-            public GlobalState Global { get; init; }
+            public required GlobalState Global { get; init; }
             public uint TotalYield { get; init; } // Milli
             public ushort GP { get; init; }
             public byte Integrity { get; init; }
@@ -252,6 +252,7 @@ namespace GatherBuddy.AutoGather.Helpers
         public static async Task<IEnumerable<Actions.BaseAction?>> SolveAsync(ItemSlot slot, ConfigPreset config, GatheringReader gatheringWindow)
         {
             Debug.Assert(Dalamud.Framework.IsInFrameworkUpdateThread);
+            Debug.Assert(Player.Available);
 
             if (slot.IsRare)
                 return [];

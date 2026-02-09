@@ -27,6 +27,7 @@
 	</PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="AutoGather\GatheringTracker.cs" />
     <Compile Remove="Plugin\AutoGather.cs" />
   </ItemGroup>
 
@@ -68,5 +69,9 @@
 
 	<ItemGroup>
 	  <EmbeddedResource Include="CustomInfo\ScripShopItems.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Include="AutoGather\GatheringTracker.cs" />
 	</ItemGroup>
 </Project>
