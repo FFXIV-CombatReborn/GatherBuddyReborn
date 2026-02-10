@@ -221,8 +221,8 @@ namespace GatherBuddy.AutoGather.Lists
                 })
                 // Apply predators and mooch dependencies time restrictions.
                 .Select(x => x with { Time = IntersectMoochUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
-                .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
                 .Select(x => x with { Location = CorrectForPredatorLocation(x.Item, x.Location) })
+                .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
                 // Remove uptime for nodes that have already been gathered.
                 .Select(x => x.Location is GatheringNode node && _visitedTimedNodes.ContainsKey(node) ? x with { Time = TimeInterval.Invalid } : x)
                 // Group by item and select the best node.
@@ -330,7 +330,6 @@ namespace GatherBuddy.AutoGather.Lists
                     }
                     else if (shadowSpot.ParentNode != null)
                     {
-                        // First predator not met - use parent node to gather it
                         location = shadowSpot.ParentNode;
                         GatherBuddy.Log.Debug($"[ActiveItemList] First predator not met for {fish.Name[GatherBuddy.Language]}, using parent node");
                     }

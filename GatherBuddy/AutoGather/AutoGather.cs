@@ -398,6 +398,7 @@ namespace GatherBuddy.AutoGather
                     _activeItemList.MarkVisited(targetNode);
                     var gatherable = gatherTarget.Gatherable;
                     var node = gatherTarget.Node;
+                    var fishingSpot = gatherTarget.FishingSpot;
                     
                     if (gatherable != null && (gatherable.NodeType == NodeType.Regular || gatherable.NodeType == NodeType.Ephemeral)
                         && VisitedNodes.LastOrDefault() != targetNode.BaseId
@@ -410,7 +411,18 @@ namespace GatherBuddy.AutoGather
 
                         if (node.WorldPositions.Count > 2)
                             VisitedNodes.Add(targetNode.BaseId);
+                    }
+                    else if (gatherTarget.Fish?.IsSpearFish == true && fishingSpot != null
+                        && VisitedNodes.LastOrDefault() != targetNode.BaseId
+                        && fishingSpot.WorldPositions.ContainsKey(targetNode.BaseId))
+                    {
+                        FarNodesSeenSoFar.Clear();
 
+                        while (VisitedNodes.Count > (fishingSpot.WorldPositions.Count <= 4 ? 2 : 4) - 1)
+                            VisitedNodes.RemoveAt(0);
+
+                        if (fishingSpot.WorldPositions.Count > 2)
+                            VisitedNodes.Add(targetNode.BaseId);
                     }
                 }
                 // Unset the current gather target when leaving the node
