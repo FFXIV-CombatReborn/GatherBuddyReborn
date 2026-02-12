@@ -109,8 +109,8 @@ namespace GatherBuddy.AutoGather
         private int _consecutiveAmissCount = 0;
         private DateTime _stuckAtSpotStartTime = DateTime.MinValue;
         private DateTime _lastJiggleTime = DateTime.MinValue;
-        private readonly Dictionary<GatherTarget, Vector3> _originalFishingSpotTargets = new();
-        private readonly Dictionary<GatherTarget, List<(Vector3 Position, DateTime Time)>> _recentJigglePositions = new();
+        private readonly Dictionary<GatherTarget, int> _jiggleAttempts = new();
+        private readonly Dictionary<GatherTarget, DateTime> _fishingSpotArrivalTime = new();
         private const uint FishWaryMessageId = 5517;
         private const uint FishAmissMessageId = 3516;
         private Lumina.Excel.ExcelSheet<Lumina.Excel.Sheets.LogMessage>? _cachedLogMessages;
@@ -241,8 +241,8 @@ namespace GatherBuddy.AutoGather
                     _consecutiveAmissCount = 0;
                     _stuckAtSpotStartTime = DateTime.MinValue;
                     _lastJiggleTime = DateTime.MinValue;
-                    _originalFishingSpotTargets.Clear();
-                    _recentJigglePositions.Clear();
+                    _jiggleAttempts.Clear();
+                    _fishingSpotArrivalTime.Clear();
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
 
                     ClearSpearfishingSessionData();
@@ -515,6 +515,26 @@ namespace GatherBuddy.AutoGather
                 }
 
                 return;
+            }
+
+            if (Player.Job == 18 /* FSH */ && _currentGatherTarget != null && IsFishing)
+            {
+                var fish = _currentGatherTarget.GetValueOrDefault();
+                if (FishingSpotData.TryGetValue(fish, out var fishingSpotData))
+                {
+                    if (GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes > 0 && fishingSpotData.Expiration < DateTime.Now)
+                    {
+                        GatherBuddy.Log.Information($"[AutoGather] Fishing spot timer expired in main loop ({GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes} minutes), relocating...");
+                        
+                        if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                        {
+                            AutoHook.SetPluginState?.Invoke(false);
+                            AutoHook.SetAutoStartFishing?.Invoke(false);
+                        }
+                        QueueQuitFishingTasks();
+                        return;
+                    }
+                }
             }
 
             if (IsGathering)
@@ -1296,6 +1316,7 @@ namespace GatherBuddy.AutoGather
 
             if (IsFishing)
             {
+                GatherBuddy.Log.Debug($"[AutoGather] IsFishing block entered, timer will be checked. MaxFishingSpotMinutes={GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes}, Expiration={fishingSpotData.Expiration}");
                 if (_fishWaryDetected)
                 {
                     _fishWaryDetected = false;
@@ -1538,7 +1559,26 @@ namespace GatherBuddy.AutoGather
                 if (playerAngle != fishingSpotData.Rotation)
                 {
                     TaskManager.Enqueue(() => SetRotation(fishingSpotData.Rotation));
+                    _fishingSpotArrivalTime.Remove(fish);
                     AutoStatus = "Adjusting rotation...";
+                    return;
+                }
+
+                if (TaskManager.IsBusy)
+                {
+                    AutoStatus = "Waiting for rotation...";
+                    return;
+                }
+
+                if (!_fishingSpotArrivalTime.ContainsKey(fish))
+                {
+                    _fishingSpotArrivalTime[fish] = DateTime.Now;
+                }
+                
+                var timeSinceArrival = (DateTime.Now - _fishingSpotArrivalTime[fish]).TotalSeconds;
+                if (timeSinceArrival < 1.0)
+                {
+                    AutoStatus = $"Waiting to check Cast ({1.0 - timeSinceArrival:F1}s)...";
                     return;
                 }
 
@@ -1554,119 +1594,77 @@ namespace GatherBuddy.AutoGather
                 }
 
 
-                var fishingState = GatherBuddy.EventFramework.FishingState;
-                if (!IsFishing && fishingState == FishingState.None)
+                uint castStatus;
+                unsafe
                 {
-                    if (_stuckAtSpotStartTime == DateTime.MinValue)
+                    castStatus = ActionManager.Instance()->GetActionStatus(ActionType.Action, 289);
+                }
+
+                if (castStatus != 0)
+                {
+                    GatherBuddy.Log.Debug($"[AutoGather] Cast action status is {castStatus}, checking if jiggle needed");
+
+                    var attemptCount = _jiggleAttempts.GetValueOrDefault(fish, 0);
+                    if (attemptCount >= 3)
                     {
-                        _stuckAtSpotStartTime = DateTime.Now;
-                    }
-                    else if ((DateTime.Now - _stuckAtSpotStartTime).TotalSeconds > 15)
-                    {
-                        if ((DateTime.Now - _lastJiggleTime).TotalSeconds < 30)
-                        {
-                            GatherBuddy.Log.Debug($"[AutoGather] Jiggle on cooldown, {30 - (DateTime.Now - _lastJiggleTime).TotalSeconds:F0}s remaining");
-                            return;
-                        }
-
-                        GatherBuddy.Log.Warning("[AutoGather] Stuck at fishing spot for 15 seconds without fishing. Initiating hybrid jiggle movement.");
-
-                        if (!_originalFishingSpotTargets.TryGetValue(fish, out var originalTarget))
-                        {
-                            GatherBuddy.Log.Warning("[AutoGather] No original target tracked, using current position as anchor");
-                            originalTarget = fishingSpotData.Position;
-                            _originalFishingSpotTargets[fish] = originalTarget;
-                        }
-
-                        var random = new Random();
-                        Vector3 newPos = fishingSpotData.Position;
-                        Angle newRotation = fishingSpotData.Rotation;
-                        bool foundPos = false;
-
-                        uint castStatus;
-                        unsafe
-                        {
-                            castStatus = ActionManager.Instance()->GetActionStatus(ActionType.Action, 289);
-                        }
-
-                        if (castStatus != 0)
-                        {
-                            GatherBuddy.Log.Information($"[AutoGather] Cast action status is {castStatus} (Out of Range?). Attempting safe guided step toward target.");
-                            var direction = Vector3.Normalize(originalTarget - fishingSpotData.Position);
-                            if (float.IsFinite(direction.X))
-                            {
-                                var testPos = fishingSpotData.Position + direction * 1.0f;
-                                var meshPoint = VNavmesh.Query.Mesh.NearestPoint(testPos, 0.5f, 1.0f);
-                                if (meshPoint.HasValue)
-                                {
-                                    newPos = meshPoint.Value;
-                                    foundPos = true;
-                                    GatherBuddy.Log.Information($"[AutoGather] Found safe guided position {Vector3.Distance(newPos, fishingSpotData.Position):F1}y forward.");
-                                }
-                            }
-                        }
-
-                        if (!foundPos)
-                        {
-                            GatherBuddy.Log.Information("[AutoGather] Performing anchored radius jiggle.");
-                            for (int attempt = 0; attempt < 10; attempt++)
-                            {
-                                var angle = random.NextDouble() * 2 * Math.PI;
-                                var dist = 2.0 + random.NextDouble() * 3.0; // 2-5 yalms from original target
-                                var offset = new Vector3((float)(Math.Cos(angle) * dist), 0, (float)(Math.Sin(angle) * dist));
-                                newPos = originalTarget + offset;
-
-                                var recent = _recentJigglePositions.GetValueOrDefault(fish, new());
-                                var tooClose = recent
-                                    .Where(p => (DateTime.Now - p.Time).TotalMinutes < 5)
-                                    .Any(p => Vector3.Distance(p.Position, newPos) < 2.0f);
-
-                                if (!tooClose)
-                                {
-                                    var meshPoint = VNavmesh.Query.Mesh.NearestPoint(newPos, 5, 10);
-                                    if (meshPoint.HasValue)
-                                    {
-                                        newPos = meshPoint.Value;
-                                        newRotation = ((float)(random.NextDouble() * 2 * Math.PI)).Radians();
-                                        foundPos = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!foundPos)
-                        {
-                            GatherBuddy.Log.Warning("[AutoGather] Could not find valid jiggle position on navmesh, skipping jiggle");
-                            _stuckAtSpotStartTime = DateTime.MinValue;
-                            return;
-                        }
-
-                        if (!_recentJigglePositions.ContainsKey(fish))
-                        {
-                            _recentJigglePositions[fish] = new();
-                        }
-                        _recentJigglePositions[fish].Add((newPos, DateTime.Now));
-                        if (_recentJigglePositions[fish].Count > 5)
-                        {
-                            _recentJigglePositions[fish].RemoveAt(0);
-                        }
-
-                        var distFromOriginal = Vector3.Distance(newPos, originalTarget);
-                        GatherBuddy.Log.Information($"[AutoGather] Jiggling to position {distFromOriginal:F1}y from original node center: {fishingSpotData.Position} → {newPos}");
-
-                        FishingSpotData[fish] = (newPos, newRotation, fishingSpotData.Expiration);
-                        _stuckAtSpotStartTime = DateTime.MinValue;
-                        _lastJiggleTime = DateTime.Now;
-
-                        AutoStatus = "Jiggling to avoid stuck state...";
-                        MoveToFishingSpot(newPos, newRotation);
+                        GatherBuddy.Log.Warning($"[AutoGather] Failed to find valid fishing position after {attemptCount} jiggle attempts, forcing unstuck");
+                        _jiggleAttempts.Remove(fish);
+                        FishingSpotData.Remove(fish);
+                        _advancedUnstuck.ForceFishing();
+                        AutoStatus = "Too many jiggle attempts, finding new spot...";
                         return;
                     }
+
+                    if ((DateTime.Now - _lastJiggleTime).TotalSeconds < 5)
+                    {
+                        GatherBuddy.Log.Debug($"[AutoGather] Jiggle on cooldown, {5 - (DateTime.Now - _lastJiggleTime).TotalSeconds:F0}s remaining");
+                        return;
+                    }
+
+                    GatherBuddy.Log.Information($"[AutoGather] Cast unavailable (status: {castStatus}), attempting position adjustment (attempt {attemptCount + 1}/3)");
+                    
+                    Vector3 newPos;
+                    Angle newRotation = fishingSpotData.Rotation;
+                    bool foundPos = false;
+
+                    var forwardDirection = new Vector3(
+                        (float)Math.Sin(Player.Rotation),
+                        0,
+                        (float)Math.Cos(Player.Rotation)
+                    );
+                    
+                    var stepSize = 1.0f;
+                    var testPos = Player.Position + forwardDirection * stepSize;
+                    var meshPoint = VNavmesh.Query.Mesh.NearestPoint(testPos, 0.5f, 1.0f);
+                    if (meshPoint.HasValue)
+                    {
+                        newPos = meshPoint.Value;
+                        foundPos = true;
+                        GatherBuddy.Log.Information($"[AutoGather] Moving {stepSize:F1}y forward in facing direction");
+                    }
+                    else
+                    {
+                        GatherBuddy.Log.Warning("[AutoGather] Could not find valid adjustment position on navmesh");
+                        _jiggleAttempts[fish] = attemptCount + 1;
+                        _lastJiggleTime = DateTime.Now;
+                        return;
+                    }
+
+                    _jiggleAttempts[fish] = attemptCount + 1;
+                    FishingSpotData[fish] = (newPos, newRotation, fishingSpotData.Expiration);
+                    _lastJiggleTime = DateTime.Now;
+
+                    AutoStatus = "Adjusting position for Cast...";
+                    MoveToFishingSpot(newPos, newRotation);
+                    return;
                 }
                 else
                 {
-                    _stuckAtSpotStartTime = DateTime.MinValue;
+                    if (_jiggleAttempts.ContainsKey(fish))
+                    {
+                        GatherBuddy.Log.Information($"[AutoGather] Cast now available after jiggle, clearing attempt counter");
+                        _jiggleAttempts.Remove(fish);
+                    }
                 }
 
                 StopNavigation();
