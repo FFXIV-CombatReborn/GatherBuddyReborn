@@ -12,10 +12,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-
-using GatherBuddy.Classes;
 using static GatherBuddy.AutoGather.AutoGather;
 using Dalamud.Utility;
+using GatherBuddy.Interfaces;
 
 namespace GatherBuddy.Gui
 {
@@ -201,39 +200,16 @@ namespace GatherBuddy.Gui
                 }
             }
 
-            public ConfigPreset Match(Gatherable? item)
+            public ConfigPreset Match(IGatherable? item)
             {
-                var defaultPreset = Items.LastOrDefault();
-                if (defaultPreset == null)
-                {
-                    defaultPreset = new ConfigPreset { Name = "Default" }.MakeDefault();
-                    Items.Add(defaultPreset);
-                    return defaultPreset;
-                }
-                return item == null
-                    ? defaultPreset
-                    : Items.SkipLast(1).Where(i => i.Match(item)).FirstOrDefault(defaultPreset);
-            }
-
-            public ConfigPreset Match(Fish? item)
-            {
-                var defaultPreset = Items.LastOrDefault();
-                if (defaultPreset == null)
-                {
-                    defaultPreset = new ConfigPreset { Name = "Default" }.MakeDefault();
-                    Items.Add(defaultPreset);
-                    return defaultPreset;
-                }
+                var defaultPreset = Items.Last();
                 return item == null
                     ? defaultPreset
                     : Items.SkipLast(1).Where(i => i.Match(item)).FirstOrDefault(defaultPreset);
             }
         }
 
-        public ConfigPreset MatchConfigPreset(Gatherable? item)
-            => _configPresetsSelector.Match(item);
-
-        public ConfigPreset MatchConfigPreset(Fish? item)
+        public ConfigPreset MatchConfigPreset(IGatherable? item)
             => _configPresetsSelector.Match(item);
 
         public void DrawConfigPresetsTab()
@@ -293,21 +269,9 @@ namespace GatherBuddy.Gui
                             .Select(x => ("", x.name, GatherBuddy.GameData.Gatherables[x.id]));
                         var items = _plugin.AutoGatherListsManager.Lists
                             .Where(x => x.Enabled && !x.Fallback)
-                            .SelectMany(x => x.Items.Select(i => (x.Name, i.Name[GatherBuddy.Language], i as Gatherable)));
-                        var fish = _plugin.AutoGatherListsManager.Lists.Where(x => x.Enabled && !x.Fallback)
-                            .SelectMany(x => x.Items.Select(i => (x.Name, i.Name[GatherBuddy.Language], i as Fish)));
+                            .SelectMany(x => x.Items.Select(i => (x.Name, i.Name[GatherBuddy.Language], i)));
 
                         foreach (var (list, name, item) in items)
-                        {
-                            ImGui.TableNextRow();
-                            ImGui.TableNextColumn();
-                            ImGui.Text(list);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(name);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(MatchConfigPreset(item).Name);
-                        }
-                        foreach (var (list, name, item) in fish)
                         {
                             ImGui.TableNextRow();
                             ImGui.TableNextColumn();

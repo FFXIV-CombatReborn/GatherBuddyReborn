@@ -1,6 +1,7 @@
 using GatherBuddy.Classes;
 using System;
 using Newtonsoft.Json;
+using GatherBuddy.Interfaces;
 
 namespace GatherBuddy.AutoGather
 {
@@ -202,17 +203,23 @@ namespace GatherBuddy.AutoGather
             };
         }
 
-        public bool Match(Gatherable item)
+        public bool Match(IGatherable item)
         {
             if (!Enabled)
                 return false;
 
-            var levelMatch = !ItemLevel.UseGlv && item.Level >= ItemLevel.Min && item.Level <= ItemLevel.Max
-                          || ItemLevel.UseGlv && item.GatheringData.GatheringItemLevel.RowId >= ItemLevel.Min && item.GatheringData.GatheringItemLevel.RowId <= ItemLevel.Max;
+            if (item is Fish && ItemType.Fish)
+                return true;
+
+            if (item is not Gatherable gatherable)
+                return false;
+
+            var levelMatch = !ItemLevel.UseGlv && gatherable.Level >= ItemLevel.Min && gatherable.Level <= ItemLevel.Max
+                          || ItemLevel.UseGlv && gatherable.GatheringData.GatheringItemLevel.RowId >= ItemLevel.Min && gatherable.GatheringData.GatheringItemLevel.RowId <= ItemLevel.Max;
             if (!levelMatch)
                 return false;
 
-            var nodeTypeMatch = item.NodeType switch
+            var nodeTypeMatch = gatherable.NodeType switch
                 {
                     Enums.NodeType.Regular => NodeType.Regular,
                     Enums.NodeType.Unspoiled => NodeType.Unspoiled,
@@ -224,13 +231,10 @@ namespace GatherBuddy.AutoGather
             if (!nodeTypeMatch)
                 return false;
 
-            return item.IsCrystal && ItemType.Crystals
-                || item.ItemData.IsCollectable && ItemType.Collectables
-                || !item.IsCrystal && !item.ItemData.IsCollectable && ItemType.Other;
+            return gatherable.IsCrystal && ItemType.Crystals
+                || gatherable.ItemData.IsCollectable && ItemType.Collectables
+                || !gatherable.IsCrystal && !gatherable.ItemData.IsCollectable && ItemType.Other;
         }
-
-        public bool Match(Fish fish)
-            => Enabled && ItemType.Fish;
 
         public string ToBase64String()
         {
