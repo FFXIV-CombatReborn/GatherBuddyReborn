@@ -201,8 +201,10 @@ namespace GatherBuddy.AutoGather
             var fallbackList = _plugin.AutoGatherListsManager.FallbackItems
                 //Join node slots, retaining list order
                 .Join(available, i => i.Item, s => s.Item, (i, s) => (Slot: s, i.Quantity))
+                //Check for overcap
+                .Where(x => CheckItemOvercap(x.Slot))
                 //And we need more of them
-                .Where(x => x.Slot.Item.GetInventoryCount() < x.Quantity)
+                .Where(x => x.Slot.Item.GetTotalCount() < x.Quantity)
                 .Select(x => x.Slot);
 
             var fallbackSkills = GatherBuddy.Config.AutoGatherConfig.UseSkillsForFallbackItems;
