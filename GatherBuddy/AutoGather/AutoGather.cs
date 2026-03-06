@@ -1927,7 +1927,7 @@ namespace GatherBuddy.AutoGather
                     .DefaultIfEmpty()
                     .MinBy(o => Vector2.DistanceSquared(mapMarker.Value, o.Position.ToVector2()));
 
-                if (selectedFarNode == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.Position.ToVector2()) > 10 * 10)
+                if (selectedFarNode.Position == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.Position.ToVector2()) > 10 * 10)
                 {
                     var point = new Vector3(mapMarker.Value.X, 0, mapMarker.Value.Y);
                     selectedFarNode = (null, VNavmesh.Query.Mesh.NearestPoint(point, 10, 10000).GetValueOrDefault(point));
@@ -1941,7 +1941,7 @@ namespace GatherBuddy.AutoGather
                     .DefaultIfEmpty()
                     .MinBy(v => Vector2.DistanceSquared(mapMarker ?? Player.Position.ToVector2(), v.Position.ToVector2()));
 
-                if (selectedFarNode == default)
+                if (selectedFarNode.Position == default)
                 {
                     FarNodesSeenSoFar.Clear();
                     GatherBuddy.Log.Verbose($"Selected node was null and far node filters have been cleared");
