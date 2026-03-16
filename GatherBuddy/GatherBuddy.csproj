@@ -53,7 +53,7 @@
 	  <ProjectReference Include="..\GatherBuddy.GameData\GatherBuddy.GameData.csproj" />
 	  <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />
 	  <ProjectReference Include="..\ElliLib\ElliLib.csproj" />
-	  <ProjectReference Include="..\..\ElliCon\ElliCon.csproj" />
+	  <ProjectReference Include="..\ElliCon\ElliCon.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
