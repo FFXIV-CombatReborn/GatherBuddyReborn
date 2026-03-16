@@ -26,6 +26,8 @@ jobs:
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: 10.0.x
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Download Dalamud Latest
         run: |
@@ -37,6 +39,19 @@ jobs:
 
       - name: Build Plugin
         run: dotnet build --no-restore -c Release Gatherbuddy/Gatherbuddy.csproj -p:AssemblyVersion=${{ env.tag }} -p:FileVersion=${{ env.tag }} -p:PackageVersion=${{ env.tag }} -p:InformationalVersion=${{ env.tag }} --output .\build
+      - name: Build raphael-cli from raphael-rs
+        run: |
+          git clone https://github.com/KonaeAkira/raphael-rs.git raphael-rs-temp
+          cd raphael-rs-temp
+          cargo build --release --package raphael-cli
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Failed to build raphael-cli"
+            exit 1
+          }
+          Copy-Item -Path ".\target\release\raphael-cli.exe" -Destination "..\build\raphael-cli.exe" -Force
+          cd ..
+          Remove-Item -Recurse -Force raphael-rs-temp
+          Write-Host "Successfully built and copied raphael-cli.exe"
 
       - name: Zip Plugin
         run: Compress-Archive -Path .\build\* -DestinationPath .\build\GatherbuddyReborn.zip

@@ -9,6 +9,9 @@ using Dalamud.Interface;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
+using GatherBuddy.Data;
+using GatherBuddy.Config;
+using GatherBuddy.Crafting;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
@@ -115,6 +118,9 @@ public partial class Interface
 
     public AutoGatherList? CurrentAutoGatherList
         => _autoGatherListsCache.Selector.Selected;
+
+    public CraftingListDefinition? CurrentCraftingList
+        => _plugin._vulcanWindow?.CurrentCraftingList;
 
     private void DrawAutoGatherListsLine()
     {

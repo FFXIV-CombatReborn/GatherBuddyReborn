@@ -31,6 +31,20 @@ namespace GatherBuddy.AutoGather
             if (!gatherable.GatheringData.IsHidden && !gatherable.IsTreasureMap)
                 return false;
 
+            var config = MatchConfigPreset(gatherable).GatherableActions.Luck;
+            if (!config.Enabled)
+                return false;
+            if (Player.Level < Actions.Luck.MinLevel)
+                return false;
+            if (Player.Object == null)
+                return false;
+            if (Player.Object.CurrentGp < Actions.Luck.GpCost)
+                return false;
+            if (Player.Object.CurrentGp < config.MinGP)
+                return false;
+            if (Player.Object.CurrentGp > config.MaxGP)
+                return false;
+
             return true;
         }
 

@@ -8,6 +8,8 @@ using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.Text;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather;
+using GatherBuddy.Crafting;
+using Newtonsoft.Json;
 using GatherBuddy.Enums;
 using ElliLib.Classes;
 
@@ -65,6 +67,19 @@ public partial class Configuration : IPluginConfiguration
 
     // Collectable Config
     public CollectableConfig CollectableConfig { get; set; } = new();
+
+    // Vulcan Configs
+    public RaphaelSolveCoordinatorConfig RaphaelSolverConfig { get; set; } = new();
+    public Vulcan.StandardSolverConfig StandardSolverConfig { get; set; } = new();
+    public VulcanRepairConfig VulcanRepairConfig { get; set; } = new();
+    public VulcanMateriaConfig VulcanMateriaConfig { get; set; } = new();
+    public int VulcanExecutionDelayMs { get; set; } = 300;
+    public string CraftingLists { get; set; } = string.Empty;
+    public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
+    public string RecipeBrowserSettings { get; set; } = string.Empty;
+    public string UserMacros             { get; set; } = string.Empty;
+    public bool   SkipMacroStepIfUnable { get; set; } = true;
+    public bool   MacroFallbackEnabled  { get; set; } = true;
 
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;
@@ -248,4 +263,21 @@ public partial class Configuration : IPluginConfiguration
         Version = 9;
         Save();
     }
+}
+
+public class VulcanMateriaConfig
+{
+    public bool Enabled { get; set; } = false;
+}
+
+public class VulcanRepairConfig
+{
+    public bool Enabled { get; set; } = true;
+    public int RepairThreshold { get; set; } = 10;
+    public bool PrioritizeNPCRepair { get; set; } = true;
+
+    [JsonIgnore]
+    public RepairNPCData? PreferredRepairNPC { get; set; } = null;
+
+    public uint PreferredRepairNPCDataId { get; set; } = 0;
 }

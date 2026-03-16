@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading.Tasks;
 using Dalamud;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game;
@@ -19,6 +20,7 @@ using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
 using GatherBuddy.GatherHelper;
 using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Crafting;
 using GatherBuddy.Gui;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
@@ -31,6 +33,7 @@ using ElliLib.Log;
 using GatherBuddy.AutoGather;
 using Dalamud.IoC;
 using Dalamud.Game.ClientState.Objects.SubKinds;
+using ElliCon.Core;
 
 namespace GatherBuddy;
 
@@ -71,6 +74,13 @@ public partial class GatherBuddy : IDalamudPlugin
     public static AutoHookIntegration.BiteTimerService BiteTimerService { get; private set; } = null!;
     public static AutoGather.Collectables.CollectableManager CollectableManager { get; private set; } = null!;
     public static AutoGather.Collectables.ScripShopItemManager ScripShopItemManager { get; private set; } = null!;
+    public static Crafting.CraftingListManager CraftingListManager { get; private set; } = null!;
+    public static Crafting.RaphaelSolveCoordinator RaphaelSolveCoordinator { get; private set; } = null!;
+    public static Crafting.RecipeBrowserSettings RecipeBrowserSettings { get; private set; } = null!;
+    public static Gui.CraftingStatusWindow? CraftingStatusWindow { get; private set; }
+    public static Gui.VulcanWindow? VulcanWindow { get; private set; }
+    public static Gui.CraftingMaterialsWindow? CraftingMaterialsWindow { get; private set; }
+    public static ControllerSupportManager? ControllerSupport { get; private set; }
 
 
     internal readonly GatherGroup.GatherGroupManager GatherGroupManager;
@@ -83,6 +93,9 @@ public partial class GatherBuddy : IDalamudPlugin
     internal readonly Executor                       Executor;
     internal readonly ContextMenu                    ContextMenu;
     internal readonly FishRecorder                   FishRecorder;
+    internal VulcanWindow?                           _vulcanWindow;
+    internal Gui.CraftingStatusWindow?               _craftingStatusWindow;
+    internal Gui.CraftingMaterialsWindow?            _craftingMaterialsWindow;
 
     internal readonly GatherBuddyIpc Ipc;
     //    internal readonly WotsitIpc Wotsit;
@@ -123,6 +136,25 @@ public partial class GatherBuddy : IDalamudPlugin
             AutoGatherListsManager = AutoGatherListsManager.Load();
             GatherWindowManager    = GatherWindowManager.Load(AlarmManager);
             AlarmManager.ForceEnable();
+            CraftingListManager = new Crafting.CraftingListManager();
+            RaphaelSolveCoordinator = new Crafting.RaphaelSolveCoordinator(Config.RaphaelSolverConfig);
+            RecipeBrowserSettings = new Crafting.RecipeBrowserSettings();
+            RecipeBrowserSettings.Load();
+            CraftingGameInterop.Initialize();
+            CraftingGatherBridge.Initialize(this);
+            CraftingGameInterop.CraftFinished += (recipe, cancelled) => CraftingGatherBridge.OnCraftFinished(recipe, cancelled);
+            
+            Task.Run(() =>
+            {
+                try
+                {
+                    Crafting.RepairNPCHelper.PopulateRepairNPCs();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failed to populate repair NPCs: {ex.Message}");
+                }
+            });
 
             InitializeCommands();
 
@@ -134,15 +166,45 @@ public partial class GatherBuddy : IDalamudPlugin
             CollectableManager = new AutoGather.Collectables.CollectableManager(Dalamud.Framework, Dalamud.Conditions, Config);
             WindowSystem = new WindowSystem(Name);
             Interface    = new Interface(this);
+            _vulcanWindow = new VulcanWindow();
+            VulcanWindow = _vulcanWindow;
+            _craftingStatusWindow = new Gui.CraftingStatusWindow();
+            CraftingStatusWindow = _craftingStatusWindow;
+            _craftingMaterialsWindow = new Gui.CraftingMaterialsWindow();
+            CraftingMaterialsWindow = _craftingMaterialsWindow;
             WindowSystem.AddWindow(Interface);
             WindowSystem.AddWindow(new GatherWindow(this));
             WindowSystem.AddWindow(new FishTimerWindow(FishRecorder));
             WindowSystem.AddWindow(new SpearfishingHelper(GameData));
+            WindowSystem.AddWindow(_vulcanWindow);
+            WindowSystem.AddWindow(_craftingStatusWindow);
+            WindowSystem.AddWindow(_craftingMaterialsWindow);
             Dalamud.PluginInterface.UiBuilder.Draw         += WindowSystem.Draw;
             Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.Toggle;
             Dalamud.PluginInterface.UiBuilder.OpenMainUi   += Interface.Toggle;
             Dalamud.Framework.Update                       += Update;
 
+            try
+            {
+                ControllerSupport = new ControllerSupportManager(
+                    Dalamud.GamepadState,
+                    Dalamud.Interop,
+                    null,
+                    Dalamud.Log
+                );
+                ControllerSupport.EnableInputBlocking();
+                
+                // Register both windows as managed by ElliCon
+                ControllerSupport.RegisterBlockingWindow("Vulcan - Crafting###VulcanWindow");
+                ControllerSupport.RegisterBlockingWindow("Crafting Status###GatherBuddyCraftingStatus");
+                
+                // Start in normal mode (blocks everything when windows are focused)
+                ControllerSupport.SetBlockingMode(true, true, true);
+            }
+            catch (Exception e)
+            {
+                Log.Warning($"Failed to initialize ElliCon controller support: {e.Message}");
+            }
 
             Ipc = new GatherBuddyIpc(this);
             CheckForOGGB();
@@ -154,6 +216,7 @@ public partial class GatherBuddy : IDalamudPlugin
             throw;
         }
     }
+
 
     private void CheckForOGGB()
     {
@@ -212,6 +275,16 @@ public partial class GatherBuddy : IDalamudPlugin
 
         try
         {
+            CraftingGameInterop.Update();
+            CraftingGatherBridge.Update();
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Error while running crafting update: {e}");
+        }
+
+        try
+        {
             AutoGather.DoAutoGather();
         }
         catch (Exception e)
@@ -222,13 +295,16 @@ public partial class GatherBuddy : IDalamudPlugin
 
     void IDisposable.Dispose()
     {
+        RaphaelSolveCoordinator?.Save();
         if (Dalamud.Framework != null)
             Dalamud.Framework.Update -= Update;
+        CraftingGameInterop.Dispose();
         FishRecorder?.Dispose();
         ContextMenu?.Dispose();
         UptimeManager?.Dispose();
         AutoGather?.Dispose();
         CollectableManager?.Dispose();
+        ControllerSupport?.Dispose();
         Ipc?.Dispose();
         //Wotsit?.Dispose();
         if (Interface != null)

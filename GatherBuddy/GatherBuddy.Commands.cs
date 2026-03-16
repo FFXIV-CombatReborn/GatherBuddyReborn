@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game;
@@ -103,6 +104,13 @@ public partial class GatherBuddy
 
     private void OnGatherBuddy(string command, string arguments)
     {
+        if (arguments.Equals("vulcan", StringComparison.OrdinalIgnoreCase))
+        {
+            _vulcanWindow?.Toggle();
+            return;
+        }
+
+
         if (!Executor.DoCommand(arguments))
             Interface.Toggle();
     }
@@ -232,8 +240,90 @@ public partial class GatherBuddy
 
     private static void OnGatherDebug(string command, string arguments)
     {
-        switch (arguments.ToLowerInvariant())
+        var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var subcommand = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
+        
+        Communicator.Print($"[Debug] Subcommand: '{subcommand}', Args: '{arguments}'");
+        
+        switch (subcommand)
         {
+            case "findrecipe":
+                if (parts.Length < 2)
+                {
+                    Communicator.Print("Usage: /gatherdebug findrecipe <itemName>\n" +
+                        "Example: /gatherdebug findrecipe Rarefied Sykon");
+                    return;
+                }
+                
+                var searchName = string.Join(" ", parts.Skip(1));
+                var recipeSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Recipe>();
+                if (recipeSheet == null)
+                {
+                    Communicator.Print("Failed to load recipe sheet");
+                    return;
+                }
+                
+                var matches = recipeSheet
+                    .Where(r => r.ItemResult.Value.Name.ExtractText()
+                        .Contains(searchName, StringComparison.OrdinalIgnoreCase))
+                    .Take(10)
+                    .ToList();
+                
+                if (matches.Count == 0)
+                {
+                    Communicator.Print($"No recipes found matching '{searchName}'");
+                }
+                else
+                {
+                    Communicator.Print($"Found {matches.Count} recipe(s) matching '{searchName}':");
+                    foreach (var recipe in matches)
+                    {
+                        var itemName = recipe.ItemResult.Value.Name.ExtractText();
+                        Communicator.Print($"  {itemName} - Recipe ID: {recipe.RowId}");
+                    }
+                }
+                return;
+                
+            case "recipenote":
+                if (parts.Length < 3)
+                {
+                    Communicator.Print("Usage: /gatherdebug recipenote <ingredientIndex> <clickCount> [hq] [open|recipeId]\n" +
+                        "Example: /gatherdebug recipenote 0 5 hq       (click ingredient 0, 5 times HQ)\n" +
+                        "Example: /gatherdebug recipenote 0 5 hq open  (open Recipe Note, then click)\n" +
+                        "Example: /gatherdebug recipenote 0 5 hq 30503 (open recipe 30503, then click)");
+                    return;
+                }
+                
+                if (!uint.TryParse(parts[1], out var index))
+                {
+                    Communicator.Print($"Invalid ingredient index: {parts[1]}");
+                    return;
+                }
+                
+                if (!int.TryParse(parts[2], out var count))
+                {
+                    Communicator.Print($"Invalid click count: {parts[2]}");
+                    return;
+                }
+                
+                var isHQ = parts.Length > 3 && parts[3].Equals("hq", StringComparison.OrdinalIgnoreCase);
+                var autoOpen = parts.Any(p => p.Equals("open", StringComparison.OrdinalIgnoreCase));
+                
+                uint recipeId = 0;
+                // Check if last arg is a recipe ID (number > 1000)
+                if (parts.Length > 3)
+                {
+                    var lastArg = parts[^1];
+                    if (uint.TryParse(lastArg, out var id) && id > 1000)
+                    {
+                        recipeId = id;
+                        autoOpen = true; // Implies open
+                    }
+                }
+                
+                Crafting.CraftingGameInterop.DebugClickRecipeNote(index, count, isHQ, autoOpen, recipeId);
+                return;
+                
             case "wary":
                 Dalamud.ToastGui.ShowQuest("The fish have become wary of your presence. It might be time to shift your position...");
                 Communicator.Print("Debug: Triggered 'wary' quest toast [EN] (ID 5517)");
@@ -265,6 +355,50 @@ public partial class GatherBuddy
             case "amiss-jp":
                 Dalamud.ToastGui.ShowQuest("魚たちに警戒されてしまったようだ……。少し場所を変えたほうがいいだろう。");
                 Communicator.Print("Debug: Triggered 'amiss' quest toast [JP] (ID 3516)");
+                break;
+            case "repair":
+                Communicator.Print("[Debug] Forcing repair mode for testing...");
+                Crafting.CraftingGatherBridge.TestRepairSystem();
+                break;
+            case "repairstop":
+                Communicator.Print("[Debug] Stopping repair test...");
+                Crafting.CraftingGatherBridge.StopQueue();
+                Crafting.CraftingTasks.StopNavigation();
+                break;
+            case "repairnpcs":
+                var repairNPCs = Crafting.RepairNPCHelper.RepairNPCs;
+                if (repairNPCs.Count == 0)
+                {
+                    Communicator.Print("[Debug] No repair NPCs found. Run /gatherdebug repairpopulate first.");
+                }
+                else
+                {
+                    Communicator.Print($"[Debug] Found {repairNPCs.Count} repair NPCs:");
+                    foreach (var npc in repairNPCs.Take(10))
+                    {
+                        var territorySheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>();
+                        var territory = territorySheet?.GetRow(npc.TerritoryType);
+                        var placeName = territory?.PlaceName.ValueNullable?.Name.ExtractText() ?? "Unknown";
+                        Communicator.Print($"  {npc.Name} - {placeName} ({npc.TerritoryType})");
+                    }
+                    if (repairNPCs.Count > 10)
+                        Communicator.Print($"  ... and {repairNPCs.Count - 10} more");
+                }
+                break;
+            case "repairpopulate":
+                Communicator.Print("[Debug] Populating repair NPCs (this may take a moment)...");
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        Crafting.RepairNPCHelper.PopulateRepairNPCs();
+                        Communicator.Print($"[Debug] Populated {Crafting.RepairNPCHelper.RepairNPCs.Count} repair NPCs");
+                    }
+                    catch (Exception ex)
+                    {
+                        Communicator.Print($"[Debug] Error: {ex.Message}");
+                    }
+                });
                 break;
             default:
                 DebugMode = !DebugMode;

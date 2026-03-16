@@ -53,6 +53,7 @@
 	  <ProjectReference Include="..\GatherBuddy.GameData\GatherBuddy.GameData.csproj" />
 	  <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />
 	  <ProjectReference Include="..\ElliLib\ElliLib.csproj" />
+	  <ProjectReference Include="..\..\ElliCon\ElliCon.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -71,7 +72,4 @@
 	  <EmbeddedResource Include="CustomInfo\ScripShopItems.json" />
 	</ItemGroup>
 
-	<ItemGroup>
-	  <None Include="AutoGather\GatheringTracker.cs" />
-	</ItemGroup>
 </Project>

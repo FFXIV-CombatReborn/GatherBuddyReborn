@@ -268,6 +268,12 @@ namespace GatherBuddy.Plugin
 
         [EzIPC("AllaganTools.ItemCountOwned", applyPrefix: false)]
         internal static readonly Func<uint, bool, uint[], uint> ItemCountOwned;
+
+        [EzIPC("AllaganTools.ItemCount", applyPrefix: false)]
+        internal static readonly Func<uint, ulong, uint, uint> ItemCount;
+
+        [EzIPC("AllaganTools.ItemCountHQ", applyPrefix: false)]
+        internal static readonly Func<uint, ulong, uint, uint> ItemCountHQ;
     }
 
     internal static class AutoHook
