@@ -60,6 +60,49 @@ public partial class AutoGatherListsManager : IDisposable
         _fileSystem.Changed += OnFileSystemChanged;
     }
 
+    private AutoGatherListsManager(AutoGatherList.Config[] configs)
+    {
+        _fileSystem = new FileSystem<AutoGatherList>();
+        var change = false;
+
+        foreach (var cfg in configs)
+        {
+            change |= AutoGatherList.FromConfig(cfg, out var list);
+
+            var folderPath = string.IsNullOrEmpty(list.FolderPath) ? string.Empty : list.FolderPath;
+
+            if (folderPath == list.Name)
+            {
+                folderPath = string.Empty;
+                change = true;
+            }
+
+            var folderNames = folderPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            var folder = _fileSystem.Root;
+            foreach (var folderName in folderNames)
+            {
+                (folder, _) = _fileSystem.FindOrCreateFolder(folder, folderName);
+            }
+
+            try
+            {
+                _fileSystem.CreateLeaf(folder, list.Name, list);
+            }
+            catch
+            {
+                _fileSystem.CreateDuplicateLeaf(folder, list.Name, list);
+                change = true;
+            }
+        }
+
+        if (change)
+            Save();
+
+        _fileSystem.Changed += OnFileSystemChanged;
+        SetActiveItems();
+    }
+
     private void OnFileSystemChanged(FileSystemChangeType type, FileSystem<AutoGatherList>.IPath changedObject, FileSystem<AutoGatherList>.IPath? previousParent, FileSystem<AutoGatherList>.IPath? newParent)
     {
         // Not renumbering the source folder on ObjectRemoved or ObjectMoved makes the numbering sparse, but it's fine for ordering.
@@ -131,67 +174,28 @@ public partial class AutoGatherListsManager : IDisposable
 
     public static AutoGatherListsManager Load()
     {
-        var ret    = new AutoGatherListsManager();
-        var file   = Functions.ObtainSaveFile(FileName);
-        var change = false;
+        var file = Functions.ObtainSaveFile(FileName);
         if (file is not { Exists: true })
         {
             file = Functions.ObtainSaveFile(FileNameFallback);
-            if (file is not { Exists: true })
-            {
-                ret.Save();
-                return ret;
-            }
-
-            change = true;
         }
 
-        try
+        if (file is { Exists: true })
         {
-            var text = File.ReadAllText(file.FullName);
-            var data = JsonConvert.DeserializeObject<AutoGatherList.Config[]>(text)!;
-            foreach (var cfg in data)
+            try
             {
-                change |= AutoGatherList.FromConfig(cfg, out var list);
-                
-                var folderPath = string.IsNullOrEmpty(list.FolderPath) ? string.Empty : list.FolderPath;
-                
-                if (folderPath == list.Name)
-                {
-                    folderPath = string.Empty;
-                    change = true;
-                }
-                
-                var folderNames = folderPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                
-                var folder = ret._fileSystem.Root;
-                foreach (var folderName in folderNames)
-                {
-                    (folder, _) = ret._fileSystem.FindOrCreateFolder(folder, folderName);
-                }
-                
-                try
-                {
-                    ret._fileSystem.CreateLeaf(folder, list.Name, list);
-                }
-                catch
-                {
-                    ret._fileSystem.CreateDuplicateLeaf(folder, list.Name, list);
-                    change = true;
-                }
+                var text = File.ReadAllText(file.FullName);
+                var configs = JsonConvert.DeserializeObject<AutoGatherList.Config[]>(text);
+                if (configs != null)
+                    return new AutoGatherListsManager(configs);
             }
-
-            if (change)
-                ret.Save();
-        }
-        catch (Exception e)
-        {
-            GatherBuddy.Log.Error($"Error deserializing auto gather lists:\n{e}");
-            Communicator.PrintError($"[GatherBuddy Reborn] Auto gather lists failed to load and have been reset.");
-            ret.Save();
+            catch (Exception e)
+            {
+                GatherBuddy.Log.Error($"Error deserializing auto gather lists:\n{e}");
+                Communicator.PrintError($"[GatherBuddy Reborn] Auto gather lists failed to load and have been reset.");
+            }
         }
 
-        ret.SetActiveItems();
-        return ret;
+        return new AutoGatherListsManager();
     }
 }

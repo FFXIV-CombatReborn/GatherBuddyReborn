@@ -130,12 +130,16 @@ public class GameData
                 .GroupBy(row => row.GatheringPoint.RowId)
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
+            uint[] OddlyDelicateItemIds = [Gatherables[31767].GatheringId, Gatherables[31769].GatheringId];
+
             var tmpGatheringPoints = DataManager.GetExcelSheet<GatheringPoint>()
                 // The Diadem Umbral nodes have PlaceName.RowId == 0, so we have to disable this filter
                 // and filter by TerritoryType.RowId instead.
                 //.Where(row => row.PlaceName.RowId > 0)
-                // Filter out invalid or deleted territories (0 or 1) and old instances of The Diadem (901 or 929).
-                .Where(row => row.TerritoryType.RowId is not (0 or 1 or 901 or 929))
+                // Filter out invalid or deleted territories (0 or 1) and old instances of The Diadem (901 or 929),
+                // exept for the Oddly Delicate items which are mapped to the old insance of The Diadem (901).
+                .Where(row => row.TerritoryType.RowId is not (0 or 1 or 901 or 929) 
+                    || row.TerritoryType.RowId == 901 && row.GatheringPointBase.Value.Item.Any(i => OddlyDelicateItemIds.Contains(i.RowId)))
                 .GroupBy(row => row.GatheringPointBase.RowId)
                 .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
 
@@ -231,6 +235,10 @@ public class GameData
     {
         if (t == null || t.Value.RowId < 2)
             return null;
+
+        // Upgrade The Diadem territory to the latest instance
+        if (t.Value.RowId is 901 or 929)
+            t = DataManager.GetExcelSheet<TerritoryType>().GetRow(939);
 
         if (Territories.TryGetValue(t.Value.RowId, out var territory))
             return territory;
