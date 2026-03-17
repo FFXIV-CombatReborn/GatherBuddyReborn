@@ -8,20 +8,12 @@ public static class QualityCalculator
 {
     public static int CalculateInitialQuality(Recipe recipe, Dictionary<uint, int> ingredientPreferences)
     {
-        GatherBuddy.Log.Debug($"[QualityCalculator] Calculating quality for recipe {recipe.RowId}, preferences count: {ingredientPreferences?.Count ?? 0}");
-        
         if (recipe.MaterialQualityFactor == 0)
-        {
-            GatherBuddy.Log.Debug($"[QualityCalculator] MaterialQualityFactor is 0, returning 0");
             return 0;
-        }
         
         var ingredients = RecipeManager.GetIngredients(recipe);
         if (ingredients.Count == 0)
-        {
-            GatherBuddy.Log.Debug($"[QualityCalculator] No ingredients, returning 0");
             return 0;
-        }
         
         long sumLevel = 0;
         long sumLevelHQ = 0;
@@ -58,10 +50,6 @@ public static class QualityCalculator
         long materialQualityFactor = recipe.MaterialQualityFactor;
         
         long startingQuality = (sumLevelHQ * recipeMaxQuality * materialQualityFactor / 100) / sumLevel;
-        
-        GatherBuddy.Log.Debug($"[QualityCalculator] Recipe {recipe.RowId}: sumLevel={sumLevel}, sumLevelHQ={sumLevelHQ}, " +
-            $"recipeMaxQuality={recipeMaxQuality}, materialQualityFactor={materialQualityFactor}, " +
-            $"startingQuality={startingQuality}");
         
         return (int)startingQuality;
     }

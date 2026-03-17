@@ -1221,27 +1221,9 @@ public partial class VulcanWindow
         catch { return (0, 0); }
     }
 
-    private static unsafe int GetRetainerItemCount(uint itemId)
+    private static int GetRetainerItemCount(uint itemId)
     {
-        if (!AllaganTools.Enabled || AllaganTools.ItemCount == null) return 0;
-        try
-        {
-            var retainerMgr = RetainerManager.Instance();
-            if (retainerMgr == null) return 0;
-            var total = 0;
-            var retainerCount = retainerMgr->GetRetainerCount();
-            for (uint i = 0; i < retainerCount; i++)
-            {
-                var retainer = retainerMgr->GetRetainerBySortedIndex(i);
-                if (retainer == null || retainer->RetainerId == 0) continue;
-                var retainerId = retainer->RetainerId;
-                for (uint page = 10000; page <= 10006; page++)
-                    total += (int)AllaganTools.ItemCount(itemId, retainerId, page);
-                total += (int)AllaganTools.ItemCount(itemId, retainerId, 12001);
-            }
-            return total;
-        }
-        catch { return 0; }
+        return (int)RetainerCache.GetRetainerItemCount(itemId);
     }
 
     public class ExtendedRecipe

@@ -895,42 +895,9 @@ public class CraftingListEditor
         }
     }
 
-    internal unsafe int GetRetainerCount(uint itemId)
+    internal int GetRetainerCount(uint itemId)
     {
-        if (!AllaganTools.Enabled || AllaganTools.ItemCount == null)
-            return 0;
-
-        var now = DateTime.Now;
-        if (_retainerRefreshTimes.TryGetValue(itemId, out var lastRefresh) &&
-            (now - lastRefresh).TotalSeconds < InventoryRefreshIntervalSeconds)
-            return _cachedRetainerCounts.GetValueOrDefault(itemId, 0);
-
-        try
-        {
-            var retainerMgr = FFXIVClientStructs.FFXIV.Client.Game.RetainerManager.Instance();
-            if (retainerMgr == null) return 0;
-
-            int total = 0;
-            var count = retainerMgr->GetRetainerCount();
-            for (uint i = 0; i < count; i++)
-            {
-                var retainer = retainerMgr->GetRetainerBySortedIndex(i);
-                if (retainer == null || retainer->RetainerId == 0) continue;
-
-                var retainerId = retainer->RetainerId;
-                for (uint page = 10000; page <= 10006; page++)
-                    total += (int)AllaganTools.ItemCount(itemId, retainerId, page);
-                total += (int)AllaganTools.ItemCount(itemId, retainerId, 12001);
-            }
-
-            _cachedRetainerCounts[itemId] = total;
-            _retainerRefreshTimes[itemId] = now;
-            return total;
-        }
-        catch
-        {
-            return 0;
-        }
+        return (int)RetainerCache.GetRetainerItemCount(itemId);
     }
     
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)

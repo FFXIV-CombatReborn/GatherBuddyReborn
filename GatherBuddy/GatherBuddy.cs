@@ -142,7 +142,9 @@ public partial class GatherBuddy : IDalamudPlugin
             RecipeBrowserSettings.Load();
             CraftingGameInterop.Initialize();
             CraftingGatherBridge.Initialize(this);
+            RetainerCache.Initialize();
             CraftingGameInterop.CraftFinished += (recipe, cancelled) => CraftingGatherBridge.OnCraftFinished(recipe, cancelled);
+            Dalamud.ClientState.Logout += (a, b) => RetainerCache.OnLogout();
             
             Task.Run(() =>
             {
@@ -298,6 +300,7 @@ public partial class GatherBuddy : IDalamudPlugin
         RaphaelSolveCoordinator?.Save();
         if (Dalamud.Framework != null)
             Dalamud.Framework.Update -= Update;
+        RetainerCache.Dispose();
         CraftingGameInterop.Dispose();
         FishRecorder?.Dispose();
         ContextMenu?.Dispose();
