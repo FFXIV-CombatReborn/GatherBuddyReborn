@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -15,10 +16,12 @@ public class ContextMenu : IDisposable
     private readonly IContextMenu _contextMenu;
     private readonly Executor     _executor;
     private          IGatherable? _lastGatherable;
+    private          uint?        _lastRecipeId;
     private          GatherBuddy  _plugin;
 
     private readonly MenuItem _menuItem;
     private readonly MenuItem _menuItemAuto;
+    private readonly MenuItem _menuItemCrafting;
 
     public ContextMenu(GatherBuddy plugin, IContextMenu menu, Executor executor)
     {
@@ -48,6 +51,17 @@ public class ContextMenu : IDisposable
             PrefixColor = 42,
         };
 
+        _menuItemCrafting = new MenuItem
+        {
+            IsEnabled = true,
+            IsReturn = false,
+            PrefixChar = 'C',
+            Name = "Add to Crafting List",
+            OnClicked = OnClickCrafting,
+            IsSubmenu = true,
+            PrefixColor = 42,
+        };
+
         if (GatherBuddy.Config.AddIngameContextMenus)
             Enable();
     }
@@ -74,6 +88,83 @@ public class ContextMenu : IDisposable
         }            
     }
 
+    private void OnClickCrafting(IMenuItemClickedArgs args)
+    {
+        if (!_lastRecipeId.HasValue)
+            return;
+
+        var recipe = Crafting.RecipeManager.GetRecipe(_lastRecipeId.Value);
+        if (!recipe.HasValue)
+            return;
+
+        var allLists = GatherBuddy.CraftingListManager.Lists;
+        var menuItems = new List<MenuItem>();
+
+        if (allLists.Count == 0)
+        {
+            var noListItem = new MenuItem
+            {
+                Name = "No crafting lists available",
+                IsEnabled = false
+            };
+            menuItems.Add(noListItem);
+        }
+        else
+        {
+            var maxLists = Math.Max(1, GatherBuddy.Config.MaxRecentCraftingListsInContextMenu);
+            GatherBuddy.Log.Debug($"[ContextMenu] Total lists: {allLists.Count}, Max to show: {maxLists}");
+            
+            var recentLists = allLists
+                .OrderByDescending(l => l.CreatedAt)
+                .Take(maxLists)
+                .ToList();
+            
+            GatherBuddy.Log.Debug($"[ContextMenu] Recent lists filtered: {recentLists.Count}");
+
+            foreach (var list in recentLists)
+            {
+                var menuItem = new MenuItem
+                {
+                    Name = list.Name,
+                    PrefixChar = 'C',
+                    PrefixColor = 42,
+                    OnClicked = clickedArgs => AddRecipeToList(recipe.Value, list)
+                };
+                menuItems.Add(menuItem);
+            }
+
+            if (allLists.Count > maxLists)
+            {
+                var moreItem = new MenuItem
+                {
+                    Name = $"({allLists.Count - maxLists} more lists...)",
+                    IsEnabled = false
+                };
+                menuItems.Add(moreItem);
+            }
+        }
+
+        if (menuItems.Count > 0)
+            args.OpenSubmenu(menuItems);
+    }
+
+    private void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
+    {
+        var existingItem = list.Recipes.FirstOrDefault(x => x.RecipeId == recipe.RowId);
+        if (existingItem != null)
+        {
+            existingItem.Quantity += 1;
+            GatherBuddy.Log.Information($"Increased quantity of {recipe.ItemResult.Value.Name.ExtractText()} in list '{list.Name}' to {existingItem.Quantity}");
+        }
+        else
+        {
+            list.AddRecipe(recipe.RowId, 1);
+            GatherBuddy.Log.Information($"Added {recipe.ItemResult.Value.Name.ExtractText()} to list '{list.Name}'");
+        }
+
+        GatherBuddy.CraftingListManager.SaveList(list);
+    }
+
     public void Enable()
         => _contextMenu.OnMenuOpened += OnContextMenuOpened;
 
@@ -85,6 +176,8 @@ public class ContextMenu : IDisposable
 
     private unsafe void OnContextMenuOpened(IMenuOpenedArgs args)
     {
+        _lastRecipeId = null;
+
         if (args.MenuType is ContextMenuType.Inventory)
         {
             var target = (MenuTargetInventory)args.Target;
@@ -104,12 +197,42 @@ public class ContextMenu : IDisposable
                 "ChatLog"            => CheckGameObjectItem("ChatLog", Offsets.ChatLogContextItemId, ValidateChatLogContext),
                 _                    => null,
             };
+
+            if (args.AddonName is "RecipeNote" or "RecipeTree" or "RecipeMaterialList" or "ItemSearch" or "ChatLog" or "ContentsInfoDetail")
+            {
+                _lastRecipeId = GetRecipeIdFromContext(args);
+            }
         }
 
         if (_lastGatherable != null)
             args.AddMenuItem(_menuItem);
         if (_lastGatherable is Gatherable)
             args.AddMenuItem(_menuItemAuto);
+        if (_lastRecipeId.HasValue)
+            args.AddMenuItem(_menuItemCrafting);
+    }
+
+    private unsafe uint? GetRecipeIdFromContext(IMenuOpenedArgs args)
+    {
+        var itemId = args.AddonName switch
+        {
+            "RecipeNote" => *(uint*)(Dalamud.GameGui.FindAgentInterface("RecipeNote") + Offsets.RecipeNoteContextItemId),
+            "RecipeTree" => *(uint*)(AgentById(AgentId.RecipeItemContext) + Offsets.AgentItemContextItemId),
+            "RecipeMaterialList" => *(uint*)(AgentById(AgentId.RecipeItemContext) + Offsets.AgentItemContextItemId),
+            "ItemSearch" => (uint)AgentContext.Instance()->UpdateCheckerParam,
+            "ChatLog" => *(uint*)(Dalamud.GameGui.FindAgentInterface("ChatLog") + Offsets.ChatLogContextItemId),
+            "ContentsInfoDetail" => *(uint*)(Dalamud.GameGui.FindAgentInterface("ContentsInfo") + Offsets.ContentsInfoDetailContextItemId),
+            _ => 0u,
+        };
+
+        if (itemId == 0)
+            return null;
+
+        if (itemId >= 500000u)
+            itemId -= 500000u;
+
+        var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId);
+        return recipe?.RowId;
     }
 
     private static unsafe IGatherable? CheckGatheringNote(IMenuOpenedArgs args)

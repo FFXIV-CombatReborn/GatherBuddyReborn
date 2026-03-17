@@ -244,6 +244,9 @@ namespace GatherBuddy.AutoGather
                     _jiggleAttempts.Clear();
                     _fishingSpotArrivalTime.Clear();
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
+                    
+                    // Restore normal controller blocking (blocks everything)
+                    GatherBuddy.ControllerSupport?.SetBlockingMode(true, true, true);
 
                     ClearSpearfishingSessionData();
                     
@@ -262,13 +265,19 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     
-                    if (GatherBuddy.CollectableManager?.IsRunning == true)
-                    {
-                        GatherBuddy.Log.Debug("[AutoGather] Stopping collectable turn-in (user disabled AutoGather)");
-                        GatherBuddy.CollectableManager?.Stop();
-                    }
+                if (GatherBuddy.CollectableManager?.IsRunning == true)
+                {
+                    GatherBuddy.Log.Debug("[AutoGather] Stopping collectable turn-in (user disabled AutoGather)");
+                    GatherBuddy.CollectableManager?.Stop();
                 }
-            else
+                
+                if (Crafting.CraftingGatherBridge.GetTemporaryGatherList() != null && !Crafting.CraftingGatherBridge.PreserveListOnDisable)
+                {
+                    GatherBuddy.Log.Debug("[AutoGather] Cleaning up temporary Vulcan gather list (user disabled AutoGather)");
+                    Crafting.CraftingGatherBridge.DeleteTemporaryGatherList();
+                }
+            }
+        else
             {
                 if (!ValidateActiveItemsPerception())
                 {
@@ -283,6 +292,9 @@ namespace GatherBuddy.AutoGather
                 }
                 YesAlready.Lock();
                 DisableQuickGathering();
+                
+                // Switch to automation blocking mode (only block buttons, allow movement/camera)
+                GatherBuddy.ControllerSupport?.SetBlockingMode(false, false, true);
             }
 
                 _enabled = value;

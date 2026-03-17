@@ -69,7 +69,13 @@ public static unsafe class AddonMaster
                     var flagsPtr = (ushort*)&Addon->YesButton->AtkComponentBase.OwnerNode->AtkResNode.NodeFlags;
                     *flagsPtr ^= 1 << 5;
                 }
+                GatherBuddy.Log.Debug($"[AddonMaster.SelectYesno] Firing callback(0) on SelectYesno - Base ready: {Base->IsReady}");
                 Callback.Fire(Base, true, 0);
+                GatherBuddy.Log.Debug("[AddonMaster.SelectYesno] Callback fired");
+            }
+            else
+            {
+                GatherBuddy.Log.Warning("[AddonMaster.SelectYesno] YesButton is null");
             }
         }
 
@@ -145,7 +151,7 @@ public static unsafe class AddonMaster
         {
             var btn = Addon->RepairAllButton;
             GatherBuddy.Log.Debug($"[Repair] RepairAllButton: null={btn == null}, enabled={btn != null && btn->IsEnabled}, visible={btn != null && btn->AtkComponentBase.OwnerNode->AtkResNode.IsVisible()}");
-            if (btn != null && Base != null && Base->IsReady)
+            if (ClickButtonIfEnabled(btn))
             {
                 Callback.Fire(Base, true, 0);
                 GatherBuddy.Log.Debug("[Repair] Fired callback(0) on Repair addon");

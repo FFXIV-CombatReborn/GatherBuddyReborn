@@ -108,26 +108,28 @@ namespace GatherBuddy.AutoGather
         }
         public record class GatheringActionsRec
         {
-            public ActionConfigYieldBonus Bountiful { get; init; } = new() { MinGP = AutoGather.Actions.Bountiful.GpCost};
-            public ActionConfigIntegrity Yield1 { get; init; } = new() { MinGP = AutoGather.Actions.Yield1.GpCost, Enabled = false };
-            public ActionConfigIntegrity Yield2 { get; init; } = new() { MinGP = AutoGather.Actions.Yield2.GpCost};
-            public ActionConfigYieldTotal SolidAge { get; init; } = new() { MinGP = AutoGather.Actions.SolidAge.GpCost};
-            public ActionConfigIntegrity TwelvesBounty { get; init; } = new() { MinGP = AutoGather.Actions.TwelvesBounty.GpCost };
-            public ActionConfigIntegrity GivingLand { get; init; } = new() { MinGP = AutoGather.Actions.GivingLand.GpCost};
-            public ActionConfigBoon Gift1 { get; init; } = new() { MinGP = AutoGather.Actions.Gift1.GpCost, Enabled = false, MaxBoonChance = 90 };
-            public ActionConfigBoon Gift2 { get; init; } = new() { MinGP = AutoGather.Actions.Gift2.GpCost, Enabled = false, MaxBoonChance = 70 };
-            public ActionConfigBoon Tidings { get; init; } = new() { MinGP = AutoGather.Actions.Tidings.GpCost, Enabled = false, MinBoonChance = 70 };
+            public ActionConfig           Luck          { get; init; } = new() { MinGP = AutoGather.Actions.Luck.GpCost };
+            public ActionConfigYieldBonus Bountiful     { get; init; } = new() { MinGP = AutoGather.Actions.Bountiful.GpCost};
+            public ActionConfigIntegrity  Yield1        { get; init; } = new() { MinGP = AutoGather.Actions.Yield1.GpCost, Enabled = false };
+            public ActionConfigIntegrity  Yield2        { get; init; } = new() { MinGP = AutoGather.Actions.Yield2.GpCost};
+            public ActionConfigYieldTotal SolidAge      { get; init; } = new() { MinGP = AutoGather.Actions.SolidAge.GpCost};
+            public ActionConfigIntegrity  TwelvesBounty { get; init; } = new() { MinGP = AutoGather.Actions.TwelvesBounty.GpCost };
+            public ActionConfigIntegrity  GivingLand    { get; init; } = new() { MinGP = AutoGather.Actions.GivingLand.GpCost};
+            public ActionConfigBoon       Gift1         { get; init; } = new() { MinGP = AutoGather.Actions.Gift1.GpCost, Enabled = false, MaxBoonChance = 90 };
+            public ActionConfigBoon       Gift2         { get; init; } = new() { MinGP = AutoGather.Actions.Gift2.GpCost, Enabled = false, MaxBoonChance = 70 };
+            public ActionConfigBoon       Tidings       { get; init; } = new() { MinGP = AutoGather.Actions.Tidings.GpCost, Enabled = false, MinBoonChance = 70 };
             public GatheringActionsRec(GatheringActionsRec original)
             {
-                Bountiful = original.Bountiful with { };
-                Yield1 = original.Yield1 with { };
-                Yield2 = original.Yield2 with { };
-                SolidAge = original.SolidAge with { };
+                Luck          = original.Luck          with { };
+                Bountiful     = original.Bountiful     with { };
+                Yield1        = original.Yield1        with { };
+                Yield2        = original.Yield2        with { };
+                SolidAge      = original.SolidAge      with { };
                 TwelvesBounty = original.TwelvesBounty with { };
-                GivingLand = original.GivingLand with { };
-                Gift1 = original.Gift1 with { };
-                Gift2 = original.Gift2 with { };
-                Tidings = original.Tidings with { };
+                GivingLand    = original.GivingLand    with { };
+                Gift1         = original.Gift1         with { };
+                Gift2         = original.Gift2         with { };
+                Tidings       = original.Tidings       with { };
             }
         };
         public record class CollectableActionsRec

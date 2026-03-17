@@ -549,6 +549,7 @@ namespace GatherBuddy.Gui
                 using var node = ImRaii.TreeNode("Gathering Actions", ImGuiTreeNodeFlags.Framed);
                 if (node)
                 {
+                    DrawActionConfig(ConcatNames(Actions.Luck),      preset.GatherableActions.Luck,      selector.Save);
                     DrawActionConfig(ConcatNames(Actions.Bountiful), preset.GatherableActions.Bountiful, selector.Save);
                     DrawActionConfig(ConcatNames(Actions.Yield1),    preset.GatherableActions.Yield1,    selector.Save);
                     DrawActionConfig(ConcatNames(Actions.Yield2),    preset.GatherableActions.Yield2,    selector.Save);

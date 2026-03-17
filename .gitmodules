@@ -1,3 +1,6 @@
 [submodule "ElliLib"]
 	path = ElliLib
 	url = https://github.com/Deathbeyond87/ElliLib.git
+[submodule "ElliCon"]
+	path = ElliCon
+	url = https://github.com/Deathbeyond87/ElliCon.git

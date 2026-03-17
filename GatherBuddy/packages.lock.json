@@ -64,6 +64,9 @@
         "resolved": "17.11.4",
         "contentHash": "mudqUHhNpeqIdJoUx2YDWZO/I9uEDYVowan89R6wsomfnUJQk6HteoQTlNjZDixhT2B4IXMkMtgZtoceIjLRmA=="
       },
+      "ellicon": {
+        "type": "Project"
+      },
       "ellilib": {
         "type": "Project",
         "dependencies": {
