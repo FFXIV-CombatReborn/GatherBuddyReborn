@@ -206,6 +206,19 @@ public partial class VulcanWindow
         return false;
     }
 
+    private static void StartBrowserQuickSynth(Recipe recipe, int quantity)
+    {
+        var expandedQueue = new List<CraftingListItem>(quantity);
+        for (int i = 0; i < quantity; i++)
+        {
+            var item = new CraftingListItem(recipe.RowId, 1) { IsOriginalRecipe = true };
+            item.Options.NQOnly = true;
+            expandedQueue.Add(item);
+        }
+        GatherBuddy.Log.Information($"[VulcanWindow] Browser quick synth: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
+        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, new Dictionary<uint, int>());
+    }
+
     private static void StartBrowserCraft(Recipe recipe, int quantity)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
@@ -1072,7 +1085,7 @@ public partial class VulcanWindow
         }
 
         var avail = ImGui.GetContentRegionAvail();
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + Math.Max(0, avail.Y - 84));
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + Math.Max(0, avail.Y - 96));
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1), "Qty:");
@@ -1082,16 +1095,33 @@ public partial class VulcanWindow
         if (_browserCraftQuantity < 1) _browserCraftQuantity = 1;
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
-        if (ImGui.Button("Start Craft", new Vector2(140, 32)))
+        var topRowButtonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
+        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
+        if (artisanLoaded)
+        {
+            ImGuiUtil.DrawDisabledButton("Artisan Detected", new Vector2(topRowButtonWidth, 22),
+                "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.", true);
+        }
+        else if (ImGui.Button("Start Craft", new Vector2(topRowButtonWidth, 22)))
         {
             StartBrowserCraft(recipe.Recipe, _browserCraftQuantity);
             MinimizeWindow();
         }
-
         ImGui.SameLine();
-        if (ImGui.Button("Settings", new Vector2(100, 32)))
-        {
+        if (ImGui.Button("Settings", new Vector2(topRowButtonWidth, 22)))
             _craftSettingsPopup.Open(recipe.Recipe.RowId, recipe.Name);
+
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
+        var canQuickSynth = recipe.Recipe.CanQuickSynth;
+        var qsTooltip = artisanLoaded
+            ? "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system."
+            : canQuickSynth
+                ? $"Quick synthesize {recipe.Name} x{_browserCraftQuantity}"
+                : "This recipe cannot be quick synthesized.";
+        if (ImGuiUtil.DrawDisabledButton("Quick Synth", new Vector2(-1, 22), qsTooltip, !canQuickSynth || artisanLoaded))
+        {
+            StartBrowserQuickSynth(recipe.Recipe, _browserCraftQuantity);
+            MinimizeWindow();
         }
     }
 

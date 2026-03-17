@@ -136,43 +136,51 @@ public class CraftingListEditor
             return;
         }
         
-        var (hardFails, warnings) = CountValidationIssues();
-        if (hardFails > 0)
-            ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudRed);
-        else if (warnings > 0)
-            ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudYellow);
-
-        if (ImGui.Button("Start Crafting", new Vector2(-1, 22)))
+        if (IPCSubscriber.IsReady("Artisan"))
         {
+            ImGuiUtil.DrawDisabledButton("Artisan Detected", new Vector2(-1, 22),
+                "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.", true);
+        }
+        else
+        {
+            var (hardFails, warnings) = CountValidationIssues();
             if (hardFails > 0)
-                ImGui.OpenPopup("ConfirmFailedMacros##startCraft");
-            else
-                OnStartCrafting?.Invoke(_list);
-        }
+                ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudRed);
+            else if (warnings > 0)
+                ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudYellow);
 
-        if (hardFails > 0 || warnings > 0)
-        {
-            ImGui.PopStyleColor();
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(hardFails > 0
-                    ? $"{hardFails} macro(s) will fail this craft. Click to confirm and start anyway."
-                    : $"{warnings} macro(s) have warnings.");
-        }
-
-        if (ImGui.BeginPopupModal("ConfirmFailedMacros##startCraft", ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.TextColored(ImGuiColors.DalamudRed, $"{hardFails} macro(s) are predicted to FAIL their craft.");
-            ImGui.TextWrapped("These items may not be completed. Start crafting anyway?");
-            ImGui.Spacing();
-            if (ImGui.Button("Start Anyway", new Vector2(120, 0)))
+            if (ImGui.Button("Start Crafting", new Vector2(-1, 22)))
             {
-                OnStartCrafting?.Invoke(_list);
-                ImGui.CloseCurrentPopup();
+                if (hardFails > 0)
+                    ImGui.OpenPopup("ConfirmFailedMacros##startCraft");
+                else
+                    OnStartCrafting?.Invoke(_list);
             }
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(80, 0)))
-                ImGui.CloseCurrentPopup();
-            ImGui.EndPopup();
+
+            if (hardFails > 0 || warnings > 0)
+            {
+                ImGui.PopStyleColor();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(hardFails > 0
+                        ? $"{hardFails} macro(s) will fail this craft. Click to confirm and start anyway."
+                        : $"{warnings} macro(s) have warnings.");
+            }
+
+            if (ImGui.BeginPopupModal("ConfirmFailedMacros##startCraft", ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                ImGui.TextColored(ImGuiColors.DalamudRed, $"{hardFails} macro(s) are predicted to FAIL their craft.");
+                ImGui.TextWrapped("These items may not be completed. Start crafting anyway?");
+                ImGui.Spacing();
+                if (ImGui.Button("Start Anyway", new Vector2(120, 0)))
+                {
+                    OnStartCrafting?.Invoke(_list);
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                    ImGui.CloseCurrentPopup();
+                ImGui.EndPopup();
+            }
         }
         
         if (ImGui.Button("Generate Gather List", new Vector2(-1, 22)))
