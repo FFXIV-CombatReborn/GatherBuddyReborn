@@ -334,6 +334,7 @@ public class CraftingQueueProcessor
             ? QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPreferences)
             : 0;
         
+        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
         var request = new RaphaelSolveRequest(
             RecipeId: recipeId,
             Level: gearsetStats.Level,
@@ -341,7 +342,7 @@ public class CraftingQueueProcessor
             Control: gearsetStats.Control,
             CP: gearsetStats.CP,
             Manipulation: gearsetStats.Manipulation,
-            Specialist: gearsetStats.Specialist,
+            Specialist: specialist,
             InitialQuality: initialQuality
         );
         
@@ -650,6 +651,7 @@ public class CraftingQueueProcessor
             ? QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPreferences)
             : 0;
 
+        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
         return new RaphaelSolveRequest(
             RecipeId: recipeId,
             Level: gearsetStats.Level,
@@ -657,7 +659,7 @@ public class CraftingQueueProcessor
             Control: gearsetStats.Control,
             CP: gearsetStats.CP,
             Manipulation: gearsetStats.Manipulation,
-            Specialist: gearsetStats.Specialist,
+            Specialist: specialist,
             InitialQuality: initialQuality
         );
     }
@@ -786,6 +788,7 @@ public class CraftingQueueProcessor
                     ? QualityCalculator.CalculateInitialQuality(recipe, item.IngredientPreferences)
                     : 0;
 
+                var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
                 var request = new RaphaelSolveRequest(
                     RecipeId: recipe.RowId,
                     Level: gearsetStats.Level,
@@ -793,12 +796,11 @@ public class CraftingQueueProcessor
                     Control: gearsetStats.Control,
                     CP: gearsetStats.CP,
                     Manipulation: gearsetStats.Manipulation,
-                    Specialist: gearsetStats.Specialist,
+                    Specialist: specialist,
                     InitialQuality: initialQuality
                 );
 
                 requests.Add(request);
-                GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Recipe {recipe.RowId} (Job {requiredJob}): Craft={gearsetStats.Craftsmanship}, Ctrl={gearsetStats.Control}, CP={gearsetStats.CP}, IQ={initialQuality}");
             }
             catch (Exception ex)
             {

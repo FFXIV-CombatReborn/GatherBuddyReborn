@@ -149,7 +149,7 @@ public class CraftingListEditor
             else if (warnings > 0)
                 ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudYellow);
 
-            if (ImGui.Button("Start Crafting", new Vector2(-1, 22)))
+            if (ImGui.Button("Start Gather/Crafting", new Vector2(-1, 22)))
             {
                 if (hardFails > 0)
                     ImGui.OpenPopup("ConfirmFailedMacros##startCraft");

@@ -160,6 +160,20 @@ public static class CraftingGatherBridge
     {
         try
         {
+            if (_plugin != null)
+            {
+                var enabledLists = _plugin.AutoGatherListsManager.Lists.Where(l => l.Enabled).ToList();
+                if (enabledLists.Count > 0)
+                {
+                    foreach (var existingList in enabledLists)
+                    {
+                        existingList.Enabled = false;
+                        GatherBuddy.Log.Debug($"[CraftingGatherBridge] Disabled gather list '{existingList.Name}' before starting craft gather");
+                    }
+                    _plugin.AutoGatherListsManager.Save();
+                }
+            }
+
             _gatherList = new AutoGatherList()
             {
                 Name = "Crafting Materials (Auto-Generated)",

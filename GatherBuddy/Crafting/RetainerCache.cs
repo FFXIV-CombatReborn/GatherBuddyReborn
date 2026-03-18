@@ -57,16 +57,10 @@ public static class RetainerCache
     }
 
     private static void OnItemAddedHandler((uint itemId, InventoryItem.ItemFlags flags, ulong retainerId, uint page) args)
-    {
-        GatherBuddy.Log.Debug($"[RetainerCache] ItemAdded: Item={args.itemId}, Retainer={args.retainerId}, Page={args.page}");
-        MarkDirty();
-    }
+        => MarkDirty();
 
     private static void OnItemRemovedHandler((uint itemId, InventoryItem.ItemFlags flags, ulong retainerId, uint page) args)
-    {
-        GatherBuddy.Log.Debug($"[RetainerCache] ItemRemoved: Item={args.itemId}, Retainer={args.retainerId}, Page={args.page}");
-        MarkDirty();
-    }
+        => MarkDirty();
 
     private static void MarkDirty()
     {
@@ -75,7 +69,6 @@ public static class RetainerCache
             _cache.Clear();
             _isDirty = true;
         }
-        GatherBuddy.Log.Debug("[RetainerCache] Cache invalidated by inventory change");
     }
 
     public static uint GetRetainerItemCount(uint itemId)

@@ -92,6 +92,12 @@ public partial class GatherBuddy
             ShowInHelp = false,
         };
 
+        _commands["/vulcan"] = new CommandInfo(OnVulcan)
+        {
+            HelpMessage = "Open the Vulcan crafting interface. Use with a list ID to jump directly to that list.",
+            ShowInHelp  = true,
+        };
+
         foreach (var (command, info) in _commands)
             Dalamud.Commands.AddHandler(command, info);
     }
@@ -236,6 +242,18 @@ public partial class GatherBuddy
         }
 
         Config.Save();
+    }
+
+    private void OnVulcan(string command, string arguments)
+    {
+        var trimmed = arguments.Trim();
+        if (trimmed.Length > 0)
+        {
+            _vulcanWindow?.OpenToList(trimmed);
+            return;
+        }
+
+        _vulcanWindow?.Toggle();
     }
 
     private static void OnGatherDebug(string command, string arguments)

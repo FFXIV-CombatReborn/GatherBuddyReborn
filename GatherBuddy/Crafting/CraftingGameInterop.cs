@@ -356,6 +356,8 @@ public static class CraftingGameInterop
                 if (_currentIngredientPreferences != null && _currentIngredientPreferences.TryGetValue(ingredient.ItemId, out var preferredHQ2))
                 {
                     desiredHQ = Math.Min(preferredHQ2, Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ));
+                    var nqShortfall = Math.Max(0, (ingredient.NumTotal - desiredHQ) - ingredient.NumAvailableNQ);
+                    desiredHQ = Math.Min(ingredient.NumAvailableHQ, desiredHQ + nqShortfall);
                     GatherBuddy.Log.Debug($"[Crafting] Using preference: {desiredHQ} HQ for item {ingredient.ItemId}");
                 }
                 else if (_currentUseAllNQ)
@@ -1038,6 +1040,12 @@ public static class CraftingGameInterop
         var actualRecipe = recipe.Value;
         GatherBuddy.Log.Debug($"[Crafting] Building craft state for recipe {_currentRecipeId}");
         _vulcanCraftState = CraftingStateBuilder.BuildCraftState(actualRecipe);
+        if (_currentIngredientPreferences != null && _currentIngredientPreferences.Count > 0)
+        {
+            var iq = QualityCalculator.CalculateInitialQuality(actualRecipe, _currentIngredientPreferences);
+            GatherBuddy.Log.Debug($"[Crafting] Setting InitialQuality={iq} from ingredient preferences for Raphael key");
+            _vulcanCraftState = _vulcanCraftState with { InitialQuality = iq };
+        }
         _vulcanStepState = CraftingStateBuilder.BuildInitialStepState(_vulcanCraftState);
         GatherBuddy.Log.Debug($"[Crafting] CraftState null={_vulcanCraftState == null}, StepState null={_vulcanStepState == null}");
         if (_vulcanCraftState != null && _vulcanStepState != null)

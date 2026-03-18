@@ -49,6 +49,7 @@ public class RaphaelSolverDefinition : ISolverDefinition
 
     private RaphaelSolveRequest BuildSolveRequest(CraftState craft)
     {
+        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && craft.Specialist;
         return new RaphaelSolveRequest(
             RecipeId: craft.RecipeId,
             Level: craft.StatLevel,
@@ -56,7 +57,7 @@ public class RaphaelSolverDefinition : ISolverDefinition
             Control: craft.StatControl,
             CP: craft.StatCP,
             Manipulation: craft.UnlockedManipulation,
-            Specialist: craft.Specialist,
+            Specialist: specialist,
             InitialQuality: craft.InitialQuality
         );
     }
