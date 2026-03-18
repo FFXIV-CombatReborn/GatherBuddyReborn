@@ -136,43 +136,51 @@ public class CraftingListEditor
             return;
         }
         
-        var (hardFails, warnings) = CountValidationIssues();
-        if (hardFails > 0)
-            ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudRed);
-        else if (warnings > 0)
-            ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudYellow);
-
-        if (ImGui.Button("Start Crafting", new Vector2(-1, 22)))
+        if (IPCSubscriber.IsReady("Artisan"))
         {
+            ImGuiUtil.DrawDisabledButton("Artisan Detected", new Vector2(-1, 22),
+                "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.", true);
+        }
+        else
+        {
+            var (hardFails, warnings) = CountValidationIssues();
             if (hardFails > 0)
-                ImGui.OpenPopup("ConfirmFailedMacros##startCraft");
-            else
-                OnStartCrafting?.Invoke(_list);
-        }
+                ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudRed);
+            else if (warnings > 0)
+                ImGui.PushStyleColor(ImGuiCol.Button, ImGuiColors.DalamudYellow);
 
-        if (hardFails > 0 || warnings > 0)
-        {
-            ImGui.PopStyleColor();
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(hardFails > 0
-                    ? $"{hardFails} macro(s) will fail this craft. Click to confirm and start anyway."
-                    : $"{warnings} macro(s) have warnings.");
-        }
-
-        if (ImGui.BeginPopupModal("ConfirmFailedMacros##startCraft", ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.TextColored(ImGuiColors.DalamudRed, $"{hardFails} macro(s) are predicted to FAIL their craft.");
-            ImGui.TextWrapped("These items may not be completed. Start crafting anyway?");
-            ImGui.Spacing();
-            if (ImGui.Button("Start Anyway", new Vector2(120, 0)))
+            if (ImGui.Button("Start Gather/Crafting", new Vector2(-1, 22)))
             {
-                OnStartCrafting?.Invoke(_list);
-                ImGui.CloseCurrentPopup();
+                if (hardFails > 0)
+                    ImGui.OpenPopup("ConfirmFailedMacros##startCraft");
+                else
+                    OnStartCrafting?.Invoke(_list);
             }
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(80, 0)))
-                ImGui.CloseCurrentPopup();
-            ImGui.EndPopup();
+
+            if (hardFails > 0 || warnings > 0)
+            {
+                ImGui.PopStyleColor();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(hardFails > 0
+                        ? $"{hardFails} macro(s) will fail this craft. Click to confirm and start anyway."
+                        : $"{warnings} macro(s) have warnings.");
+            }
+
+            if (ImGui.BeginPopupModal("ConfirmFailedMacros##startCraft", ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                ImGui.TextColored(ImGuiColors.DalamudRed, $"{hardFails} macro(s) are predicted to FAIL their craft.");
+                ImGui.TextWrapped("These items may not be completed. Start crafting anyway?");
+                ImGui.Spacing();
+                if (ImGui.Button("Start Anyway", new Vector2(120, 0)))
+                {
+                    OnStartCrafting?.Invoke(_list);
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                    ImGui.CloseCurrentPopup();
+                ImGui.EndPopup();
+            }
         }
         
         if (ImGui.Button("Generate Gather List", new Vector2(-1, 22)))
@@ -895,42 +903,9 @@ public class CraftingListEditor
         }
     }
 
-    internal unsafe int GetRetainerCount(uint itemId)
+    internal int GetRetainerCount(uint itemId)
     {
-        if (!AllaganTools.Enabled || AllaganTools.ItemCount == null)
-            return 0;
-
-        var now = DateTime.Now;
-        if (_retainerRefreshTimes.TryGetValue(itemId, out var lastRefresh) &&
-            (now - lastRefresh).TotalSeconds < InventoryRefreshIntervalSeconds)
-            return _cachedRetainerCounts.GetValueOrDefault(itemId, 0);
-
-        try
-        {
-            var retainerMgr = FFXIVClientStructs.FFXIV.Client.Game.RetainerManager.Instance();
-            if (retainerMgr == null) return 0;
-
-            int total = 0;
-            var count = retainerMgr->GetRetainerCount();
-            for (uint i = 0; i < count; i++)
-            {
-                var retainer = retainerMgr->GetRetainerBySortedIndex(i);
-                if (retainer == null || retainer->RetainerId == 0) continue;
-
-                var retainerId = retainer->RetainerId;
-                for (uint page = 10000; page <= 10006; page++)
-                    total += (int)AllaganTools.ItemCount(itemId, retainerId, page);
-                total += (int)AllaganTools.ItemCount(itemId, retainerId, 12001);
-            }
-
-            _cachedRetainerCounts[itemId] = total;
-            _retainerRefreshTimes[itemId] = now;
-            return total;
-        }
-        catch
-        {
-            return 0;
-        }
+        return (int)RetainerCache.GetRetainerItemCount(itemId);
     }
     
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)

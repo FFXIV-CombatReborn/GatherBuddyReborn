@@ -118,6 +118,8 @@ public static unsafe class GearsetStatsReader
             }
 
             var manipulation = IsManipulationUnlocked(jobId);
+            var isSpecialist = equippedContainer->Size > 13 && (equippedContainer->Items + 13)->ItemId != 0;
+            GatherBuddy.Log.Debug($"[GearsetStatsReader] ReadFromCurrentlyEquipped: Crafts={craftsmanship}, Ctrl={control}, CP={cp}, Specialist={isSpecialist}");
 
             return new GameStateBuilder.PlayerStats(
                 Craftsmanship: craftsmanship,
@@ -125,7 +127,7 @@ public static unsafe class GearsetStatsReader
                 CP: cp,
                 Level: 100,
                 Manipulation: manipulation,
-                Specialist: false,
+                Specialist: isSpecialist,
                 SplendorCosmic: false
             );
         }
@@ -269,8 +271,7 @@ public static unsafe class GearsetStatsReader
             }
 
             var manipulation = IsManipulationUnlocked(jobId);
-
-            GatherBuddy.Log.Debug($"[GearsetStatsReader] Final stats for job {jobId}: Craftsmanship={craftsmanship}, Control={control}, CP={cp}, Manipulation={manipulation}");
+            var isSpecialist = gearset->Items[13].ItemId != 0;
 
             return new GameStateBuilder.PlayerStats(
                 Craftsmanship: craftsmanship,
@@ -278,7 +279,7 @@ public static unsafe class GearsetStatsReader
                 CP: cp,
                 Level: 100,
                 Manipulation: manipulation,
-                Specialist: false,
+                Specialist: isSpecialist,
                 SplendorCosmic: false
             );
         }
@@ -397,7 +398,6 @@ public static unsafe class GearsetStatsReader
             craftsmanship += craftBonus;
             control += controlBonus;
             cp += cpBonus;
-            GatherBuddy.Log.Debug($"[GearsetStatsReader] Food ({(foodHQ ? "HQ" : "NQ")}) bonus: +{craftBonus} Craftsmanship, +{controlBonus} Control, +{cpBonus} CP");
         }
 
         if (medicineId.HasValue)
@@ -406,7 +406,6 @@ public static unsafe class GearsetStatsReader
             craftsmanship += craftBonus;
             control += controlBonus;
             cp += cpBonus;
-            GatherBuddy.Log.Debug($"[GearsetStatsReader] Medicine ({(medicineHQ ? "HQ" : "NQ")}) bonus: +{craftBonus} Craftsmanship, +{controlBonus} Control, +{cpBonus} CP");
         }
 
         return new GameStateBuilder.PlayerStats(

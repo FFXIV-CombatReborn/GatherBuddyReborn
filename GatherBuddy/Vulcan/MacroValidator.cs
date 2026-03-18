@@ -61,7 +61,6 @@ public static class MacroValidator
 
         var result = Validate(macro, recipe.Value, stats, startingQuality);
         _cache[key] = result;
-        GatherBuddy.Log.Debug($"[MacroValidator] '{macro.Name}' for recipe {recipeId}: {(result.IsValid ? "PASS" : $"FAIL ({result.Failure} at step {result.FailedAtStep})")}");
         return result;
     }
 

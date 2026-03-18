@@ -58,6 +58,11 @@ public class CraftingListManager
         return _lists.FirstOrDefault(x => x.ID == id);
     }
 
+    public CraftingListDefinition? GetListByName(string name)
+    {
+        return _lists.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    }
+
     public bool DeleteList(int id)
     {
         var list = GetListByID(id);

@@ -71,6 +71,31 @@ public partial class VulcanWindow : Window, IDisposable
         IsOpen = true;
     }
 
+    public void OpenToList(string argument)
+    {
+        CraftingListDefinition? list;
+        if (int.TryParse(argument, out var listId))
+            list = GatherBuddy.CraftingListManager.GetListByID(listId);
+        else
+            list = GatherBuddy.CraftingListManager.GetListByName(argument);
+
+        if (list == null)
+        {
+            GatherBuddy.Log.Warning($"[VulcanWindow] OpenToList: No list found matching '{argument}'");
+            _isMinimized = false;
+            IsOpen = true;
+            return;
+        }
+
+        _isMinimized = false;
+        IsOpen = true;
+        _editingList = list;
+        _listEditor = new CraftingListEditor(list);
+        _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+        GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+        _deferEditorDraw = true;
+    }
+
     public override void PreDraw()
     {
         if (!IsOpen)
@@ -209,7 +234,7 @@ public partial class VulcanWindow : Window, IDisposable
             var lists = GatherBuddy.CraftingListManager.Lists.ToList();
             foreach (var list in lists)
             {
-                var selectableLabel = $"{list.Name} ({list.Recipes.Count} recipes)";
+            var selectableLabel = $"{list.Name} ({list.Recipes.Count} recipes)";
                 var selectableWidth = ImGui.CalcTextSize(selectableLabel).X + ImGui.GetStyle().ItemSpacing.X;
                 if (ImGui.Selectable($"{selectableLabel}##list_{list.ID}", false, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0)))
                 {
@@ -349,7 +374,6 @@ public partial class VulcanWindow : Window, IDisposable
                 }
                 var craftSettings = originalItem?.CraftSettings ?? list.PrecraftCraftSettings.GetValueOrDefault(recipeItem.RecipeId);
                 var effectiveMacroId = ResolveEffectiveMacroId(craftSettings, !isOriginal, list);
-                GatherBuddy.Log.Debug($"[VulcanWindow] Recipe {recipeItem.RecipeId} effectiveMacroId={effectiveMacroId ?? "null"}");
                 if (craftSettings != null)
                 {
                     queueItem.CraftSettings = new RecipeCraftSettings
@@ -842,6 +866,17 @@ public partial class VulcanWindow : Window, IDisposable
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Solutions older than this many days are discarded on plugin load.");
+
+            ImGui.Spacing();
+            var allowSpecialist = raphaelConfig.RaphaelAllowSpecialistActions;
+            if (ImGui.Checkbox("  Allow Specialist Actions###RaphaelAllowSpecialist", ref allowSpecialist))
+            {
+                raphaelConfig.RaphaelAllowSpecialistActions = allowSpecialist;
+                GatherBuddy.Config.Save();
+                coordinator.Clear();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When disabled (default), Raphael generates non-specialist rotations even if you are a specialist.\nEnable only if you want Raphael to use specialist actions.\nChanging this clears the solution cache.");
 
             var activeColor = coordinator.ActiveSolves > 0 ? ImGuiColors.HealerGreen : ImGuiColors.DalamudGrey;
             ImGui.TextColored(activeColor, $"  Active Solves: {coordinator.ActiveSolves}/{raphaelConfig.MaxConcurrentRaphaelProcesses}");

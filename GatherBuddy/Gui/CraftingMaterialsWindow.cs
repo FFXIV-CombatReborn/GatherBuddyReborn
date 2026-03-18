@@ -5,6 +5,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using ElliLib;
+using ElliLib.Text;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 
@@ -194,7 +195,7 @@ public class CraftingMaterialsWindow : Window
         else
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
-        ImGui.TextUnformatted(name);
+        ImUtf8.CopyOnClickSelectable(name.AsSpan());
 
         ImGui.TableNextColumn();
         var haveStr   = have.ToString();
