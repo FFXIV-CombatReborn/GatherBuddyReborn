@@ -51,7 +51,7 @@ public class RaphaelSolveCoordinatorConfig
     public bool RaphaelEnabled { get; set; } = true;
     public int MaxConcurrentRaphaelProcesses { get; set; } = 1;
     public int RaphaelTimeoutMinutes { get; set; } = 5;
-    public bool RaphaelBackloadProgress { get; set; } = true;
+    public bool RaphaelBackloadProgress { get; set; } = false;
     public bool RaphaelAllowSpecialistActions { get; set; } = false;
     public bool AutoClearSolutionCache { get; set; } = true;
     public int SolutionCacheMaxAgeDays { get; set; } = 30;

@@ -40,6 +40,8 @@ public class CraftingQueueProcessor
     private int _currentProcessedRecipeTotal = 0;
     private DateTime _craftHangSince = DateTime.MinValue;
     private bool _lastCraftWasQuickSynth = false;
+    private Dictionary<uint, RaphaelSolveRequest> _enqueuedRaphaelRequests = new();
+    private uint _jobSwitchRequestedFor = 0u;
 
     public QueueState CurrentState => _currentState;
     public int CurrentQueueIndex => _currentQueueIndex;
@@ -71,6 +73,8 @@ public class CraftingQueueProcessor
         _raphaelCoordinator = raphaelCoordinator;
         _listConsumables = listConsumables;
         _consumableDelayUntil = DateTime.MinValue;
+        _enqueuedRaphaelRequests.Clear();
+        _jobSwitchRequestedFor = 0u;
         GatherBuddy.Log.Information($"[CraftingQueueProcessor] Starting queue with {_queue.Count} recipes");
         GatherBuddy.Log.Debug($"[CraftingQueueProcessor] RaphaelCoordinator is {(raphaelCoordinator != null ? "present" : "null")}");
         StateChanged?.Invoke(_currentState);
@@ -201,7 +205,7 @@ public class CraftingQueueProcessor
 
         if (currentJob != requiredJob)
         {
-            if (_tasks.Count == 0)
+            if (_tasks.Count == 0 && _jobSwitchRequestedFor != requiredJob)
             {
                 GatherBuddy.Log.Information($"[CraftingQueueProcessor] Job switch needed: {requiredJob}");
                 bool needExitCraft = CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleBetween;
@@ -213,16 +217,12 @@ public class CraftingQueueProcessor
                 }
                 
                 _tasks.Add(() => { SwitchJob(requiredJob); return CraftingTasks.TaskResult.Done; });
-            }
-            
-            if (_tasks.Count == 0)
-            {
-                GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Job switch complete");
-                TransitionToRaphaelOrCraft();
+                _jobSwitchRequestedFor = requiredJob;
             }
         }
         else
         {
+            _jobSwitchRequestedFor = 0u;
             TransitionToRaphaelOrCraft();
         }
     }
@@ -270,6 +270,20 @@ public class CraftingQueueProcessor
         }
         
         var recipeItem = _queue[_currentQueueIndex];
+        if (_enqueuedRaphaelRequests.TryGetValue(recipeItem.RecipeId, out var enqueuedRequest))
+        {
+            var currentRequest = BuildRaphaelRequestForRecipe(recipeItem.RecipeId);
+            if (currentRequest != null && enqueuedRequest.GetKey() != currentRequest.GetKey())
+            {
+                GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Stats mismatch for recipe {recipeItem.RecipeId} — saved gearset may be outdated.");
+                GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Enqueued key: {enqueuedRequest.GetKey()}, Current key: {currentRequest.GetKey()}");
+                _enqueuedRaphaelRequests[recipeItem.RecipeId] = currentRequest;
+                _raphaelCoordinator!.EnqueueSolvesFromRequests(new[] { currentRequest });
+                _currentState = QueueState.WaitingForRaphaelSolution;
+                StateChanged?.Invoke(_currentState);
+                return;
+            }
+        }
         if (IsRaphaelSolutionReady(recipeItem.RecipeId))
         {
             GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Raphael solution ready for recipe {recipeItem.RecipeId}");
@@ -316,35 +330,9 @@ public class CraftingQueueProcessor
         if (_raphaelCoordinator == null)
             return false;
         
-        var recipe = RecipeManager.GetRecipe(recipeId);
-        if (recipe == null)
+        var request = BuildRaphaelRequestForRecipe(recipeId);
+        if (request == null)
             return false;
-        
-        var requiredJob = (uint)(recipe.Value.CraftType.RowId + 8);
-        var gearsetStats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);
-        if (gearsetStats == null)
-            return false;
-
-        var recipeItem = _queue.FirstOrDefault(r => r.RecipeId == recipeId);
-        var consumableSettings = BuildConsumableSettings(recipeItem);
-        if (consumableSettings != null)
-            gearsetStats = GearsetStatsReader.ApplyConsumablesToStats(gearsetStats, consumableSettings);
-        var ingredientPreferences = recipeItem?.IngredientPreferences;
-        int initialQuality = ingredientPreferences != null && ingredientPreferences.Count > 0
-            ? QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPreferences)
-            : 0;
-        
-        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
-        var request = new RaphaelSolveRequest(
-            RecipeId: recipeId,
-            Level: gearsetStats.Level,
-            Craftsmanship: gearsetStats.Craftsmanship,
-            Control: gearsetStats.Control,
-            CP: gearsetStats.CP,
-            Manipulation: gearsetStats.Manipulation,
-            Specialist: specialist,
-            InitialQuality: initialQuality
-        );
         
         return _raphaelCoordinator.TryGetSolution(request, out var solution) && solution != null && !solution.IsFailed;
     }
@@ -801,6 +789,7 @@ public class CraftingQueueProcessor
                 );
 
                 requests.Add(request);
+                _enqueuedRaphaelRequests.TryAdd(recipe.RowId, request);
             }
             catch (Exception ex)
             {
@@ -1129,6 +1118,8 @@ public class CraftingQueueProcessor
         _currentProcessedRecipeCount = 0;
         _currentProcessedRecipeTotal = 0;
         _craftHangSince = DateTime.MinValue;
+        _enqueuedRaphaelRequests.Clear();
+        _jobSwitchRequestedFor = 0u;
     }
     
     public void TestRepair()

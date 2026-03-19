@@ -211,16 +211,24 @@ public partial class VulcanWindow : Window, IDisposable
         ImGui.Text("Crafting Lists");
         ImGui.Spacing();
 
-        if (ImGui.Button("Create New List", new Vector2(200, 0)))
+        if (ImGui.Button("Create New List", new Vector2(130, 0)))
         {
             // Will show input dialog
             ImGui.OpenPopup("CreateListPopup");
         }
         
         ImGui.SameLine();
-        if (ImGui.Button("Import from TeamCraft", new Vector2(200, 0)))
+        if (ImGui.Button("TeamCraft Import", new Vector2(130, 0)))
         {
             _showTeamCraftImport = true;
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Import List", new Vector2(130, 0)))
+        {
+            _importListText  = string.Empty;
+            _importListError = null;
+            ImGui.OpenPopup("ImportListPopup");
         }
 
         ImGui.Spacing();
@@ -259,19 +267,29 @@ public partial class VulcanWindow : Window, IDisposable
                         GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
                         _deferEditorDraw = true;
                     }
-                    
+
                     if (ImGui.Selectable("Start"))
                     {
                         StartCraftingList(list);
                     }
-                    
+
+                    if (ImGui.Selectable("Export to Clipboard"))
+                    {
+                        var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
+                        if (exported != null)
+                        {
+                            ImGui.SetClipboardText(exported);
+                            GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+                        }
+                    }
+
                     ImGui.Separator();
-                    
+
                     if (ImGui.Selectable("Delete"))
                     {
                         GatherBuddy.CraftingListManager.DeleteList(list.ID);
                     }
-                    
+
                     ImGui.EndPopup();
                 }
             }
@@ -282,10 +300,68 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         DrawCreateListPopup();
+        DrawImportListPopup();
         DrawTeamCraftImportWindow();
     }
 
-    private string _newListName = string.Empty;
+    private string _newListName    = string.Empty;
+    private string _importListText  = string.Empty;
+    private string? _importListError = null;
+
+    private void DrawImportListPopup()
+    {
+        ImGui.SetNextWindowSize(new Vector2(540, 260), ImGuiCond.FirstUseEver);
+        if (!ImGui.BeginPopupModal("ImportListPopup", ImGuiWindowFlags.None))
+            return;
+
+        ImGui.TextWrapped("Paste an exported list string below and click Import.");
+        ImGui.Spacing();
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextMultiline("##importListText", ref _importListText, 65536, new Vector2(-1, 120));
+
+        if (_importListError != null)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.DalamudRed, _importListError);
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        using (ElliLib.Raii.ImRaii.Disabled(string.IsNullOrWhiteSpace(_importListText)))
+        {
+            if (ImGui.Button("Import", new Vector2(120, 0)))
+            {
+                var (imported, error) = GatherBuddy.CraftingListManager.ImportList(_importListText);
+                if (imported != null)
+                {
+                    _editingList = imported;
+                    _listEditor  = new CraftingListEditor(imported);
+                    _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+                    GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+                    _deferEditorDraw = true;
+                    _importListText  = string.Empty;
+                    _importListError = null;
+                    ImGui.CloseCurrentPopup();
+                }
+                else
+                {
+                    _importListError = error;
+                }
+            }
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel", new Vector2(100, 0)))
+        {
+            _importListText  = string.Empty;
+            _importListError = null;
+            ImGui.CloseCurrentPopup();
+        }
+
+        ImGui.EndPopup();
+    }
 
     private void DrawCreateListPopup()
     {
@@ -868,6 +944,16 @@ public partial class VulcanWindow : Window, IDisposable
                 ImGui.SetTooltip("Solutions older than this many days are discarded on plugin load.");
 
             ImGui.Spacing();
+            var backloadProgress = raphaelConfig.RaphaelBackloadProgress;
+            if (ImGui.Checkbox("  Backload Progress###RaphaelBackloadProgress", ref backloadProgress))
+            {
+                raphaelConfig.RaphaelBackloadProgress = backloadProgress;
+                GatherBuddy.Config.Save();
+                coordinator.Clear();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Only use progress-increasing actions at the end of the rotation.\nMay decrease achievable quality. Disable for maximum quality output.\nChanging this clears the solution cache.");
+
             var allowSpecialist = raphaelConfig.RaphaelAllowSpecialistActions;
             if (ImGui.Checkbox("  Allow Specialist Actions###RaphaelAllowSpecialist", ref allowSpecialist))
             {
