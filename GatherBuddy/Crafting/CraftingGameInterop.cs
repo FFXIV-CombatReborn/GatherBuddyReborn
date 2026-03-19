@@ -1071,8 +1071,17 @@ public static class CraftingGameInterop
         if (Dalamud.Conditions[ConditionFlag.ExecutingCraftingAction])
             return CraftState.WaitAction;
 
-        if (_nextActionAllowedAt != DateTime.MinValue && DateTime.Now < _nextActionAllowedAt)
+        if (_nextActionAllowedAt != DateTime.MinValue)
+        {
+            if (DateTime.Now < _nextActionAllowedAt)
+                return CraftState.InProgress;
+
+            _nextActionAllowedAt = DateTime.MinValue;
+            var cachedRecommendation = CraftingProcessor.NextRecommendation;
+            if (cachedRecommendation.Action != VulcanSkill.None && _vulcanCraftState != null && _vulcanStepState != null)
+                ExecuteSolverRecommendation(_vulcanCraftState, _vulcanStepState, cachedRecommendation);
             return CraftState.InProgress;
+        }
 
         if (_vulcanCraftState != null && _vulcanStepState != null)
         {
@@ -1110,13 +1119,12 @@ public static class CraftingGameInterop
             if (recommendation.Action != VulcanSkill.None)
             {
                 var delayMs = GatherBuddy.Config.VulcanExecutionDelayMs;
-                if (delayMs > 0 && _nextActionAllowedAt == DateTime.MinValue)
+                if (delayMs > 0)
                 {
                     GatherBuddy.Log.Debug($"[Crafting] Delaying next action by {delayMs}ms");
                     _nextActionAllowedAt = DateTime.Now.AddMilliseconds(delayMs);
                     return CraftState.InProgress;
                 }
-                _nextActionAllowedAt = DateTime.MinValue;
                 ExecuteSolverRecommendation(_vulcanCraftState, _vulcanStepState, recommendation);
             }
         }
