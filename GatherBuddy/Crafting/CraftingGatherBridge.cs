@@ -18,6 +18,7 @@ public static class CraftingGatherBridge
     private static bool _waitingForJobSwitch = false;
     private static CraftingQueueProcessor? _queueProcessor;
     private static bool _isQueueMode = false;
+    private static List<AutoGatherList> _disabledGatherLists = new();
     
     public static bool PreserveListOnDisable { get; set; } = false;
 
@@ -107,6 +108,7 @@ public static class CraftingGatherBridge
             if (_queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete && !_queueProcessor.HasPendingTasks())
             {
                 GatherBuddy.Log.Information("[CraftingGatherBridge] All completion tasks done, cleaning up");
+                RestoreDisabledGatherLists();
                 GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(null);
                 _queueProcessor = null;
                 _isQueueMode = false;
@@ -165,9 +167,11 @@ public static class CraftingGatherBridge
                 var enabledLists = _plugin.AutoGatherListsManager.Lists.Where(l => l.Enabled).ToList();
                 if (enabledLists.Count > 0)
                 {
+                    _disabledGatherLists.Clear();
                     foreach (var existingList in enabledLists)
                     {
                         existingList.Enabled = false;
+                        _disabledGatherLists.Add(existingList);
                         GatherBuddy.Log.Debug($"[CraftingGatherBridge] Disabled gather list '{existingList.Name}' before starting craft gather");
                     }
                     _plugin.AutoGatherListsManager.Save();
@@ -343,6 +347,21 @@ public static class CraftingGatherBridge
         GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(_queueProcessor);
     }
     
+    private static void RestoreDisabledGatherLists()
+    {
+        if (_disabledGatherLists.Count == 0 || _plugin == null)
+            return;
+
+        foreach (var list in _disabledGatherLists)
+        {
+            list.Enabled = true;
+            GatherBuddy.Log.Debug($"[CraftingGatherBridge] Re-enabled gather list '{list.Name}'");
+        }
+        _plugin.AutoGatherListsManager.SetActiveItems();
+        _plugin.AutoGatherListsManager.Save();
+        _disabledGatherLists.Clear();
+    }
+
     private static void OnQueueCompleted()
     {
         GatherBuddy.Log.Information("[CraftingGatherBridge] Queue completed, will clean up after tasks finish");
@@ -356,7 +375,7 @@ public static class CraftingGatherBridge
             _queueProcessor.Reset();
             _queueProcessor = null;
             _isQueueMode = false;
-            
+            RestoreDisabledGatherLists();
             GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(null);
         }
         else

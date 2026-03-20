@@ -261,7 +261,26 @@ public class CraftingQueueProcessor
             StateChanged?.Invoke(_currentState);
             return;
         }
-        
+
+        if (_currentQueueIndex < _queue.Count)
+        {
+            var currentItem = _queue[_currentQueueIndex];
+            var currentRecipe = RecipeManager.GetRecipe(currentItem.RecipeId);
+            if (currentRecipe != null)
+            {
+                var r = currentRecipe.Value;
+                var isNQOnly = !r.CanHq && !r.IsExpert && !r.ItemResult.Value.AlwaysCollectable && r.RequiredQuality == 0;
+                var willQuickSynth = currentItem.Options.NQOnly && r.CanQuickSynth && QuestManager.IsRecipeComplete(r.RowId);
+                if (isNQOnly || willQuickSynth)
+                {
+                    GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Bypassing Raphael wait for recipe {currentItem.RecipeId} (NQOnly={isNQOnly}, WillQuickSynth={willQuickSynth})");
+                    _currentState = QueueState.ReadyForCraft;
+                    StateChanged?.Invoke(_currentState);
+                    return;
+                }
+            }
+        }
+
         if (_currentQueueIndex >= _queue.Count)
         {
             _currentState = QueueState.ReadyForCraft;
@@ -626,27 +645,48 @@ public class CraftingQueueProcessor
         if (recipe == null) return null;
 
         var requiredJob = (uint)(recipe.Value.CraftType.RowId + 8);
-        var gearsetStats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);
-        if (gearsetStats == null) return null;
-
+        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
         var recipeItem = _queue.FirstOrDefault(r => r.RecipeId == recipeId);
         var consumableSettings = BuildConsumableSettings(recipeItem);
-        if (consumableSettings != null)
-            gearsetStats = GearsetStatsReader.ApplyConsumablesToStats(gearsetStats, consumableSettings);
+
+        GameStateBuilder.PlayerStats? stats;
+        if (currentJob == requiredJob)
+        {
+            stats = CraftingStateBuilder.GetCurrentPlayerStats();
+            if (stats != null && consumableSettings != null)
+            {
+                var unapplied = new RecipeCraftSettings
+                {
+                    FoodItemId     = consumableSettings.FoodItemId.HasValue     && !ConsumableChecker.HasFoodBuff(consumableSettings.FoodItemId.Value)         ? consumableSettings.FoodItemId     : null,
+                    FoodHQ         = consumableSettings.FoodHQ,
+                    MedicineItemId = consumableSettings.MedicineItemId.HasValue && !ConsumableChecker.HasMedicineBuff(consumableSettings.MedicineItemId.Value) ? consumableSettings.MedicineItemId : null,
+                    MedicineHQ     = consumableSettings.MedicineHQ,
+                };
+                stats = GearsetStatsReader.ApplyConsumablesToStats(stats, unapplied);
+            }
+        }
+        else
+        {
+            stats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);
+            if (stats != null && consumableSettings != null)
+                stats = GearsetStatsReader.ApplyConsumablesToStats(stats, consumableSettings);
+        }
+
+        if (stats == null) return null;
 
         var ingredientPreferences = recipeItem?.IngredientPreferences;
         int initialQuality = ingredientPreferences != null && ingredientPreferences.Count > 0
             ? QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPreferences)
             : 0;
 
-        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
+        var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && stats.Specialist;
         return new RaphaelSolveRequest(
             RecipeId: recipeId,
-            Level: gearsetStats.Level,
-            Craftsmanship: gearsetStats.Craftsmanship,
-            Control: gearsetStats.Control,
-            CP: gearsetStats.CP,
-            Manipulation: gearsetStats.Manipulation,
+            Level: stats.Level,
+            Craftsmanship: stats.Craftsmanship,
+            Control: stats.Control,
+            CP: stats.CP,
+            Manipulation: stats.Manipulation,
             Specialist: specialist,
             InitialQuality: initialQuality
         );
@@ -758,6 +798,14 @@ public class CraftingQueueProcessor
             {
                 if (!recipeSheet.TryGetRow(item.RecipeId, out var recipe))
                     continue;
+
+                var isNQOnly = !recipe.CanHq && !recipe.IsExpert && !recipe.ItemResult.Value.AlwaysCollectable && recipe.RequiredQuality == 0;
+                var willQuickSynth = item.Options.NQOnly && recipe.CanQuickSynth && QuestManager.IsRecipeComplete(recipe.RowId);
+                if (isNQOnly || willQuickSynth)
+                {
+                    GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Skipping Raphael pre-solve for recipe {item.RecipeId} (NQOnly={isNQOnly}, WillQuickSynth={willQuickSynth})");
+                    continue;
+                }
 
                 var requiredJob = (uint)(recipe.CraftType.RowId + 8);
                 var gearsetStats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);

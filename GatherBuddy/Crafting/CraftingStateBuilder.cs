@@ -112,10 +112,13 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
     {
         try
         {
-            var player = Dalamud.ClientState.LocalPlayer;
-            if (player == null)
-                return null;
-            return (int?)player.MaxCp;
+            unsafe
+            {
+                var playerState = PlayerState.Instance();
+                if (playerState == null)
+                    return null;
+                return playerState->Attributes[11];
+            }
         }
         catch
         {
