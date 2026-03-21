@@ -1,6 +1,7 @@
 using Dalamud.Game.Inventory;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -138,5 +139,25 @@ public static class RecipeManager
     {
         var missing = GetMissingIngredients(recipe);
         return missing.Count == 0;
+    }
+
+    public static List<Recipe> FindByItemName(string name)
+    {
+        var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
+        if (sheet == null)
+            return new();
+
+        var exact = sheet
+            .Where(r => r.ItemResult.RowId > 0 &&
+                        r.ItemResult.Value.Name.ExtractText().Equals(name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (exact.Count > 0)
+            return exact;
+
+        return sheet
+            .Where(r => r.ItemResult.RowId > 0 &&
+                        r.ItemResult.Value.Name.ExtractText().Contains(name, StringComparison.OrdinalIgnoreCase))
+            .Take(10)
+            .ToList();
     }
 }

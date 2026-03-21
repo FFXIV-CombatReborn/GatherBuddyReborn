@@ -4,10 +4,13 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.GamePad;
+using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using Dalamud.Interface.Colors;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using ElliLib;
 using GatherBuddy.Crafting;
+using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
 using ElliLib.Raii;
@@ -18,9 +21,10 @@ namespace GatherBuddy.Gui;
 public partial class VulcanWindow : Window, IDisposable
 {
     // Shared state
-    private CraftingListDefinition? _editingList = null;
-    private CraftingListEditor? _listEditor = null;
-    private bool _deferEditorDraw = false;
+    private CraftingListDefinition? _editingList  = null;
+    private CraftingListDefinition? _previewList  = null;
+    private CraftingListEditor?     _listEditor   = null;
+    private bool                    _deferEditorDraw = false;
 
     private bool _isMinimized = false;
     private bool _wasFocusedLastFrame = false;
@@ -28,7 +32,6 @@ public partial class VulcanWindow : Window, IDisposable
     // TeamCraft import state
     private bool _showTeamCraftImport = false;
     private string _teamCraftListName = string.Empty;
-    private string _teamCraftPrecrafts = string.Empty;
     private string _teamCraftFinalItems = string.Empty;
     
     // Debug tab state
@@ -183,22 +186,23 @@ public partial class VulcanWindow : Window, IDisposable
             }
 
             _editingList = refreshedList;
-            
-            ImGui.Text($"Editing: {_editingList.Name}");
+
+            if (ImGui.SmallButton("\u2190 Lists##backToLists"))
+            {
+                _editingList = null;
+                _listEditor  = null;
+                GatherBuddy.CraftingMaterialsWindow?.SetEditor(null);
+                return;
+            }
+
+            ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.ParsedGold, _editingList.Name);
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Crafting List");
             ImGui.Separator();
             ImGui.Spacing();
 
-            if (ImGui.Button("Back to List Manager", new Vector2(200, 0)))
-            {
-                _editingList = null;
-                _listEditor = null;
-            }
-
-            ImGui.Spacing();
             if (_listEditor != null)
-            {
                 _listEditor.Draw();
-            }
         }
         else
         {
@@ -208,21 +212,15 @@ public partial class VulcanWindow : Window, IDisposable
 
     private void DrawListManager()
     {
-        ImGui.Text("Crafting Lists");
+        ImGui.TextColored(ImGuiColors.DalamudYellow, "Crafting Lists");
+        ImGui.Separator();
         ImGui.Spacing();
 
         if (ImGui.Button("Create New List", new Vector2(130, 0)))
-        {
-            // Will show input dialog
             ImGui.OpenPopup("CreateListPopup");
-        }
-        
         ImGui.SameLine();
         if (ImGui.Button("TeamCraft Import", new Vector2(130, 0)))
-        {
             _showTeamCraftImport = true;
-        }
-
         ImGui.SameLine();
         if (ImGui.Button("Import List", new Vector2(130, 0)))
         {
@@ -233,75 +231,218 @@ public partial class VulcanWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        if (GatherBuddy.CraftingListManager.Lists.Count > 0)
+        var avail  = ImGui.GetContentRegionAvail();
+        var leftW  = 220f;
+        var rightW = avail.X - leftW - ImGui.GetStyle().ItemSpacing.X;
+
+        using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
         {
-            ImGui.Text("Saved Lists:");
-            ImGui.Spacing();
-
-            using var indent = ImRaii.PushIndent();
-            var lists = GatherBuddy.CraftingListManager.Lists.ToList();
-            foreach (var list in lists)
-            {
-            var selectableLabel = $"{list.Name} ({list.Recipes.Count} recipes)";
-                var selectableWidth = ImGui.CalcTextSize(selectableLabel).X + ImGui.GetStyle().ItemSpacing.X;
-                if (ImGui.Selectable($"{selectableLabel}##list_{list.ID}", false, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0)))
-                {
-                    _editingList = list;
-                    _listEditor = new CraftingListEditor(list);
-                    _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
-                    GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
-                    _deferEditorDraw = true;
-                }
-                
-                var isPopupOpen = GatherBuddy.ControllerSupport != null
-                    ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"ListContextMenu_{list.ID}", Dalamud.GamepadState)
-                    : ImGui.BeginPopupContextItem($"ListContextMenu_{list.ID}");
-                
-                if (isPopupOpen)
-                {
-                    if (ImGui.Selectable("Edit"))
-                    {
-                        _editingList = list;
-                        _listEditor = new CraftingListEditor(list);
-                        _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
-                        GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
-                        _deferEditorDraw = true;
-                    }
-
-                    if (ImGui.Selectable("Start"))
-                    {
-                        StartCraftingList(list);
-                    }
-
-                    if (ImGui.Selectable("Export to Clipboard"))
-                    {
-                        var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
-                        if (exported != null)
-                        {
-                            ImGui.SetClipboardText(exported);
-                            GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
-                        }
-                    }
-
-                    ImGui.Separator();
-
-                    if (ImGui.Selectable("Delete"))
-                    {
-                        GatherBuddy.CraftingListManager.DeleteList(list.ID);
-                    }
-
-                    ImGui.EndPopup();
-                }
-            }
+            ImGui.BeginChild("##listSelectorPanel", new Vector2(leftW, avail.Y), true);
+            DrawListSelectorPanel();
+            ImGui.EndChild();
         }
-        else
+
+        ImGui.SameLine();
+
+        using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "No crafting lists created yet. Click 'Create New List' to get started.");
+            ImGui.BeginChild("##listPreviewPanel", new Vector2(rightW, avail.Y), true);
+            DrawListPreviewPanel();
+            ImGui.EndChild();
         }
 
         DrawCreateListPopup();
         DrawImportListPopup();
         DrawTeamCraftImportWindow();
+    }
+
+    private void DrawListSelectorPanel()
+    {
+        if (GatherBuddy.CraftingListManager.Lists.Count == 0)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.DalamudGrey, "No lists yet.");
+            ImGui.TextColored(ImGuiColors.DalamudGrey, "Click 'Create New List' to get started.");
+            return;
+        }
+
+        var lists = GatherBuddy.CraftingListManager.Lists.ToList();
+        foreach (var list in lists)
+        {
+            var isHighlighted = _previewList?.ID == list.ID;
+            if (isHighlighted)
+                ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.ParsedGold);
+
+            if (ImGui.Selectable($"{list.Name}##list_{list.ID}", isHighlighted))
+            {
+                _editingList = list;
+                _listEditor  = new CraftingListEditor(list);
+                _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+                GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+                _deferEditorDraw = true;
+            }
+
+            if (isHighlighted)
+                ImGui.PopStyleColor();
+
+            if (ImGui.IsItemHovered())
+                _previewList = list;
+
+            var isPopupOpen = GatherBuddy.ControllerSupport != null
+                ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"ListContextMenu_{list.ID}", Dalamud.GamepadState)
+                : ImGui.BeginPopupContextItem($"ListContextMenu_{list.ID}");
+
+            if (isPopupOpen)
+            {
+                if (ImGui.Selectable("Edit"))
+                {
+                    _editingList = list;
+                    _listEditor  = new CraftingListEditor(list);
+                    _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+                    GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+                    _deferEditorDraw = true;
+                }
+                if (ImGui.Selectable("Start"))
+                    StartCraftingList(list);
+                if (ImGui.Selectable("Export to Clipboard"))
+                {
+                    var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
+                    if (exported != null)
+                    {
+                        ImGui.SetClipboardText(exported);
+                        GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+                    }
+                }
+                ImGui.Separator();
+                if (ImGui.Selectable("Delete"))
+                {
+                    if (_previewList?.ID == list.ID)
+                        _previewList = null;
+                    GatherBuddy.CraftingListManager.DeleteList(list.ID);
+                }
+                ImGui.EndPopup();
+            }
+        }
+    }
+
+    private void DrawListPreviewPanel()
+    {
+        if (_previewList == null)
+        {
+            var h = ImGui.GetContentRegionAvail().Y;
+            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + h / 2f - ImGui.GetTextLineHeight());
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 8);
+            ImGui.TextColored(ImGuiColors.DalamudGrey, "Hover over a list to preview it.");
+            return;
+        }
+
+        var list = GatherBuddy.CraftingListManager.GetListByID(_previewList.ID);
+        if (list == null)
+        {
+            _previewList = null;
+            return;
+        }
+        _previewList = list;
+
+        ImGui.Spacing();
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 8);
+        ImGui.TextColored(ImGuiColors.ParsedGold, list.Name);
+
+        if (!string.IsNullOrWhiteSpace(list.Description))
+        {
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 8);
+            using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudGrey3))
+                ImGui.TextWrapped(list.Description);
+        }
+
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 8);
+        var recipeWord = list.Recipes.Count == 1 ? "recipe" : "recipes";
+        ImGui.TextColored(ImGuiColors.DalamudGrey3,
+            $"{list.Recipes.Count} {recipeWord}  \u00b7  Created {list.CreatedAt.ToLocalTime():yyyy-MM-dd}");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        var style   = ImGui.GetStyle();
+        var buttonH = 22f * 2 + style.ItemSpacing.Y * 3 + 4f;
+        var listH   = Math.Max(ImGui.GetContentRegionAvail().Y - buttonH, 40f);
+
+        ImGui.BeginChild("##previewRecipeList", new Vector2(-1, listH), false);
+
+        if (list.Recipes.Count == 0)
+        {
+            ImGui.TextColored(ImGuiColors.DalamudGrey, "No recipes in this list.");
+        }
+        else
+        {
+            var iconSz = new Vector2(22f, 22f);
+            foreach (var item in list.Recipes)
+            {
+                var recipe = RecipeManager.GetRecipe(item.RecipeId);
+                if (recipe == null) continue;
+
+                var resultItem = recipe.Value.ItemResult.Value;
+                var icon = Icons.DefaultStorage.TextureProvider
+                    .GetFromGameIcon(new GameIconLookup(resultItem.Icon));
+                if (icon.TryGetWrap(out var wrap, out _))
+                    ImGui.Image(wrap.Handle, iconSz);
+                else
+                    ImGui.Dummy(iconSz);
+
+                ImGui.SameLine(0, 6);
+                ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSz.Y - ImGui.GetTextLineHeight()) / 2f);
+                ImGui.Text(resultItem.Name.ExtractText());
+                ImGui.SameLine();
+                ImGui.TextColored(ImGuiColors.DalamudGrey3,
+                    $"x{item.Quantity}  ({JobNames[recipe.Value.CraftType.RowId]})");
+            }
+        }
+
+        ImGui.EndChild();
+
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        var halfW = (ImGui.GetContentRegionAvail().X - style.ItemSpacing.X) / 2f;
+        if (ImGui.Button("Edit List##previewEdit", new Vector2(halfW, 22)))
+        {
+            _editingList = list;
+            _listEditor  = new CraftingListEditor(list);
+            _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+            GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+            _deferEditorDraw = true;
+        }
+        ImGui.SameLine();
+        if (IPCSubscriber.IsReady("Artisan"))
+        {
+            ImGuiUtil.DrawDisabledButton("Artisan Detected##previewStart", new Vector2(-1, 22),
+                "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.", true);
+        }
+        else if (ImGui.Button("Start Crafting##previewStart", new Vector2(-1, 22)))
+        {
+            StartCraftingList(list);
+            MinimizeWindow();
+        }
+
+        if (ImGui.Button("Export##previewExport", new Vector2(halfW, 22)))
+        {
+            var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+            }
+        }
+        ImGui.SameLine();
+        using (ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.45f, 0.12f, 0.12f, 1f)))
+        {
+            if (ImGui.Button("Delete##previewDelete", new Vector2(-1, 22)))
+            {
+                GatherBuddy.CraftingListManager.DeleteList(list.ID);
+                _previewList = null;
+            }
+        }
     }
 
     private string _newListName    = string.Empty;
@@ -403,7 +544,7 @@ public partial class VulcanWindow : Window, IDisposable
         }
     }
 
-    private void StartCraftingList(CraftingListDefinition list)
+    public void StartCraftingList(CraftingListDefinition list)
     {
         if (list.Recipes.Count == 0)
         {
@@ -1348,89 +1489,70 @@ public partial class VulcanWindow : Window, IDisposable
     {
         if (!_showTeamCraftImport)
             return;
-        
-        ImGui.SetNextWindowSize(new Vector2(600, 500), ImGuiCond.Appearing);
-        if (ImGui.Begin("TeamCraft Import###TCImport", ref _showTeamCraftImport, ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize))
+
+        ImGui.SetNextWindowSize(new Vector2(520, 310), ImGuiCond.Appearing);
+        if (ImGui.Begin("TeamCraft Import###TCImport", ref _showTeamCraftImport, ImGuiWindowFlags.NoCollapse))
         {
-            ImGui.TextWrapped("Import crafting lists from FFXIV TeamCraft:");
-            ImGui.Spacing();
-            ImGui.TextColored(new Vector4(1, 0.7f, 0, 1), "Important:");
-            ImGui.TextWrapped("This import only works if your game client language matches the language used in TeamCraft.");
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Open your list on TeamCraft, copy the 'Final Items' section using");
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "'Copy as Text', then paste below. Precrafts are generated automatically.");
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
-            
-            ImGui.TextWrapped("Step 1: Open your list on TeamCraft");
-            ImGui.TextWrapped("Step 2: Find the 'Pre-crafts' section and click 'Copy as Text'");
-            ImGui.TextWrapped("Step 3: Paste below in the Pre-craft Items box");
-            ImGui.TextWrapped("Step 4: Repeat for 'Final Items' section");
-            ImGui.TextWrapped("Step 5: Give your list a name and click Import");
-            
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            
+
             ImGui.Text("List Name:");
-            ImGui.SetNextItemWidth(550);
+            ImGui.SetNextItemWidth(-1);
             ImGui.InputText("##ImportListName", ref _teamCraftListName, 256);
-            
-            ImGui.Spacing();
-            ImGui.Text("Pre-craft Items:");
-            ImGui.InputTextMultiline("##PrecraftItems", ref _teamCraftPrecrafts, 500000, new Vector2(550, 150));
-            
+
             ImGui.Spacing();
             ImGui.Text("Final Items:");
-            ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(550, 150));
-            
+            ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, 150));
+
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
-            
+
             if (ImGui.Button("Import", new Vector2(100, 0)))
             {
                 var importedList = ParseTeamCraftImport();
                 if (importedList != null)
                 {
                     _editingList = importedList;
-                    _listEditor = new CraftingListEditor(importedList);
+                    _listEditor  = new CraftingListEditor(importedList);
                     _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
                     _listEditor.RefreshInventoryCounts();
-                    
-                    _teamCraftListName = string.Empty;
-                    _teamCraftPrecrafts = string.Empty;
+                    GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+                    _deferEditorDraw = true;
+
+                    _teamCraftListName  = string.Empty;
                     _teamCraftFinalItems = string.Empty;
                     _showTeamCraftImport = false;
-                    
+
                     GatherBuddy.Log.Information($"[VulcanWindow] Successfully imported TeamCraft list: {importedList.Name}");
                 }
             }
-            
+
             ImGui.SameLine();
             if (ImGui.Button("Cancel", new Vector2(100, 0)))
             {
-                _teamCraftListName = string.Empty;
-                _teamCraftPrecrafts = string.Empty;
+                _teamCraftListName   = string.Empty;
                 _teamCraftFinalItems = string.Empty;
                 _showTeamCraftImport = false;
             }
-            
+
             ImGui.End();
         }
     }
     
     private CraftingListDefinition? ParseTeamCraftImport()
     {
-        if (string.IsNullOrWhiteSpace(_teamCraftListName) && 
-            string.IsNullOrWhiteSpace(_teamCraftPrecrafts) && 
-            string.IsNullOrWhiteSpace(_teamCraftFinalItems))
+        if (string.IsNullOrWhiteSpace(_teamCraftFinalItems))
         {
-            GatherBuddy.Log.Warning("[VulcanWindow] TeamCraft import: All fields are empty");
+            GatherBuddy.Log.Warning("[VulcanWindow] TeamCraft import: Final items field is empty");
             return null;
         }
-        
+
         var recipesToAdd = new List<(uint recipeId, int quantity)>();
-        
-        ParseTeamCraftSection(_teamCraftPrecrafts, recipesToAdd);
+
         ParseTeamCraftSection(_teamCraftFinalItems, recipesToAdd);
         
         if (recipesToAdd.Count == 0)
