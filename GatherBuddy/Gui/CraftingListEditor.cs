@@ -295,6 +295,21 @@ public class CraftingListEditor
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Force Quick Synthesis on every eligible item in this list, overriding per-item solver settings.");
 
+        var allaganEnabled = AllaganTools.Enabled;
+        using (ImRaii.Disabled(!allaganEnabled))
+        {
+            var retainerRestock = _list.RetainerRestock;
+            if (ImGui.Checkbox("Restock from Retainers##rrr", ref retainerRestock))
+            {
+                _list.RetainerRestock = retainerRestock;
+                GatherBuddy.CraftingListManager.SaveList(_list);
+            }
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(allaganEnabled
+                ? "Withdraw needed materials from retainers before generating the gather list. Respects HQ/NQ preferences."
+                : "Requires Allagan Tools to be installed and enabled.");
+
         ImGui.Spacing();
 
         if (IPCSubscriber.IsReady("Artisan"))
@@ -971,10 +986,9 @@ public class CraftingListEditor
         }
     }
 
-    internal int GetRetainerCount(uint itemId)
-    {
-        return (int)RetainerCache.GetRetainerItemCount(itemId);
-    }
+    internal int GetRetainerCount(uint itemId)   => (int)RetainerCache.GetRetainerItemCount(itemId);
+    internal int GetRetainerCountNQ(uint itemId) => (int)RetainerCache.GetRetainerItemCountNQ(itemId);
+    internal int GetRetainerCountHQ(uint itemId) => (int)RetainerCache.GetRetainerItemCountHQ(itemId);
     
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)
     {

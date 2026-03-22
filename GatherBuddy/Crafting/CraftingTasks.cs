@@ -1,8 +1,9 @@
 using Dalamud.Game.ClientState.Conditions;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
 using Lumina.Excel.Sheets;
 using System;
@@ -16,6 +17,7 @@ public static class CraftingTasks
     private static bool _seenRepairConfirmation = false;
     private static bool _waitingForOccupied39 = false;
     private static DateTime _repairAutoStartTime = DateTime.MinValue;
+    private static DateTime _repairCloseStartTime = DateTime.MinValue;
     private static bool _isSelfRepair = false;
     public enum TaskResult
     {
@@ -203,15 +205,28 @@ public static class CraftingTasks
         if (DateTime.Now < _nextRetry)
             return TaskResult.Retry;
 
-        if (!RepairManager.RepairWindowOpen())
+        if (!GenericHelpers.TryGetAddonByName<AddonRepair>("Repair", out var repairAddon) || !repairAddon->AtkUnitBase.IsVisible)
         {
             GatherBuddy.Log.Debug("[CraftingTasks] Repair window already closed");
             _nextRetry = DateTime.MinValue;
+            _repairCloseStartTime = DateTime.MinValue;
             return TaskResult.Done;
         }
 
-        GatherBuddy.Log.Debug("[CraftingTasks] Closing repair window");
-        ActionManager.Instance()->UseAction(ActionType.GeneralAction, 6);
+        if (_repairCloseStartTime == DateTime.MinValue)
+            _repairCloseStartTime = DateTime.Now;
+
+        if ((DateTime.Now - _repairCloseStartTime).TotalSeconds > 10)
+        {
+            GatherBuddy.Log.Warning("[CraftingTasks] Timed out closing repair window, forcing close via agent");
+            AgentModule.Instance()->GetAgentByInternalId(AgentId.Repair)->Hide();
+            _repairCloseStartTime = DateTime.MinValue;
+            _nextRetry = DateTime.Now.AddMilliseconds(500);
+            return TaskResult.Retry;
+        }
+
+        GatherBuddy.Log.Debug("[CraftingTasks] Closing repair window via callback");
+        Callback.Fire(&repairAddon->AtkUnitBase, true, -1);
         _nextRetry = DateTime.Now.AddMilliseconds(500);
         return TaskResult.Retry;
     }

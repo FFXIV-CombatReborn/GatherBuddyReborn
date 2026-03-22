@@ -68,21 +68,22 @@ public class CraftingMaterialsWindow : Window
         if (itemSheet == null) return;
 
         var showRetainer = AllaganTools.Enabled;
-        var missing = new List<(uint itemId, int have, int retainer, int needed, string name, ushort iconId)>();
-        var ready   = new List<(uint itemId, int have, int retainer, int needed, string name, ushort iconId)>();
+        var missing = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId)>();
+        var ready   = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId)>();
 
         foreach (var (itemId, needed) in materials)
         {
             if (!itemSheet.TryGetRow(itemId, out var item)) continue;
-            var have     = _editor.GetInventoryCount(itemId);
-            var retainer = showRetainer ? _editor.GetRetainerCount(itemId) : 0;
-            var entry    = (itemId, have, retainer, needed, item.Name.ExtractText(), item.Icon);
-            if (have + retainer < needed) missing.Add(entry);
+            var have   = _editor.GetInventoryCount(itemId);
+            var retNQ  = showRetainer ? _editor.GetRetainerCountNQ(itemId) : 0;
+            var retHQ  = showRetainer ? _editor.GetRetainerCountHQ(itemId) : 0;
+            var entry  = (itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon);
+            if (have + retNQ + retHQ < needed) missing.Add(entry);
             else ready.Add(entry);
         }
 
-        var missingPrecrafts = new List<(uint itemId, int have, int retainer, int needed, string name, ushort iconId)>();
-        var readyPrecrafts   = new List<(uint itemId, int have, int retainer, int needed, string name, ushort iconId)>();
+        var missingPrecrafts = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId)>();
+        var readyPrecrafts   = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId)>();
 
         if (_matsShowPrecrafts)
         {
@@ -90,10 +91,11 @@ public class CraftingMaterialsWindow : Window
             foreach (var (itemId, needed) in precrafts)
             {
                 if (!itemSheet.TryGetRow(itemId, out var item)) continue;
-                var have     = _editor.GetInventoryCount(itemId);
-                var retainer = showRetainer ? _editor.GetRetainerCount(itemId) : 0;
-                var entry    = (itemId, have, retainer, needed, item.Name.ExtractText(), item.Icon);
-                if (have + retainer < needed) missingPrecrafts.Add(entry);
+                var have   = _editor.GetInventoryCount(itemId);
+                var retNQ  = showRetainer ? _editor.GetRetainerCountNQ(itemId) : 0;
+                var retHQ  = showRetainer ? _editor.GetRetainerCountHQ(itemId) : 0;
+                var entry  = (itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon);
+                if (have + retNQ + retHQ < needed) missingPrecrafts.Add(entry);
                 else readyPrecrafts.Add(entry);
             }
             missingPrecrafts.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
@@ -119,7 +121,7 @@ public class CraftingMaterialsWindow : Window
 
         const float barWidth      = 80f;
         const float countColWidth = 50f;
-        var colCount = showRetainer ? 5 : 4;
+        var colCount = showRetainer ? 6 : 4;
 
         var tableFlags = ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
                        | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingFixedFit;
@@ -127,16 +129,18 @@ public class CraftingMaterialsWindow : Window
         if (ImGui.BeginTable("##mat_table", colCount, tableFlags, new Vector2(0, ImGui.GetContentRegionAvail().Y)))
         {
             ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, countColWidth);
+            ImGui.TableSetupColumn("Item",  ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Have",  ImGuiTableColumnFlags.WidthFixed, countColWidth);
             if (showRetainer)
-                ImGui.TableSetupColumn("Ret", ImGuiTableColumnFlags.WidthFixed, countColWidth);
+            {
+                ImGui.TableSetupColumn("Ret NQ", ImGuiTableColumnFlags.WidthFixed, countColWidth);
+                ImGui.TableSetupColumn("Ret HQ", ImGuiTableColumnFlags.WidthFixed, countColWidth);
+            }
             ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, countColWidth);
             ImGui.TableSetupColumn("",     ImGuiTableColumnFlags.WidthFixed, barWidth);
 
             ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
-            ImGui.TableSetColumnIndex(0);
-            ImGui.TableHeader("Item");
+            ImGui.TableSetColumnIndex(0); ImGui.TableHeader("Item");
             ImGui.TableSetColumnIndex(1);
             var haveHdrOff = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("Have").X) * 0.5f;
             if (haveHdrOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + haveHdrOff);
@@ -144,36 +148,41 @@ public class CraftingMaterialsWindow : Window
             if (showRetainer)
             {
                 ImGui.TableSetColumnIndex(2);
-                var retHdrOff = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("Ret").X) * 0.5f;
-                if (retHdrOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + retHdrOff);
-                ImGui.TableHeader("Ret");
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Retainer inventory count (via Allagan Tools)");
+                var nqOff = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("Ret NQ").X) * 0.5f;
+                if (nqOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + nqOff);
+                ImGui.TableHeader("Ret NQ");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("NQ items in retainer inventory (via Allagan Tools)");
+                ImGui.TableSetColumnIndex(3);
+                var hqOff = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("Ret HQ").X) * 0.5f;
+                if (hqOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + hqOff);
+                ImGui.TableHeader("Ret HQ");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("HQ items in retainer inventory (via Allagan Tools)");
             }
-            ImGui.TableSetColumnIndex(showRetainer ? 3 : 2);
+            var needCol = showRetainer ? 4 : 2;
+            ImGui.TableSetColumnIndex(needCol);
             var needHdrOff = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("Need").X) * 0.5f;
             if (needHdrOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + needHdrOff);
             ImGui.TableHeader("Need");
-            ImGui.TableSetColumnIndex(showRetainer ? 4 : 3);
+            ImGui.TableSetColumnIndex(needCol + 1);
             ImGui.TableHeader("");
 
-            foreach (var (_, have, retainer, needed, name, iconId) in missing)
-                DrawMaterialRow(have, retainer, needed, name, iconId, false, showRetainer, false, _matsOvercapPercent);
+            foreach (var (_, have, retNQ, retHQ, needed, name, iconId) in missing)
+                DrawMaterialRow(have, retNQ, retHQ, needed, name, iconId, false, showRetainer, false, _matsOvercapPercent);
 
-            foreach (var (_, have, retainer, needed, name, iconId) in missingPrecrafts)
-                DrawMaterialRow(have, retainer, needed, name, iconId, false, showRetainer, true, _matsOvercapPercent);
+            foreach (var (_, have, retNQ, retHQ, needed, name, iconId) in missingPrecrafts)
+                DrawMaterialRow(have, retNQ, retHQ, needed, name, iconId, false, showRetainer, true, _matsOvercapPercent);
 
-            foreach (var (_, have, retainer, needed, name, iconId) in ready)
-                DrawMaterialRow(have, retainer, needed, name, iconId, true, showRetainer, false, _matsOvercapPercent);
+            foreach (var (_, have, retNQ, retHQ, needed, name, iconId) in ready)
+                DrawMaterialRow(have, retNQ, retHQ, needed, name, iconId, true, showRetainer, false, _matsOvercapPercent);
 
-            foreach (var (_, have, retainer, needed, name, iconId) in readyPrecrafts)
-                DrawMaterialRow(have, retainer, needed, name, iconId, true, showRetainer, true, _matsOvercapPercent);
+            foreach (var (_, have, retNQ, retHQ, needed, name, iconId) in readyPrecrafts)
+                DrawMaterialRow(have, retNQ, retHQ, needed, name, iconId, true, showRetainer, true, _matsOvercapPercent);
 
             ImGui.EndTable();
         }
     }
 
-    private static void DrawMaterialRow(int have, int retainerCount, int needed, string name, ushort iconId, bool satisfied, bool showRetainer, bool isPrcraft = false, bool overcapPercent = false)
+    private static void DrawMaterialRow(int have, int retainerNQ, int retainerHQ, int needed, string name, ushort iconId, bool satisfied, bool showRetainer, bool isPrcraft = false, bool overcapPercent = false)
     {
         ImGui.TableNextRow();
         Vector4 rowColor = (satisfied, isPrcraft) switch
@@ -207,11 +216,18 @@ public class CraftingMaterialsWindow : Window
         if (showRetainer)
         {
             ImGui.TableNextColumn();
-            var retStr   = retainerCount > 0 ? retainerCount.ToString() : "-";
-            var retColor = retainerCount > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-            var retOff   = (ImGui.GetColumnWidth() - ImGui.CalcTextSize(retStr).X) * 0.5f;
-            if (retOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + retOff);
-            ImGui.TextColored(retColor, retStr);
+            var nqStr   = retainerNQ > 0 ? retainerNQ.ToString() : "-";
+            var nqColor = retainerNQ > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
+            var nqOff   = (ImGui.GetColumnWidth() - ImGui.CalcTextSize(nqStr).X) * 0.5f;
+            if (nqOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + nqOff);
+            ImGui.TextColored(nqColor, nqStr);
+
+            ImGui.TableNextColumn();
+            var hqStr   = retainerHQ > 0 ? retainerHQ.ToString() : "-";
+            var hqColor = retainerHQ > 0 ? new Vector4(0.5f, 0.85f, 1.0f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
+            var hqOff   = (ImGui.GetColumnWidth() - ImGui.CalcTextSize(hqStr).X) * 0.5f;
+            if (hqOff > 0) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + hqOff);
+            ImGui.TextColored(hqColor, hqStr);
         }
 
         ImGui.TableNextColumn();

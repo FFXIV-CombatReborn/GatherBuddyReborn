@@ -144,17 +144,19 @@ public static class CraftingGatherBridge
         CreateGatherListForMissingIngredients(missing);
     }
     
-    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false)
+    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? retainerPrecraftItems = null)
     {
         _isQueueMode = true;
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.QueueCompleted += OnQueueCompleted;
         _waitingForGatherComplete = true;
-        
-        GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {queue.Count} recipes");
-        _queueProcessor.StartQueue(queue, listConsumables, GatherBuddy.RaphaelSolveCoordinator, skipIfEnough);
-        CreateGatherListForMissingIngredients(missing);
-        
+
+        GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {queue.Count} recipes, retainerRestock={retainerRestock}");
+        _queueProcessor.StartQueue(queue, listConsumables, GatherBuddy.RaphaelSolveCoordinator, skipIfEnough, retainerRestock, missing, retainerPrecraftItems);
+
+        if (!retainerRestock || !AllaganTools.Enabled || missing.Count == 0)
+            CreateGatherListForMissingIngredients(missing);
+
         GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(_queueProcessor);
     }
     
@@ -205,8 +207,17 @@ public static class CraftingGatherBridge
             {
                 _plugin.AutoGatherListsManager.AddList(_gatherList);
                 _plugin.AutoGatherListsManager.SetActiveItems();
-                GatherBuddy.AutoGather.Enabled = true;
-                GatherBuddy.Log.Information($"Created crafting gather list with {_gatherList.Items.Count} items. Starting auto-gather.");
+
+                if (IsGatheringComplete())
+                {
+                    GatherBuddy.Log.Debug($"[CraftingGatherBridge] Gather list created but all items already in inventory, proceeding directly to crafting");
+                    OnGatherComplete();
+                }
+                else
+                {
+                    GatherBuddy.AutoGather.Enabled = true;
+                    GatherBuddy.Log.Information($"Created crafting gather list with {_gatherList.Items.Count} items. Starting auto-gather.");
+                }
             }
             else
             {

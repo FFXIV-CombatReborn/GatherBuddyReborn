@@ -628,9 +628,17 @@ public partial class VulcanWindow : Window, IDisposable
         }
         
         var materials = list.ListMaterials();
-        
+        var retainerPrecraftItems = new System.Collections.Generic.Dictionary<uint, int>();
+
+        if (list.RetainerRestock && AllaganTools.Enabled)
+        {
+            var (corrected, precraftItems) = Crafting.RetainerTaskExecutor.PlanRetainerRestock(list, expandedQueue);
+            materials             = corrected;
+            retainerPrecraftItems = precraftItems;
+        }
+
         GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {sortedRecipes.Count} recipes");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough);
+        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough, list.RetainerRestock, retainerPrecraftItems);
     }
 
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
