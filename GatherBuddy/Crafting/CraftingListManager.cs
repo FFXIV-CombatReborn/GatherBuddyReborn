@@ -81,8 +81,9 @@ public class CraftingListManager
         var existing = GetListByID(list.ID);
         if (existing != null)
         {
-            existing.Name = list.Name;
-            existing.Recipes = list.Recipes;
+            existing.Name        = list.Name;
+            existing.Description = list.Description;
+            existing.Recipes     = list.Recipes;
             existing.SkipIfEnough = list.SkipIfEnough;
             existing.Materia = list.Materia;
             existing.Repair = list.Repair;

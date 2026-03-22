@@ -915,6 +915,9 @@ public partial class VulcanWindow
 
         ImGui.Spacing();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
+        ImGui.TextColored(new Vector4(0.65f, 0.65f, 0.65f, 1.0f), $"Recipe ID: {recipe.Recipe.RowId}");
+        ImGui.Spacing();
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
         if (recipe.Icon.TryGetWrap(out var wrap, out _))
             ImGui.Image(wrap.Handle, new Vector2(48, 48));
         else

@@ -31,7 +31,12 @@ public static unsafe class GenericHelpers
 
     public static bool IsScreenReady()
     {
-        var ptr = Dalamud.GameGui.GetAddonByName("_ScreenInfo");
-        return (nint)ptr != IntPtr.Zero;
+        var nowLoading = (AtkUnitBase*)(nint)Dalamud.GameGui.GetAddonByName("NowLoading");
+        if (nowLoading != null && nowLoading->IsVisible) return false;
+        var fadeMiddle = (AtkUnitBase*)(nint)Dalamud.GameGui.GetAddonByName("FadeMiddle");
+        if (fadeMiddle != null && fadeMiddle->IsVisible) return false;
+        var fadeBack = (AtkUnitBase*)(nint)Dalamud.GameGui.GetAddonByName("FadeBack");
+        if (fadeBack != null && fadeBack->IsVisible) return false;
+        return true;
     }
 }

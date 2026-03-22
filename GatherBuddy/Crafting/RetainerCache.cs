@@ -94,6 +94,25 @@ public static class RetainerCache
         }
     }
 
+    public static uint GetRetainerItemCountNQ(uint itemId)
+    {
+        if (!AllaganTools.Enabled || AllaganTools.ItemCount == null)
+            return 0;
+
+        lock (_lockObj)
+        {
+            if (_isDirty)
+                _isDirty = false;
+
+            if (_cache.TryGetValue(itemId, out var counts))
+                return counts.NQ;
+
+            var total = QueryAllRetainers(itemId, false);
+            _cache[itemId] = total;
+            return total.NQ;
+        }
+    }
+
     public static uint GetRetainerItemCountHQ(uint itemId)
     {
         if (!AllaganTools.Enabled || AllaganTools.ItemCountHQ == null)
@@ -140,14 +159,16 @@ public static class RetainerCache
 
                 for (uint page = 10000; page <= 10006; page++)
                 {
+                    var pageHQ = AllaganTools.ItemCountHQ(itemId, retainerId, page);
+                    totalHQ += pageHQ;
                     if (!hqOnly)
-                        totalNQ += AllaganTools.ItemCount(itemId, retainerId, page);
-                    totalHQ += AllaganTools.ItemCountHQ(itemId, retainerId, page);
+                        totalNQ += AllaganTools.ItemCount(itemId, retainerId, page) - pageHQ;
                 }
 
+                var crystalHQ = AllaganTools.ItemCountHQ(itemId, retainerId, 12001);
+                totalHQ += crystalHQ;
                 if (!hqOnly)
-                    totalNQ += AllaganTools.ItemCount(itemId, retainerId, 12001);
-                totalHQ += AllaganTools.ItemCountHQ(itemId, retainerId, 12001);
+                    totalNQ += AllaganTools.ItemCount(itemId, retainerId, 12001) - crystalHQ;
             }
 
             return (totalNQ, totalHQ);

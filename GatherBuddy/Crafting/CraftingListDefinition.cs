@@ -9,6 +9,7 @@ public class CraftingListDefinition
 {
     public int ID { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<CraftingListItem> Recipes { get; set; } = new();
     public List<uint> ExpandedList { get; set; } = new();
@@ -23,6 +24,7 @@ public class CraftingListDefinition
     public bool Materia { get; set; } = false;
     public bool Repair { get; set; } = false;
     public int RepairPercent { get; set; } = 50;
+    public bool RetainerRestock { get; set; } = false;
 
     public void BuildExpandedList()
     {
@@ -36,7 +38,13 @@ public class CraftingListDefinition
         }
     }
 
-    public Dictionary<uint, int> ListMaterials()
+    public Dictionary<uint, int> ListMaterials() => ListMaterials(null, null);
+
+    public Dictionary<uint, int> ListMaterials(Dictionary<uint, int>? additionalAvailable) => ListMaterials(additionalAvailable, null);
+
+    public Dictionary<uint, int> ListMaterials(
+        Dictionary<uint, int>? additionalAvailable,
+        Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)>? qualityTargets)
     {
         var materials = new Dictionary<uint, int>();
         foreach (var item in Recipes)
@@ -49,7 +57,7 @@ public class CraftingListDefinition
                 continue;
 
             var resolved = new Dictionary<uint, int>();
-            ResolveIngredientsForQuantity(recipe.Value, item.Quantity, resolved, SkipIfEnough);
+            ResolveIngredientsForQuantity(recipe.Value, item.Quantity, resolved, SkipIfEnough, additionalAvailable, qualityTargets);
             
             foreach (var (itemId, amount) in resolved)
             {
@@ -62,7 +70,11 @@ public class CraftingListDefinition
         return materials;
     }
 
-    private unsafe void ResolveIngredientsForQuantity(Recipe recipe, int quantity, Dictionary<uint, int> resolved, bool skipIfEnough = false)
+    private unsafe void ResolveIngredientsForQuantity(
+        Recipe recipe, int quantity, Dictionary<uint, int> resolved,
+        bool skipIfEnough = false,
+        Dictionary<uint, int>? additionalAvailable = null,
+        Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)>? qualityTargets = null)
     {
         var ingredients = RecipeManager.GetIngredients(recipe);
         
@@ -88,7 +100,14 @@ public class CraftingListDefinition
                             
                             var nqCount = inventory->GetInventoryItemCount(resultItemId, false, false, false);
                             var hqCount = inventory->GetInventoryItemCount(resultItemId, true, false, false);
-                            var totalInInventory = nqCount + hqCount;
+                            int totalInInventory;
+                            if (qualityTargets != null && qualityTargets.TryGetValue(resultItemId, out var qt) && qt.TargetNQ == 0)
+                                totalInInventory = (int)hqCount;
+                            else
+                                totalInInventory = (int)(nqCount + hqCount);
+
+                            if (additionalAvailable != null && additionalAvailable.TryGetValue(resultItemId, out var fromRetainer))
+                                totalInInventory += fromRetainer;
                             
                             if (totalInInventory >= totalNeeded)
                             {
@@ -102,7 +121,7 @@ public class CraftingListDefinition
                     catch { }
                 }
                 
-                ResolveIngredientsForQuantity(subRecipe.Value, quantityToCraft, resolved, skipIfEnough);
+                ResolveIngredientsForQuantity(subRecipe.Value, quantityToCraft, resolved, skipIfEnough, additionalAvailable, qualityTargets);
             }
             else
             {

@@ -104,15 +104,21 @@ public partial class VulcanWindow
             var leftWidth = 290f;
             var rightWidth = avail.X - leftWidth - ImGui.GetStyle().ItemSpacing.X;
 
-            ImGui.BeginChild("##solLeftPanel", new Vector2(leftWidth, avail.Y), true);
-            DrawSolutionsList(filtered);
-            ImGui.EndChild();
+            using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+            {
+                ImGui.BeginChild("##solLeftPanel", new Vector2(leftWidth, avail.Y), true);
+                DrawSolutionsList(filtered);
+                ImGui.EndChild();
+            }
 
             ImGui.SameLine();
 
-            ImGui.BeginChild("##solRightPanel", new Vector2(rightWidth, avail.Y), true);
-            DrawSolutionDetail();
-            ImGui.EndChild();
+            using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+            {
+                ImGui.BeginChild("##solRightPanel", new Vector2(rightWidth, avail.Y), true);
+                DrawSolutionDetail();
+                ImGui.EndChild();
+            }
         }
     }
 

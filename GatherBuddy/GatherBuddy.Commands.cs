@@ -4,6 +4,7 @@ using System.Linq;
 using Dalamud.Game;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
+using GatherBuddy.Crafting;
 using GatherBuddy.Enums;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
@@ -94,7 +95,7 @@ public partial class GatherBuddy
 
         _commands["/vulcan"] = new CommandInfo(OnVulcan)
         {
-            HelpMessage = "Open the Vulcan crafting interface. Use with a list ID to jump directly to that list.",
+            HelpMessage = "Open the Vulcan crafting interface. Use with a list ID/name to jump to that list, or 'craft <recipeId|name> [qty]' to start the full gather+craft pipeline immediately.",
             ShowInHelp  = true,
         };
 
@@ -247,13 +248,89 @@ public partial class GatherBuddy
     private void OnVulcan(string command, string arguments)
     {
         var trimmed = arguments.Trim();
-        if (trimmed.Length > 0)
+        if (trimmed.Length == 0)
         {
-            _vulcanWindow?.OpenToList(trimmed);
+            _vulcanWindow?.Toggle();
             return;
         }
 
-        _vulcanWindow?.Toggle();
+        var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts[0].Equals("craft", StringComparison.OrdinalIgnoreCase))
+        {
+            OnVulcanCraft(parts);
+            return;
+        }
+
+        _vulcanWindow?.OpenToList(trimmed);
+    }
+
+    private void OnVulcanCraft(string[] parts)
+    {
+        if (parts.Length < 2)
+        {
+            Communicator.Print("/vulcan craft <recipeId | itemName> [quantity]");
+            return;
+        }
+
+        var rest = parts[1..];
+        int quantity = 1;
+        string recipeArg;
+
+        if (rest.Length >= 2 && int.TryParse(rest[^1], out var qty) && qty > 0)
+        {
+            quantity = qty;
+            recipeArg = string.Join(" ", rest[..^1]);
+        }
+        else
+        {
+            recipeArg = string.Join(" ", rest);
+        }
+
+        Lumina.Excel.Sheets.Recipe? recipe = null;
+        if (uint.TryParse(recipeArg, out var recipeId))
+        {
+            recipe = RecipeManager.GetRecipe(recipeId);
+            if (recipe == null)
+            {
+                Communicator.Print($"No recipe found with ID {recipeId}.");
+                return;
+            }
+        }
+        else
+        {
+            var matches = RecipeManager.FindByItemName(recipeArg);
+            if (matches.Count == 0)
+            {
+                Communicator.Print($"No recipe found matching '{recipeArg}'.");
+                return;
+            }
+
+            if (matches.Count > 1)
+            {
+                Communicator.Print($"Multiple recipes match '{recipeArg}'. Use the recipe ID:");
+                var classJobSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.ClassJob>();
+                foreach (var m in matches)
+                {
+                    var jobAbbr = classJobSheet?.GetRow(m.CraftType.RowId + 8).Abbreviation.ExtractText() ?? "??";
+                    Communicator.Print($"  {m.ItemResult.Value.Name.ExtractText()} [{jobAbbr}] - ID: {m.RowId}");
+                }
+                return;
+            }
+
+            recipe = matches[0];
+        }
+
+        var itemName = recipe.Value.ItemResult.Value.Name.ExtractText();
+        var tempList = new CraftingListDefinition
+        {
+            ID   = -1,
+            Name = $"Command: {itemName} x{quantity}",
+        };
+        tempList.Recipes.Add(new CraftingListItem(recipe.Value.RowId, quantity));
+
+        GatherBuddy.Log.Information($"[Commands] /vulcan craft: {itemName} x{quantity} (recipe {recipe.Value.RowId})");
+        Communicator.Print($"Starting: {itemName} x{quantity}");
+        _vulcanWindow?.StartCraftingList(tempList);
     }
 
     private static void OnGatherDebug(string command, string arguments)
