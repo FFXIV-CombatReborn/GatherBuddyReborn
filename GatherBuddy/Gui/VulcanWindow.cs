@@ -1001,9 +1001,10 @@ public partial class VulcanWindow : Window, IDisposable
             var raphaelConfig = GatherBuddy.Config.RaphaelSolverConfig;
 
             var currentMode = raphaelConfig.SolverMode;
-            var modeNames = new[] { "Pure Raphael", "Standard Solver" };
+            var modeNames = new[] { "Pure Raphael", "Standard Solver", "Progress Only" };
+            var safeModeIndex = Math.Clamp((int)currentMode, 0, modeNames.Length - 1);
             ImGui.SetNextItemWidth(150);
-            if (ImGui.BeginCombo("Solver Mode###SolverMode", modeNames[(int)currentMode]))
+            if (ImGui.BeginCombo("Solver Mode###SolverMode", modeNames[safeModeIndex]))
             {
                 if (ImGui.Selectable("Pure Raphael", currentMode == RaphaelSolverMode.PureRaphael))
                 {
@@ -1030,6 +1031,20 @@ public partial class VulcanWindow : Window, IDisposable
                     ImGui.BeginTooltip();
                     ImGui.TextUnformatted("Standard Solver: Dynamic solver adapted from Artisan");
                     ImGui.TextUnformatted("Reacts to conditions, more flexible");
+                    ImGui.EndTooltip();
+                }
+
+                if (ImGui.Selectable("Progress Only", currentMode == RaphaelSolverMode.ProgressOnly))
+                {
+                    raphaelConfig.SolverMode = RaphaelSolverMode.ProgressOnly;
+                    GatherBuddy.Config.Save();
+                    CraftingGameInterop.ReloadSolvers();
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.BeginTooltip();
+                    ImGui.TextUnformatted("Progress Only: Completes crafts without quality actions");
+                    ImGui.TextUnformatted("Fastest execution, no quality output");
                     ImGui.EndTooltip();
                 }
                 ImGui.EndCombo();

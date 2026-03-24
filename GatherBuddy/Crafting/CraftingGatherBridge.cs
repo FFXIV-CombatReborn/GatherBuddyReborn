@@ -215,6 +215,7 @@ public static class CraftingGatherBridge
                 }
                 else
                 {
+                    _waitingForGatherComplete = true;
                     GatherBuddy.AutoGather.Enabled = true;
                     GatherBuddy.Log.Information($"Created crafting gather list with {_gatherList.Items.Count} items. Starting auto-gather.");
                 }

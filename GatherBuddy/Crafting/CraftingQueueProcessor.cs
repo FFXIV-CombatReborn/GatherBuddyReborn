@@ -166,7 +166,13 @@ public class CraftingQueueProcessor
                 StartNextCraft();
                 break;
             case QueueState.Crafting:
-                if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal)
+                if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.QuickSynthesis &&
+                    (NeedsRepair() || NeedsMateria()))
+                {
+                    GatherBuddy.Log.Information("[CraftingQueueProcessor] Interrupting quick synth for repair/materia");
+                    CloseQuickSynthWindow();
+                }
+                else if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal)
                 {
                     if (_craftHangSince == DateTime.MinValue)
                     {
@@ -244,6 +250,14 @@ public class CraftingQueueProcessor
 
         if (currentJob != requiredJob)
         {
+            if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51] ||
+                (Lifestream.Enabled && Lifestream.IsBusy()) || !GenericHelpers.IsScreenReady())
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Deferring job switch: zone transition, Lifestream active, or screen not ready");
+                _jobSwitchRequestedFor = 0u;
+                return;
+            }
+
             if (_tasks.Count == 0 && _jobSwitchRequestedFor != requiredJob)
             {
                 GatherBuddy.Log.Information($"[CraftingQueueProcessor] Job switch needed: {requiredJob}");
@@ -276,6 +290,11 @@ public class CraftingQueueProcessor
                     return CraftingTasks.TaskResult.Done;
                 });
                 _jobSwitchRequestedFor = requiredJob;
+            }
+            else if (_tasks.Count == 0 && _jobSwitchRequestedFor == requiredJob)
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Job switch task completed but job unchanged, resetting for retry");
+                _jobSwitchRequestedFor = 0u;
             }
         }
         else
@@ -999,6 +1018,27 @@ public class CraftingQueueProcessor
             }
         }
         
+        if (prioritizeNPC && preferredNPC == null && hasRepairNPC && npc != null)
+        {
+            var repairPrice = RepairManager.GetNPCRepairPrice();
+            var gilCount = InventoryManager.Instance()->GetInventoryItemCount(1);
+
+            if (gilCount >= repairPrice)
+            {
+                GatherBuddy.Log.Information($"[CraftingQueueProcessor] Using nearby repair NPC (no preferred set, cost: {repairPrice} gil)");
+                _tasks.Add(() => CraftingTasks.TaskInteractWithRepairNPC());
+                _tasks.Add(() => CraftingTasks.TaskSelectRepairFromMenu());
+                _tasks.Add(() => CraftingTasks.TaskExecuteRepair());
+                _tasks.Add(() => CraftingTasks.TaskCloseRepairWindow());
+                _tasks.Add(() => { TransitionFromRepairComplete(); return CraftingTasks.TaskResult.Done; });
+                return;
+            }
+            else
+            {
+                GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Not enough gil for NPC repair ({gilCount}/{repairPrice})");
+            }
+        }
+
         if (prioritizeNPC && preferredNPC == null && !hasRepairNPC)
         {
             var currentZoneNPC = FindNearestRepairNPCInCurrentZone();
