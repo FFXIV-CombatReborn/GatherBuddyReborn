@@ -131,12 +131,22 @@ public static class CraftingTasks
         return TaskResult.Retry;
     }
 
+    public static void ResetRepairState()
+    {
+        _seenRepairConfirmation = false;
+        _waitingForOccupied39 = false;
+        _repairAutoStartTime = DateTime.MinValue;
+        _repairCloseStartTime = DateTime.MinValue;
+        _isSelfRepair = false;
+        _nextRetry = DateTime.MinValue;
+    }
+
     public static unsafe TaskResult TaskExecuteRepair(bool isSelfRepair = false)
     {
         if (DateTime.Now < _nextRetry)
             return TaskResult.Retry;
 
-        if (!RepairManager.RepairWindowOpen())
+        if (!RepairManager.RepairWindowOpen() && !_seenRepairConfirmation && !_waitingForOccupied39)
         {
             GatherBuddy.Log.Warning("[CraftingTasks] Repair window not open, cannot execute repair");
             return TaskResult.Abort;
@@ -238,12 +248,25 @@ public static class CraftingTasks
 
         if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("RepairAuto", out var repairAutoAddon) && repairAutoAddon->IsVisible)
         {
+            if (_repairAutoStartTime == DateTime.MinValue)
+                _repairAutoStartTime = DateTime.Now;
+
+            if ((DateTime.Now - _repairAutoStartTime).TotalSeconds > 10)
+            {
+                GatherBuddy.Log.Warning("[CraftingTasks] Timed out waiting for RepairAuto, force closing");
+                repairAutoAddon->Close(true);
+                _repairAutoStartTime = DateTime.MinValue;
+                _nextRetry = DateTime.Now.AddMilliseconds(500);
+                return TaskResult.Retry;
+            }
+
             GatherBuddy.Log.Debug("[CraftingTasks] RepairAuto window still visible, waiting for repair to complete");
             _nextRetry = DateTime.Now.AddMilliseconds(200);
             return TaskResult.Retry;
         }
 
         GatherBuddy.Log.Debug("[CraftingTasks] RepairAuto window closed, repair complete");
+        _repairAutoStartTime = DateTime.MinValue;
         _nextRetry = DateTime.MinValue;
         return TaskResult.Done;
     }

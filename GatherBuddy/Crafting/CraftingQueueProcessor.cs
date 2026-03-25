@@ -101,7 +101,6 @@ public class CraftingQueueProcessor
             _currentState = QueueState.WaitingForGather;
         }
         GatherBuddy.Log.Information($"[CraftingQueueProcessor] Starting queue with {_queue.Count} recipes");
-        GatherBuddy.Log.Debug($"[CraftingQueueProcessor] RaphaelCoordinator is {(raphaelCoordinator != null ? "present" : "null")}");
         StateChanged?.Invoke(_currentState);
         
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
@@ -112,7 +111,6 @@ public class CraftingQueueProcessor
         }
         else if (solverMode == RaphaelSolverMode.StandardSolver)
         {
-            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] StandardSolver mode - skipping Raphael solve generation");
             var raphaelOverrideItems = _queue.Where(r => r.CraftSettings?.SolverOverride == SolverOverrideMode.RaphaelSolver).ToList();
             if (raphaelOverrideItems.Count > 0 && _raphaelCoordinator != null)
             {
@@ -166,7 +164,13 @@ public class CraftingQueueProcessor
                 StartNextCraft();
                 break;
             case QueueState.Crafting:
-                if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal)
+                if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.QuickSynthesis &&
+                    (NeedsRepair() || NeedsMateria()))
+                {
+                    GatherBuddy.Log.Information("[CraftingQueueProcessor] Interrupting quick synth for repair/materia");
+                    CloseQuickSynthWindow();
+                }
+                else if (CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleNormal)
                 {
                     if (_craftHangSince == DateTime.MinValue)
                     {
@@ -205,6 +209,13 @@ public class CraftingQueueProcessor
                     return;
                 case CraftingTasks.TaskResult.Abort:
                     _tasks.Clear();
+                    if (_currentState == QueueState.Repairing)
+                    {
+                        GatherBuddy.Log.Warning("[CraftingQueueProcessor] Repair task aborted, recovering to WaitingForJobSwitch");
+                        CraftingTasks.ResetRepairState();
+                        _currentState = QueueState.WaitingForJobSwitch;
+                        StateChanged?.Invoke(_currentState);
+                    }
                     return;
             }
         }
@@ -244,6 +255,14 @@ public class CraftingQueueProcessor
 
         if (currentJob != requiredJob)
         {
+            if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51] ||
+                (Lifestream.Enabled && Lifestream.IsBusy()) || !GenericHelpers.IsScreenReady())
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Deferring job switch: zone transition, Lifestream active, or screen not ready");
+                _jobSwitchRequestedFor = 0u;
+                return;
+            }
+
             if (_tasks.Count == 0 && _jobSwitchRequestedFor != requiredJob)
             {
                 GatherBuddy.Log.Information($"[CraftingQueueProcessor] Job switch needed: {requiredJob}");
@@ -276,6 +295,11 @@ public class CraftingQueueProcessor
                     return CraftingTasks.TaskResult.Done;
                 });
                 _jobSwitchRequestedFor = requiredJob;
+            }
+            else if (_tasks.Count == 0 && _jobSwitchRequestedFor == requiredJob)
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Job switch task completed but job unchanged, resetting for retry");
+                _jobSwitchRequestedFor = 0u;
             }
         }
         else
@@ -450,10 +474,7 @@ public class CraftingQueueProcessor
         
         if (CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleNormal && 
             CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleBetween)
-        {
-            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Waiting for crafting to be idle. Current state: {CraftingGameInterop.CurrentState}");
             return;
-        }
 
         var recipeItem = _queue[_currentQueueIndex];
 
@@ -778,18 +799,13 @@ public class CraftingQueueProcessor
         GatherBuddy.AutoGather.Enabled = false;
         
         var craftState = CraftingGameInterop.CurrentState;
-        GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Current craft state during CompleteQueue: {craftState}");
-        bool needExitCraft = craftState == CraftingGameInterop.CraftState.IdleBetween || 
+        bool needExitCraft = craftState == CraftingGameInterop.CraftState.IdleBetween ||
                             craftState == CraftingGameInterop.CraftState.WaitFinish ||
                             craftState == CraftingGameInterop.CraftState.QuickSynthesis;
         if (needExitCraft)
         {
             GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Queueing TaskExitCraft to close crafting log");
             _tasks.Add(() => CraftingTasks.TaskExitCraft());
-        }
-        else
-        {
-            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Not closing crafting log - state is {craftState}");
         }
         
         _currentState = QueueState.Complete;
@@ -868,10 +884,7 @@ public class CraftingQueueProcessor
                 var isNQOnly = !recipe.CanHq && !recipe.IsExpert && !recipe.ItemResult.Value.AlwaysCollectable && recipe.RequiredQuality == 0;
                 var willQuickSynth = item.Options.NQOnly && recipe.CanQuickSynth && HasRecipeCraftedBefore(recipe);
                 if (isNQOnly || willQuickSynth)
-                {
-                    GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Skipping Raphael pre-solve for recipe {item.RecipeId} (NQOnly={isNQOnly}, WillQuickSynth={willQuickSynth})");
                     continue;
-                }
 
                 var requiredJob = (uint)(recipe.CraftType.RowId + 8);
                 var gearsetStats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);
@@ -921,10 +934,7 @@ public class CraftingQueueProcessor
     private static bool HasRecipeCraftedBefore(Lumina.Excel.Sheets.Recipe recipe)
     {
         if (recipe.SecretRecipeBook.RowId > 0)
-        {
-            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Recipe {recipe.RowId} is a master recipe (SecretRecipeBook {recipe.SecretRecipeBook.RowId}), treating as previously crafted");
             return true;
-        }
         return QuestManager.IsRecipeComplete(recipe.RowId);
     }
 
@@ -940,6 +950,7 @@ public class CraftingQueueProcessor
     private unsafe void QueueRepairTasks()
     {
         GatherBuddy.Log.Debug("[CraftingQueueProcessor] Queueing repair tasks");
+        CraftingTasks.ResetRepairState();
         
         bool needExitCraft = CraftingGameInterop.CurrentState == CraftingGameInterop.CraftState.IdleBetween;
         if (needExitCraft)
@@ -999,6 +1010,27 @@ public class CraftingQueueProcessor
             }
         }
         
+        if (prioritizeNPC && preferredNPC == null && hasRepairNPC && npc != null)
+        {
+            var repairPrice = RepairManager.GetNPCRepairPrice();
+            var gilCount = InventoryManager.Instance()->GetInventoryItemCount(1);
+
+            if (gilCount >= repairPrice)
+            {
+                GatherBuddy.Log.Information($"[CraftingQueueProcessor] Using nearby repair NPC (no preferred set, cost: {repairPrice} gil)");
+                _tasks.Add(() => CraftingTasks.TaskInteractWithRepairNPC());
+                _tasks.Add(() => CraftingTasks.TaskSelectRepairFromMenu());
+                _tasks.Add(() => CraftingTasks.TaskExecuteRepair());
+                _tasks.Add(() => CraftingTasks.TaskCloseRepairWindow());
+                _tasks.Add(() => { TransitionFromRepairComplete(); return CraftingTasks.TaskResult.Done; });
+                return;
+            }
+            else
+            {
+                GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Not enough gil for NPC repair ({gilCount}/{repairPrice})");
+            }
+        }
+
         if (prioritizeNPC && preferredNPC == null && !hasRepairNPC)
         {
             var currentZoneNPC = FindNearestRepairNPCInCurrentZone();
@@ -1030,6 +1062,7 @@ public class CraftingQueueProcessor
             GatherBuddy.Log.Information("[CraftingQueueProcessor] Using self-repair");
             _tasks.Add(() => CraftingTasks.TaskOpenRepairWindow());
             _tasks.Add(() => CraftingTasks.TaskExecuteRepair(isSelfRepair: true));
+            _tasks.Add(() => CraftingTasks.TaskWaitForRepairAutoClose());
             _tasks.Add(() => CraftingTasks.TaskCloseRepairWindow());
             _tasks.Add(() => { TransitionFromRepairComplete(); return CraftingTasks.TaskResult.Done; });
             return;
