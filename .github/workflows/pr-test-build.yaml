@@ -1,0 +1,42 @@
+name: Pull Request Test Build
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  Build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download Dalamud Latest
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Force latest.zip -DestinationPath "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Restore Nuget Packages
+        run: dotnet restore Gatherbuddy/Gatherbuddy.csproj
+
+      - name: Build Plugin
+        run: dotnet build --no-restore -c Release Gatherbuddy/Gatherbuddy.csproj
+      - name: Build raphael-cli from raphael-rs
+        run: |
+          git clone https://github.com/KonaeAkira/raphael-rs.git raphael-rs-temp
+          cd raphael-rs-temp
+          cargo build --release --package raphael-cli
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Failed to build raphael-cli"
+            exit 1
+          }
+          Copy-Item -Path ".\target\release\raphael-cli.exe" -Destination "..\build\raphael-cli.exe" -Force
+          cd ..
+          Remove-Item -Recurse -Force raphael-rs-temp
+          Write-Host "Successfully built and copied raphael-cli.exe"
