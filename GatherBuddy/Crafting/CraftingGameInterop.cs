@@ -227,10 +227,7 @@ public static class CraftingGameInterop
             {
                 var atkUnit = (AtkUnitBase*)addon.Address;
                 if (atkUnit != null && atkUnit->IsVisible)
-                {
-                    GatherBuddy.Log.Debug($"[Crafting] Recipe window opened");
                     return true;
-                }
             }
         }
         catch { }
@@ -275,7 +272,6 @@ public static class CraftingGameInterop
     {
         try
         {
-            GatherBuddy.Log.Debug($"[Crafting] SelectIngredientsForCraft called");
             var addon = Dalamud.GameGui.GetAddonByName("RecipeNote");
             if (addon == null || addon.Address == nint.Zero)
             {
@@ -299,40 +295,23 @@ public static class CraftingGameInterop
                 return;
             }
 
-            GatherBuddy.Log.Debug($"[Crafting] Processing ingredients...");
             var ingredients = RecipeNoteExt.GetIngredientsSpan(selectedRecipe);
             for (int i = 0; i < ingredients.Length; i++)
             {
                 var ingredient = ingredients[i];
                 if (ingredient.ItemId == 0)
-                {
-                    GatherBuddy.Log.Debug($"[Crafting] Ingredient {i}: ItemId is 0, stopping");
                     break;
-                }
 
                 if (ingredient.NumTotal == 0)
-                {
-                    GatherBuddy.Log.Debug($"[Crafting] Ingredient {i}: NumTotal is 0, skipping");
                     continue;
-                }
-
-                GatherBuddy.Log.Debug($"[Crafting] Ingredient {i}: ItemId={ingredient.ItemId}, NQ avail={ingredient.NumAvailableNQ}, HQ avail={ingredient.NumAvailableHQ}, needed={ingredient.NumTotal}");
 
                 if (IsEquipmentIngredient(ingredient.ItemId))
                 {
-                    GatherBuddy.Log.Debug($"[Crafting] Ingredient {i} is equipment, using equipment selection");
-                    
                     bool preferHQ = false;
                     if (_currentIngredientPreferences != null && _currentIngredientPreferences.TryGetValue(ingredient.ItemId, out var preferredHQ))
-                    {
                         preferHQ = preferredHQ > 0;
-                        GatherBuddy.Log.Debug($"[Crafting] User preference: preferHQ={preferHQ}");
-                    }
                     else if (!_currentUseAllNQ && ingredient.NumAvailableHQ > 0)
-                    {
                         preferHQ = true;
-                        GatherBuddy.Log.Debug($"[Crafting] No preference, HQ-first default");
-                    }
                     
                     if (!SelectEquipmentIngredient(atkUnit, (uint)i, ingredient.ItemId, preferHQ))
                     {
@@ -358,37 +337,28 @@ public static class CraftingGameInterop
                     desiredHQ = Math.Min(preferredHQ2, Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ));
                     var nqShortfall = Math.Max(0, (ingredient.NumTotal - desiredHQ) - ingredient.NumAvailableNQ);
                     desiredHQ = Math.Min(ingredient.NumAvailableHQ, desiredHQ + nqShortfall);
-                    GatherBuddy.Log.Debug($"[Crafting] Using preference: {desiredHQ} HQ for item {ingredient.ItemId}");
                 }
                 else if (_currentUseAllNQ)
                 {
                     desiredHQ = Math.Max(0, ingredient.NumTotal - ingredient.NumAvailableNQ);
                     desiredHQ = Math.Min(desiredHQ, ingredient.NumAvailableHQ);
-                    GatherBuddy.Log.Debug($"[Crafting] Prefer NQ: {desiredHQ} HQ for item {ingredient.ItemId} (need={ingredient.NumTotal}, NQ avail={ingredient.NumAvailableNQ})");
                 }
                 else
                 {
                     desiredHQ = Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ);
-                    GatherBuddy.Log.Debug($"[Crafting] HQ-first default: {desiredHQ} HQ for item {ingredient.ItemId}");
                 }
                 
                 if (desiredHQ > 0)
                 {
-                    GatherBuddy.Log.Debug($"[Crafting] Clicking HQ for ingredient {i}, {desiredHQ} times");
                     for (int m = 0; m < desiredHQ; m++)
-                    {
                         ClickMaterial(atkUnit, (uint)i, true);
-                    }
                 }
                 
                 int desiredNQ = ingredient.NumTotal - desiredHQ;
                 if (desiredNQ > 0 && ingredient.NumAvailableNQ >= desiredNQ)
                 {
-                    GatherBuddy.Log.Debug($"[Crafting] Clicking NQ for ingredient {i}, {desiredNQ} times");
                     for (int m = 0; m < desiredNQ; m++)
-                    {
                         ClickMaterial(atkUnit, (uint)i, false);
-                    }
                 }
             }
         }
@@ -405,8 +375,6 @@ public static class CraftingGameInterop
             uint callbackIndex = index;
             if (hq)
                 callbackIndex += 0x10_000;
-            
-            GatherBuddy.Log.Debug($"[Crafting] Firing Material callback: index={callbackIndex}, hq={hq}");
             Callback.Fire(recipeNoteUnit, false, 6, callbackIndex, 0);
         }
         catch (Exception ex)
@@ -444,8 +412,6 @@ public static class CraftingGameInterop
     {
         try
         {
-            GatherBuddy.Log.Debug($"[Crafting] Selecting equipment ingredient at index {index}, itemId={itemId}, preferHQ={preferHQ}");
-            
             var componentNode = recipeNoteUnit->GetComponentNodeById(89 + index);
             if (componentNode == null || !componentNode->AtkResNode.IsVisible())
             {
@@ -461,10 +427,7 @@ public static class CraftingGameInterop
             
             var selectionButton = componentNode->Component->GetNodeById(7);
             if (selectionButton == null || !selectionButton->IsVisible())
-            {
-                GatherBuddy.Log.Debug($"[Crafting] Selection button not visible for ingredient {index}, using normal click");
                 return false;
-            }
             
             var clickButtonNode = componentNode->Component->GetNodeById(5);
             if (clickButtonNode == null)
@@ -479,8 +442,6 @@ public static class CraftingGameInterop
                 GatherBuddy.Log.Warning($"[Crafting] Click button not found for ingredient {index}");
                 return false;
             }
-            
-            GatherBuddy.Log.Debug($"[Crafting] Opening context menu for equipment selection");
             
             var buttonClickEvent = stackalloc AtkEvent[1];
             var eventData = (AtkEventData*)clickButtonNode;
@@ -508,7 +469,6 @@ public static class CraftingGameInterop
                 selectItemId += 1_000_000;
             }
             
-            GatherBuddy.Log.Debug($"[Crafting] Firing context menu callback for itemId={selectItemId}");
             Callback.Fire(contextMenu, true, 0, 0, 0, selectItemId, 0);
             
             System.Threading.Thread.Sleep(50);
@@ -689,7 +649,6 @@ public static class CraftingGameInterop
             if (atkUnit == null || !atkUnit->IsVisible)
                 return false;
 
-            GatherBuddy.Log.Debug($"[Crafting] Executing craft action");
             Callback.Fire(atkUnit, true, 8);
             GatherBuddy.Log.Information($"[Crafting] Craft started");
             return true;
@@ -745,17 +704,11 @@ public static class CraftingGameInterop
         {
             var quickSynthDialogAddon = Dalamud.GameGui.GetAddonByName("SynthesisSimpleDialog");
             if (quickSynthDialogAddon == null || quickSynthDialogAddon.Address == nint.Zero)
-            {
-                GatherBuddy.Log.Debug("[Crafting] Quick synthesis dialog not open yet");
                 return false;
-            }
 
             var dialogUnit = (AtkUnitBase*)quickSynthDialogAddon.Address;
             if (dialogUnit == null || !dialogUnit->IsVisible)
-            {
-                GatherBuddy.Log.Debug("[Crafting] Quick synthesis dialog not visible");
                 return false;
-            }
 
             var clampedQuantity = Math.Min(quantity, 99);
             GatherBuddy.Log.Information($"[Crafting] Confirming quick synthesis for {clampedQuantity} items");
@@ -884,14 +837,12 @@ public static class CraftingGameInterop
     {
         if (Dalamud.Conditions[ConditionFlag.ExecutingCraftingAction])
         {
-            GatherBuddy.Log.Debug($"[Crafting] Craft action executing, transitioning to WaitStart");
             _taskManagerIdleSince = DateTime.MinValue;
             return CraftState.WaitStart;
         }
 
         if (Dalamud.Conditions[ConditionFlag.Crafting])
         {
-            GatherBuddy.Log.Debug($"[Crafting] Crafting flag set, ready to craft");
             _taskManagerIdleSince = DateTime.MinValue;
             return CraftState.IdleBetween;
         }
@@ -980,10 +931,7 @@ public static class CraftingGameInterop
         
         var tm = GatherBuddy.AutoGather?.TaskManager;
         if (tm != null && tm.IsBusy)
-        {
-            GatherBuddy.Log.Debug($"[Crafting] TaskManager busy, staying in IdleBetween");
             return CraftState.IdleBetween;
-        }
         
         if (preparingFlag)
             return CraftState.IdleBetween;
@@ -1047,10 +995,8 @@ public static class CraftingGameInterop
             _vulcanCraftState = _vulcanCraftState with { InitialQuality = iq };
         }
         _vulcanStepState = CraftingStateBuilder.BuildInitialStepState(_vulcanCraftState);
-        GatherBuddy.Log.Debug($"[Crafting] CraftState null={_vulcanCraftState == null}, StepState null={_vulcanStepState == null}");
         if (_vulcanCraftState != null && _vulcanStepState != null)
         {
-            GatherBuddy.Log.Debug($"[Crafting] Calling OnCraftStarted");
             CraftingProcessor.OnCraftStarted(_vulcanCraftState, _vulcanStepState, _currentRecipeId.Value, false);
             var recommendation = CraftingProcessor.NextRecommendation;
             GatherBuddy.Log.Debug($"[Crafting] OnCraftStarted recommendation: {recommendation.Action}");
@@ -1121,7 +1067,6 @@ public static class CraftingGameInterop
                 var delayMs = GatherBuddy.Config.VulcanExecutionDelayMs;
                 if (delayMs > 0)
                 {
-                    GatherBuddy.Log.Debug($"[Crafting] Delaying next action by {delayMs}ms");
                     _nextActionAllowedAt = DateTime.Now.AddMilliseconds(delayMs);
                     return CraftState.InProgress;
                 }

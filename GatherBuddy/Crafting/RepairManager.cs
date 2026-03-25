@@ -160,7 +160,6 @@ public static unsafe class RepairManager
             addon->AtkUnitBase.IsVisible &&
             addon->YesButton is not null)
         {
-            GatherBuddy.Log.Debug($"[RepairManager] SelectYesno found, YesButton enabled={addon->YesButton->IsEnabled}, visible={addon->YesButton->AtkComponentBase.OwnerNode->AtkResNode.IsVisible()}");
             new AddonMaster.SelectYesno((IntPtr)addon).Yes();
             GatherBuddy.Log.Debug("[RepairManager] Clicked Yes on SelectYesno");
         }

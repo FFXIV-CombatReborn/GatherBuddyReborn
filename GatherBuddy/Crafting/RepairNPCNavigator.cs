@@ -157,16 +157,10 @@ public class RepairNPCNavigator
             return;
 
         if (Lifestream.Enabled && Lifestream.IsBusy())
-        {
-            GatherBuddy.Log.Debug($"[RepairNPCNavigator] Waiting for Lifestream to finish");
             return;
-        }
 
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < ZoneLoadWait)
-        {
-            GatherBuddy.Log.Debug($"[RepairNPCNavigator] Waiting for zone to fully load...");
             return;
-        }
 
         GatherBuddy.Log.Information($"[RepairNPCNavigator] Zone loaded, starting navigation");
         StartVNavmeshNavigation();
