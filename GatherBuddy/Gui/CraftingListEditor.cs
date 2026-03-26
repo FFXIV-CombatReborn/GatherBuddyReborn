@@ -310,6 +310,7 @@ public class CraftingListEditor
                 ? "Withdraw needed materials from retainers before generating the gather list. Respects HQ/NQ preferences."
                 : "Requires Allagan Tools to be installed and enabled.");
 
+
         ImGui.Spacing();
 
         if (IPCSubscriber.IsReady("Artisan"))

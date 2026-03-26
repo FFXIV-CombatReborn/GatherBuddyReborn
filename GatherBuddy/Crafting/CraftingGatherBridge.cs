@@ -16,9 +16,10 @@ public static class CraftingGatherBridge
     private static bool _waitingForGatherComplete = false;
     private static DateTime _jobSwitchTime = DateTime.MinValue;
     private static bool _waitingForJobSwitch = false;
-    private static CraftingQueueProcessor? _queueProcessor;
+    private static CraftingQueueProcessor? _queueProcessor = null;
     private static bool _isQueueMode = false;
     private static List<AutoGatherList> _disabledGatherLists = new();
+    private static int? _ephemeralListId = null;
     
     public static bool PreserveListOnDisable { get; set; } = false;
 
@@ -77,9 +78,11 @@ public static class CraftingGatherBridge
                 }
 
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
-                {
                     gatherList.Add(gatherable, (uint)gatherQuantity);
-                }
+                else if (GatherBuddy.GameData.Fishes.TryGetValue(gatherItemId, out var fish))
+                    gatherList.Add(fish, (uint)gatherQuantity);
+                else
+                    GatherBuddy.Log.Debug($"[CraftingGatherBridge] Item {gatherItemId} not found in gatherables or fish, skipping");
             }
 
             if (gatherList.Items.Count > 0)
@@ -112,6 +115,13 @@ public static class CraftingGatherBridge
                 GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(null);
                 _queueProcessor = null;
                 _isQueueMode = false;
+
+                if (_ephemeralListId.HasValue)
+                {
+                    GatherBuddy.Log.Information($"[CraftingGatherBridge] Deleting ephemeral crafting list {_ephemeralListId.Value}");
+                    GatherBuddy.CraftingListManager.DeleteList(_ephemeralListId.Value);
+                    _ephemeralListId = null;
+                }
             }
         }
         
@@ -144,9 +154,10 @@ public static class CraftingGatherBridge
         CreateGatherListForMissingIngredients(missing);
     }
     
-    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? retainerPrecraftItems = null)
+    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? retainerPrecraftItems = null, int? ephemeralListId = null)
     {
         _isQueueMode = true;
+        _ephemeralListId = ephemeralListId;
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.QueueCompleted += OnQueueCompleted;
         _waitingForGatherComplete = true;
@@ -198,9 +209,11 @@ public static class CraftingGatherBridge
                 }
                 
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
-                {
                     _gatherList.Add(gatherable, (uint)gatherQuantity);
-                }
+                else if (GatherBuddy.GameData.Fishes.TryGetValue(gatherItemId, out var fish))
+                    _gatherList.Add(fish, (uint)gatherQuantity);
+                else
+                    GatherBuddy.Log.Debug($"[CraftingGatherBridge] Item {gatherItemId} not found in gatherables or fish, skipping");
             }
 
             if (_gatherList.Items.Count > 0 && _plugin != null)
@@ -384,6 +397,9 @@ public static class CraftingGatherBridge
         if (_queueProcessor != null)
         {
             GatherBuddy.Log.Information("[CraftingGatherBridge] Stopping queue processor");
+            _ephemeralListId = null;
+            GatherBuddy.AutoGather.Enabled = false;
+            DeleteTemporaryGatherList();
             _queueProcessor.Reset();
             _queueProcessor = null;
             _isQueueMode = false;

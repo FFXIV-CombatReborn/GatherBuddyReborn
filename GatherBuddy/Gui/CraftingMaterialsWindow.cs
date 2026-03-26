@@ -126,29 +126,37 @@ public class CraftingMaterialsWindow : Window
         var avail   = ImGui.GetContentRegionAvail();
         var spacing = ImGui.GetStyle().ItemSpacing;
         var panelW  = (avail.X - spacing.X) / 2f;
-        var panelH  = _matsShowPrecrafts
-            ? (avail.Y - spacing.Y * 2f) / 3f
-            : (avail.Y - spacing.Y) / 2f;
-        var craftH  = _matsShowPrecrafts ? panelH : 0f;
 
         var preferVendors = _matsPreferVendors;
         MaterialSource Cls(uint id) => MaterialSourceClassifier.Classify(id, preferVendors);
 
-        var gatherEntries = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Gatherable or MaterialSource.Fish);
-        var dropEntries   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Drop);
-        var shopEntries   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency);
-        var vendorEntries = allEntries.Where(e => Cls(e.itemId) is MaterialSource.GilVendor or MaterialSource.Other);
-        var craftEntries  = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Craftable);
+        var gatherList = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
+        var dropList   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Drop).ToList();
+        var shopList   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
+        var vendorList = allEntries.Where(e => Cls(e.itemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
+        var craftList  = _matsShowPrecrafts ? allEntries.Where(e => Cls(e.itemId) is MaterialSource.Craftable).ToList() : null;
 
-        DrawMaterialPanel("##gather", "Gather",           AccentGather, gatherEntries, showRetainer, panelW, panelH);
-        ImGui.SameLine();
-        DrawMaterialPanel("##drop",   "Drops / Bicolor",  AccentDrop,   dropEntries,   showRetainer, panelW, panelH);
-        DrawMaterialPanel("##shop",   "Scrip / Tomes", AccentShop,   shopEntries,   showRetainer, panelW, panelH);
-        ImGui.SameLine();
-        DrawMaterialPanel("##vendor", "Vendor",        AccentVendor, vendorEntries, showRetainer, panelW, panelH);
+        var panels = new List<(string Id, string Label, Vector4 Accent, IEnumerable<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)> Entries)>();
+        if (gatherList.Count > 0)         panels.Add(("##gather", "Gather",          AccentGather, gatherList));
+        if (dropList.Count > 0)           panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList));
+        if (shopList.Count > 0)           panels.Add(("##shop",   "Scrip / Tomes",   AccentShop,   shopList));
+        if (vendorList.Count > 0)         panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList));
+        if (craftList is { Count: > 0 })  panels.Add(("##craft",  "Craft",           AccentCraft,  craftList));
 
-        if (_matsShowPrecrafts)
-            DrawMaterialPanel("##craft", "Craft", AccentCraft, craftEntries, showRetainer, avail.X, craftH);
+        if (panels.Count == 0) return;
+
+        var rows   = (panels.Count + 1) / 2;
+        var panelH = (avail.Y - spacing.Y * (rows - 1)) / rows;
+
+        for (var i = 0; i < panels.Count; i++)
+        {
+            var (id, label, accent, entries) = panels[i];
+            var isLast   = i == panels.Count - 1;
+            var spanFull = isLast && panels.Count % 2 == 1;
+            DrawMaterialPanel(id, label, accent, entries, showRetainer, spanFull ? avail.X : panelW, panelH);
+            if (!spanFull && i % 2 == 0)
+                ImGui.SameLine();
+        }
     }
 
     private void DrawMaterialPanel(
@@ -217,7 +225,7 @@ public class CraftingMaterialsWindow : Window
                     foreach (var e in entries)
                     {
                         var satisfied = e.have + e.retNQ + e.retHQ >= e.needed;
-                        DrawPanelRow(e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
+                        DrawPanelRow(e.itemId, e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
                             satisfied, showRetainer, e.isPrecraft);
                     }
                 }
@@ -229,7 +237,7 @@ public class CraftingMaterialsWindow : Window
         }
     }
 
-    private void DrawPanelRow(int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
+    private void DrawPanelRow(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
         bool satisfied, bool showRetainer, bool isPrecraft)
     {
         ImGui.TableNextRow();
@@ -264,6 +272,15 @@ public class CraftingMaterialsWindow : Window
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
         ImUtf8.CopyOnClickSelectable(name.AsSpan());
+        if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}"))
+        {
+            if (ImGui.Selectable("Search Marketboard"))
+            {
+                GatherBuddy.MarketboardService?.QueueLookup(itemId, name, iconId);
+                GatherBuddy.VulcanWindow?.OpenToMarketboardItem(itemId);
+            }
+            ImGui.EndPopup();
+        }
 
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();

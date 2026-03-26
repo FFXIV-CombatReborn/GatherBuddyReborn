@@ -15,27 +15,54 @@ public static class RetainerCache
 
     private static ICallGateSubscriber<(uint, InventoryItem.ItemFlags, ulong, uint), bool>? _onItemAdded;
     private static ICallGateSubscriber<(uint, InventoryItem.ItemFlags, ulong, uint), bool>? _onItemRemoved;
+    private static ICallGateSubscriber<bool, bool>?                                          _onInitialized;
 
     public static void Initialize()
     {
         try
         {
-            _onItemAdded = Dalamud.PluginInterface.GetIpcSubscriber<(uint, InventoryItem.ItemFlags, ulong, uint), bool>("AllaganTools.ItemAdded");
+            _onInitialized = Dalamud.PluginInterface.GetIpcSubscriber<bool, bool>("AllaganTools.Initialized");
+            _onInitialized.Subscribe(OnAllaganToolsInitialized);
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Debug($"[RetainerCache] Failed to subscribe to AllaganTools.Initialized: {ex.Message}");
+        }
+
+        SubscribeItemEvents();
+    }
+
+    private static void SubscribeItemEvents()
+    {
+        try
+        {
+            _onItemAdded?.Unsubscribe(OnItemAddedHandler);
+            _onItemRemoved?.Unsubscribe(OnItemRemovedHandler);
+
+            _onItemAdded   = Dalamud.PluginInterface.GetIpcSubscriber<(uint, InventoryItem.ItemFlags, ulong, uint), bool>("AllaganTools.ItemAdded");
             _onItemRemoved = Dalamud.PluginInterface.GetIpcSubscriber<(uint, InventoryItem.ItemFlags, ulong, uint), bool>("AllaganTools.ItemRemoved");
 
             _onItemAdded.Subscribe(OnItemAddedHandler);
             _onItemRemoved.Subscribe(OnItemRemovedHandler);
-            
-            GatherBuddy.Log.Debug("[RetainerCache] Initialized Allagan Tools IPC subscriptions");
+
+            GatherBuddy.Log.Debug("[RetainerCache] Subscribed to Allagan Tools item events");
         }
         catch (Exception ex)
         {
-            GatherBuddy.Log.Debug($"[RetainerCache] Failed to subscribe to Allagan Tools IPC events: {ex.Message}");
+            GatherBuddy.Log.Debug($"[RetainerCache] Failed to subscribe to Allagan Tools item events: {ex.Message}");
         }
+    }
+
+    private static void OnAllaganToolsInitialized(bool _)
+    {
+        GatherBuddy.Log.Debug("[RetainerCache] AllaganTools initialized, clearing cache and re-subscribing");
+        ClearCache();
+        SubscribeItemEvents();
     }
 
     public static void Dispose()
     {
+        _onInitialized?.Unsubscribe(OnAllaganToolsInitialized);
         _onItemAdded?.Unsubscribe(OnItemAddedHandler);
         _onItemRemoved?.Unsubscribe(OnItemRemovedHandler);
         GatherBuddy.Log.Debug("[RetainerCache] Disposed IPC subscriptions");

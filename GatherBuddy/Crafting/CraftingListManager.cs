@@ -22,7 +22,7 @@ public class CraftingListManager
         return !_lists.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (!excludeId.HasValue || x.ID != excludeId.Value));
     }
 
-    public CraftingListDefinition CreateNewList(string name)
+    public CraftingListDefinition CreateNewList(string name, bool ephemeral = false)
     {
         if (!IsNameUnique(name))
         {
@@ -46,7 +46,8 @@ public class CraftingListManager
         var list = new CraftingListDefinition
         {
             ID = proposedId,
-            Name = name
+            Name = name,
+            Ephemeral = ephemeral
         };
         
         _lists.Add(list);
@@ -89,6 +90,7 @@ public class CraftingListManager
             existing.Repair = list.Repair;
             existing.RepairPercent = list.RepairPercent;
             existing.Consumables = list.Consumables;
+            existing.Ephemeral = list.Ephemeral;
             Save();
             return true;
         }

@@ -22,6 +22,7 @@ using GatherBuddy.GatherHelper;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Crafting;
 using GatherBuddy.Gui;
+using GatherBuddy.Marketboard;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Spearfishing;
@@ -80,7 +81,8 @@ public partial class GatherBuddy : IDalamudPlugin
     public static Gui.CraftingStatusWindow? CraftingStatusWindow { get; private set; }
     public static Gui.VulcanWindow? VulcanWindow { get; private set; }
     public static Gui.CraftingMaterialsWindow? CraftingMaterialsWindow { get; private set; }
-    public static ControllerSupportManager? ControllerSupport { get; private set; }
+    public static ControllerSupportManager?      ControllerSupport      { get; private set; }
+    public static MarketboardService?             MarketboardService     { get; private set; }
 
 
     internal readonly GatherGroup.GatherGroupManager GatherGroupManager;
@@ -136,7 +138,8 @@ public partial class GatherBuddy : IDalamudPlugin
             AutoGatherListsManager = AutoGatherListsManager.Load();
             GatherWindowManager    = GatherWindowManager.Load(AlarmManager);
             AlarmManager.ForceEnable();
-            CraftingListManager = new Crafting.CraftingListManager();
+            CraftingListManager   = new Crafting.CraftingListManager();
+            MarketboardService    = new MarketboardService();
             RaphaelSolveCoordinator = new Crafting.RaphaelSolveCoordinator(Config.RaphaelSolverConfig);
             RecipeBrowserSettings = new Crafting.RecipeBrowserSettings();
             RecipeBrowserSettings.Load();
@@ -297,6 +300,7 @@ public partial class GatherBuddy : IDalamudPlugin
 
     void IDisposable.Dispose()
     {
+        MarketboardService?.Dispose();
         RaphaelSolveCoordinator?.Save();
         if (Dalamud.Framework != null)
             Dalamud.Framework.Update -= Update;
