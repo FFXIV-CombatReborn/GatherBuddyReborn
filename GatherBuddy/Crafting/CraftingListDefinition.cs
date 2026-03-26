@@ -25,6 +25,7 @@ public class CraftingListDefinition
     public bool Repair { get; set; } = false;
     public int RepairPercent { get; set; } = 50;
     public bool RetainerRestock { get; set; } = false;
+    public bool Ephemeral { get; set; } = false;
 
     public void BuildExpandedList()
     {

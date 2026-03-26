@@ -110,9 +110,7 @@ public class CraftingStatusWindow : Window
             ImGui.SameLine();
             if (ImGui.Button("Stop"))
             {
-                _queueProcessor.Stop();
-                IsOpen = false;
-                _queueProcessor = null;
+                CraftingGatherBridge.StopQueue();
             }
             
             ImGui.Spacing();

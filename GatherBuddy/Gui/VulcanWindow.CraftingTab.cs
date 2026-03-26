@@ -287,9 +287,10 @@ public partial class VulcanWindow
     private static bool _craftedStatusDirty = false;
     private static int _browserCraftQuantity = 1;
     private static RecipeCraftSettingsPopup _craftSettingsPopup = new();
-    private static string _contextMenuListSearch = string.Empty;
-    private static int _contextMenuAddQuantity = 1;
-    private static string _contextMenuNewListName = string.Empty;
+    private static string _contextMenuListSearch   = string.Empty;
+    private static int    _contextMenuAddQuantity   = 1;
+    private static string _contextMenuNewListName   = string.Empty;
+    private static bool   _contextMenuNewListEphemeral = false;
     private static readonly uint[] CraftTypeToClassJobId = { 8, 9, 10, 11, 12, 13, 14, 15 };
     private static readonly string[] JobNames = { "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL" };
 
@@ -774,17 +775,21 @@ public partial class VulcanWindow
 
                 if (ImGui.IsWindowAppearing())
                 {
-                    _contextMenuListSearch = string.Empty;
-                    _contextMenuAddQuantity = 1;
-                    _contextMenuNewListName = string.Empty;
+                    _contextMenuListSearch      = string.Empty;
+                    _contextMenuAddQuantity     = 1;
+                    _contextMenuNewListName     = string.Empty;
+                    _contextMenuNewListEphemeral = false;
                 }
 
                 ImGui.TextColored(new Vector4(0.7f, 1.0f, 0.7f, 1.0f), "Create New List:");
                 ImGui.SetNextItemWidth(-1);
                 var createEnter = ImGui.InputTextWithHint("##NewListName", "List name...", ref _contextMenuNewListName, 128, ImGuiInputTextFlags.EnterReturnsTrue);
+                ImGui.Checkbox("Ephemeral##ctxNewListEphemeral", ref _contextMenuNewListEphemeral);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
                 if ((ImGui.Button("Create & Add", new Vector2(-1, 0)) || createEnter) && !string.IsNullOrWhiteSpace(_contextMenuNewListName))
                 {
-                    var newList = GatherBuddy.CraftingListManager.CreateNewList(_contextMenuNewListName.Trim());
+                    var newList = GatherBuddy.CraftingListManager.CreateNewList(_contextMenuNewListName.Trim(), _contextMenuNewListEphemeral);
                     newList.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, _contextMenuAddQuantity));
                     GatherBuddy.CraftingListManager.SaveList(newList);
                     GatherBuddy.Log.Information($"[VulcanWindow] Created list '{newList.Name}' and added {recipe.Name} x{_contextMenuAddQuantity}");

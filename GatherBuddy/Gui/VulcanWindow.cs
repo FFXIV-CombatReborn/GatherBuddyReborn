@@ -30,9 +30,10 @@ public partial class VulcanWindow : Window, IDisposable
     private bool _wasFocusedLastFrame = false;
     
     // TeamCraft import state
-    private bool _showTeamCraftImport = false;
-    private string _teamCraftListName = string.Empty;
-    private string _teamCraftFinalItems = string.Empty;
+    private bool _showTeamCraftImport    = false;
+    private string _teamCraftListName    = string.Empty;
+    private string _teamCraftFinalItems  = string.Empty;
+    private bool _teamCraftEphemeral     = false;
     
     // Debug tab state
     private uint _debugSelectedJobId = 8;
@@ -207,7 +208,21 @@ public partial class VulcanWindow : Window, IDisposable
 
             ImGui.Spacing();
             ImGui.TextColored(ImGuiColors.ParsedGold, _editingList.Name);
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Crafting List");
+            if (_editingList.Ephemeral)
+            {
+                var ephemeral = _editingList.Ephemeral;
+                if (ImGui.Checkbox("Ephemeral##listHeaderEphemeral", ref ephemeral))
+                {
+                    _editingList.Ephemeral = ephemeral;
+                    GatherBuddy.CraftingListManager.SaveList(_editingList);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Automatically delete this list after crafting completes. Has no effect if stopped manually.");
+            }
+            else
+            {
+                ImGui.TextColored(ImGuiColors.DalamudGrey3, "Crafting List");
+            }
             ImGui.Separator();
             ImGui.Spacing();
 
@@ -455,9 +470,11 @@ public partial class VulcanWindow : Window, IDisposable
         }
     }
 
-    private string _newListName    = string.Empty;
-    private string _importListText  = string.Empty;
-    private string? _importListError = null;
+    private string _newListName        = string.Empty;
+    private bool   _newListEphemeral   = false;
+    private string _importListText     = string.Empty;
+    private bool   _importListEphemeral = false;
+    private string? _importListError   = null;
 
     private void DrawImportListPopup()
     {
@@ -477,6 +494,11 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         ImGui.Spacing();
+        ImGui.Checkbox("Ephemeral##importListEphemeral", ref _importListEphemeral);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+
+        ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -487,13 +509,19 @@ public partial class VulcanWindow : Window, IDisposable
                 var (imported, error) = GatherBuddy.CraftingListManager.ImportList(_importListText);
                 if (imported != null)
                 {
+                    if (_importListEphemeral)
+                    {
+                        imported.Ephemeral = true;
+                        GatherBuddy.CraftingListManager.SaveList(imported);
+                    }
                     _editingList = imported;
                     _listEditor  = new CraftingListEditor(imported);
                     _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
                     GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
-                    _deferEditorDraw = true;
-                    _importListText  = string.Empty;
-                    _importListError = null;
+                    _deferEditorDraw     = true;
+                    _importListText      = string.Empty;
+                    _importListEphemeral = false;
+                    _importListError     = null;
                     ImGui.CloseCurrentPopup();
                 }
                 else
@@ -506,8 +534,9 @@ public partial class VulcanWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.Button("Cancel", new Vector2(100, 0)))
         {
-            _importListText  = string.Empty;
-            _importListError = null;
+            _importListText      = string.Empty;
+            _importListEphemeral = false;
+            _importListError     = null;
             ImGui.CloseCurrentPopup();
         }
 
@@ -528,25 +557,32 @@ public partial class VulcanWindow : Window, IDisposable
             }
 
             ImGui.Spacing();
+            ImGui.Checkbox("Ephemeral##newListEphemeral", ref _newListEphemeral);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+
+            ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
 
             if (ImGui.Button("Create", new Vector2(100, 0)) && !string.IsNullOrWhiteSpace(_newListName))
             {
-                var newList = GatherBuddy.CraftingListManager.CreateNewList(_newListName);
+                var newList = GatherBuddy.CraftingListManager.CreateNewList(_newListName, _newListEphemeral);
                 _editingList = newList;
                 _listEditor = new CraftingListEditor(newList);
                 _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
                 GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
                 _deferEditorDraw = true;
-                _newListName = string.Empty;
+                _newListName      = string.Empty;
+                _newListEphemeral = false;
                 ImGui.CloseCurrentPopup();
             }
 
             ImGui.SameLine();
             if (ImGui.Button("Cancel", new Vector2(100, 0)))
             {
-                _newListName = string.Empty;
+                _newListName      = string.Empty;
+                _newListEphemeral = false;
                 ImGui.CloseCurrentPopup();
             }
 
@@ -648,7 +684,7 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {sortedRecipes.Count} recipes");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough, list.RetainerRestock, retainerPrecraftItems);
+        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough, list.RetainerRestock, retainerPrecraftItems, list.Ephemeral ? (int?)list.ID : null);
     }
 
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
@@ -1537,6 +1573,11 @@ public partial class VulcanWindow : Window, IDisposable
             ImGui.InputText("##ImportListName", ref _teamCraftListName, 256);
 
             ImGui.Spacing();
+            ImGui.Checkbox("Ephemeral##teamCraftEphemeral", ref _teamCraftEphemeral);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+
+            ImGui.Spacing();
             ImGui.Text("Final Items:");
             ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, 150));
 
@@ -1546,7 +1587,7 @@ public partial class VulcanWindow : Window, IDisposable
 
             if (ImGui.Button("Import", new Vector2(100, 0)))
             {
-                var importedList = ParseTeamCraftImport();
+                var importedList = ParseTeamCraftImport(_teamCraftEphemeral);
                 if (importedList != null)
                 {
                     _editingList = importedList;
@@ -1556,8 +1597,9 @@ public partial class VulcanWindow : Window, IDisposable
                     GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
                     _deferEditorDraw = true;
 
-                    _teamCraftListName  = string.Empty;
+                    _teamCraftListName   = string.Empty;
                     _teamCraftFinalItems = string.Empty;
+                    _teamCraftEphemeral  = false;
                     _showTeamCraftImport = false;
 
                     GatherBuddy.Log.Information($"[VulcanWindow] Successfully imported TeamCraft list: {importedList.Name}");
@@ -1569,6 +1611,7 @@ public partial class VulcanWindow : Window, IDisposable
             {
                 _teamCraftListName   = string.Empty;
                 _teamCraftFinalItems = string.Empty;
+                _teamCraftEphemeral  = false;
                 _showTeamCraftImport = false;
             }
 
@@ -1576,7 +1619,7 @@ public partial class VulcanWindow : Window, IDisposable
         }
     }
     
-    private CraftingListDefinition? ParseTeamCraftImport()
+    private CraftingListDefinition? ParseTeamCraftImport(bool ephemeral = false)
     {
         if (string.IsNullOrWhiteSpace(_teamCraftFinalItems))
         {
@@ -1598,7 +1641,7 @@ public partial class VulcanWindow : Window, IDisposable
             ? "Imported from TeamCraft" 
             : _teamCraftListName;
         
-        var newList = GatherBuddy.CraftingListManager.CreateNewList(listName);
+        var newList = GatherBuddy.CraftingListManager.CreateNewList(listName, ephemeral);
         
         foreach (var (recipeId, quantity) in recipesToAdd)
         {
