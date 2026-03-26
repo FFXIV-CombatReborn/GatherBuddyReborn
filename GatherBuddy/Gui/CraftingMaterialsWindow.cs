@@ -217,7 +217,7 @@ public class CraftingMaterialsWindow : Window
                     foreach (var e in entries)
                     {
                         var satisfied = e.have + e.retNQ + e.retHQ >= e.needed;
-                        DrawPanelRow(e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
+                        DrawPanelRow(e.itemId, e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
                             satisfied, showRetainer, e.isPrecraft);
                     }
                 }
@@ -229,7 +229,7 @@ public class CraftingMaterialsWindow : Window
         }
     }
 
-    private void DrawPanelRow(int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
+    private void DrawPanelRow(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
         bool satisfied, bool showRetainer, bool isPrecraft)
     {
         ImGui.TableNextRow();
@@ -264,6 +264,15 @@ public class CraftingMaterialsWindow : Window
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
         ImUtf8.CopyOnClickSelectable(name.AsSpan());
+        if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}"))
+        {
+            if (ImGui.Selectable("Search Marketboard"))
+            {
+                GatherBuddy.MarketboardService?.QueueLookup(itemId, name, iconId);
+                GatherBuddy.VulcanWindow?.OpenToMarketboardItem(itemId);
+            }
+            ImGui.EndPopup();
+        }
 
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();

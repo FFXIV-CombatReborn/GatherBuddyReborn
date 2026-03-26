@@ -74,6 +74,15 @@ public partial class VulcanWindow : Window, IDisposable
         IsOpen = true;
     }
 
+    public void OpenToMarketboardItem(uint itemId)
+    {
+        _isMinimized       = false;
+        IsOpen             = true;
+        _mbRequestFocus    = true;
+        _mbSelectedItemId  = itemId;
+        _mbDetailLastItemId = 0;
+    }
+
     public void OpenToList(string argument)
     {
         CraftingListDefinition? list;
@@ -107,7 +116,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public override void Draw()
     {
-        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 7);
+        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 8);
         
         // Track window focus for controller input blocking
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
@@ -126,19 +135,20 @@ public partial class VulcanWindow : Window, IDisposable
         ImGui.Text("Crafting System");
         ImGui.Separator();
 
-        using (var tab = ImRaii.TabBar("VulcanTabs###VulcanTabs", ImGuiTabBarFlags.None))
-        {
-            if (tab)
+            using (var tab = ImRaii.TabBar("VulcanTabs###VulcanTabs", ImGuiTabBarFlags.None))
             {
-                DrawCraftingListsTab();
-                DrawCraftingTab();
-                DrawMacrosTab();
-                DrawStandardSolverConfigTab();
-                DrawSolutionsTab();
-                DrawSettingsTab();
-                DrawDebugTab();
+                if (tab)
+                {
+                    DrawCraftingListsTab();
+                    DrawCraftingTab();
+                    DrawMacrosTab();
+                    DrawStandardSolverConfigTab();
+                    DrawSolutionsTab();
+                    DrawSettingsTab();
+                    DrawDebugTab();
+                    DrawMarketboardTab();
+                }
             }
-        }
         
         _craftSettingsPopup.Draw();
         
@@ -149,7 +159,7 @@ public partial class VulcanWindow : Window, IDisposable
     {
         if (GatherBuddy.ControllerSupport != null)
         {
-            using var tabItem = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 7);
+            using var tabItem = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 8);
             if (!tabItem)
                 return;
             DrawCraftingListsTabContent();
@@ -797,7 +807,7 @@ public partial class VulcanWindow : Window, IDisposable
         
         if (GatherBuddy.ControllerSupport != null)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Standard Solver##standardSolverTab", 3, 7);
+        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Standard Solver##standardSolverTab", 3, 8);
             tabItem = handle;
             tabOpen = handle;
         }
@@ -981,7 +991,7 @@ public partial class VulcanWindow : Window, IDisposable
 
         if (GatherBuddy.ControllerSupport != null)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 5, 7);
+        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 5, 8);
             tabItem = handle;
             tabOpen = handle;
         }
@@ -1152,7 +1162,7 @@ public partial class VulcanWindow : Window, IDisposable
         
         if (GatherBuddy.ControllerSupport != null)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Debug##debugTab", 6, 7);
+        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Debug##debugTab", 6, 8);
             tabItem = handle;
             tabOpen = handle;
         }

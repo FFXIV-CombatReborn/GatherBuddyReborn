@@ -399,7 +399,7 @@ public partial class VulcanWindow
         
         if (GatherBuddy.ControllerSupport != null)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Recipes##recipesTab", 1, 7);
+            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Recipes##recipesTab", 1, 8);
             tabItem = handle;
             tabOpen = handle;
         }
