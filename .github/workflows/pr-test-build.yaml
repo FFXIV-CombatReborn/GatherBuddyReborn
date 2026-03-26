@@ -26,7 +26,7 @@ jobs:
         run: dotnet restore Gatherbuddy/Gatherbuddy.csproj
 
       - name: Build Plugin
-        run: dotnet build --no-restore -c Release Gatherbuddy/Gatherbuddy.csproj
+        run: dotnet build --no-restore -c Release Gatherbuddy/Gatherbuddy.csproj --output .\build
       - name: Build raphael-cli from raphael-rs
         run: |
           git clone https://github.com/KonaeAkira/raphael-rs.git raphael-rs-temp
