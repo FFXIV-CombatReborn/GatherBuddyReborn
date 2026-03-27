@@ -434,7 +434,8 @@ public partial class Interface
         if (!tab)
             return;
 
-        _itemTable.ExtraHeight = GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0;
+        _itemTable.ExtraHeight = (GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0)
+          + ImGui.GetFrameHeightWithSpacing();
         _itemTable.Draw(ImGui.GetTextLineHeightWithSpacing());
         DrawAddAllFilteredToAutoGather(_itemTable, g => g.Data, "Gatherables");
         DrawStatusLine(_itemTable, "Items");
