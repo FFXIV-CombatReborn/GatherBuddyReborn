@@ -38,6 +38,7 @@ public class CraftingQueueProcessor
     private bool _retainerRestock = false;
     private Dictionary<uint, int> _allMaterials = new();
     private Dictionary<uint, int> _retainerPrecraftItems = new();
+    private Dictionary<uint, int> _retainerSkipAmounts = new();
     private Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)> _precraftQualityTargets = new();
     private List<CraftingListItem> _expandedQueueForRetainer = new();
     private RetainerTaskExecutor? _retainerExecutor = null;
@@ -86,6 +87,7 @@ public class CraftingQueueProcessor
         _retainerRestock = retainerRestock;
         _allMaterials = materials ?? new();
         _retainerPrecraftItems = retainerPrecraftItems ?? new();
+        _retainerSkipAmounts = new();
         _precraftQualityTargets = new();
         _expandedQueueForRetainer = new List<CraftingListItem>(queue);
         _retainerExecutor = null;
@@ -1083,6 +1085,20 @@ public class CraftingQueueProcessor
             else combinedItems[k] = v;
         }
 
+        _retainerSkipAmounts = new Dictionary<uint, int>(_retainerPrecraftItems);
+        foreach (var (pulledItemId, pullQty) in _retainerPrecraftItems)
+        {
+            var pulledRecipe = RecipeManager.GetRecipeForItem(pulledItemId);
+            if (pulledRecipe == null) continue;
+            int craftsDisplaced = (int)Math.Ceiling((double)pullQty / pulledRecipe.Value.AmountResult);
+            foreach (var (subItemId, amtPerCraft) in RecipeManager.GetIngredients(pulledRecipe.Value))
+            {
+                if (!_retainerSkipAmounts.ContainsKey(subItemId)) continue;
+                _retainerSkipAmounts[subItemId] += amtPerCraft * craftsDisplaced;
+                GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Skip plan: restored {amtPerCraft * craftsDisplaced} to {subItemId} (displaced by {pullQty}× {pulledItemId}), total={_retainerSkipAmounts[subItemId]}");
+            }
+        }
+
         var qualityTargets = RetainerTaskExecutor.ComputeQualityTargets(combinedItems, _expandedQueueForRetainer);
         _precraftQualityTargets = qualityTargets
             .Where(kv => _retainerPrecraftItems.ContainsKey(kv.Key))
@@ -1138,15 +1154,12 @@ public class CraftingQueueProcessor
         CraftingGatherBridge.CreateGatherListForMissingIngredients(_allMaterials);
     }
 
-    private unsafe void ApplyPostWithdrawalSkips()
+    private void ApplyPostWithdrawalSkips()
     {
-        if (_retainerPrecraftItems.Count == 0) return;
+        if (_retainerSkipAmounts.Count == 0) return;
+        if (_retainerExecutor?.IsAborted == true) return;
 
-        var inventoryMgr = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-        if (inventoryMgr == null) return;
-
-        var bagAvailable = new Dictionary<uint, int>();
-
+        var skipRemaining = new Dictionary<uint, int>(_retainerSkipAmounts);
         foreach (var queueItem in _queue)
         {
             if (queueItem.Options.Skipping) continue;
@@ -1155,24 +1168,14 @@ public class CraftingQueueProcessor
             if (recipe == null) continue;
 
             var resultItemId = recipe.Value.ItemResult.RowId;
-            if (!_retainerPrecraftItems.ContainsKey(resultItemId)) continue;
-
-            if (!bagAvailable.TryGetValue(resultItemId, out var available))
-            {
-                if (_precraftQualityTargets.TryGetValue(resultItemId, out var qt) && qt.TargetNQ == 0)
-                    available = (int)inventoryMgr->GetInventoryItemCount(resultItemId, true, false, false);
-                else
-                    available = (int)(inventoryMgr->GetInventoryItemCount(resultItemId, false, false, false)
-                                    + inventoryMgr->GetInventoryItemCount(resultItemId, true,  false, false));
-                bagAvailable[resultItemId] = available;
-            }
+            if (!skipRemaining.TryGetValue(resultItemId, out var remaining) || remaining <= 0) continue;
 
             int amountPerCraft = (int)recipe.Value.AmountResult;
-            if (available >= amountPerCraft)
+            if (remaining >= amountPerCraft)
             {
                 queueItem.Options.Skipping = true;
-                bagAvailable[resultItemId] = available - amountPerCraft;
-                GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Post-withdrawal skip: recipe {queueItem.RecipeId} result={resultItemId} (had {available} in bag)");
+                skipRemaining[resultItemId] = remaining - amountPerCraft;
+                GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Post-withdrawal skip: recipe {queueItem.RecipeId} result={resultItemId} (skip remaining={skipRemaining[resultItemId]})");
             }
         }
     }

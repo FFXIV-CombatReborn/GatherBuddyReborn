@@ -795,6 +795,24 @@ public class CraftingListEditor
         }, token);
     }
     
+    private static Dictionary<uint, int>? BuildRetainerAdditionalAvailable(CraftingListDefinition list)
+    {
+        if (!list.RetainerRestock || !AllaganTools.Enabled)
+            return null;
+
+        var precrafts = list.ListPrecrafts();
+        if (precrafts.Count == 0) return null;
+
+        var available = new Dictionary<uint, int>();
+        foreach (var (itemId, needed) in precrafts)
+        {
+            var inRetainer = (int)RetainerCache.GetRetainerItemCount(itemId);
+            if (inRetainer > 0)
+                available[itemId] = Math.Min(needed, inRetainer);
+        }
+        return available.Count > 0 ? available : null;
+    }
+
     internal void TriggerMaterialsRegeneration()
     {
         var currentHash = ComputeListHash();
@@ -816,8 +834,9 @@ public class CraftingListEditor
             try
             {
                 if (token.IsCancellationRequested) return;
-                
-                var materials = _list.ListMaterials();
+
+                var additionalAvailable = BuildRetainerAdditionalAvailable(_list);
+                var materials = _list.ListMaterials(additionalAvailable);
                 
                 if (!token.IsCancellationRequested)
                 {
@@ -914,11 +933,12 @@ public class CraftingListEditor
         {
             return _cachedMaterials;
         }
-        
-        _cachedMaterials = _list.ListMaterials();
+
+        var additionalAvailable = BuildRetainerAdditionalAvailable(_list);
+        _cachedMaterials = _list.ListMaterials(additionalAvailable);
         _cachedMaterialsHash = currentHash;
         _cachedMaterialsValid = true;
-        
+
         return _cachedMaterials;
     }
 
@@ -928,7 +948,26 @@ public class CraftingListEditor
         if (_cachedPrecraftMaterials != null && currentHash == _cachedPrecraftMaterialsHash)
             return _cachedPrecraftMaterials;
 
-        _cachedPrecraftMaterials = _list.ListPrecrafts();
+        var allPrecrafts = _list.ListPrecrafts();
+
+        if (_list.RetainerRestock && _list.SkipIfEnough && AllaganTools.Enabled)
+        {
+            var adjusted = new Dictionary<uint, int>();
+            foreach (var (itemId, needed) in allPrecrafts)
+            {
+                var inBag      = GetInventoryCount(itemId);
+                var inRetainer = GetRetainerCount(itemId);
+                var stillNeeded = Math.Max(0, needed - inBag - inRetainer);
+                if (stillNeeded > 0)
+                    adjusted[itemId] = stillNeeded;
+            }
+            _cachedPrecraftMaterials = adjusted;
+        }
+        else
+        {
+            _cachedPrecraftMaterials = allPrecrafts;
+        }
+
         _cachedPrecraftMaterialsHash = currentHash;
         return _cachedPrecraftMaterials;
     }

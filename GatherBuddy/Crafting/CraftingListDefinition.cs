@@ -97,8 +97,6 @@ public class CraftingListDefinition
                         {
                             var resultItemId = subRecipe.Value.ItemResult.RowId;
                             var amountPerCraft = subRecipe.Value.AmountResult;
-                            var totalNeeded = quantityToCraft * amountPerCraft;
-                            
                             var nqCount = inventory->GetInventoryItemCount(resultItemId, false, false, false);
                             var hqCount = inventory->GetInventoryItemCount(resultItemId, true, false, false);
                             int totalInInventory;
@@ -110,12 +108,12 @@ public class CraftingListDefinition
                             if (additionalAvailable != null && additionalAvailable.TryGetValue(resultItemId, out var fromRetainer))
                                 totalInInventory += fromRetainer;
                             
-                            if (totalInInventory >= totalNeeded)
+                            if (totalInInventory >= actualAmount)
                             {
                                 continue;
                             }
                             
-                            var stillNeeded = totalNeeded - totalInInventory;
+                            var stillNeeded = actualAmount - totalInInventory;
                             quantityToCraft = (int)System.Math.Ceiling((double)stillNeeded / amountPerCraft);
                         }
                     }

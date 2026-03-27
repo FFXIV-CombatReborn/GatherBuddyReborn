@@ -574,7 +574,7 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        if (_foundSlotQty == 1 || wantQty == 1)
+        if (wantQty >= _foundSlotQty)
         {
             if (idxAll == -1)
             {
@@ -585,7 +585,7 @@ internal unsafe class RetainerTaskExecutor
                 return CraftingTasks.TaskResult.Retry;
             }
 
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Retrieve all (qty=1): index {idxAll}");
+            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Retrieve all ({_foundSlotQty}): index {idxAll}");
             Callback.Fire(menu, true, 0, idxAll, 0, 0, 0);
 
             if (_lookingForHQ) target.RemainingHQ -= _foundSlotQty;
@@ -1016,7 +1016,7 @@ internal unsafe class RetainerTaskExecutor
             else
             {
                 int remaining = Math.Max(0, stillNeeded - toWithdrawHQ);
-                toWithdrawNQ = nqStillNeeded > 0 ? Math.Min(remaining, retainerNQ) : 0;
+                toWithdrawNQ = Math.Min(remaining, retainerNQ);
             }
             int toWithdraw = toWithdrawHQ + toWithdrawNQ;
 
@@ -1026,6 +1026,35 @@ internal unsafe class RetainerTaskExecutor
             additionalAvailable[precraftItemId]  = toWithdraw;
 
             GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Precraft {precraftItemId}: need={stillNeeded}, retainer HQ={retainerHQ} NQ={retainerNQ}, withdrawing {toWithdrawHQ} HQ + {toWithdrawNQ} NQ");
+        }
+
+        foreach (var pulledItemId in precraftFromRetainer.Keys.ToList())
+        {
+            if (!precraftFromRetainer.TryGetValue(pulledItemId, out var pullQty) || pullQty <= 0)
+                continue;
+
+            var pulledRecipe = RecipeManager.GetRecipeForItem(pulledItemId);
+            if (pulledRecipe == null) continue;
+
+            int craftsDisplaced = (int)Math.Ceiling((double)pullQty / pulledRecipe.Value.AmountResult);
+            foreach (var (subItemId, amtPerCraft) in RecipeManager.GetIngredients(pulledRecipe.Value))
+            {
+                if (!precraftFromRetainer.ContainsKey(subItemId)) continue;
+
+                int reduction = amtPerCraft * craftsDisplaced;
+                int newQty    = Math.Max(0, precraftFromRetainer[subItemId] - reduction);
+                GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Sub-precraft {subItemId} pull reduced by {reduction} (displaced by {pullQty}× pulled precraft {pulledItemId}), new qty={newQty}");
+                if (newQty <= 0)
+                {
+                    precraftFromRetainer.Remove(subItemId);
+                    additionalAvailable.Remove(subItemId);
+                }
+                else
+                {
+                    precraftFromRetainer[subItemId] = newQty;
+                    additionalAvailable[subItemId]  = newQty;
+                }
+            }
         }
 
         var correctedMaterials = list.ListMaterials(additionalAvailable, qualityTargets);
