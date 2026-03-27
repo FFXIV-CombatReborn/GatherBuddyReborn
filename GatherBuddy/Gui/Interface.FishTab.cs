@@ -609,6 +609,7 @@ public partial class Interface
 
         _fishTable.ExtraHeight = GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0;
         _fishTable.Draw(ImGui.GetTextLineHeightWithSpacing());
+        DrawAddAllFilteredToAutoGather(_fishTable, f => f.Data, "Fish");
         DrawStatusLine(_fishTable, "Fish");
         DrawClippy();
     }
