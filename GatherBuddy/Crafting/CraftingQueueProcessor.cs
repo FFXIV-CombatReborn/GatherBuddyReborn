@@ -77,6 +77,7 @@ public class CraftingQueueProcessor
 
     public void StartQueue(List<CraftingListItem> queue, CraftingListConsumableSettings? listConsumables = null, RaphaelSolveCoordinator? raphaelCoordinator = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? materials = null, Dictionary<uint, int>? retainerPrecraftItems = null)
     {
+        YesAlready.Lock();
         _queue = new List<CraftingListItem>(queue);
         _currentQueueIndex = 0;
         _raphaelCoordinator = raphaelCoordinator;
@@ -128,7 +129,7 @@ public class CraftingQueueProcessor
             return;
 
         GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Gather complete, moving to job check");
-        
+        YesAlready.Lock();
         CraftingGatherBridge.DeleteTemporaryGatherList();
         
         _currentState = QueueState.WaitingForJobSwitch;
@@ -798,6 +799,7 @@ public class CraftingQueueProcessor
     private void CompleteQueue()
     {
         GatherBuddy.Log.Information($"[CraftingQueueProcessor] Queue complete!");
+        YesAlready.Unlock();
         GatherBuddy.AutoGather.Enabled = false;
         
         var craftState = CraftingGameInterop.CurrentState;
@@ -1296,6 +1298,7 @@ public class CraftingQueueProcessor
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Pausing queue");
         _paused = true;
         _tasks.Clear();
+        YesAlready.Unlock();
         
         if (_currentState == QueueState.WaitingForGather)
         {
@@ -1318,6 +1321,7 @@ public class CraftingQueueProcessor
 
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Resuming queue");
         _paused = false;
+        YesAlready.Lock();
         
         if (_pausedDuringGather && _currentState == QueueState.WaitingForGather)
         {
@@ -1348,6 +1352,7 @@ public class CraftingQueueProcessor
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Stopping queue");
         _paused = false;
         _tasks.Clear();
+        YesAlready.Unlock();
         
         GatherBuddy.AutoGather.Enabled = false;
         CraftingGatherBridge.DeleteTemporaryGatherList();
@@ -1375,6 +1380,7 @@ public class CraftingQueueProcessor
     
     public void Reset()
     {
+        YesAlready.Unlock();
         _queue.Clear();
         _currentQueueIndex = 0;
         _currentState = QueueState.Idle;
@@ -1395,6 +1401,7 @@ public class CraftingQueueProcessor
     public void TestRepair()
     {
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Testing repair system...");
+        YesAlready.Lock();
         _currentState = QueueState.Repairing;
         StateChanged?.Invoke(_currentState);
         QueueRepairTasks();
