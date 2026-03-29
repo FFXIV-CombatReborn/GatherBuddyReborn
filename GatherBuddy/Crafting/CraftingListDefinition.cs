@@ -10,6 +10,7 @@ public class CraftingListDefinition
     public int ID { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string FolderPath { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<CraftingListItem> Recipes { get; set; } = new();
     public List<uint> ExpandedList { get; set; } = new();
@@ -37,6 +38,28 @@ public class CraftingListDefinition
                 ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, recipe.Quantity));
             }
         }
+    }
+
+    public CraftingListDefinition CreateRetainerPlanningSnapshot()
+    {
+        var snapshot = new CraftingListDefinition
+        {
+            SkipIfEnough = SkipIfEnough,
+        };
+
+        foreach (var recipe in Recipes)
+        {
+            snapshot.Recipes.Add(new CraftingListItem(recipe.RecipeId, recipe.Quantity)
+            {
+                Options = new ListItemOptions
+                {
+                    Skipping = recipe.Options.Skipping,
+                    NQOnly = recipe.Options.NQOnly,
+                },
+            });
+        }
+
+        return snapshot;
     }
 
     public Dictionary<uint, int> ListMaterials() => ListMaterials(null, null);

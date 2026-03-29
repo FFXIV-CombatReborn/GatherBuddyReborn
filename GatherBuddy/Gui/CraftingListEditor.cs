@@ -51,8 +51,8 @@ public class CraftingListEditor
     
     private Dictionary<uint, int> _cachedInventoryCounts = new();
     private Dictionary<uint, DateTime> _inventoryRefreshTimes = new();
-    private Dictionary<uint, int> _cachedRetainerCounts = new();
-    private Dictionary<uint, DateTime> _retainerRefreshTimes = new();
+    private RetainerItemSnapshot _cachedRetainerSnapshot = RetainerItemSnapshot.Empty;
+    private uint[] _cachedRetainerSnapshotItemIds = [];
     private const double InventoryRefreshIntervalSeconds = 0.5;
     
     private RecipeCraftSettingsPopup _craftSettingsPopup = new();
@@ -96,8 +96,7 @@ public class CraftingListEditor
     {
         _cachedInventoryCounts.Clear();
         _inventoryRefreshTimes.Clear();
-        _cachedRetainerCounts.Clear();
-        _retainerRefreshTimes.Clear();
+        InvalidateRetainerSnapshot();
     }
     public void Draw()
     {
@@ -109,7 +108,8 @@ public class CraftingListEditor
         
         using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
         {
-            ImGui.BeginChild("LeftPane", new Vector2(leftPaneWidth, availableHeight), true);
+            ImGui.BeginChild("LeftPane", new Vector2(leftPaneWidth, availableHeight), true,
+                ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
             DrawQueuePane();
             ImGui.EndChild();
         }
@@ -148,9 +148,8 @@ public class CraftingListEditor
 
         var lineH   = ImGui.GetTextLineHeightWithSpacing();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
-        var bottomH = lineH * 3 + spacing * 3    // 3 checkboxes
-                    + 22f * 2  + spacing * 2     // Start + gather/materials row
-                    + spacing * 2 + 6f;          // separator + padding
+        var frameH  = ImGui.GetFrameHeightWithSpacing();
+        var bottomH = frameH * 7 + spacing * 2;
         var queueH  = Math.Max(ImGui.GetContentRegionAvail().Y - bottomH, lineH * 3);
 
         ImGui.BeginChild("QueueList", new Vector2(-1, queueH), false);
@@ -270,6 +269,9 @@ public class CraftingListEditor
 
         ImGui.EndChild();
 
+        ImGui.BeginChild("QueueFooter", new Vector2(-1, 0), false,
+            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -370,6 +372,8 @@ public class CraftingListEditor
         var matsBtnLabel = GatherBuddy.CraftingMaterialsWindow?.IsOpen == true ? "Hide Materials" : "View Materials";
         if (ImGui.Button($"{matsBtnLabel}##viewMats", new Vector2(-1, 22)) && GatherBuddy.CraftingMaterialsWindow != null)
             GatherBuddy.CraftingMaterialsWindow.IsOpen = !GatherBuddy.CraftingMaterialsWindow.IsOpen;
+
+        ImGui.EndChild();
     }
     
     private void DrawDetailsPane()
@@ -806,7 +810,7 @@ public class CraftingListEditor
         var available = new Dictionary<uint, int>();
         foreach (var (itemId, needed) in precrafts)
         {
-            var inRetainer = (int)RetainerCache.GetRetainerItemCount(itemId);
+            var inRetainer = RetainerItemQuery.GetTotalCount(itemId);
             if (inRetainer > 0)
                 available[itemId] = Math.Min(needed, inRetainer);
         }
@@ -956,7 +960,7 @@ public class CraftingListEditor
             foreach (var (itemId, needed) in allPrecrafts)
             {
                 var inBag      = GetInventoryCount(itemId);
-                var inRetainer = GetRetainerCount(itemId);
+                var inRetainer = RetainerItemQuery.GetTotalCount(itemId);
                 var stillNeeded = Math.Max(0, needed - inBag - inRetainer);
                 if (stillNeeded > 0)
                     adjusted[itemId] = stillNeeded;
@@ -1026,9 +1030,35 @@ public class CraftingListEditor
         }
     }
 
-    internal int GetRetainerCount(uint itemId)   => (int)RetainerCache.GetRetainerItemCount(itemId);
-    internal int GetRetainerCountNQ(uint itemId) => (int)RetainerCache.GetRetainerItemCountNQ(itemId);
-    internal int GetRetainerCountHQ(uint itemId) => (int)RetainerCache.GetRetainerItemCountHQ(itemId);
+    internal int GetRetainerCount(uint itemId)
+        => RetainerItemQuery.GetTotalCount(itemId);
+    internal void InvalidateRetainerSnapshot()
+    {
+        _cachedRetainerSnapshot = RetainerItemSnapshot.Empty;
+        _cachedRetainerSnapshotItemIds = [];
+    }
+
+    internal RetainerItemSnapshot GetRetainerSnapshot(IEnumerable<uint> itemIds, bool forceRefresh = false)
+    {
+        if (!AllaganTools.Enabled)
+            return RetainerItemSnapshot.Empty;
+
+        var snapshotItemIds = itemIds
+            .Where(id => id > 0)
+            .Distinct()
+            .OrderBy(id => id)
+            .ToArray();
+
+        if (snapshotItemIds.Length == 0)
+            return RetainerItemSnapshot.Empty;
+
+        if (!forceRefresh && _cachedRetainerSnapshotItemIds.SequenceEqual(snapshotItemIds))
+            return _cachedRetainerSnapshot;
+
+        _cachedRetainerSnapshot = RetainerItemQuery.CreateSnapshot(snapshotItemIds);
+        _cachedRetainerSnapshotItemIds = snapshotItemIds;
+        return _cachedRetainerSnapshot;
+    }
     
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)
     {

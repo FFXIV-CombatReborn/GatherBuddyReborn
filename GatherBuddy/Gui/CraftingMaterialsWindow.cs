@@ -76,6 +76,13 @@ public class CraftingMaterialsWindow : Window
         if (itemSheet == null) return;
 
         var showRetainer = AllaganTools.Enabled;
+        var precrafts = _matsShowPrecrafts
+            ? _editor.GetCachedPrecraftMaterials()
+            : null;
+        var snapshotItemIds = materials.Keys.Concat(precrafts != null ? precrafts.Keys : Enumerable.Empty<uint>());
+        var retainerSnapshot = showRetainer
+            ? _editor.GetRetainerSnapshot(snapshotItemIds)
+            : RetainerItemSnapshot.Empty;
 
         var allEntries = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)>();
 
@@ -83,20 +90,18 @@ public class CraftingMaterialsWindow : Window
         {
             if (!itemSheet.TryGetRow(itemId, out var item)) continue;
             var have  = _editor.GetInventoryCount(itemId);
-            var retNQ = showRetainer ? _editor.GetRetainerCountNQ(itemId) : 0;
-            var retHQ = showRetainer ? _editor.GetRetainerCountHQ(itemId) : 0;
+            var retNQ = retainerSnapshot.GetCountNQ(itemId);
+            var retHQ = retainerSnapshot.GetCountHQ(itemId);
             allEntries.Add((itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon, false));
         }
-
-        if (_matsShowPrecrafts)
+        if (precrafts != null)
         {
-            var precrafts = _editor.GetCachedPrecraftMaterials();
             foreach (var (itemId, needed) in precrafts)
             {
                 if (!itemSheet.TryGetRow(itemId, out var item)) continue;
                 var have  = _editor.GetInventoryCount(itemId);
-                var retNQ = showRetainer ? _editor.GetRetainerCountNQ(itemId) : 0;
-                var retHQ = showRetainer ? _editor.GetRetainerCountHQ(itemId) : 0;
+                var retNQ = retainerSnapshot.GetCountNQ(itemId);
+                var retHQ = retainerSnapshot.GetCountHQ(itemId);
                 allEntries.Add((itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon, true));
             }
         }
@@ -121,6 +126,14 @@ public class CraftingMaterialsWindow : Window
                 "  Gather > Fish > Scrip > Drops > Craft > Vendor > Tomes > Other\n\n" +
                 "When ON: Gil Vendor overrides Gather, Fish, Drops, and Craft\n" +
                 "for items also sold at a Gil shop.");
+        if (showRetainer)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Refresh Retainers"))
+                _editor.InvalidateRetainerSnapshot();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Refresh retainer NQ/HQ counts. Automatic refresh is disabled here to avoid UI hitching.");
+        }
         ImGui.Separator();
 
         var avail   = ImGui.GetContentRegionAvail();

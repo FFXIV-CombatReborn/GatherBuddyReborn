@@ -910,6 +910,39 @@ internal unsafe class RetainerTaskExecutor
         return list;
     }
 
+    public static IGameObject? FindNearestBellForNavigation()
+    {
+        var player = Dalamud.ClientState.LocalPlayer;
+        if (player == null) return null;
+
+        var bellName = GetBellName();
+        IGameObject? nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        foreach (var obj in Dalamud.Objects)
+        {
+            if (obj.ObjectKind != ObjectKind.Housing && obj.ObjectKind != ObjectKind.EventObj)
+                continue;
+
+            var name = obj.Name.TextValue;
+            if (!name.Equals(bellName, StringComparison.OrdinalIgnoreCase) &&
+                !name.Equals("リテイナーベル", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!obj.IsTargetable)
+                continue;
+
+            var distance = Vector3.Distance(obj.Position, player.Position);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = obj;
+            }
+        }
+
+        return nearest;
+    }
+
     private static IGameObject? FindNearestBell()
     {
         var player = Dalamud.ClientState.LocalPlayer;
@@ -985,6 +1018,7 @@ internal unsafe class RetainerTaskExecutor
         var qualityTargets = ComputeQualityTargets(
             precraftsTotal.ToDictionary(kv => kv.Key, kv => kv.Value),
             expandedQueue);
+        var retainerSnapshot = RetainerItemQuery.CreateSnapshot(precraftsTotal.Keys);
 
         foreach (var (precraftItemId, totalNeeded) in precraftsTotal)
         {
@@ -1004,8 +1038,8 @@ internal unsafe class RetainerTaskExecutor
             int hqStillWanted = Math.Max(0, qt.TargetHQ - inBagHQ);
             int nqStillNeeded = Math.Max(0, qt.TargetNQ - inBagNQ);
 
-            int retainerHQ = (int)RetainerCache.GetRetainerItemCountHQ(precraftItemId);
-            int retainerNQ = (int)RetainerCache.GetRetainerItemCountNQ(precraftItemId);
+            int retainerHQ = retainerSnapshot.GetCountHQ(precraftItemId);
+            int retainerNQ = retainerSnapshot.GetCountNQ(precraftItemId);
 
             int toWithdrawHQ = Math.Min(hqStillWanted, retainerHQ);
             int toWithdrawNQ;

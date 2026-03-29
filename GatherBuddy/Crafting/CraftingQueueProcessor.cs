@@ -17,6 +17,7 @@ public class CraftingQueueProcessor
     public enum QueueState
     {
         Idle,
+        NavigatingToRetainerBell,
         WithdrawingFromRetainer,
         WaitingForGather,
         WaitingForJobSwitch,
@@ -41,7 +42,9 @@ public class CraftingQueueProcessor
     private Dictionary<uint, int> _retainerSkipAmounts = new();
     private Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)> _precraftQualityTargets = new();
     private List<CraftingListItem> _expandedQueueForRetainer = new();
+    private CraftingListDefinition? _retainerPlanningList = null;
     private RetainerTaskExecutor? _retainerExecutor = null;
+    private RetainerBellNavigator? _retainerBellNavigator = null;
 
     private bool _paused = false;
     private bool _pausedDuringGather = false;
@@ -75,8 +78,9 @@ public class CraftingQueueProcessor
         CraftingGameInterop.QuickSynthProgress += OnQuickSynthProgress;
     }
 
-    public void StartQueue(List<CraftingListItem> queue, CraftingListConsumableSettings? listConsumables = null, RaphaelSolveCoordinator? raphaelCoordinator = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? materials = null, Dictionary<uint, int>? retainerPrecraftItems = null)
+    public void StartQueue(List<CraftingListItem> queue, CraftingListConsumableSettings? listConsumables = null, RaphaelSolveCoordinator? raphaelCoordinator = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? materials = null, Dictionary<uint, int>? retainerPrecraftItems = null, CraftingListDefinition? retainerPlanningList = null)
     {
+        YesAlready.Lock();
         _queue = new List<CraftingListItem>(queue);
         _currentQueueIndex = 0;
         _raphaelCoordinator = raphaelCoordinator;
@@ -90,13 +94,25 @@ public class CraftingQueueProcessor
         _retainerSkipAmounts = new();
         _precraftQualityTargets = new();
         _expandedQueueForRetainer = new List<CraftingListItem>(queue);
+        _retainerPlanningList = retainerPlanningList;
         _retainerExecutor = null;
+        _retainerBellNavigator = null;
 
         if (retainerRestock && AllaganTools.Enabled && materials != null && materials.Count > 0)
         {
-            GatherBuddy.Log.Information("[CraftingQueueProcessor] Retainer restock enabled, starting withdrawal stage");
-            _currentState = QueueState.WithdrawingFromRetainer;
-            QueueRetainerWithdrawalTasks();
+            GatherBuddy.Log.Information("[CraftingQueueProcessor] Retainer restock enabled");
+            if (GatherBuddy.Config.VulcanRetainerBellConfig.AutoNavigateToRetainerBell)
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Auto-navigation to retainer bell enabled");
+                _currentState = QueueState.NavigatingToRetainerBell;
+                QueueRetainerBellNavigationTasks();
+            }
+            else
+            {
+                GatherBuddy.Log.Debug("[CraftingQueueProcessor] Proceeding directly to retainer withdrawal");
+                _currentState = QueueState.WithdrawingFromRetainer;
+                QueueRetainerWithdrawalTasks();
+            }
         }
         else
         {
@@ -128,7 +144,7 @@ public class CraftingQueueProcessor
             return;
 
         GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Gather complete, moving to job check");
-        
+        YesAlready.Lock();
         CraftingGatherBridge.DeleteTemporaryGatherList();
         
         _currentState = QueueState.WaitingForJobSwitch;
@@ -147,6 +163,8 @@ public class CraftingQueueProcessor
         switch (_currentState)
         {
             case QueueState.Idle:
+                break;
+            case QueueState.NavigatingToRetainerBell:
                 break;
             case QueueState.WithdrawingFromRetainer:
                 break;
@@ -798,6 +816,7 @@ public class CraftingQueueProcessor
     private void CompleteQueue()
     {
         GatherBuddy.Log.Information($"[CraftingQueueProcessor] Queue complete!");
+        YesAlready.Unlock();
         GatherBuddy.AutoGather.Enabled = false;
         
         var craftState = CraftingGameInterop.CurrentState;
@@ -1074,8 +1093,55 @@ public class CraftingQueueProcessor
         _tasks.Add(() => { CompleteQueue(); return CraftingTasks.TaskResult.Abort; });
     }
 
+    private void QueueRetainerBellNavigationTasks()
+    {
+        var bell = RetainerTaskExecutor.FindNearestBellForNavigation();
+        if (bell == null)
+        {
+            GatherBuddy.Log.Warning("[CraftingQueueProcessor] No retainer bell found in current zone, skipping navigation");
+            _currentState = QueueState.WithdrawingFromRetainer;
+            QueueRetainerWithdrawalTasks();
+            return;
+        }
+
+        _retainerBellNavigator = new RetainerBellNavigator();
+        if (!_retainerBellNavigator.StartNavigation(bell))
+        {
+            GatherBuddy.Log.Warning("[CraftingQueueProcessor] Failed to start retainer bell navigation");
+            _currentState = QueueState.WithdrawingFromRetainer;
+            QueueRetainerWithdrawalTasks();
+            return;
+        }
+
+        _tasks.Add(() =>
+        {
+            if (_retainerBellNavigator == null)
+                return CraftingTasks.TaskResult.Done;
+
+            _retainerBellNavigator.Update();
+            if (_retainerBellNavigator.IsComplete)
+            {
+                if (_retainerBellNavigator.IsFailed)
+                    GatherBuddy.Log.Warning("[CraftingQueueProcessor] Retainer bell navigation failed, proceeding to withdrawal anyway");
+                else
+                    GatherBuddy.Log.Information("[CraftingQueueProcessor] Arrived at retainer bell");
+                return CraftingTasks.TaskResult.Done;
+            }
+            return CraftingTasks.TaskResult.Retry;
+        });
+
+        _tasks.Add(() =>
+        {
+            GatherBuddy.Log.Debug("[CraftingQueueProcessor] Navigation complete, starting retainer withdrawal");
+            _currentState = QueueState.WithdrawingFromRetainer;
+            QueueRetainerWithdrawalTasks();
+            return CraftingTasks.TaskResult.Done;
+        });
+    }
+
     private void QueueRetainerWithdrawalTasks()
     {
+        RefreshRetainerRestockPlanForWithdrawal();
         GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Building retainer withdrawal plan ({_retainerPrecraftItems.Count} precraft(s), {_allMaterials.Count} leaf material(s))");
 
         var combinedItems = new Dictionary<uint, int>(_allMaterials);
@@ -1105,11 +1171,60 @@ public class CraftingQueueProcessor
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         _retainerExecutor = new RetainerTaskExecutor(combinedItems, qualityTargets);
 
+        QueueRetainerWithdrawalExecutionTasks();
+    }
+
+    private void RefreshRetainerRestockPlanForWithdrawal()
+    {
+        if (!_retainerRestock || !AllaganTools.Enabled || _retainerPlanningList == null)
+            return;
+
+        GatherBuddy.Log.Debug("[CraftingQueueProcessor] Refreshing retainer restock plan before withdrawal");
+
+        var previousMaterials = new Dictionary<uint, int>(_allMaterials);
+        var previousPrecraftItems = new Dictionary<uint, int>(_retainerPrecraftItems);
+        var (refreshedMaterials, refreshedPrecraftItems) = RetainerTaskExecutor.PlanRetainerRestock(_retainerPlanningList, _expandedQueueForRetainer);
+
+        LogRetainerPlanDifferences("leaf material", previousMaterials, refreshedMaterials);
+        LogRetainerPlanDifferences("precraft pull", previousPrecraftItems, refreshedPrecraftItems);
+
+        _allMaterials = refreshedMaterials;
+        _retainerPrecraftItems = refreshedPrecraftItems;
+    }
+
+    private static void LogRetainerPlanDifferences(string label, Dictionary<uint, int> previousPlan, Dictionary<uint, int> refreshedPlan)
+    {
+        var changes = previousPlan.Keys
+            .Union(refreshedPlan.Keys)
+            .Select(itemId => (ItemId: itemId, PreviousAmount: previousPlan.GetValueOrDefault(itemId), RefreshedAmount: refreshedPlan.GetValueOrDefault(itemId)))
+            .Where(change => change.PreviousAmount != change.RefreshedAmount)
+            .OrderBy(change => change.ItemId)
+            .ToList();
+
+        if (changes.Count == 0)
+        {
+            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Retainer {label} plan unchanged after refresh");
+            return;
+        }
+
+        GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Retainer {label} plan refreshed with {changes.Count} change(s)");
+        foreach (var change in changes)
+            GatherBuddy.Log.Debug($"[CraftingQueueProcessor]   {label}: item {change.ItemId} {change.PreviousAmount} -> {change.RefreshedAmount}");
+    }
+
+    private void QueueRetainerWithdrawalExecutionTasks()
+    {
+        if (_retainerExecutor == null)
+        {
+            GatherBuddy.Log.Warning("[CraftingQueueProcessor] Retainer withdrawal executor unavailable, proceeding to gather stage");
+            TransitionFromRetainerWithdrawComplete();
+            return;
+        }
+
         _tasks.Add(() =>
         {
             if (_retainerExecutor == null)
                 return CraftingTasks.TaskResult.Done;
-
             var result = _retainerExecutor.Tick();
             if (result == CraftingTasks.TaskResult.Done)
             {
@@ -1130,6 +1245,7 @@ public class CraftingQueueProcessor
 
     private unsafe void TransitionFromRetainerWithdrawComplete()
     {
+
         GatherBuddy.Log.Debug("[CraftingQueueProcessor] Computing remaining materials after retainer withdrawal");
 
         int stillGatherCount = 0;
@@ -1295,7 +1411,14 @@ public class CraftingQueueProcessor
 
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Pausing queue");
         _paused = true;
+        if (_currentState == QueueState.NavigatingToRetainerBell)
+        {
+            GatherBuddy.Log.Debug("[CraftingQueueProcessor] Pausing retainer bell navigation");
+            _retainerBellNavigator?.Stop();
+            _retainerBellNavigator = null;
+        }
         _tasks.Clear();
+        YesAlready.Unlock();
         
         if (_currentState == QueueState.WaitingForGather)
         {
@@ -1318,6 +1441,24 @@ public class CraftingQueueProcessor
 
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Resuming queue");
         _paused = false;
+        YesAlready.Lock();
+
+        if (_currentState == QueueState.NavigatingToRetainerBell)
+        {
+            GatherBuddy.Log.Debug("[CraftingQueueProcessor] Resuming retainer bell navigation");
+            QueueRetainerBellNavigationTasks();
+            return;
+        }
+
+        if (_currentState == QueueState.WithdrawingFromRetainer)
+        {
+            GatherBuddy.Log.Debug("[CraftingQueueProcessor] Resuming retainer withdrawal");
+            if (_retainerExecutor == null)
+                QueueRetainerWithdrawalTasks();
+            else
+                QueueRetainerWithdrawalExecutionTasks();
+            return;
+        }
         
         if (_pausedDuringGather && _currentState == QueueState.WaitingForGather)
         {
@@ -1348,6 +1489,9 @@ public class CraftingQueueProcessor
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Stopping queue");
         _paused = false;
         _tasks.Clear();
+        _retainerBellNavigator?.Stop();
+        _retainerBellNavigator = null;
+        YesAlready.Unlock();
         
         GatherBuddy.AutoGather.Enabled = false;
         CraftingGatherBridge.DeleteTemporaryGatherList();
@@ -1375,6 +1519,7 @@ public class CraftingQueueProcessor
     
     public void Reset()
     {
+        YesAlready.Unlock();
         _queue.Clear();
         _currentQueueIndex = 0;
         _currentState = QueueState.Idle;
@@ -1389,12 +1534,16 @@ public class CraftingQueueProcessor
         _allMaterials = new();
         _retainerPrecraftItems = new();
         _expandedQueueForRetainer = new();
+        _retainerPlanningList = null;
         _retainerExecutor = null;
+        _retainerBellNavigator?.Stop();
+        _retainerBellNavigator = null;
     }
     
     public void TestRepair()
     {
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Testing repair system...");
+        YesAlready.Lock();
         _currentState = QueueState.Repairing;
         StateChanged?.Invoke(_currentState);
         QueueRepairTasks();
