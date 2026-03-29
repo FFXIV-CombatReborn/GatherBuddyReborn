@@ -675,6 +675,7 @@ public partial class VulcanWindow : Window, IDisposable
         
         var materials = list.ListMaterials();
         var retainerPrecraftItems = new System.Collections.Generic.Dictionary<uint, int>();
+        var retainerPlanningList = list.RetainerRestock ? list.CreateRetainerPlanningSnapshot() : null;
 
         if (list.RetainerRestock && AllaganTools.Enabled)
         {
@@ -684,7 +685,7 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {sortedRecipes.Count} recipes");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough, list.RetainerRestock, retainerPrecraftItems, list.Ephemeral ? (int?)list.ID : null);
+        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, materials, list.Consumables, list.SkipIfEnough, list.RetainerRestock, retainerPrecraftItems, list.Ephemeral ? (int?)list.ID : null, retainerPlanningList);
     }
 
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
@@ -1109,6 +1110,8 @@ public partial class VulcanWindow : Window, IDisposable
             DrawVulcanRepairConfig();
 
             DrawVulcanMateriaConfig();
+
+            DrawVulcanRetainerBellConfig();
 
             ImGui.Spacing();
             ImGui.Separator();
@@ -1552,6 +1555,20 @@ public partial class VulcanWindow : Window, IDisposable
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Automatically extract materia from fully spiritbonded equipment between crafts");
+    }
+
+    private void DrawVulcanRetainerBellConfig()
+    {
+        var config = GatherBuddy.Config.VulcanRetainerBellConfig;
+
+        var autoNav = config.AutoNavigateToRetainerBell;
+        if (ImGui.Checkbox("Auto-Navigate to Retainer Bell", ref autoNav))
+        {
+            config.AutoNavigateToRetainerBell = autoNav;
+            GatherBuddy.Config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Automatically navigate to the nearest retainer bell when starting retainer restock");
     }
 
     private void DrawTeamCraftImportWindow()

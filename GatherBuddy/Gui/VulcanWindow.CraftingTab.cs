@@ -24,6 +24,9 @@ public partial class VulcanWindow
     private static Vector2 LineIconSize => new(ImGui.GetTextLineHeight(), ImGui.GetTextLineHeight());
     private static Vector2 ItemSpacing => ImGui.GetStyle().ItemSpacing;
     private static float Scale => ImGuiHelpers.GlobalScale;
+    private static readonly Dictionary<uint, int> CachedRetainerIngredientCounts = new();
+    private static readonly Dictionary<uint, DateTime> RetainerIngredientRefreshTimes = new();
+    private const double RetainerIngredientRefreshIntervalSeconds = 1.0;
     
     private static float TextWidth(string text)
         => ImGui.CalcTextSize(text).X + ItemSpacing.X;
@@ -1261,7 +1264,18 @@ public partial class VulcanWindow
 
     private static int GetRetainerItemCount(uint itemId)
     {
-        return (int)RetainerCache.GetRetainerItemCount(itemId);
+        if (!AllaganTools.Enabled)
+            return 0;
+
+        var now = DateTime.Now;
+        if (RetainerIngredientRefreshTimes.TryGetValue(itemId, out var lastRefresh)
+         && (now - lastRefresh).TotalSeconds < RetainerIngredientRefreshIntervalSeconds)
+            return CachedRetainerIngredientCounts.GetValueOrDefault(itemId, 0);
+
+        var count = RetainerItemQuery.GetTotalCount(itemId);
+        CachedRetainerIngredientCounts[itemId] = count;
+        RetainerIngredientRefreshTimes[itemId] = now;
+        return count;
     }
 
     public class ExtendedRecipe

@@ -73,6 +73,7 @@ public partial class Configuration : IPluginConfiguration
     public Vulcan.StandardSolverConfig StandardSolverConfig { get; set; } = new();
     public VulcanRepairConfig VulcanRepairConfig { get; set; } = new();
     public VulcanMateriaConfig VulcanMateriaConfig { get; set; } = new();
+    public VulcanRetainerBellConfig VulcanRetainerBellConfig { get; set; } = new();
     public int VulcanExecutionDelayMs { get; set; } = 300;
     public string CraftingLists { get; set; } = string.Empty;
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
@@ -268,6 +269,11 @@ public partial class Configuration : IPluginConfiguration
 public class VulcanMateriaConfig
 {
     public bool Enabled { get; set; } = false;
+}
+
+public class VulcanRetainerBellConfig
+{
+    public bool AutoNavigateToRetainerBell { get; set; } = true;
 }
 
 public class VulcanRepairConfig

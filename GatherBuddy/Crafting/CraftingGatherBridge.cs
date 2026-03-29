@@ -154,7 +154,7 @@ public static class CraftingGatherBridge
         CreateGatherListForMissingIngredients(missing);
     }
     
-    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? retainerPrecraftItems = null, int? ephemeralListId = null)
+    public static void StartQueueCraftAndGather(List<CraftingListItem> queue, Dictionary<uint, int> missing, CraftingListConsumableSettings? listConsumables = null, bool skipIfEnough = false, bool retainerRestock = false, Dictionary<uint, int>? retainerPrecraftItems = null, int? ephemeralListId = null, CraftingListDefinition? retainerPlanningList = null)
     {
         _isQueueMode = true;
         _ephemeralListId = ephemeralListId;
@@ -163,7 +163,7 @@ public static class CraftingGatherBridge
         _waitingForGatherComplete = true;
 
         GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {queue.Count} recipes, retainerRestock={retainerRestock}");
-        _queueProcessor.StartQueue(queue, listConsumables, GatherBuddy.RaphaelSolveCoordinator, skipIfEnough, retainerRestock, missing, retainerPrecraftItems);
+        _queueProcessor.StartQueue(queue, listConsumables, GatherBuddy.RaphaelSolveCoordinator, skipIfEnough, retainerRestock, missing, retainerPrecraftItems, retainerPlanningList);
 
         if (!retainerRestock || !AllaganTools.Enabled || missing.Count == 0)
             CreateGatherListForMissingIngredients(missing);

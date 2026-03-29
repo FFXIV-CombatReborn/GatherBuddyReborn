@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text;
 using Dalamud.Interface.Colors;
@@ -17,10 +18,13 @@ namespace GatherBuddy.Gui;
 
 public class RecipeCraftSettingsPopup
 {
+    private static int _nextInstanceId;
+    private static int _activeInstanceId;
     private bool _isOpen;
     private bool _shouldOpen;
     private uint _recipeId;
     private string _recipeName = string.Empty;
+    private readonly int _instanceId = Interlocked.Increment(ref _nextInstanceId);
     private RecipeCraftSettings _editingSettings = new();
     private CraftingListItem? _editingListItem;
     private CraftingListDefinition? _editingList;
@@ -56,11 +60,16 @@ public class RecipeCraftSettingsPopup
         public int DesiredHQ { get; set; }
         public bool CanBeHQ { get; set; }
     }
+
+    private void Activate()
+    {
+        _activeInstanceId = _instanceId;
+        _shouldOpen = true;
+    }
     
     private List<IngredientData> _ingredients = new();
     private bool _useAllNQ = false;
     
-    private const string PopupId = "RecipeCraftSettings##Popup";
 
     public void Open(uint recipeId, string recipeName)
     {
@@ -100,7 +109,7 @@ public class RecipeCraftSettingsPopup
         LoadConsumables();
         LoadIngredients();
         ResetValidationState();
-        _shouldOpen = true;
+        Activate();
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag");
     }
     
@@ -138,7 +147,7 @@ public class RecipeCraftSettingsPopup
         LoadConsumables();
         LoadIngredients();
         ResetValidationState();
-        _shouldOpen = true;
+        Activate();
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag for list item");
     }
 
@@ -176,12 +185,18 @@ public class RecipeCraftSettingsPopup
         LoadConsumables();
         LoadIngredients();
         ResetValidationState();
-        _shouldOpen = true;
+        Activate();
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag for precraft");
     }
 
     public void Draw()
     {
+        if (_activeInstanceId != 0 && _activeInstanceId != _instanceId)
+        {
+            _isOpen = false;
+            _shouldOpen = false;
+            return;
+        }
         if (_shouldOpen)
         {
             GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Opening window in Draw()");
@@ -193,7 +208,7 @@ public class RecipeCraftSettingsPopup
         
         ImGui.SetNextWindowSize(new Vector2(450, 0), ImGuiCond.Appearing);
         
-        if (ImGui.Begin($"Craft Settings - {_recipeName}###RecipeCraftSettings", ref _isOpen, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize))
+        if (ImGui.Begin($"Craft Settings - {_recipeName}###RecipeCraftSettings_{_instanceId}", ref _isOpen, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize))
         {
             RefreshValidationIfNeeded();
             DrawMacroSelector();
@@ -307,6 +322,9 @@ public class RecipeCraftSettingsPopup
 
             ImGui.End();
         }
+
+        if (!_isOpen && _activeInstanceId == _instanceId)
+            _activeInstanceId = 0;
     }
 
     private void ResetValidationState()

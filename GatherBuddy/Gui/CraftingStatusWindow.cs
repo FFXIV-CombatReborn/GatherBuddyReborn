@@ -146,6 +146,7 @@ public class CraftingStatusWindow : Window
         return state switch
         {
             CraftingQueueProcessor.QueueState.Idle => "Idle",
+            CraftingQueueProcessor.QueueState.NavigatingToRetainerBell => "Navigating to Retainer Bell",
             CraftingQueueProcessor.QueueState.WaitingForGather => "Gathering Materials",
             CraftingQueueProcessor.QueueState.WaitingForJobSwitch => "Switching Job",
             CraftingQueueProcessor.QueueState.Repairing => "Repairing Equipment",
