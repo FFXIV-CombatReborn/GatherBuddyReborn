@@ -91,25 +91,31 @@ public class ContextMenu : IDisposable
     private void OnClickCrafting(IMenuItemClickedArgs args)
     {
         if (!_lastRecipeId.HasValue)
+        {
+            GatherBuddy.Log.Debug("[ContextMenu] Crafting context menu clicked without a cached recipe id.");
             return;
+        }
 
         var recipe = Crafting.RecipeManager.GetRecipe(_lastRecipeId.Value);
         if (!recipe.HasValue)
+        {
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to resolve recipe {_lastRecipeId.Value} for crafting context menu.");
             return;
+        }
 
         var allLists = GatherBuddy.CraftingListManager.Lists;
-        var menuItems = new List<MenuItem>();
-
-        if (allLists.Count == 0)
+        var menuItems = new List<MenuItem>
         {
-            var noListItem = new MenuItem
+            new()
             {
-                Name = "No crafting lists available",
-                IsEnabled = false
-            };
-            menuItems.Add(noListItem);
-        }
-        else
+                Name = "Create New List...",
+                PrefixChar = 'C',
+                PrefixColor = 42,
+                OnClicked = _ => OpenCreateCraftingListPopup(recipe.Value.RowId),
+            },
+        };
+
+        if (allLists.Count > 0)
         {
             var maxLists = Math.Max(1, GatherBuddy.Config.MaxRecentCraftingListsInContextMenu);
             GatherBuddy.Log.Debug($"[ContextMenu] Total lists: {allLists.Count}, Max to show: {maxLists}");
@@ -146,6 +152,18 @@ public class ContextMenu : IDisposable
 
         if (menuItems.Count > 0)
             args.OpenSubmenu(menuItems);
+    }
+    private void OpenCreateCraftingListPopup(uint recipeId)
+    {
+        var vulcanWindow = GatherBuddy.VulcanWindow;
+        if (vulcanWindow == null)
+        {
+            GatherBuddy.Log.Warning($"[ContextMenu] Unable to open Create List popup for recipe {recipeId}: Vulcan window unavailable.");
+            return;
+        }
+
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Create List popup for recipe {recipeId}");
+        vulcanWindow.OpenCreateListPopup(recipeId);
     }
 
     private void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
