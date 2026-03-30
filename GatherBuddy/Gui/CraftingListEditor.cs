@@ -53,7 +53,9 @@ public class CraftingListEditor
     private Dictionary<uint, DateTime> _inventoryRefreshTimes = new();
     private RetainerItemSnapshot _cachedRetainerSnapshot = RetainerItemSnapshot.Empty;
     private uint[] _cachedRetainerSnapshotItemIds = [];
+    private DateTime _cachedRetainerSnapshotAt = DateTime.MinValue;
     private const double InventoryRefreshIntervalSeconds = 0.5;
+    private const double RetainerSnapshotRetryIntervalSeconds = 1.0;
     
     private RecipeCraftSettingsPopup _craftSettingsPopup = new();
     private CraftingListConsumablesPopup _consumablesPopup = new();
@@ -1036,6 +1038,7 @@ public class CraftingListEditor
     {
         _cachedRetainerSnapshot = RetainerItemSnapshot.Empty;
         _cachedRetainerSnapshotItemIds = [];
+        _cachedRetainerSnapshotAt = DateTime.MinValue;
     }
 
     internal RetainerItemSnapshot GetRetainerSnapshot(IEnumerable<uint> itemIds, bool forceRefresh = false)
@@ -1053,10 +1056,17 @@ public class CraftingListEditor
             return RetainerItemSnapshot.Empty;
 
         if (!forceRefresh && _cachedRetainerSnapshotItemIds.SequenceEqual(snapshotItemIds))
-            return _cachedRetainerSnapshot;
+        {
+            if (_cachedRetainerSnapshot.IsComplete)
+                return _cachedRetainerSnapshot;
+
+            if ((DateTime.Now - _cachedRetainerSnapshotAt).TotalSeconds < RetainerSnapshotRetryIntervalSeconds)
+                return _cachedRetainerSnapshot;
+        }
 
         _cachedRetainerSnapshot = RetainerItemQuery.CreateSnapshot(snapshotItemIds);
         _cachedRetainerSnapshotItemIds = snapshotItemIds;
+        _cachedRetainerSnapshotAt = DateTime.Now;
         return _cachedRetainerSnapshot;
     }
     
