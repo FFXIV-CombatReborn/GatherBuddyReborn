@@ -404,8 +404,12 @@ public class CraftingListManager
             newList.Consumables           = source.Consumables;
             newList.PrecraftOptions       = source.PrecraftOptions;
             newList.PrecraftCraftSettings = source.PrecraftCraftSettings;
+            newList.DefaultPrecraftSolverOverride = source.DefaultPrecraftSolverOverride;
+            newList.DefaultFinalSolverOverride = source.DefaultFinalSolverOverride;
             newList.SkipIfEnough          = source.SkipIfEnough;
             newList.QuickSynthAll         = source.QuickSynthAll;
+            newList.QuickSynthAllPreferNQ = source.QuickSynthAllPreferNQ;
+            newList.QuickSynthAllPrecraftsOnly = source.QuickSynthAllPrecraftsOnly;
             Save();
 
             GatherBuddy.Log.Information($"[CraftingListManager] Imported list '{newList.Name}' with {newList.Recipes.Count} recipes");

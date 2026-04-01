@@ -262,6 +262,8 @@ namespace GatherBuddy.Plugin
             {
                 EzIPC.Init(typeof(AllaganTools), "AllaganTools");
                 Debug.Assert(ItemCountOwned != null);
+                Debug.Assert(GetCharactersOwnedByActive != null);
+                Debug.Assert(IsInitialized != null);
             }
 
             internal static bool Enabled => IPCSubscriber.IsReady("InventoryTools");
@@ -274,6 +276,12 @@ namespace GatherBuddy.Plugin
 
         [EzIPC("AllaganTools.ItemCountHQ", applyPrefix: false)]
         internal static readonly Func<uint, ulong, uint, uint> ItemCountHQ;
+
+        [EzIPC("AllaganTools.GetCharactersOwnedByActive", applyPrefix: false)]
+        internal static readonly Func<bool, HashSet<ulong>> GetCharactersOwnedByActive;
+
+        [EzIPC("AllaganTools.IsInitialized", applyPrefix: false)]
+        internal static readonly Func<bool> IsInitialized;
     }
 
     internal static class AutoHook

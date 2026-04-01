@@ -1,5 +1,6 @@
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
@@ -13,6 +14,26 @@ namespace GatherBuddy.Crafting;
 
 public static class CraftingGameInterop
 {
+    public enum CraftPreparationFailureReason
+    {
+        MissingIngredientsUnableToSelect,
+    }
+
+    public sealed record CraftPreparationFailure(
+        uint RecipeId,
+        CraftPreparationFailureReason Reason,
+        uint ItemId,
+        int Needed,
+        int AvailableNQ,
+        int AvailableHQ,
+        string Details);
+
+    private enum IngredientAssignmentResult
+    {
+        Success,
+        Retry,
+        Fatal,
+    }
     public enum CraftState
     {
         IdleNormal,
@@ -42,6 +63,7 @@ public static class CraftingGameInterop
     private static string? _currentSelectedMacroId = null;
     private static DateTime _taskManagerIdleSince = DateTime.MinValue;
     private static DateTime _nextActionAllowedAt = DateTime.MinValue;
+    private static CraftPreparationFailure? _lastPreparationFailure = null;
 
     public static Vulcan.UserMacroLibrary UserMacroLibrary => _userMacroLibrary ??= new();
     public static event Action<CraftState>? StateChanged;
@@ -136,6 +158,7 @@ public static class CraftingGameInterop
         _vulcanCraftState = null;
         _vulcanStepState = null;
         _currentSelectedMacroId = null;
+        _lastPreparationFailure = null;
         CraftingProcessor.Dispose();
     }
 
@@ -154,6 +177,19 @@ public static class CraftingGameInterop
     {
         return _currentSelectedMacroId;
     }
+
+    public static bool TryConsumePreparationFailure(out CraftPreparationFailure failure)
+    {
+        if (_lastPreparationFailure == null)
+        {
+            failure = null!;
+            return false;
+        }
+
+        failure = _lastPreparationFailure;
+        _lastPreparationFailure = null;
+        return true;
+    }
     
     public static void StartCraft(Recipe recipe, uint quantity, bool useQuickSynthesis = false)
     {
@@ -164,6 +200,7 @@ public static class CraftingGameInterop
         _currentRecipeId = recipe.RowId;
         _currentState = CraftState.PreparingCraft;
         _taskManagerIdleSince = DateTime.MinValue;
+        _lastPreparationFailure = null;
         GatherBuddy.Log.Debug($"[Crafting] StartCraft - entering PreparingCraft state (QuickSynth={useQuickSynthesis})");
         
         var tm = GatherBuddy.AutoGather?.TaskManager;
@@ -181,7 +218,7 @@ public static class CraftingGameInterop
         else
         {
             tm.DelayNext(1500);
-            tm.Enqueue(() => WaitForIngredientsAssigned(), 3000, "WaitForIngredientsAssigned");
+            tm.Enqueue(() => WaitForIngredientsAssigned(), 3000, true, "WaitForIngredientsAssigned");
             tm.Enqueue(() => ExecuteCraft(), 3000, "ExecuteCraft");
         }
         
@@ -235,7 +272,7 @@ public static class CraftingGameInterop
         return false;
     }
 
-    private static unsafe bool WaitForIngredientsAssigned()
+    private static unsafe bool? WaitForIngredientsAssigned()
     {
         try
         {
@@ -256,10 +293,12 @@ public static class CraftingGameInterop
                     OpenRecipe(_currentRecipeId.Value);
                 return false;
             }
-
-            SelectIngredientsForCraft();
-            GatherBuddy.Log.Debug($"[Crafting] Ingredients assigned, ready to craft");
-            return true;
+            return SelectIngredientsForCraft() switch
+            {
+                IngredientAssignmentResult.Success => true,
+                IngredientAssignmentResult.Fatal => null,
+                _ => false,
+            };
         }
         catch (Exception ex)
         {
@@ -268,7 +307,7 @@ public static class CraftingGameInterop
         }
     }
 
-    private static unsafe void SelectIngredientsForCraft()
+    private static unsafe IngredientAssignmentResult SelectIngredientsForCraft()
     {
         try
         {
@@ -276,7 +315,7 @@ public static class CraftingGameInterop
             if (addon == null || addon.Address == nint.Zero)
             {
                 GatherBuddy.Log.Debug($"[Crafting] RecipeNote addon not found");
-                return;
+                return IngredientAssignmentResult.Retry;
             }
 
             var atkUnit = (AtkUnitBase*)addon.Address;
@@ -284,7 +323,7 @@ public static class CraftingGameInterop
             if (recipeNote == null || recipeNote->RecipeList == null)
             {
                 GatherBuddy.Log.Debug($"[Crafting] RecipeNote or RecipeList is null");
-                return;
+                return IngredientAssignmentResult.Retry;
             }
 
             var recipeData = recipeNote->RecipeList;
@@ -292,7 +331,7 @@ public static class CraftingGameInterop
             if (selectedRecipe == null)
             {
                 GatherBuddy.Log.Debug($"[Crafting] SelectedRecipe is null");
-                return;
+                return IngredientAssignmentResult.Retry;
             }
 
             var ingredients = RecipeNoteExt.GetIngredientsSpan(selectedRecipe);
@@ -303,6 +342,16 @@ public static class CraftingGameInterop
                     break;
 
                 if (ingredient.NumTotal == 0)
+                    continue;
+
+                var availableCounts = GetInventoryAvailableCounts(ingredient.ItemId);
+                if (availableCounts.NQ + availableCounts.HQ < ingredient.NumTotal)
+                {
+                    SetMissingIngredientFailure(ingredient.ItemId, ingredient.NumTotal, availableCounts.NQ, availableCounts.HQ);
+                    return IngredientAssignmentResult.Fatal;
+                }
+
+                if (ingredient.NumAssignedNQ + ingredient.NumAssignedHQ >= ingredient.NumTotal)
                     continue;
 
                 if (IsEquipmentIngredient(ingredient.ItemId))
@@ -347,24 +396,34 @@ public static class CraftingGameInterop
                 {
                     desiredHQ = Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ);
                 }
-                
-                if (desiredHQ > 0)
+
+                var missingHQ = Math.Max(0, desiredHQ - ingredient.NumAssignedHQ);
+                if (missingHQ > 0 && ingredient.NumAvailableHQ >= missingHQ)
                 {
-                    for (int m = 0; m < desiredHQ; m++)
+                    for (int m = 0; m < missingHQ; m++)
                         ClickMaterial(atkUnit, (uint)i, true);
                 }
-                
                 int desiredNQ = ingredient.NumTotal - desiredHQ;
-                if (desiredNQ > 0 && ingredient.NumAvailableNQ >= desiredNQ)
+                var missingNQ = Math.Max(0, desiredNQ - ingredient.NumAssignedNQ);
+                if (missingNQ > 0 && ingredient.NumAvailableNQ >= missingNQ)
                 {
-                    for (int m = 0; m < desiredNQ; m++)
+                    for (int m = 0; m < missingNQ; m++)
                         ClickMaterial(atkUnit, (uint)i, false);
                 }
             }
+
+            System.Threading.Thread.Sleep(50);
+            if (!AreIngredientsAssigned())
+                return IngredientAssignmentResult.Retry;
+
+            _lastPreparationFailure = null;
+            GatherBuddy.Log.Debug($"[Crafting] Ingredients assigned, ready to craft");
+            return IngredientAssignmentResult.Success;
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Debug($"[Crafting] Error selecting ingredients: {ex.Message}\n{ex.StackTrace}");
+            return IngredientAssignmentResult.Retry;
         }
     }
 
@@ -751,17 +810,23 @@ public static class CraftingGameInterop
         try
         {
             var canExecute = _actionExecutor.CanExecuteAction(recommendation.Action, craft, step);
-            if (canExecute)
+            if (!canExecute)
             {
-                var success = await _actionExecutor.TryExecuteActionAsync(recommendation.Action);
-                if (success)
-                {
-                    var (result, nextStep) = Vulcan.Simulator.Execute(craft, step, recommendation.Action, 0.5f, 0.5f);
-                    if (result == Vulcan.Simulator.ExecuteResult.Succeeded || result == Vulcan.Simulator.ExecuteResult.Failed)
-                    {
-                        _vulcanStepState = nextStep;
-                    }
-                }
+                GatherBuddy.Log.Debug($"[Crafting] Solver recommendation {recommendation.Action} could not be executed at {step}");
+                return;
+            }
+
+            var success = await _actionExecutor.TryExecuteActionAsync(recommendation.Action);
+            if (!success)
+            {
+                GatherBuddy.Log.Debug($"[Crafting] Solver recommendation {recommendation.Action} failed to execute after passing pre-check");
+                return;
+            }
+
+            var (result, nextStep) = Vulcan.Simulator.Execute(craft, step, recommendation.Action, 0.5f, 0.5f);
+            if (result == Vulcan.Simulator.ExecuteResult.Succeeded || result == Vulcan.Simulator.ExecuteResult.Failed)
+            {
+                _vulcanStepState = nextStep;
             }
         }
         catch (Exception ex)
@@ -833,8 +898,71 @@ public static class CraftingGameInterop
         return CraftState.IdleNormal;
     }
 
+
+    private static unsafe bool AreIngredientsAssigned()
+    {
+        var recipeNote = FFXIVClientStructs.FFXIV.Client.Game.UI.RecipeNote.Instance();
+        if (recipeNote == null || recipeNote->RecipeList == null || recipeNote->RecipeList->SelectedRecipe == null)
+            return false;
+
+        var ingredients = RecipeNoteExt.GetIngredientsSpan(recipeNote->RecipeList->SelectedRecipe);
+        for (int i = 0; i < ingredients.Length; i++)
+        {
+            var ingredient = ingredients[i];
+            if (ingredient.ItemId == 0)
+                break;
+
+            if (ingredient.NumTotal == 0)
+                continue;
+
+            if (ingredient.NumAssignedNQ + ingredient.NumAssignedHQ < ingredient.NumTotal)
+            {
+                GatherBuddy.Log.Debug($"[Crafting] Ingredient assignment incomplete for item {ingredient.ItemId}: assigned NQ={ingredient.NumAssignedNQ}, HQ={ingredient.NumAssignedHQ}, needed={ingredient.NumTotal}");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static unsafe (int NQ, int HQ) GetInventoryAvailableCounts(uint itemId)
+    {
+        var inventoryManager = InventoryManager.Instance();
+        if (inventoryManager == null)
+            return (0, 0);
+
+        return (
+            (int)inventoryManager->GetInventoryItemCount(itemId, false, false, false),
+            (int)inventoryManager->GetInventoryItemCount(itemId, true, false, false));
+    }
+
+    private static void SetMissingIngredientFailure(uint itemId, int needed, int availableNQ, int availableHQ)
+    {
+        if (!_currentRecipeId.HasValue)
+            return;
+
+        var itemName = Dalamud.GameData.GetExcelSheet<Item>()?.TryGetRow(itemId, out var item) == true
+            ? item.Name.ExtractText()
+            : $"Item {itemId}";
+        var details = $"unable to select '{itemName}' (item {itemId}) in RecipeNote: needed {needed}, available NQ={availableNQ}, HQ={availableHQ}";
+        _lastPreparationFailure = new CraftPreparationFailure(
+            _currentRecipeId.Value,
+            CraftPreparationFailureReason.MissingIngredientsUnableToSelect,
+            itemId,
+            needed,
+            availableNQ,
+            availableHQ,
+            details);
+        GatherBuddy.Log.Warning($"[Crafting] Recipe {_currentRecipeId.Value} ingredient assignment failed due to missing ingredients: {details}");
+    }
     private static CraftState TransitionFromPreparingCraft()
     {
+        if (_lastPreparationFailure != null)
+        {
+            GatherBuddy.Log.Debug("[Crafting] PreparingCraft detected recorded preparation failure, forcing IdleNormal");
+            _taskManagerIdleSince = DateTime.MinValue;
+            return CraftState.IdleNormal;
+        }
         if (Dalamud.Conditions[ConditionFlag.ExecutingCraftingAction])
         {
             _taskManagerIdleSince = DateTime.MinValue;
@@ -932,6 +1060,12 @@ public static class CraftingGameInterop
         var tm = GatherBuddy.AutoGather?.TaskManager;
         if (tm != null && tm.IsBusy)
             return CraftState.IdleBetween;
+
+        if (_lastPreparationFailure != null)
+        {
+            GatherBuddy.Log.Debug("[Crafting] IdleBetween detected recorded preparation failure, closing RecipeNote");
+            return TransitionFromIdleBetweenToExit();
+        }
         
         if (preparingFlag)
             return CraftState.IdleBetween;
@@ -1118,6 +1252,7 @@ public static class CraftingGameInterop
     private static unsafe CraftState Finish(bool cancelled)
     {
         _nextActionAllowedAt = DateTime.MinValue;
+        _lastPreparationFailure = null;
 
         if (_currentRecipe != null)
             CraftFinished?.Invoke(_currentRecipe, cancelled);

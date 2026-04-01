@@ -53,6 +53,28 @@ public class RecipeCraftSettings
             || SolverOverride != SolverOverrideMode.Default;
     }
 
+    public RecipeCraftSettings Clone()
+    {
+        return new RecipeCraftSettings
+        {
+            FoodMode = FoodMode,
+            FoodItemId = FoodItemId,
+            FoodHQ = FoodHQ,
+            MedicineMode = MedicineMode,
+            MedicineItemId = MedicineItemId,
+            MedicineHQ = MedicineHQ,
+            ManualMode = ManualMode,
+            ManualItemId = ManualItemId,
+            SquadronManualMode = SquadronManualMode,
+            SquadronManualItemId = SquadronManualItemId,
+            IngredientPreferences = new Dictionary<uint, int>(IngredientPreferences),
+            UseAllNQ = UseAllNQ,
+            SelectedMacroId = SelectedMacroId,
+            MacroMode = MacroMode,
+            SolverOverride = SolverOverride,
+        };
+    }
+
     public void Clear()
     {
         FoodMode = ConsumableOverrideMode.Inherit;

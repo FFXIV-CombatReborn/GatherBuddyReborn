@@ -104,12 +104,6 @@ public class RaphaelSolveCoordinator
 
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Starting Raphael enqueue with {requestList.Count} requests");
 
-        if (_config.AutoClearSolutionCache)
-        {
-            GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Clearing solution cache (was {_cachedSolutions.Count} solutions)");
-            _cachedSolutions.Clear();
-        }
-
         var uniqueCrafts = new Dictionary<string, RaphaelSolveRequest>();
         foreach (var request in requestList)
         {
@@ -151,12 +145,6 @@ public class RaphaelSolveCoordinator
         }
 
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Starting Raphael enqueue for {jobStatsMap.Count} unique jobs");
-
-        if (_config.AutoClearSolutionCache)
-        {
-            GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Clearing solution cache (was {_cachedSolutions.Count} solutions)");
-            _cachedSolutions.Clear();
-        }
 
         var uniqueCrafts = new Dictionary<string, RaphaelSolveRequest>();
         var queueList = queue.ToList();
@@ -232,12 +220,6 @@ public class RaphaelSolveCoordinator
 
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Starting Raphael enqueue with CraftState-derived stats for {recipeStats.Count} recipes");
 
-        if (_config.AutoClearSolutionCache)
-        {
-            GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Clearing solution cache (was {_cachedSolutions.Count} solutions)");
-            _cachedSolutions.Clear();
-        }
-
         var uniqueCrafts = new Dictionary<string, RaphaelSolveRequest>();
         foreach (var item in queue)
         {
@@ -306,12 +288,6 @@ public class RaphaelSolveCoordinator
         var uniqueCrafts = ExtractUniqueCrafts(queue, playerCraftsmanship, playerControl, playerCP, playerLevel, manipulationUnlocked, isSpecialist);
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Extracted {uniqueCrafts.Count} unique crafts from queue of {queue.Count()} items");
 
-        if (_config.AutoClearSolutionCache)
-        {
-            GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Clearing solution cache (was {_cachedSolutions.Count} solutions)");
-            _cachedSolutions.Clear();
-        }
-
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Enqueuing {uniqueCrafts.Count} unique crafts for Raphael solving (max concurrent: {_config.MaxConcurrentRaphaelProcesses})");
 
         foreach (var craft in uniqueCrafts)
@@ -376,6 +352,31 @@ public class RaphaelSolveCoordinator
     public bool IsSolveInProgress(RaphaelSolveRequest request)
     {
         return _inProgressTasks.ContainsKey(request.GetKey());
+    }
+
+    public bool IsKnown(RaphaelSolveRequest request)
+    {
+        var key = request.GetKey();
+        return _cachedSolutions.ContainsKey(key)
+            || _inProgressTasks.ContainsKey(key)
+            || _pendingQueue.Any(r => r.GetKey() == key);
+    }
+
+    public void ClearIfAutoEnabled()
+    {
+        if (!_config.AutoClearSolutionCache)
+            return;
+        GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Auto-clearing solution cache on queue start ({_cachedSolutions.Count} solutions)");
+        _cachedSolutions.Clear();
+    }
+
+    public void ReenqueueIfMissing(RaphaelSolveRequest request)
+    {
+        if (!_config.RaphaelEnabled || IsKnown(request))
+            return;
+        GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Re-enqueueing missing solution for recipe {request.RecipeId}");
+        _pendingQueue.Enqueue(request);
+        ProcessPendingQueue();
     }
 
     public void Clear()

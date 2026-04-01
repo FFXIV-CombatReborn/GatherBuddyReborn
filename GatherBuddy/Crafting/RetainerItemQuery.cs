@@ -20,9 +20,12 @@ internal static class RetainerItemQuery
         (uint)InventoryType.RetainerPage7,
     ];
 
+    public static bool IsReady
+        => AllaganTools.Enabled && AllaganTools.IsInitialized();
+
     public static int GetTotalCount(uint itemId)
     {
-        if (!AllaganTools.Enabled)
+        if (!IsReady)
             return 0;
 
         try
@@ -38,6 +41,24 @@ internal static class RetainerItemQuery
 
     public static RetainerItemSnapshot CreateSnapshot(IEnumerable<uint> itemIds)
         => new(itemIds);
+
+    internal static HashSet<ulong> GetOwnedRetainerIds()
+    {
+        if (!IsReady)
+            return [];
+
+        try
+        {
+            return AllaganTools.GetCharactersOwnedByActive(false)
+                .Where(id => id != 0)
+                .ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Debug($"[RetainerItemQuery] Failed to query owned retainer ids: {ex.Message}");
+            return [];
+        }
+    }
 }
 
 internal sealed class RetainerItemSnapshot
@@ -45,16 +66,26 @@ internal sealed class RetainerItemSnapshot
     public static RetainerItemSnapshot Empty { get; } = new([]);
 
     private readonly Dictionary<uint, (int NQ, int HQ)> _counts = new();
+    public bool IsComplete { get; }
 
     public RetainerItemSnapshot(IEnumerable<uint> itemIds)
     {
-        if (!AllaganTools.Enabled)
+        if (!RetainerItemQuery.IsReady)
+        {
+            IsComplete = false;
             return;
+        }
+
+        var isComplete = true;
 
         foreach (var itemId in itemIds.Where(id => id > 0).Distinct())
         {
-            _counts[itemId] = QuerySplitCounts(itemId);
+            var (counts, itemComplete) = QuerySplitCounts(itemId);
+            _counts[itemId] = counts;
+            isComplete &= itemComplete;
         }
+
+        IsComplete = isComplete;
     }
 
     public int GetCountNQ(uint itemId)
@@ -69,25 +100,15 @@ internal sealed class RetainerItemSnapshot
         return counts.NQ + counts.HQ;
     }
 
-    private static unsafe (int NQ, int HQ) QuerySplitCounts(uint itemId)
+    private static ((int NQ, int HQ) Counts, bool IsComplete) QuerySplitCounts(uint itemId)
     {
         try
         {
-            var retainerMgr = RetainerManager.Instance();
-            if (retainerMgr == null)
-                return (0, 0);
 
             var totalNQ = 0;
             var totalHQ = 0;
-            var retainerCount = retainerMgr->GetRetainerCount();
-
-            for (uint i = 0; i < retainerCount; i++)
+            foreach (var retainerId in RetainerItemQuery.GetOwnedRetainerIds())
             {
-                var retainer = retainerMgr->GetRetainerBySortedIndex(i);
-                if (retainer == null || retainer->RetainerId == 0)
-                    continue;
-
-                var retainerId = retainer->RetainerId;
                 for (uint page = 10000; page <= 10006; page++)
                 {
                     var pageHQ = (int)AllaganTools.ItemCountHQ(itemId, retainerId, page);
@@ -99,13 +120,22 @@ internal sealed class RetainerItemSnapshot
                 totalHQ += crystalHQ;
                 totalNQ += (int)AllaganTools.ItemCount(itemId, retainerId, 12001) - crystalHQ;
             }
+            var totalOwned = RetainerItemQuery.GetTotalCount(itemId);
+            var splitTotal = totalNQ + totalHQ;
+            var isComplete = true;
+            if (splitTotal < totalOwned)
+            {
+                totalNQ += totalOwned - splitTotal;
+                isComplete = false;
+                GatherBuddy.Log.Debug($"[RetainerItemQuery] Split retainer counts incomplete for item {itemId}; using pooled fallback for {totalOwned - splitTotal} item(s)");
+            }
 
-            return (Math.Max(0, totalNQ), Math.Max(0, totalHQ));
+            return ((Math.Max(0, totalNQ), Math.Max(0, totalHQ)), isComplete);
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Debug($"[RetainerItemQuery] Failed to query retainer split counts for item {itemId}: {ex.Message}");
-            return (0, 0);
+            return ((0, 0), false);
         }
     }
 }

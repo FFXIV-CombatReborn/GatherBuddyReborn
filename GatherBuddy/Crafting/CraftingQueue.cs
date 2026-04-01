@@ -114,16 +114,19 @@ public class CraftingListQueue
         }
     }
 
-    public void AddRecipe(uint recipeId, int quantity)
+    public void AddRecipe(uint recipeId, int quantity, bool isOriginalRecipe)
     {
-        var existing = Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
+        var existing = Recipes.FirstOrDefault(r => r.RecipeId == recipeId && r.IsOriginalRecipe == isOriginalRecipe);
         if (existing != null)
         {
             existing.Quantity += quantity;
         }
         else
         {
-            Recipes.Add(new CraftingListItem(recipeId, quantity));
+            Recipes.Add(new CraftingListItem(recipeId, quantity)
+            {
+                IsOriginalRecipe = isOriginalRecipe,
+            });
         }
     }
 
@@ -133,7 +136,10 @@ public class CraftingListQueue
         if (recipe == null)
             return;
 
-        OriginalRecipes.Add(new CraftingListItem(recipeId, quantity));
+        OriginalRecipes.Add(new CraftingListItem(recipeId, quantity)
+        {
+            IsOriginalRecipe = true,
+        });
         var neededAmounts = new Dictionary<uint, int>();
         CollectIngredientsNeeded(recipe.Value, quantity, neededAmounts, skipIfEnough);
         
@@ -143,11 +149,11 @@ public class CraftingListQueue
             if (subRecipe != null)
             {
                 var quantityToCraft = (int)System.Math.Ceiling((double)kvp.Value / subRecipe.Value.AmountResult);
-                AddRecipe(kvp.Key, quantityToCraft);
+                AddRecipe(kvp.Key, quantityToCraft, false);
             }
         }
         
-        AddRecipe(recipeId, quantity);
+        AddRecipe(recipeId, quantity, true);
     }
 
     private unsafe void CollectIngredientsNeeded(Recipe recipe, int multiplier, Dictionary<uint, int> neededAmounts, bool skipIfEnough = false)
