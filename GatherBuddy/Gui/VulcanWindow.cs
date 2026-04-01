@@ -137,6 +137,14 @@ public partial class VulcanWindow : Window, IDisposable
         _deferEditorDraw = true;
     }
 
+    internal void RefreshOpenCraftingList(int listId)
+    {
+        if (_editingList?.ID != listId || _listEditor == null)
+            return;
+
+        _listEditor.RefreshFromExternalListChange();
+    }
+
     private void PrepareCreateListPopup(string? folderPath = null)
     {
         ResetCreateListPopupState();

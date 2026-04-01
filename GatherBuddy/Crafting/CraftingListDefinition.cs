@@ -19,14 +19,27 @@ public class CraftingListDefinition
     public Dictionary<uint, RecipeCraftSettings> PrecraftCraftSettings { get; set; } = new();
     public string? DefaultPrecraftMacroId { get; set; }
     public string? DefaultFinalMacroId { get; set; }
+    public SolverOverrideMode DefaultPrecraftSolverOverride { get; set; } = SolverOverrideMode.Default;
+    public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
     
     public bool SkipIfEnough { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
+    public bool QuickSynthAllPreferNQ { get; set; } = false;
+    public bool QuickSynthAllPrecraftsOnly { get; set; } = false;
     public bool Materia { get; set; } = false;
     public bool Repair { get; set; } = false;
     public int RepairPercent { get; set; } = 50;
     public bool RetainerRestock { get; set; } = false;
     public bool Ephemeral { get; set; } = false;
+
+    public bool ShouldApplyQuickSynthAllOverrides(bool isOriginalRecipe)
+        => QuickSynthAll && (!QuickSynthAllPrecraftsOnly || !isOriginalRecipe);
+
+    public bool ShouldForceQuickSynth(Recipe recipe, bool isOriginalRecipe)
+        => ShouldApplyQuickSynthAllOverrides(isOriginalRecipe) && recipe.CanQuickSynth;
+
+    public bool ShouldForcePreferNQ(bool isOriginalRecipe)
+        => QuickSynthAllPreferNQ && ShouldApplyQuickSynthAllOverrides(isOriginalRecipe);
 
     public void BuildExpandedList()
     {
@@ -45,6 +58,9 @@ public class CraftingListDefinition
         var snapshot = new CraftingListDefinition
         {
             SkipIfEnough = SkipIfEnough,
+            QuickSynthAll = QuickSynthAll,
+            QuickSynthAllPreferNQ = QuickSynthAllPreferNQ,
+            QuickSynthAllPrecraftsOnly = QuickSynthAllPrecraftsOnly,
         };
 
         foreach (var recipe in Recipes)
@@ -235,32 +251,24 @@ public class CraftingListDefinition
         }
     }
 
-    public ListItemOptions GetRecipeOptions(uint recipeId)
+    public ListItemOptions GetRecipeOptions(uint recipeId, bool isOriginalRecipe)
     {
-        var mainItem = Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
-        if (mainItem != null)
-            return mainItem.Options;
+        if (isOriginalRecipe)
+        {
+            var mainItem = Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
+            if (mainItem != null)
+                return mainItem.Options;
+        }
         
-        if (!PrecraftOptions.ContainsKey(recipeId))
-            PrecraftOptions[recipeId] = new ListItemOptions();
+        if (!PrecraftOptions.TryGetValue(recipeId, out var options))
+            PrecraftOptions[recipeId] = options = new ListItemOptions();
         
-        return PrecraftOptions[recipeId];
+        return options;
     }
     
-    public void SetRecipeQuickSynth(uint recipeId, bool useQuickSynth)
+    public void SetRecipeQuickSynth(uint recipeId, bool useQuickSynth, bool isOriginalRecipe)
     {
-        var mainItem = Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
-        if (mainItem != null)
-        {
-            mainItem.Options.NQOnly = useQuickSynth;
-        }
-        else
-        {
-            if (!PrecraftOptions.ContainsKey(recipeId))
-                PrecraftOptions[recipeId] = new ListItemOptions();
-            
-            PrecraftOptions[recipeId].NQOnly = useQuickSynth;
-        }
+        GetRecipeOptions(recipeId, isOriginalRecipe).NQOnly = useQuickSynth;
     }
 
     public void SetPrecraftCraftSettings(uint recipeId, RecipeCraftSettings? settings)

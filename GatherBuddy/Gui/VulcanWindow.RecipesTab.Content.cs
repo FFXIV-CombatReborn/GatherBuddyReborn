@@ -350,6 +350,7 @@ public partial class VulcanWindow
                     var newList = GatherBuddy.CraftingListManager.CreateNewList(_contextMenuNewListName.Trim(), _contextMenuNewListEphemeral);
                     newList.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, _contextMenuAddQuantity));
                     GatherBuddy.CraftingListManager.SaveList(newList);
+                    RefreshOpenCraftingList(newList.ID);
                     GatherBuddy.Log.Information($"[VulcanWindow] Created list '{newList.Name}' and added {recipe.Name} x{_contextMenuAddQuantity}");
                     ImGui.CloseCurrentPopup();
                 }
@@ -385,6 +386,7 @@ public partial class VulcanWindow
                         {
                             list.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, _contextMenuAddQuantity));
                             GatherBuddy.CraftingListManager.SaveList(list);
+                            RefreshOpenCraftingList(list.ID);
                             GatherBuddy.Log.Information($"Added {recipe.Name} x{_contextMenuAddQuantity} to crafting list '{list.Name}'");
                         }
                     }
@@ -417,6 +419,7 @@ public partial class VulcanWindow
                                 }
                             }
                             GatherBuddy.CraftingListManager.SaveList(list);
+                            RefreshOpenCraftingList(list.ID);
                             GatherBuddy.Log.Information($"Added {uncraftedCount} uncrafted recipes to list '{list.Name}'");
                         }
                     }

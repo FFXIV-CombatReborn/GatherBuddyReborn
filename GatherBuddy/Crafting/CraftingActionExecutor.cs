@@ -10,9 +10,16 @@ public class CraftingActionExecutor : IActionExecutor
     public bool CanExecuteAction(VulcanSkill action, CraftState craft, StepState step, string outReason = "")
     {
         if (action == VulcanSkill.None)
+        {
+            GatherBuddy.Log.Debug("[CraftingActionExecutor] Cannot execute VulcanSkill.None recommendation");
             return false;
-        if (step.RemainingCP <= 0)
+        }
+
+        if (!Simulator.CanUseAction(craft, step, action))
+        {
+            GatherBuddy.Log.Debug($"[CraftingActionExecutor] Cannot execute action {action}: {step}");
             return false;
+        }
         return true;
     }
 

@@ -181,6 +181,7 @@ public class ContextMenu : IDisposable
         }
 
         GatherBuddy.CraftingListManager.SaveList(list);
+        GatherBuddy.VulcanWindow?.RefreshOpenCraftingList(list.ID);
     }
 
     public void Enable()

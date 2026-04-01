@@ -137,7 +137,7 @@ public class RecipeCraftSettingsPopup
             SquadronManualItemId = cs?.SquadronManualItemId,
             IngredientPreferences = cs != null ? new Dictionary<uint, int>(cs.IngredientPreferences) : new(),
             UseAllNQ = cs?.UseAllNQ ?? false,
-            MacroMode = (cs?.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs?.SelectedMacroId) || cs?.SolverOverride != SolverOverrideMode.Default)
+            MacroMode = (cs != null && (cs.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs.SelectedMacroId) || cs.SolverOverride != SolverOverrideMode.Default))
                 ? MacroOverrideMode.Specific
                 : MacroOverrideMode.Inherit,
             SelectedMacroId = cs?.SelectedMacroId,
@@ -175,7 +175,7 @@ public class RecipeCraftSettingsPopup
             SquadronManualItemId = cs?.SquadronManualItemId,
             IngredientPreferences = cs != null ? new Dictionary<uint, int>(cs.IngredientPreferences) : new(),
             UseAllNQ = cs?.UseAllNQ ?? false,
-            MacroMode = (cs?.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs?.SelectedMacroId) || cs?.SolverOverride != SolverOverrideMode.Default)
+            MacroMode = (cs != null && (cs.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs.SelectedMacroId) || cs.SolverOverride != SolverOverrideMode.Default))
                 ? MacroOverrideMode.Specific
                 : MacroOverrideMode.Inherit,
             SelectedMacroId = cs?.SelectedMacroId,
@@ -343,9 +343,20 @@ public class RecipeCraftSettingsPopup
     private string? ResolveEffectiveMacroIdForEdit()
     {
         if (_editingListItem == null && !_isPrecraftMode)
-            return _editingSettings.SelectedMacroId;
+            return _editingSettings.SolverOverride == SolverOverrideMode.Default
+                ? _editingSettings.SelectedMacroId
+                : null;
         if (_editingSettings.MacroMode == MacroOverrideMode.Specific)
-            return _editingSettings.SelectedMacroId;
+            return _editingSettings.SolverOverride == SolverOverrideMode.Default
+                ? _editingSettings.SelectedMacroId
+                : null;
+
+        var inheritedSolverOverride = _isPrecraftMode
+            ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
+            : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
+        if (inheritedSolverOverride != SolverOverrideMode.Default)
+            return null;
+
         return _isPrecraftMode ? _editingList?.DefaultPrecraftMacroId : _editingList?.DefaultFinalMacroId;
     }
 
@@ -475,9 +486,10 @@ public class RecipeCraftSettingsPopup
             {
                 ImGui.SameLine();
                 var inheritedId = _isPrecraftMode ? _editingList?.DefaultPrecraftMacroId : _editingList?.DefaultFinalMacroId;
-                var inheritedName = string.IsNullOrEmpty(inheritedId)
-                    ? "None (Use Solver)"
-                    : (allMacros.FirstOrDefault(m => m.Id == inheritedId)?.Name ?? "(Macro Not Found)");
+                var inheritedSolverOverride = _isPrecraftMode
+                    ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
+                    : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
+                var inheritedName = GetMacroSelectionName(inheritedId, inheritedSolverOverride, allMacros);
                 ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {inheritedName}");
                 return;
             }
@@ -490,15 +502,7 @@ public class RecipeCraftSettingsPopup
 
     private void DrawMacroCombo(System.Collections.Generic.List<UserMacro> allMacros)
     {
-        var currentMacroName = _editingSettings.SolverOverride switch
-        {
-            SolverOverrideMode.StandardSolver    => "Standard Solver",
-            SolverOverrideMode.RaphaelSolver     => "Raphael Solver",
-            SolverOverrideMode.ProgressOnlySolver => "Progress Only",
-            _ when !string.IsNullOrEmpty(_editingSettings.SelectedMacroId) =>
-                allMacros.FirstOrDefault(m => m.Id == _editingSettings.SelectedMacroId)?.Name ?? "(Macro Not Found)",
-            _ => "Default (Use Solver)"
-        };
+        var currentMacroName = GetMacroSelectionName(_editingSettings.SelectedMacroId, _editingSettings.SolverOverride, allMacros);
 
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##MacroSelector", currentMacroName))
@@ -550,6 +554,18 @@ public class RecipeCraftSettingsPopup
 
             ImGui.EndCombo();
         }
+    }
+
+    private static string GetMacroSelectionName(string? macroId, SolverOverrideMode solverOverride, List<UserMacro> allMacros)
+    {
+        return solverOverride switch
+        {
+            SolverOverrideMode.StandardSolver     => "Standard Solver",
+            SolverOverrideMode.RaphaelSolver      => "Raphael Solver",
+            SolverOverrideMode.ProgressOnlySolver => "Progress Only",
+            _ when !string.IsNullOrEmpty(macroId) => allMacros.FirstOrDefault(m => m.Id == macroId)?.Name ?? "(Macro Not Found)",
+            _                                     => "Default (Use Solver)",
+        };
     }
 
     private void DrawFoodSelector()

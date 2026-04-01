@@ -19,8 +19,12 @@ public class CraftingListConsumablesPopup
     private CraftingListConsumableSettings _workingDefaults = new();
     private string? _workingDefaultPrecraftMacroId;
     private string? _workingDefaultFinalMacroId;
+    private SolverOverrideMode _workingDefaultPrecraftSolverOverride = SolverOverrideMode.Default;
+    private SolverOverrideMode _workingDefaultFinalSolverOverride = SolverOverrideMode.Default;
     private string _foodSearch = string.Empty;
     private string _medicineSearch = string.Empty;
+    private string _precraftMacroSearch = string.Empty;
+    private string _finalMacroSearch = string.Empty;
     private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = new();
     private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
     private List<(uint ItemId, string Name)> _manualItems = new();
@@ -33,8 +37,12 @@ public class CraftingListConsumablesPopup
         _workingDefaults = list.Consumables.Clone();
         _workingDefaultPrecraftMacroId = list.DefaultPrecraftMacroId;
         _workingDefaultFinalMacroId = list.DefaultFinalMacroId;
+        _workingDefaultPrecraftSolverOverride = list.DefaultPrecraftSolverOverride;
+        _workingDefaultFinalSolverOverride = list.DefaultFinalSolverOverride;
         _foodSearch = string.Empty;
         _medicineSearch = string.Empty;
+        _precraftMacroSearch = string.Empty;
+        _finalMacroSearch = string.Empty;
         EnsureConsumablesLoaded();
         _isOpen = true;
     }
@@ -100,60 +108,102 @@ public class CraftingListConsumablesPopup
     private void DrawMacroSection()
     {
         var allMacros = CraftingGameInterop.UserMacroLibrary.GetAllMacros();
+        DrawMacroSelector(
+            "Precraft Macro:",
+            "##PrecraftMacro",
+            "##PrecraftMacroSearch",
+            ref _workingDefaultPrecraftMacroId,
+            ref _workingDefaultPrecraftSolverOverride,
+            ref _precraftMacroSearch,
+            allMacros);
 
+        DrawMacroSelector(
+            "Final Craft Macro:",
+            "##FinalMacro",
+            "##FinalMacroSearch",
+            ref _workingDefaultFinalMacroId,
+            ref _workingDefaultFinalSolverOverride,
+            ref _finalMacroSearch,
+            allMacros);
+    }
+
+    private void DrawMacroSelector(
+        string label,
+        string comboId,
+        string searchId,
+        ref string? selectedMacroId,
+        ref SolverOverrideMode solverOverride,
+        ref string macroSearch,
+        List<UserMacro> allMacros)
+    {
         ImGui.AlignTextToFramePadding();
-        ImGui.Text("Precraft Macro:");
+        ImGui.Text(label);
         ImGui.SameLine(160);
-        var precraftName = string.IsNullOrEmpty(_workingDefaultPrecraftMacroId)
-            ? "None (Use Solver)"
-            : (allMacros.FirstOrDefault(m => m.Id == _workingDefaultPrecraftMacroId)?.Name ?? "(Macro Not Found)");
+
+        var currentName = GetMacroSelectionName(selectedMacroId, solverOverride, allMacros);
         ImGui.SetNextItemWidth(240);
-        if (ImGui.BeginCombo("##PrecraftMacro", precraftName))
+        if (!ImGui.BeginCombo(comboId, currentName))
+            return;
+
+        var isDefault = solverOverride == SolverOverrideMode.Default && string.IsNullOrEmpty(selectedMacroId);
+        if (ImGui.Selectable("Default (Use Solver)", isDefault))
         {
-            if (ImGui.Selectable("None (Use Solver)", string.IsNullOrEmpty(_workingDefaultPrecraftMacroId)))
-                _workingDefaultPrecraftMacroId = null;
-            if (allMacros.Count > 0)
+            selectedMacroId = null;
+            solverOverride = SolverOverrideMode.Default;
+        }
+        if (ImGui.Selectable("Standard Solver", solverOverride == SolverOverrideMode.StandardSolver))
+        {
+            selectedMacroId = null;
+            solverOverride = SolverOverrideMode.StandardSolver;
+        }
+        if (ImGui.Selectable("Raphael Solver", solverOverride == SolverOverrideMode.RaphaelSolver))
+        {
+            selectedMacroId = null;
+            solverOverride = SolverOverrideMode.RaphaelSolver;
+        }
+        if (ImGui.Selectable("Progress Only", solverOverride == SolverOverrideMode.ProgressOnlySolver))
+        {
+            selectedMacroId = null;
+            solverOverride = SolverOverrideMode.ProgressOnlySolver;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Use only progress-building actions, no quality steps. Fast NQ crafts.");
+
+        if (allMacros.Count > 0)
+        {
+            ImGui.Separator();
+            ImGui.InputTextWithHint(searchId, "Search macros...", ref macroSearch, 128);
+            var searchValue = macroSearch;
+            var filteredMacros = string.IsNullOrWhiteSpace(searchValue)
+                ? allMacros
+                : allMacros.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var macro in filteredMacros)
             {
-                ImGui.Separator();
-                foreach (var macro in allMacros)
+                var isSelected = selectedMacroId == macro.Id;
+                var displayName = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
+                    ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
+                    : macro.Name;
+                if (ImGui.Selectable(displayName, isSelected))
                 {
-                    var isSelected = _workingDefaultPrecraftMacroId == macro.Id;
-                    var displayName = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
-                        ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
-                        : macro.Name;
-                    if (ImGui.Selectable(displayName, isSelected))
-                        _workingDefaultPrecraftMacroId = macro.Id;
+                    selectedMacroId = macro.Id;
+                    solverOverride = SolverOverrideMode.Default;
                 }
             }
-            ImGui.EndCombo();
         }
 
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Final Craft Macro:");
-        ImGui.SameLine(160);
-        var finalName = string.IsNullOrEmpty(_workingDefaultFinalMacroId)
-            ? "None (Use Solver)"
-            : (allMacros.FirstOrDefault(m => m.Id == _workingDefaultFinalMacroId)?.Name ?? "(Macro Not Found)");
-        ImGui.SetNextItemWidth(240);
-        if (ImGui.BeginCombo("##FinalMacro", finalName))
+        ImGui.EndCombo();
+    }
+
+    private static string GetMacroSelectionName(string? macroId, SolverOverrideMode solverOverride, List<UserMacro> allMacros)
+    {
+        return solverOverride switch
         {
-            if (ImGui.Selectable("None (Use Solver)", string.IsNullOrEmpty(_workingDefaultFinalMacroId)))
-                _workingDefaultFinalMacroId = null;
-            if (allMacros.Count > 0)
-            {
-                ImGui.Separator();
-                foreach (var macro in allMacros)
-                {
-                    var isSelected = _workingDefaultFinalMacroId == macro.Id;
-                    var displayName = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
-                        ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
-                        : macro.Name;
-                    if (ImGui.Selectable(displayName, isSelected))
-                        _workingDefaultFinalMacroId = macro.Id;
-                }
-            }
-            ImGui.EndCombo();
-        }
+            SolverOverrideMode.StandardSolver     => "Standard Solver",
+            SolverOverrideMode.RaphaelSolver      => "Raphael Solver",
+            SolverOverrideMode.ProgressOnlySolver => "Progress Only",
+            _ when !string.IsNullOrEmpty(macroId) => allMacros.FirstOrDefault(m => m.Id == macroId)?.Name ?? "(Macro Not Found)",
+            _                                     => "Default (Use Solver)",
+        };
     }
 
     private void DrawFoodSelector(ref uint? itemId, ref bool hq, string idSuffix, ref string search)
@@ -460,6 +510,8 @@ public class CraftingListConsumablesPopup
         _list.Consumables = _workingDefaults;
         _list.DefaultPrecraftMacroId = _workingDefaultPrecraftMacroId;
         _list.DefaultFinalMacroId = _workingDefaultFinalMacroId;
+        _list.DefaultPrecraftSolverOverride = _workingDefaultPrecraftSolverOverride;
+        _list.DefaultFinalSolverOverride = _workingDefaultFinalSolverOverride;
         GatherBuddy.CraftingListManager.SaveList(_list);
         MacroValidator.InvalidateAll();
     }

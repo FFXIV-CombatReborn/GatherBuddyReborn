@@ -18,6 +18,9 @@ public partial class VulcanWindow
             return;
         }
 
+        if (list.QuickSynthAll)
+            GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
+
         var craftingQueue = new CraftingListQueue();
         foreach (var item in list.Recipes)
         {
@@ -31,63 +34,36 @@ public partial class VulcanWindow
         var expandedQueue = new List<CraftingListItem>();
         foreach (var recipeItem in sortedRecipes)
         {
-            var originalItem  = list.Recipes.FirstOrDefault(r => r.RecipeId == recipeItem.RecipeId);
-            var recipeOptions = list.GetRecipeOptions(recipeItem.RecipeId);
-            var isOriginal    = originalItem != null;
+            var isOriginal    = recipeItem.IsOriginalRecipe;
+            var originalItem  = isOriginal ? list.Recipes.FirstOrDefault(r => r.RecipeId == recipeItem.RecipeId) : null;
+            var recipeOptions = list.GetRecipeOptions(recipeItem.RecipeId, isOriginal);
+            var recipeData    = RecipeManager.GetRecipe(recipeItem.RecipeId);
+            var forceQuickSynth = recipeData != null && list.ShouldForceQuickSynth(recipeData.Value, isOriginal);
+            var forcePreferNQ = list.ShouldForcePreferNQ(isOriginal);
 
             for (var i = 0; i < recipeItem.Quantity; i++)
             {
                 var queueItem = new CraftingListItem(recipeItem.RecipeId, 1);
 
-                queueItem.Options.NQOnly = recipeOptions.NQOnly;
-                if (list.QuickSynthAll)
-                {
-                    var recipeData = RecipeManager.GetRecipe(recipeItem.RecipeId);
-                    if (recipeData?.CanQuickSynth == true)
-                        queueItem.Options.NQOnly = true;
-                }
+                queueItem.Options.NQOnly = recipeOptions.NQOnly || forceQuickSynth;
 
                 queueItem.Options.Skipping  = recipeOptions.Skipping;
                 queueItem.IsOriginalRecipe  = isOriginal;
 
-                if (originalItem != null)
+                if (isOriginal && originalItem != null)
                     queueItem.ConsumableOverrides = originalItem.ConsumableOverrides.Clone();
 
-                var craftSettings    = originalItem?.CraftSettings ?? list.PrecraftCraftSettings.GetValueOrDefault(recipeItem.RecipeId);
-                var effectiveMacroId = ResolveEffectiveMacroId(craftSettings, !isOriginal, list);
-                if (craftSettings != null)
-                {
-                    queueItem.CraftSettings = new RecipeCraftSettings
-                    {
-                        FoodMode              = craftSettings.FoodMode,
-                        FoodItemId            = craftSettings.FoodItemId,
-                        FoodHQ                = craftSettings.FoodHQ,
-                        MedicineMode          = craftSettings.MedicineMode,
-                        MedicineItemId        = craftSettings.MedicineItemId,
-                        MedicineHQ            = craftSettings.MedicineHQ,
-                        ManualMode            = craftSettings.ManualMode,
-                        ManualItemId          = craftSettings.ManualItemId,
-                        SquadronManualMode    = craftSettings.SquadronManualMode,
-                        SquadronManualItemId  = craftSettings.SquadronManualItemId,
-                        IngredientPreferences = new Dictionary<uint, int>(craftSettings.IngredientPreferences),
-                        UseAllNQ              = craftSettings.UseAllNQ,
-                        SelectedMacroId       = effectiveMacroId,
-                        SolverOverride        = craftSettings.SolverOverride,
-                    };
-                }
-                else if (effectiveMacroId != null)
-                {
-                    queueItem.CraftSettings = new RecipeCraftSettings { SelectedMacroId = effectiveMacroId };
-                }
+                var craftSettings = isOriginal
+                    ? originalItem?.CraftSettings
+                    : list.PrecraftCraftSettings.GetValueOrDefault(recipeItem.RecipeId);
+                var (effectiveMacroId, effectiveSolverOverride) = ResolveEffectiveMacroSelection(craftSettings, !isOriginal, list);
+                queueItem.CraftSettings = BuildEffectiveQueueCraftSettings(craftSettings, effectiveMacroId, effectiveSolverOverride, forcePreferNQ);
 
-                if (originalItem != null)
-                {
-                    var topLevelPrefs    = originalItem.IngredientPreferences;
-                    var craftSettingPrefs = originalItem.CraftSettings?.IngredientPreferences;
-                    var effectivePrefs   = topLevelPrefs.Count > 0 ? topLevelPrefs : craftSettingPrefs;
-                    if (effectivePrefs != null && effectivePrefs.Count > 0)
-                        queueItem.IngredientPreferences = new Dictionary<uint, int>(effectivePrefs);
-                }
+                IReadOnlyDictionary<uint, int>? effectivePrefs = queueItem.CraftSettings?.IngredientPreferences;
+                if (!forcePreferNQ && isOriginal && originalItem != null && originalItem.IngredientPreferences.Count > 0)
+                    effectivePrefs = originalItem.IngredientPreferences;
+                if (effectivePrefs != null && effectivePrefs.Count > 0)
+                    queueItem.IngredientPreferences = new Dictionary<uint, int>(effectivePrefs);
 
                 expandedQueue.Add(queueItem);
             }
@@ -111,22 +87,34 @@ public partial class VulcanWindow
             list.Ephemeral ? (int?)list.ID : null, retainerPlanningList);
     }
 
+    private static RecipeCraftSettings? BuildEffectiveQueueCraftSettings(
+        RecipeCraftSettings? sourceSettings,
+        string? effectiveMacroId,
+        SolverOverrideMode effectiveSolverOverride,
+        bool forcePreferNQ)
+    {
+        RecipeCraftSettings? settings = sourceSettings?.Clone();
+        if (settings == null && (effectiveMacroId != null || effectiveSolverOverride != SolverOverrideMode.Default || forcePreferNQ))
+            settings = new RecipeCraftSettings();
+
+        if (settings == null)
+            return null;
+
+        settings.SelectedMacroId = effectiveMacroId;
+        settings.SolverOverride = effectiveSolverOverride;
+        if (forcePreferNQ)
+        {
+            settings.UseAllNQ = true;
+            settings.IngredientPreferences.Clear();
+        }
+
+        return settings;
+    }
+
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
     {
-        var originalRecipes = new HashSet<uint>();
-        foreach (var item in originalRecipesList)
-            originalRecipes.Add(item.RecipeId);
-
-        var precrafts     = new List<CraftingListItem>();
-        var finalProducts = new List<CraftingListItem>();
-
-        foreach (var recipe in recipes)
-        {
-            if (originalRecipes.Contains(recipe.RecipeId))
-                finalProducts.Add(recipe);
-            else
-                precrafts.Add(recipe);
-        }
+        var precrafts     = recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
+        var finalProducts = new List<CraftingListItem>(originalRecipesList);
 
         var result    = new List<CraftingListItem>();
         var processed = new HashSet<uint>();
@@ -138,7 +126,7 @@ public partial class VulcanWindow
         foreach (var jobGroup in precraftsByJob)
         {
             foreach (var recipeItem in jobGroup.ToList())
-                ProcessRecipeWithDependencies(recipeItem, recipes, processed, result);
+                ProcessRecipeWithDependencies(recipeItem, precrafts, processed, result);
         }
 
         var sortedFinalProducts = finalProducts
@@ -148,24 +136,23 @@ public partial class VulcanWindow
             .ToList();
 
         foreach (var recipeItem in sortedFinalProducts)
-        {
-            if (!processed.Contains(recipeItem.RecipeId))
-            {
-                processed.Add(recipeItem.RecipeId);
-                result.Add(recipeItem);
-            }
-        }
+            result.Add(recipeItem);
 
         return result;
     }
 
-    private static string? ResolveEffectiveMacroId(RecipeCraftSettings? settings, bool isPrecraft, CraftingListDefinition list)
+    private static (string? MacroId, SolverOverrideMode SolverOverride) ResolveEffectiveMacroSelection(RecipeCraftSettings? settings, bool isPrecraft, CraftingListDefinition list)
     {
-        var isSpecific = settings?.MacroMode == MacroOverrideMode.Specific
-            || (settings?.MacroMode == MacroOverrideMode.Inherit && !string.IsNullOrEmpty(settings?.SelectedMacroId));
+        var isSpecific = settings != null
+            && (settings.MacroMode == MacroOverrideMode.Specific
+                || (settings.MacroMode == MacroOverrideMode.Inherit
+                    && (!string.IsNullOrEmpty(settings.SelectedMacroId) || settings.SolverOverride != SolverOverrideMode.Default)));
         if (isSpecific)
-            return settings?.SelectedMacroId;
-        return isPrecraft ? list.DefaultPrecraftMacroId : list.DefaultFinalMacroId;
+            return (settings?.SelectedMacroId, settings?.SolverOverride ?? SolverOverrideMode.Default);
+
+        return isPrecraft
+            ? (list.DefaultPrecraftMacroId, list.DefaultPrecraftSolverOverride)
+            : (list.DefaultFinalMacroId, list.DefaultFinalSolverOverride);
     }
 
     private void ProcessRecipeWithDependencies(
@@ -187,7 +174,7 @@ public partial class VulcanWindow
             var depRecipe = RecipeManager.GetRecipeForItem(itemId);
             if (depRecipe.HasValue)
             {
-                var depItem = allRecipes.FirstOrDefault(r => r.RecipeId == depRecipe.Value.RowId);
+                var depItem = allRecipes.FirstOrDefault(r => r.RecipeId == depRecipe.Value.RowId && !r.IsOriginalRecipe);
                 if (depItem != null)
                     ProcessRecipeWithDependencies(depItem, allRecipes, processed, result);
             }
