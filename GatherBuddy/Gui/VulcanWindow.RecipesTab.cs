@@ -167,7 +167,7 @@ public partial class VulcanWindow
         IDisposable tabItem;
         bool tabOpen;
         
-        if (GatherBuddy.ControllerSupport != null)
+        if (GatherBuddy.ControllerSupport != null && !_recipesTabRequestFocus)
         {
             var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Recipes##recipesTab", 1, 8);
             tabItem = handle;
@@ -175,9 +175,26 @@ public partial class VulcanWindow
         }
         else
         {
-            var handle = ImRaii.TabItem("Recipes##recipesTab");
+            ImRaii.IEndObject handle;
+            if (_recipesTabRequestFocus)
+            {
+                unsafe
+                {
+                    var labelBytes = System.Text.Encoding.UTF8.GetBytes("Recipes##recipesTab\0");
+                    fixed (byte* ptr = labelBytes)
+                    {
+                        handle = ImRaii.TabItem(ptr, ImGuiTabItemFlags.SetSelected);
+                    }
+                }
+            }
+            else
+            {
+                handle = ImRaii.TabItem("Recipes##recipesTab");
+            }
             tabItem = handle;
             tabOpen = handle.Success;
+            if (tabOpen)
+                _recipesTabRequestFocus = false;
         }
         
         using (tabItem)
@@ -188,6 +205,22 @@ public partial class VulcanWindow
         if (!_isInitialized)
         {
             InitializeRecipeList();
+        }
+
+        if (_pendingRecipeItemId.HasValue && _extendedRecipeList != null)
+        {
+            var targetItemId = _pendingRecipeItemId.Value;
+            _pendingRecipeItemId = null;
+            var target = _extendedRecipeList.FirstOrDefault(r => r.Recipe.ItemResult.RowId == targetItemId);
+            if (target != null)
+            {
+                _selectedRecipe = target;
+                GatherBuddy.Log.Debug($"[VulcanWindow] Navigated to recipe for item {targetItemId}: {target.Name}");
+            }
+            else
+            {
+                GatherBuddy.Log.Debug($"[VulcanWindow] No recipe found in browser for item {targetItemId}");
+            }
         }
 
         if (_craftedStatusDirty && _extendedRecipeList != null)

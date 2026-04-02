@@ -130,74 +130,112 @@ public class CraftingListQueue
         }
     }
 
-    public void AddRecipeWithPrecrafts(uint recipeId, int quantity, bool skipIfEnough = false)
+    public void AddFromList(IEnumerable<CraftingListItem> items, bool skipIfEnough = false, bool skipFinalIfEnough = false)
     {
-        var recipe = RecipeManager.GetRecipe(recipeId);
-        if (recipe == null)
-            return;
+        var pendingCraftCounts = new Dictionary<uint, int>();
 
-        OriginalRecipes.Add(new CraftingListItem(recipeId, quantity)
+        foreach (var item in items)
         {
-            IsOriginalRecipe = true,
-        });
-        var neededAmounts = new Dictionary<uint, int>();
-        CollectIngredientsNeeded(recipe.Value, quantity, neededAmounts, skipIfEnough);
-        
-        foreach (var kvp in neededAmounts)
-        {
-            var subRecipe = RecipeManager.GetRecipe(kvp.Key);
-            if (subRecipe != null)
+            var recipe = RecipeManager.GetRecipe(item.RecipeId);
+            if (recipe == null)
+                continue;
+
+            var quantity = skipFinalIfEnough
+                ? ComputeAdjustedQuantity(recipe.Value, item.Quantity)
+                : item.Quantity;
+
+            if (quantity <= 0)
+                continue;
+
+            OriginalRecipes.Add(new CraftingListItem(item.RecipeId, quantity)
             {
-                var quantityToCraft = (int)System.Math.Ceiling((double)kvp.Value / subRecipe.Value.AmountResult);
-                AddRecipe(kvp.Key, quantityToCraft, false);
+                IsOriginalRecipe = true,
+            });
+            AddRecipe(item.RecipeId, quantity, true);
+            pendingCraftCounts[item.RecipeId] = pendingCraftCounts.GetValueOrDefault(item.RecipeId) + quantity;
+        }
+
+        while (pendingCraftCounts.Count > 0)
+        {
+            var nextLevelNeeds = new Dictionary<uint, int>();
+
+            foreach (var (recipeId, craftCount) in pendingCraftCounts)
+            {
+                var recipe = RecipeManager.GetRecipe(recipeId);
+                if (recipe != null)
+                    CollectDirectSubRecipeNeeds(recipe.Value, craftCount, nextLevelNeeds, skipIfEnough);
+            }
+
+            pendingCraftCounts.Clear();
+
+            foreach (var (subRecipeId, itemsNeeded) in nextLevelNeeds)
+            {
+                var subRecipe = RecipeManager.GetRecipe(subRecipeId);
+                if (subRecipe == null)
+                    continue;
+
+                var craftCount = (int)System.Math.Ceiling((double)itemsNeeded / subRecipe.Value.AmountResult);
+                AddRecipe(subRecipeId, craftCount, false);
+                pendingCraftCounts[subRecipeId] = craftCount;
             }
         }
-        
-        AddRecipe(recipeId, quantity, true);
     }
 
-    private unsafe void CollectIngredientsNeeded(Recipe recipe, int multiplier, Dictionary<uint, int> neededAmounts, bool skipIfEnough = false)
+    private static unsafe int ComputeAdjustedQuantity(Recipe recipe, int requestedCrafts)
+    {
+        try
+        {
+            var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+            if (inventory == null)
+                return requestedCrafts;
+            var itemId = recipe.ItemResult.RowId;
+            var amountPerCraft = recipe.AmountResult;
+            var targetItems = requestedCrafts * amountPerCraft;
+            var inInventory = (int)(inventory->GetInventoryItemCount(itemId, false, false, false)
+                                  + inventory->GetInventoryItemCount(itemId, true, false, false));
+            var stillNeeded = System.Math.Max(0, targetItems - inInventory);
+            return (int)System.Math.Ceiling((double)stillNeeded / amountPerCraft);
+        }
+        catch
+        {
+            return requestedCrafts;
+        }
+    }
+
+    private unsafe void CollectDirectSubRecipeNeeds(
+        Recipe recipe, int craftCount, Dictionary<uint, int> subRecipeNeeds, bool skipIfEnough)
     {
         var ingredients = RecipeManager.GetIngredients(recipe);
-        
-        foreach (var (itemId, amount) in ingredients)
+        foreach (var (itemId, amountPerCraft) in ingredients)
         {
             var subRecipe = RecipeManager.GetRecipeForItem(itemId);
-            if (subRecipe.HasValue)
+            if (!subRecipe.HasValue)
+                continue;
+
+            var itemsNeeded = amountPerCraft * craftCount;
+
+            if (skipIfEnough)
             {
-                var actualAmount = amount * multiplier;
-                var quantityNeeded = actualAmount;
-                
-                if (skipIfEnough)
+                try
                 {
-                    try
+                    var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+                    if (inventory != null)
                     {
-                        var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-                        if (inventory != null)
-                        {
-                            var resultItemId = subRecipe.Value.ItemResult.RowId;
-                            var nqCount = inventory->GetInventoryItemCount(resultItemId, false, false, false);
-                            var hqCount = inventory->GetInventoryItemCount(resultItemId, true, false, false);
-                            var totalInInventory = nqCount + hqCount;
-                            
-                            if (totalInInventory >= actualAmount)
-                            {
-                                continue;
-                            }
-                            
-                            quantityNeeded = actualAmount - totalInInventory;
-                        }
+                        var resultItemId = subRecipe.Value.ItemResult.RowId;
+                        var nqCount = inventory->GetInventoryItemCount(resultItemId, false, false, false);
+                        var hqCount = inventory->GetInventoryItemCount(resultItemId, true, false, false);
+                        var inInventory = (int)(nqCount + hqCount);
+
+                        if (inInventory >= itemsNeeded)
+                            continue;
+
+                        itemsNeeded -= inInventory;
                     }
-                    catch { }
                 }
-                
-                if (neededAmounts.ContainsKey(subRecipe.Value.RowId))
-                    neededAmounts[subRecipe.Value.RowId] += quantityNeeded;
-                else
-                    neededAmounts[subRecipe.Value.RowId] = quantityNeeded;
-                
-                CollectIngredientsNeeded(subRecipe.Value, quantityNeeded, neededAmounts, skipIfEnough);
+                catch { }
             }
+
+            subRecipeNeeds[subRecipe.Value.RowId] = subRecipeNeeds.GetValueOrDefault(subRecipe.Value.RowId) + itemsNeeded;
         }
     }
 

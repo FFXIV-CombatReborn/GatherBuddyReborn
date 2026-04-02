@@ -27,6 +27,8 @@ public partial class VulcanWindow : Window, IDisposable
     private CraftingListEditor?     _listEditor   = null;
     private bool                    _deferEditorDraw = false;
     private bool                    _craftingListsRequestFocus = false;
+    private bool                    _recipesTabRequestFocus    = false;
+    private uint?                   _pendingRecipeItemId       = null;
     private bool                    _openCreateListPopup = false;
     private bool                    _openCreateFolderPopup = false;
 
@@ -88,6 +90,15 @@ public partial class VulcanWindow : Window, IDisposable
         _mbDetailLastItemId = 0;
     }
 
+    public void OpenToRecipe(uint itemId)
+    {
+        _isMinimized            = false;
+        IsOpen                  = true;
+        _recipesTabRequestFocus = true;
+        _pendingRecipeItemId    = itemId;
+        GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for item {itemId}");
+    }
+
     public void OpenToList(string argument)
     {
         CraftingListDefinition? list;
@@ -127,9 +138,16 @@ public partial class VulcanWindow : Window, IDisposable
         _newListRecipeName = recipe.Value.ItemResult.Value.Name.ExtractText();
         GatherBuddy.Log.Debug($"[VulcanWindow] Queued Create List popup for recipe {_newListRecipeName} ({_newListRecipeId.Value})");
     }
+    private void DisposeListEditor()
+    {
+        _listEditor?.Dispose();
+        _listEditor = null;
+        GatherBuddy.CraftingMaterialsWindow?.SetEditor(null);
+    }
 
     private void OpenCraftingList(CraftingListDefinition list)
     {
+        DisposeListEditor();
         _editingList = list;
         _listEditor = new CraftingListEditor(list);
         _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
@@ -163,6 +181,9 @@ public partial class VulcanWindow : Window, IDisposable
     {
         if (!IsOpen)
             return;
+
+        if (_recipesTabRequestFocus)
+            ImGui.SetNextWindowFocus();
     }
 
     public override void Draw()
@@ -209,6 +230,7 @@ public partial class VulcanWindow : Window, IDisposable
     public void Dispose()
     {
         CraftingGameInterop.CraftFinished -= OnCraftFinished;
+        DisposeListEditor();
     }
 }
 

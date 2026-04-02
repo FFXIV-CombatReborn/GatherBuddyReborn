@@ -49,6 +49,7 @@ public partial class VulcanWindow
             var importedList = ParseTeamCraftImport(_teamCraftEphemeral);
             if (importedList != null)
             {
+                DisposeListEditor();
                 _editingList = importedList;
                 _listEditor  = new CraftingListEditor(importedList);
                 _listEditor.OnStartCrafting = l => { StartCraftingList(l); MinimizeWindow(); };

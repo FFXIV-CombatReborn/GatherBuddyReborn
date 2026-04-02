@@ -23,6 +23,7 @@ public class CraftingListDefinition
     public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
     
     public bool SkipIfEnough { get; set; } = false;
+    public bool SkipFinalIfEnough { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
     public bool QuickSynthAllPreferNQ { get; set; } = false;
     public bool QuickSynthAllPrecraftsOnly { get; set; } = false;
@@ -46,9 +47,17 @@ public class CraftingListDefinition
         ExpandedList.Clear();
         foreach (var recipe in Recipes)
         {
-            if (!recipe.Options.Skipping)
+            if (recipe.Options.Skipping)
+                continue;
+
+            var recipeData = RecipeManager.GetRecipe(recipe.RecipeId);
+            if (recipeData == null)
+                continue;
+
+            var quantity = GetEffectiveOriginalCraftQuantity(recipe, recipeData.Value);
+            if (quantity > 0)
             {
-                ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, recipe.Quantity));
+                ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, quantity));
             }
         }
     }
@@ -58,6 +67,7 @@ public class CraftingListDefinition
         var snapshot = new CraftingListDefinition
         {
             SkipIfEnough = SkipIfEnough,
+            SkipFinalIfEnough = SkipFinalIfEnough,
             QuickSynthAll = QuickSynthAll,
             QuickSynthAllPreferNQ = QuickSynthAllPreferNQ,
             QuickSynthAllPrecraftsOnly = QuickSynthAllPrecraftsOnly,
@@ -95,9 +105,12 @@ public class CraftingListDefinition
             var recipe = RecipeManager.GetRecipe(item.RecipeId);
             if (recipe == null)
                 continue;
-
+            var quantity = GetEffectiveOriginalCraftQuantity(item, recipe.Value);
+            if (quantity <= 0)
+                continue;
             var resolved = new Dictionary<uint, int>();
-            ResolveIngredientsForQuantity(recipe.Value, item.Quantity, resolved, SkipIfEnough, additionalAvailable, qualityTargets);
+
+            ResolveIngredientsForQuantity(recipe.Value, quantity, resolved, SkipIfEnough, additionalAvailable, qualityTargets);
             
             foreach (var (itemId, amount) in resolved)
             {
@@ -182,10 +195,38 @@ public class CraftingListDefinition
             var recipe = RecipeManager.GetRecipe(item.RecipeId);
             if (recipe == null)
                 continue;
+            var quantity = GetEffectiveOriginalCraftQuantity(item, recipe.Value);
+            if (quantity <= 0)
+                continue;
 
-            CollectPrecrafts(recipe.Value, item.Quantity, precrafts, SkipIfEnough);
+            CollectPrecrafts(recipe.Value, quantity, precrafts, SkipIfEnough);
         }
         return precrafts;
+    }
+
+    private unsafe int GetEffectiveOriginalCraftQuantity(CraftingListItem item, Recipe recipe)
+    {
+        if (!SkipIfEnough || !SkipFinalIfEnough)
+            return item.Quantity;
+
+        try
+        {
+            var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+            if (inventory == null)
+                return item.Quantity;
+
+            var itemId = recipe.ItemResult.RowId;
+            var amountPerCraft = recipe.AmountResult;
+            var targetItems = item.Quantity * amountPerCraft;
+            var inInventory = (int)(inventory->GetInventoryItemCount(itemId, false, false, false)
+                                  + inventory->GetInventoryItemCount(itemId, true, false, false));
+            var stillNeeded = System.Math.Max(0, targetItems - inInventory);
+            return (int)System.Math.Ceiling((double)stillNeeded / amountPerCraft);
+        }
+        catch
+        {
+            return item.Quantity;
+        }
     }
 
     private unsafe void CollectPrecrafts(Recipe recipe, int parentCraftCount, Dictionary<uint, int> precrafts, bool skipIfEnough)

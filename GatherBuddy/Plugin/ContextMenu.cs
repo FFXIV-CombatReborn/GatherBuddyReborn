@@ -22,6 +22,7 @@ public class ContextMenu : IDisposable
     private readonly MenuItem _menuItem;
     private readonly MenuItem _menuItemAuto;
     private readonly MenuItem _menuItemCrafting;
+    private readonly MenuItem _menuItemVulcanRecipe;
 
     public ContextMenu(GatherBuddy plugin, IContextMenu menu, Executor executor)
     {
@@ -62,6 +63,17 @@ public class ContextMenu : IDisposable
             PrefixColor = 42,
         };
 
+        _menuItemVulcanRecipe = new MenuItem
+        {
+            IsEnabled   = true,
+            IsReturn    = false,
+            PrefixChar  = 'V',
+            Name        = "Open in Vulcan",
+            OnClicked   = OnClickVulcanRecipe,
+            IsSubmenu   = false,
+            PrefixColor = 42,
+        };
+
         if (GatherBuddy.Config.AddIngameContextMenus)
             Enable();
     }
@@ -85,7 +97,33 @@ public class ContextMenu : IDisposable
             }
 
             _plugin.AutoGatherListsManager.AddItem(preset, gatherable);
-        }            
+        }
+    }
+
+    private void OnClickVulcanRecipe(IMenuItemClickedArgs args)
+    {
+        if (!_lastRecipeId.HasValue)
+        {
+            GatherBuddy.Log.Debug("[ContextMenu] Vulcan recipe context menu clicked without a cached recipe id.");
+            return;
+        }
+
+        var recipe = Crafting.RecipeManager.GetRecipe(_lastRecipeId.Value);
+        if (!recipe.HasValue)
+        {
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to resolve recipe {_lastRecipeId.Value} for Vulcan context menu.");
+            return;
+        }
+
+        var vulcanWindow = GatherBuddy.VulcanWindow;
+        if (vulcanWindow == null)
+        {
+            GatherBuddy.Log.Warning($"[ContextMenu] Vulcan window unavailable for recipe {_lastRecipeId.Value}.");
+            return;
+        }
+
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Vulcan to recipe for item {recipe.Value.ItemResult.RowId}");
+        vulcanWindow.OpenToRecipe(recipe.Value.ItemResult.RowId);
     }
 
     private void OnClickCrafting(IMenuItemClickedArgs args)
@@ -119,12 +157,12 @@ public class ContextMenu : IDisposable
         {
             var maxLists = Math.Max(1, GatherBuddy.Config.MaxRecentCraftingListsInContextMenu);
             GatherBuddy.Log.Debug($"[ContextMenu] Total lists: {allLists.Count}, Max to show: {maxLists}");
-            
+
             var recentLists = allLists
                 .OrderByDescending(l => l.CreatedAt)
                 .Take(maxLists)
                 .ToList();
-            
+
             GatherBuddy.Log.Debug($"[ContextMenu] Recent lists filtered: {recentLists.Count}");
 
             foreach (var list in recentLists)
@@ -201,6 +239,15 @@ public class ContextMenu : IDisposable
         {
             var target = (MenuTargetInventory)args.Target;
             _lastGatherable = target.TargetItem.HasValue ? HandleItem(target.TargetItem.Value.ItemId) : null;
+            if (target.TargetItem.HasValue)
+            {
+                var itemId = target.TargetItem.Value.ItemId;
+                if (itemId >= 1000000u) itemId -= 1000000u;
+                else if (itemId >= 500000u) itemId -= 500000u;
+                var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId);
+                _lastRecipeId = recipe?.RowId;
+                GatherBuddy.Log.Debug($"[ContextMenu] Inventory item {itemId} -> recipe {_lastRecipeId}");
+            }
         }
         else
         {
@@ -228,7 +275,10 @@ public class ContextMenu : IDisposable
         if (_lastGatherable is Gatherable)
             args.AddMenuItem(_menuItemAuto);
         if (_lastRecipeId.HasValue)
+        {
             args.AddMenuItem(_menuItemCrafting);
+            args.AddMenuItem(_menuItemVulcanRecipe);
+        }
     }
 
     private unsafe uint? GetRecipeIdFromContext(IMenuOpenedArgs args)

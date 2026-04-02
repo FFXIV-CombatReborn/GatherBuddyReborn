@@ -6,6 +6,8 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.Inventory;
+using Dalamud.Game.Inventory.InventoryEventArgTypes;
 using Dalamud.Interface.Colors;
 using Lumina.Excel.Sheets;
 using ElliLib;
@@ -54,8 +56,17 @@ public class CraftingListEditor
     private RetainerItemSnapshot _cachedRetainerSnapshot = RetainerItemSnapshot.Empty;
     private uint[] _cachedRetainerSnapshotItemIds = [];
     private DateTime _cachedRetainerSnapshotAt = DateTime.MinValue;
+    private readonly HashSet<uint> _watchedInventoryItemIds = new();
+    private readonly HashSet<uint> _watchedOriginalResultItemIds = new();
+    private readonly HashSet<uint> _watchedPrecraftResultItemIds = new();
+    private readonly object _inventoryChangeLock = new();
+    private DateTime _lastGraphAffectingInventoryChange = DateTime.MinValue;
+    private string _watchedInventoryHash = string.Empty;
+    private bool _pendingQueueRefreshFromInventory;
+    private bool _pendingMaterialsRefreshFromInventory;
     private const double InventoryRefreshIntervalSeconds = 0.5;
     private const double RetainerSnapshotRetryIntervalSeconds = 1.0;
+    private const double InventoryChangeDebounceSeconds = 0.2;
     
     private RecipeCraftSettingsPopup _craftSettingsPopup = new();
     private CraftingListConsumablesPopup _consumablesPopup = new();
@@ -74,6 +85,7 @@ public class CraftingListEditor
     internal bool HasCachedMaterials    => _cachedMaterials != null;
     internal bool IsGeneratingMaterials => _isGeneratingMaterials;
     internal string ListName            => _list.Name;
+    internal bool RetainerRestockEnabled => _list.RetainerRestock;
     
     public Action<CraftingListDefinition>? OnStartCrafting { get; set; }
 
@@ -83,11 +95,13 @@ public class CraftingListEditor
         _editingName        = list.Name;
         _editingDescription = list.Description;
         RefreshInventoryCounts();
+        Dalamud.GameInventory.InventoryChanged += OnInventoryChanged;
         TriggerQueueRegeneration();
     }
     
     public void Dispose()
     {
+        Dalamud.GameInventory.InventoryChanged -= OnInventoryChanged;
         _queueCancellationSource?.Cancel();
         _queueCancellationSource?.Dispose();
         _materialsCancellationSource?.Cancel();
@@ -113,6 +127,7 @@ public class CraftingListEditor
     }
     public void Draw()
     {
+        ProcessPendingInventoryChanges();
         var availableWidth = ImGui.GetContentRegionAvail().X;
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         
@@ -140,6 +155,142 @@ public class CraftingListEditor
         _consumablesPopup.Draw();
     }
 
+    private void OnInventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
+    {
+        EnsureWatchedInventoryItems();
+
+        var graphAffected = false;
+        var clearedAnyCounts = false;
+        foreach (var inventoryEvent in events)
+        {
+            if (!IsTrackedInventoryContainer(inventoryEvent.Item.ContainerType))
+                continue;
+
+            var itemId = inventoryEvent.Item.BaseItemId;
+            if (itemId == 0 || !_watchedInventoryItemIds.Contains(itemId))
+                continue;
+
+            _cachedInventoryCounts.Remove(itemId);
+            _inventoryRefreshTimes.Remove(itemId);
+            clearedAnyCounts = true;
+
+            if ((_list.SkipIfEnough && _watchedPrecraftResultItemIds.Contains(itemId))
+             || (_list.SkipIfEnough && _list.SkipFinalIfEnough && _watchedOriginalResultItemIds.Contains(itemId)))
+            {
+                graphAffected = true;
+            }
+        }
+
+        if (!clearedAnyCounts)
+            return;
+
+        if (!graphAffected)
+            return;
+
+        lock (_inventoryChangeLock)
+        {
+            _pendingQueueRefreshFromInventory = true;
+            _pendingMaterialsRefreshFromInventory = true;
+            _lastGraphAffectingInventoryChange = DateTime.Now;
+        }
+
+        GatherBuddy.Log.Debug($"[CraftingListEditor] Inventory change affected crafting graph for '{_list.Name}', scheduling queue/material refresh");
+    }
+
+    private void ProcessPendingInventoryChanges()
+    {
+        bool refreshQueue;
+        bool refreshMaterials;
+        lock (_inventoryChangeLock)
+        {
+            if (!_pendingQueueRefreshFromInventory && !_pendingMaterialsRefreshFromInventory)
+                return;
+
+            if ((DateTime.Now - _lastGraphAffectingInventoryChange).TotalSeconds < InventoryChangeDebounceSeconds)
+                return;
+
+            refreshQueue = _pendingQueueRefreshFromInventory;
+            refreshMaterials = _pendingMaterialsRefreshFromInventory;
+            _pendingQueueRefreshFromInventory = false;
+            _pendingMaterialsRefreshFromInventory = false;
+        }
+
+        if (refreshQueue)
+        {
+            GatherBuddy.Log.Debug($"[CraftingListEditor] Applying debounced queue refresh for '{_list.Name}' after inventory change");
+            _cachedQueueValid = false;
+            TriggerQueueRegeneration();
+        }
+
+        if (refreshMaterials)
+        {
+            GatherBuddy.Log.Debug($"[CraftingListEditor] Applying debounced materials refresh for '{_list.Name}' after inventory change");
+            _cachedMaterialsValid = false;
+            _cachedPrecraftMaterials = null;
+            _cachedPrecraftMaterialsHash = string.Empty;
+            TriggerMaterialsRegeneration();
+        }
+    }
+
+    private void EnsureWatchedInventoryItems()
+    {
+        var currentHash = ComputeListHash();
+        if (currentHash == _watchedInventoryHash)
+            return;
+
+        _watchedInventoryItemIds.Clear();
+        _watchedOriginalResultItemIds.Clear();
+        _watchedPrecraftResultItemIds.Clear();
+
+        var visitedRecipes = new HashSet<uint>();
+        foreach (var item in _list.Recipes)
+        {
+            if (item.Options.Skipping || item.Quantity <= 0)
+                continue;
+
+            var recipe = RecipeManager.GetRecipe(item.RecipeId);
+            if (recipe == null)
+                continue;
+
+            CollectWatchedInventoryItems(recipe.Value, true, visitedRecipes);
+        }
+
+        _watchedInventoryHash = currentHash;
+    }
+
+    private void CollectWatchedInventoryItems(Recipe recipe, bool isOriginalRecipe, HashSet<uint> visitedRecipes)
+    {
+        var resultItemId = recipe.ItemResult.RowId;
+        if (resultItemId > 0)
+        {
+            _watchedInventoryItemIds.Add(resultItemId);
+            if (isOriginalRecipe)
+                _watchedOriginalResultItemIds.Add(resultItemId);
+            else
+                _watchedPrecraftResultItemIds.Add(resultItemId);
+        }
+
+        if (!visitedRecipes.Add(recipe.RowId))
+            return;
+
+        foreach (var (itemId, _) in RecipeManager.GetIngredients(recipe))
+        {
+            if (itemId > 0)
+                _watchedInventoryItemIds.Add(itemId);
+
+            var subRecipe = RecipeManager.GetRecipeForItem(itemId);
+            if (subRecipe.HasValue)
+                CollectWatchedInventoryItems(subRecipe.Value, false, visitedRecipes);
+        }
+    }
+
+    private static bool IsTrackedInventoryContainer(GameInventoryType inventoryType)
+        => inventoryType is GameInventoryType.Inventory1
+            or GameInventoryType.Inventory2
+            or GameInventoryType.Inventory3
+            or GameInventoryType.Inventory4
+            or GameInventoryType.Crystals;
+
     private void DrawQueuePane()
     {
         ImGui.TextColored(ImGuiColors.DalamudYellow, "Craft Queue");
@@ -155,9 +306,11 @@ public class CraftingListEditor
         }
 
         var sortedQueue  = GetSortedQueue();
+        var applyFinalSkip = _list.SkipIfEnough && _list.SkipFinalIfEnough;
         var displayQueue = _showPrecrafts
             ? sortedQueue
-            : _list.Recipes.Select(r => new CraftingListItem(r.RecipeId, r.Quantity)
+            : _list.Recipes.Select(r => new CraftingListItem(r.RecipeId,
+                    applyFinalSkip ? GetAdjustedFinalCraftQuantity(r) : r.Quantity)
                 {
                     IsOriginalRecipe = true,
                 }).ToList();
@@ -165,7 +318,7 @@ public class CraftingListEditor
         var lineH   = ImGui.GetTextLineHeightWithSpacing();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
         var frameH  = ImGui.GetFrameHeightWithSpacing();
-        var footerRows = _list.QuickSynthAll ? 9 : 7;
+        var footerRows = 7 + (_list.QuickSynthAll ? 2 : 0) + (_list.SkipIfEnough ? 1 : 0);
         var bottomH = frameH * footerRows + spacing * 2;
         var queueH  = Math.Max(ImGui.GetContentRegionAvail().Y - bottomH, lineH * 3);
 
@@ -190,7 +343,10 @@ public class CraftingListEditor
                 var itemName = recipeData.Value.ItemResult.Value.Name.ExtractText();
                 var jobName  = GetCraftingJobName(recipeData.Value.CraftType.RowId);
                 var isOriginalRecipe = queueItem.IsOriginalRecipe;
-                var willBeSkipped    = _list.SkipIfEnough && WillBeSkippedDueToInventory(recipeData.Value, queueItem.Quantity);
+                var willBeSkipped    = _list.SkipIfEnough &&
+                    (!isOriginalRecipe
+                        ? WillBeSkippedDueToInventory(recipeData.Value, queueItem.Quantity)
+                        : _list.SkipFinalIfEnough && queueItem.Quantity == 0);
                 var recipeOptions    = _list.GetRecipeOptions(queueItem.RecipeId, isOriginalRecipe);
                 var effectiveQuickSynth = IsEffectivelyQuickSynth(recipeData.Value, queueItem.RecipeId, isOriginalRecipe);
                 var forceQuickSynth = _list.ShouldForceQuickSynth(recipeData.Value, isOriginalRecipe);
@@ -308,6 +464,22 @@ public class CraftingListEditor
             RefreshInventoryCounts();
         }
 
+        if (_list.SkipIfEnough)
+        {
+            ImGui.Indent();
+            var skipFinalIfEnough = _list.SkipFinalIfEnough;
+            if (ImGui.Checkbox("Include Final Crafts##sife", ref skipFinalIfEnough))
+            {
+                _list.SkipFinalIfEnough = skipFinalIfEnough;
+                _cachedQueueValid       = false;
+                GatherBuddy.CraftingListManager.SaveList(_list);
+                TriggerQueueRegeneration();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Also reduce final crafts based on how many you already have. Useful for resuming an interrupted list.");
+            ImGui.Unindent();
+        }
+
         var quickSynthAll = _list.QuickSynthAll;
         if (ImGui.Checkbox("Quick Synth All##qsa", ref quickSynthAll))
         {
@@ -362,6 +534,10 @@ public class CraftingListEditor
             {
                 _list.RetainerRestock = retainerRestock;
                 GatherBuddy.CraftingListManager.SaveList(_list);
+                _cachedMaterialsValid = false;
+                _cachedPrecraftMaterials = null;
+                _cachedPrecraftMaterialsHash = string.Empty;
+                TriggerMaterialsRegeneration();
             }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -816,6 +992,8 @@ public class CraftingListEditor
     {
         var hashParts = new List<string>();
         hashParts.Add($"SkipIfEnough:{_list.SkipIfEnough}");
+        hashParts.Add($"SkipFinalIfEnough:{_list.SkipFinalIfEnough}");
+        hashParts.Add($"RetainerRestock:{_list.RetainerRestock}");
         foreach (var item in _list.Recipes)
         {
             hashParts.Add($"{item.RecipeId}:{item.Quantity}:{item.Options.Skipping}");
@@ -885,6 +1063,7 @@ public class CraftingListEditor
 
     internal void TriggerMaterialsRegeneration()
     {
+        ProcessPendingInventoryChanges();
         var currentHash = ComputeListHash();
         if (_cachedMaterialsValid && _cachedMaterials != null && currentHash == _cachedMaterialsHash)
         {
@@ -928,6 +1107,7 @@ public class CraftingListEditor
     
     private List<CraftingListItem> GetSortedQueue()
     {
+        ProcessPendingInventoryChanges();
         if (_cachedSortedQueue != null && _cachedQueueValid)
         {
             return _cachedSortedQueue;
@@ -938,13 +1118,7 @@ public class CraftingListEditor
     private List<CraftingListItem> GenerateSortedQueueSync()
     {
         var queue = new CraftingListQueue();
-        foreach (var item in _list.Recipes)
-        {
-            if (!item.Options.Skipping)
-            {
-                queue.AddRecipeWithPrecrafts(item.RecipeId, item.Quantity, _list.SkipIfEnough);
-            }
-        }
+        queue.AddFromList(_list.Recipes.Where(r => !r.Options.Skipping), _list.SkipIfEnough, _list.SkipFinalIfEnough);
         
         var precrafts     = queue.Recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
         var finalProducts = new List<CraftingListItem>(queue.OriginalRecipes);
@@ -1014,6 +1188,7 @@ public class CraftingListEditor
     
     internal Dictionary<uint, int> GetCachedMaterials()
     {
+        ProcessPendingInventoryChanges();
         var currentHash = ComputeListHash();
         if (_cachedMaterialsValid && _cachedMaterials != null && currentHash == _cachedMaterialsHash)
         {
@@ -1030,6 +1205,7 @@ public class CraftingListEditor
 
     internal Dictionary<uint, int> GetCachedPrecraftMaterials()
     {
+        ProcessPendingInventoryChanges();
         var currentHash = ComputeListHash();
         if (_cachedPrecraftMaterials != null && currentHash == _cachedPrecraftMaterialsHash)
             return _cachedPrecraftMaterials;
@@ -1150,6 +1326,17 @@ public class CraftingListEditor
         return _cachedRetainerSnapshot;
     }
     
+    private int GetAdjustedFinalCraftQuantity(CraftingListItem item)
+    {
+        var recipe = RecipeManager.GetRecipe(item.RecipeId);
+        if (recipe == null) return item.Quantity;
+        var amountPerCraft = recipe.Value.AmountResult;
+        var targetItems    = item.Quantity * amountPerCraft;
+        var inInventory    = GetInventoryCount(recipe.Value.ItemResult.RowId);
+        var stillNeeded    = Math.Max(0, targetItems - inInventory);
+        return (int)Math.Ceiling((double)stillNeeded / amountPerCraft);
+    }
+
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)
     {
         try
