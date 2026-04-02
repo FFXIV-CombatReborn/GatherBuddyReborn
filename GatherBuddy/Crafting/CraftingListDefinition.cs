@@ -23,6 +23,7 @@ public class CraftingListDefinition
     public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
     
     public bool SkipIfEnough { get; set; } = false;
+    public bool SkipFinalIfEnough { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
     public bool QuickSynthAllPreferNQ { get; set; } = false;
     public bool QuickSynthAllPrecraftsOnly { get; set; } = false;
@@ -58,6 +59,7 @@ public class CraftingListDefinition
         var snapshot = new CraftingListDefinition
         {
             SkipIfEnough = SkipIfEnough,
+            SkipFinalIfEnough = SkipFinalIfEnough,
             QuickSynthAll = QuickSynthAll,
             QuickSynthAllPreferNQ = QuickSynthAllPreferNQ,
             QuickSynthAllPrecraftsOnly = QuickSynthAllPrecraftsOnly,

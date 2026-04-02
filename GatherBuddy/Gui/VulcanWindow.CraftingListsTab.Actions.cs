@@ -22,11 +22,7 @@ public partial class VulcanWindow
             GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
 
         var craftingQueue = new CraftingListQueue();
-        foreach (var item in list.Recipes)
-        {
-            if (!item.Options.Skipping)
-                craftingQueue.AddRecipeWithPrecrafts(item.RecipeId, item.Quantity, list.SkipIfEnough);
-        }
+        craftingQueue.AddFromList(list.Recipes.Where(r => !r.Options.Skipping), list.SkipIfEnough, list.SkipFinalIfEnough);
 
         craftingQueue.BuildExpandedList();
         var sortedRecipes = GetRecipesInDependencyOrder(craftingQueue.Recipes, craftingQueue.OriginalRecipes);

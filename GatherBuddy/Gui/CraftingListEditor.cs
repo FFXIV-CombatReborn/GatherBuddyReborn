@@ -155,9 +155,11 @@ public class CraftingListEditor
         }
 
         var sortedQueue  = GetSortedQueue();
+        var applyFinalSkip = _list.SkipIfEnough && _list.SkipFinalIfEnough;
         var displayQueue = _showPrecrafts
             ? sortedQueue
-            : _list.Recipes.Select(r => new CraftingListItem(r.RecipeId, r.Quantity)
+            : _list.Recipes.Select(r => new CraftingListItem(r.RecipeId,
+                    applyFinalSkip ? GetAdjustedFinalCraftQuantity(r) : r.Quantity)
                 {
                     IsOriginalRecipe = true,
                 }).ToList();
@@ -165,7 +167,7 @@ public class CraftingListEditor
         var lineH   = ImGui.GetTextLineHeightWithSpacing();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
         var frameH  = ImGui.GetFrameHeightWithSpacing();
-        var footerRows = _list.QuickSynthAll ? 9 : 7;
+        var footerRows = 7 + (_list.QuickSynthAll ? 2 : 0) + (_list.SkipIfEnough ? 1 : 0);
         var bottomH = frameH * footerRows + spacing * 2;
         var queueH  = Math.Max(ImGui.GetContentRegionAvail().Y - bottomH, lineH * 3);
 
@@ -190,7 +192,10 @@ public class CraftingListEditor
                 var itemName = recipeData.Value.ItemResult.Value.Name.ExtractText();
                 var jobName  = GetCraftingJobName(recipeData.Value.CraftType.RowId);
                 var isOriginalRecipe = queueItem.IsOriginalRecipe;
-                var willBeSkipped    = _list.SkipIfEnough && WillBeSkippedDueToInventory(recipeData.Value, queueItem.Quantity);
+                var willBeSkipped    = _list.SkipIfEnough &&
+                    (!isOriginalRecipe
+                        ? WillBeSkippedDueToInventory(recipeData.Value, queueItem.Quantity)
+                        : _list.SkipFinalIfEnough && queueItem.Quantity == 0);
                 var recipeOptions    = _list.GetRecipeOptions(queueItem.RecipeId, isOriginalRecipe);
                 var effectiveQuickSynth = IsEffectivelyQuickSynth(recipeData.Value, queueItem.RecipeId, isOriginalRecipe);
                 var forceQuickSynth = _list.ShouldForceQuickSynth(recipeData.Value, isOriginalRecipe);
@@ -306,6 +311,22 @@ public class CraftingListEditor
             GatherBuddy.CraftingListManager.SaveList(_list);
             TriggerQueueRegeneration();
             RefreshInventoryCounts();
+        }
+
+        if (_list.SkipIfEnough)
+        {
+            ImGui.Indent();
+            var skipFinalIfEnough = _list.SkipFinalIfEnough;
+            if (ImGui.Checkbox("Include Final Crafts##sife", ref skipFinalIfEnough))
+            {
+                _list.SkipFinalIfEnough = skipFinalIfEnough;
+                _cachedQueueValid       = false;
+                GatherBuddy.CraftingListManager.SaveList(_list);
+                TriggerQueueRegeneration();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Also reduce final crafts based on how many you already have. Useful for resuming an interrupted list.");
+            ImGui.Unindent();
         }
 
         var quickSynthAll = _list.QuickSynthAll;
@@ -938,13 +959,7 @@ public class CraftingListEditor
     private List<CraftingListItem> GenerateSortedQueueSync()
     {
         var queue = new CraftingListQueue();
-        foreach (var item in _list.Recipes)
-        {
-            if (!item.Options.Skipping)
-            {
-                queue.AddRecipeWithPrecrafts(item.RecipeId, item.Quantity, _list.SkipIfEnough);
-            }
-        }
+        queue.AddFromList(_list.Recipes.Where(r => !r.Options.Skipping), _list.SkipIfEnough, _list.SkipFinalIfEnough);
         
         var precrafts     = queue.Recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
         var finalProducts = new List<CraftingListItem>(queue.OriginalRecipes);
@@ -1150,6 +1165,17 @@ public class CraftingListEditor
         return _cachedRetainerSnapshot;
     }
     
+    private int GetAdjustedFinalCraftQuantity(CraftingListItem item)
+    {
+        var recipe = RecipeManager.GetRecipe(item.RecipeId);
+        if (recipe == null) return item.Quantity;
+        var amountPerCraft = recipe.Value.AmountResult;
+        var targetItems    = item.Quantity * amountPerCraft;
+        var inInventory    = GetInventoryCount(recipe.Value.ItemResult.RowId);
+        var stillNeeded    = Math.Max(0, targetItems - inInventory);
+        return (int)Math.Ceiling((double)stillNeeded / amountPerCraft);
+    }
+
     private unsafe bool WillBeSkippedDueToInventory(Recipe recipe, int quantityToCraft)
     {
         try
