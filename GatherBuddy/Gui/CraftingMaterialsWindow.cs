@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using ElliLib;
@@ -76,6 +77,7 @@ public class CraftingMaterialsWindow : Window
         if (itemSheet == null) return;
 
         var showRetainer = AllaganTools.Enabled;
+        var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
         var precrafts = _matsShowPrecrafts
             ? _editor.GetCachedPrecraftMaterials()
             : null;
@@ -106,8 +108,9 @@ public class CraftingMaterialsWindow : Window
             }
         }
 
-        var totalMissing = allEntries.Count(e => e.have + e.retNQ + e.retHQ < e.needed);
+        var totalMissing = allEntries.Count(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) < e.needed);
         var totalReady   = allEntries.Count - totalMissing;
+        var visibleEntries = allEntries.Where(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) < e.needed).ToList();
 
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"{totalMissing} missing  \u00b7  {totalReady} ready");
         ImGui.SameLine();
@@ -136,6 +139,12 @@ public class CraftingMaterialsWindow : Window
         }
         ImGui.Separator();
 
+        if (visibleEntries.Count == 0)
+        {
+            ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.4f, 1f), "All materials ready.");
+            return;
+        }
+
         var avail   = ImGui.GetContentRegionAvail();
         var spacing = ImGui.GetStyle().ItemSpacing;
         var panelW  = (avail.X - spacing.X) / 2f;
@@ -143,11 +152,11 @@ public class CraftingMaterialsWindow : Window
         var preferVendors = _matsPreferVendors;
         MaterialSource Cls(uint id) => MaterialSourceClassifier.Classify(id, preferVendors);
 
-        var gatherList = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
-        var dropList   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Drop).ToList();
-        var shopList   = allEntries.Where(e => Cls(e.itemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
-        var vendorList = allEntries.Where(e => Cls(e.itemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
-        var craftList  = _matsShowPrecrafts ? allEntries.Where(e => Cls(e.itemId) is MaterialSource.Craftable).ToList() : null;
+        var gatherList = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
+        var dropList   = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Drop).ToList();
+        var shopList   = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
+        var vendorList = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
+        var craftList  = _matsShowPrecrafts ? visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Craftable).ToList() : null;
 
         var panels = new List<(string Id, string Label, Vector4 Accent, IEnumerable<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)> Entries)>();
         if (gatherList.Count > 0)         panels.Add(("##gather", "Gather",          AccentGather, gatherList));
@@ -166,7 +175,7 @@ public class CraftingMaterialsWindow : Window
             var (id, label, accent, entries) = panels[i];
             var isLast   = i == panels.Count - 1;
             var spanFull = isLast && panels.Count % 2 == 1;
-            DrawMaterialPanel(id, label, accent, entries, showRetainer, spanFull ? avail.X : panelW, panelH);
+            DrawMaterialPanel(id, label, accent, entries, showRetainer, countRetainersTowardNeed, spanFull ? avail.X : panelW, panelH);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
@@ -175,10 +184,10 @@ public class CraftingMaterialsWindow : Window
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
         IEnumerable<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)> source,
-        bool showRetainer, float width, float height)
+        bool showRetainer, bool countRetainersTowardNeed, float width, float height)
     {
         var entries = source
-            .OrderBy(e => e.have + e.retNQ + e.retHQ >= e.needed)
+            .OrderBy(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) >= e.needed)
             .ThenBy(e => e.name)
             .ToList();
 
@@ -237,7 +246,7 @@ public class CraftingMaterialsWindow : Window
                 {
                     foreach (var e in entries)
                     {
-                        var satisfied = e.have + e.retNQ + e.retHQ >= e.needed;
+                        var satisfied = e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) >= e.needed;
                         DrawPanelRow(e.itemId, e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
                             satisfied, showRetainer, e.isPrecraft);
                     }
@@ -287,6 +296,8 @@ public class CraftingMaterialsWindow : Window
         ImUtf8.CopyOnClickSelectable(name.AsSpan());
         if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}"))
         {
+            if (ImGui.Selectable("Create Link"))
+                Communicator.Print(SeString.CreateItemLink(itemId));
             if (ImGui.Selectable("Search Marketboard"))
             {
                 GatherBuddy.MarketboardService?.QueueLookup(itemId, name, iconId);

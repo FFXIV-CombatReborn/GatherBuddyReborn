@@ -81,8 +81,7 @@ public partial class VulcanWindow
                 if (refreshedList == null)
                 {
                     _editingList = null;
-                    GatherBuddy.CraftingMaterialsWindow?.SetEditor(null);
-                    _listEditor = null;
+                    DisposeListEditor();
                     DrawListManager();
                 }
                 else
@@ -92,8 +91,7 @@ public partial class VulcanWindow
                     if (ImGui.SmallButton("\u2190 Lists##backToLists"))
                     {
                         _editingList = null;
-                        _listEditor  = null;
-                        GatherBuddy.CraftingMaterialsWindow?.SetEditor(null);
+                        DisposeListEditor();
                         DrawListManager();
                     }
                     else
