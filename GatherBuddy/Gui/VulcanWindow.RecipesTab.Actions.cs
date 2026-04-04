@@ -82,6 +82,7 @@ public partial class VulcanWindow
     private static void StartCraftWithRaphaelAfterJobSwitch(Recipe recipe)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
+        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, settings);
         if (settings != null && settings.HasAnySettings())
         {
             GatherBuddy.Log.Debug($"[VulcanWindow] Applying recipe browser settings for {recipe.RowId}");
@@ -94,9 +95,7 @@ public partial class VulcanWindow
             if (settings.SquadronManualItemId.HasValue)
                 GatherBuddy.Log.Debug($"  Squadron Manual: {settings.SquadronManualItemId.Value}");
             GatherBuddy.Log.Debug($"  Ingredient prefs: {settings.IngredientPreferences.Count} items, UseAllNQ={settings.UseAllNQ}");
-            CraftingGameInterop.SetIngredientPreferences(
-                settings.IngredientPreferences.Count > 0 || settings.UseAllNQ ? settings.IngredientPreferences : null,
-                settings.UseAllNQ);
+            CraftingGameInterop.SetQualityPolicy(qualityPolicy);
             
             var allApplied = ConsumableChecker.ApplyConsumables(settings);
             if (!allApplied)
@@ -111,7 +110,7 @@ public partial class VulcanWindow
         }
         else
         {
-            CraftingGameInterop.SetIngredientPreferences(null);
+            CraftingGameInterop.SetQualityPolicy(qualityPolicy);
         }
         
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
@@ -145,7 +144,7 @@ public partial class VulcanWindow
             CP: gearsetStats.CP,
             Manipulation: gearsetStats.Manipulation,
             Specialist: gearsetStats.Specialist,
-            InitialQuality: 0
+            InitialQuality: qualityPolicy.CalculateGuaranteedInitialQuality(recipe)
         );
 
         if (GatherBuddy.RaphaelSolveCoordinator.TryGetSolution(request, out var solution) && solution != null && !solution.IsFailed)
@@ -156,7 +155,12 @@ public partial class VulcanWindow
         }
 
         GatherBuddy.Log.Information($"[VulcanWindow] Enqueuing Raphael solve for recipe {recipe.RowId}");
-        var queueItem = new CraftingListItem(recipe.RowId, 1);
+        var queueItem = new CraftingListItem(recipe.RowId, 1)
+        {
+            CraftSettings = settings?.Clone(),
+            QualityPolicy = qualityPolicy,
+            IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
+        };
         var recipeStats = new List<(uint RecipeId, int Craftsmanship, int Control, int CP, int Level, bool Manipulation, bool Specialist)>
         {
             (recipe.RowId, gearsetStats.Craftsmanship, gearsetStats.Control, gearsetStats.CP, gearsetStats.Level, gearsetStats.Manipulation, gearsetStats.Specialist)
@@ -200,10 +204,18 @@ public partial class VulcanWindow
 
     private static void StartBrowserQuickSynth(Recipe recipe, int quantity)
     {
+        var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
+        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, settings);
         var expandedQueue = new List<CraftingListItem>(quantity);
         for (int i = 0; i < quantity; i++)
         {
-            var item = new CraftingListItem(recipe.RowId, 1) { IsOriginalRecipe = true };
+            var item = new CraftingListItem(recipe.RowId, 1)
+            {
+                IsOriginalRecipe = true,
+                CraftSettings = settings?.Clone(),
+                QualityPolicy = qualityPolicy,
+                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
+            };
             item.Options.NQOnly = true;
             expandedQueue.Add(item);
         }
@@ -238,15 +250,16 @@ public partial class VulcanWindow
         }
 
         var expandedQueue = new List<CraftingListItem>(quantity);
+        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, craftSettings);
         for (int i = 0; i < quantity; i++)
         {
-            var item = new CraftingListItem(recipe.RowId, 1) { IsOriginalRecipe = true };
-            if (craftSettings != null)
+            var item = new CraftingListItem(recipe.RowId, 1)
             {
-                item.CraftSettings = craftSettings;
-                if (craftSettings.IngredientPreferences.Count > 0 || craftSettings.UseAllNQ)
-                    item.IngredientPreferences = new Dictionary<uint, int>(craftSettings.IngredientPreferences);
-            }
+                IsOriginalRecipe = true,
+                CraftSettings = craftSettings?.Clone(),
+                QualityPolicy = qualityPolicy,
+                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
+            };
             expandedQueue.Add(item);
         }
 

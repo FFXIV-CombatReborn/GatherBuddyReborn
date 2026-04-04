@@ -53,6 +53,7 @@ public static class CraftingGameInterop
     private static Vulcan.CraftState? _vulcanCraftState = null;
     private static Vulcan.StepState? _vulcanStepState = null;
     private static CraftingActionExecutor? _actionExecutor = null;
+    private static CraftingQualityPolicy? _currentQualityPolicy = null;
     private static Dictionary<uint, int>? _currentIngredientPreferences = null;
     private static bool _currentUseAllNQ = false;
     private static int _quickSynthTarget = 0;
@@ -126,11 +127,11 @@ public static class CraftingGameInterop
         }
     }
 
-    public static void ReloadSolversForCraft(RaphaelSolverMode mode)
+    public static void ReloadSolversForCraft(RaphaelSolverMode mode, bool registerUserMacroSolver = true)
     {
         GatherBuddy.Log.Debug($"[CraftingGameInterop] ReloadSolversForCraft: {mode}");
         CraftingProcessor.Setup();
-
+        if (registerUserMacroSolver && _userMacroLibrary != null)
         if (_userMacroLibrary != null)
         {
             CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
@@ -157,6 +158,7 @@ public static class CraftingGameInterop
         _currentState = CraftState.IdleNormal;
         _vulcanCraftState = null;
         _vulcanStepState = null;
+        _currentQualityPolicy = null;
         _currentSelectedMacroId = null;
         _lastPreparationFailure = null;
         CraftingProcessor.Dispose();
@@ -166,6 +168,14 @@ public static class CraftingGameInterop
     {
         _currentIngredientPreferences = preferences;
         _currentUseAllNQ = useAllNQ;
+        _currentQualityPolicy = null;
+    }
+
+    public static void SetQualityPolicy(CraftingQualityPolicy? qualityPolicy)
+    {
+        _currentQualityPolicy = qualityPolicy;
+        _currentIngredientPreferences = qualityPolicy?.BuildGuaranteedHQPreferences();
+        _currentUseAllNQ = false;
     }
     
     public static void SetSelectedMacro(string? macroId)
@@ -333,6 +343,12 @@ public static class CraftingGameInterop
                 GatherBuddy.Log.Debug($"[Crafting] SelectedRecipe is null");
                 return IngredientAssignmentResult.Retry;
             }
+            var qualityPolicy = GetActiveQualityPolicy();
+            if (qualityPolicy == null)
+            {
+                GatherBuddy.Log.Debug("[Crafting] Quality policy unavailable during ingredient assignment");
+                return IngredientAssignmentResult.Retry;
+            }
 
             var ingredients = RecipeNoteExt.GetIngredientsSpan(selectedRecipe);
             for (int i = 0; i < ingredients.Length; i++)
@@ -350,51 +366,42 @@ public static class CraftingGameInterop
                     SetMissingIngredientFailure(ingredient.ItemId, ingredient.NumTotal, availableCounts.NQ, availableCounts.HQ);
                     return IngredientAssignmentResult.Fatal;
                 }
-
-                if (ingredient.NumAssignedNQ + ingredient.NumAssignedHQ >= ingredient.NumTotal)
+                if (!qualityPolicy.TryResolveIngredientSelection(
+                        ingredient.ItemId,
+                        ingredient.NumAvailableNQ,
+                        ingredient.NumAvailableHQ,
+                        out var desiredNQ,
+                        out var desiredHQ,
+                        out var failureDetails))
+                {
+                    SetMissingIngredientFailure(ingredient.ItemId, ingredient.NumTotal, ingredient.NumAvailableNQ, ingredient.NumAvailableHQ, failureDetails);
+                    return IngredientAssignmentResult.Fatal;
+                }
+                if (ingredient.NumAssignedNQ == desiredNQ && ingredient.NumAssignedHQ == desiredHQ)
                     continue;
+
+                if (qualityPolicy.UsesHQFallbackForNQPreference(ingredient.ItemId, desiredHQ))
+                {
+                    GatherBuddy.Log.Debug(
+                        $"[Crafting] Using HQ fallback for NQ-preferred ingredient {ingredient.ItemId}: desired NQ={desiredNQ}, HQ={desiredHQ}");
+                }
+                else if (qualityPolicy.UsesNQFallbackForHQPreference(ingredient.ItemId, desiredNQ))
+                {
+                    GatherBuddy.Log.Debug(
+                        $"[Crafting] Using NQ fallback for HQ-preferred ingredient {ingredient.ItemId}: desired NQ={desiredNQ}, HQ={desiredHQ}");
+                }
 
                 if (IsEquipmentIngredient(ingredient.ItemId))
                 {
-                    bool preferHQ = false;
-                    if (_currentIngredientPreferences != null && _currentIngredientPreferences.TryGetValue(ingredient.ItemId, out var preferredHQ))
-                        preferHQ = preferredHQ > 0;
-                    else if (!_currentUseAllNQ && ingredient.NumAvailableHQ > 0)
-                        preferHQ = true;
-                    
-                    if (!SelectEquipmentIngredient(atkUnit, (uint)i, ingredient.ItemId, preferHQ))
+                    if (!SelectEquipmentIngredient(atkUnit, (uint)i, ingredient.ItemId, desiredHQ > 0))
                     {
-                        if (!preferHQ && ingredient.NumAvailableHQ > 0)
-                        {
-                            GatherBuddy.Log.Warning($"[Crafting] NQ selection failed, trying HQ as fallback");
-                            SelectEquipmentIngredient(atkUnit, (uint)i, ingredient.ItemId, true);
-                        }
-                        else if (preferHQ && ingredient.NumAvailableNQ > 0)
-                        {
-                            GatherBuddy.Log.Warning($"[Crafting] HQ selection failed, trying NQ");
-                            SelectEquipmentIngredient(atkUnit, (uint)i, ingredient.ItemId, false);
-                        }
+                        GatherBuddy.Log.Debug(
+                            $"[Crafting] Equipment ingredient selection did not apply for item {ingredient.ItemId}, retrying");
+                        return IngredientAssignmentResult.Retry;
                     }
-                    
+
                     System.Threading.Thread.Sleep(150);
                     continue;
-                }
-
-                int desiredHQ = 0;
-                if (_currentIngredientPreferences != null && _currentIngredientPreferences.TryGetValue(ingredient.ItemId, out var preferredHQ2))
-                {
-                    desiredHQ = Math.Min(preferredHQ2, Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ));
-                    var nqShortfall = Math.Max(0, (ingredient.NumTotal - desiredHQ) - ingredient.NumAvailableNQ);
-                    desiredHQ = Math.Min(ingredient.NumAvailableHQ, desiredHQ + nqShortfall);
-                }
-                else if (_currentUseAllNQ)
-                {
-                    desiredHQ = Math.Max(0, ingredient.NumTotal - ingredient.NumAvailableNQ);
-                    desiredHQ = Math.Min(desiredHQ, ingredient.NumAvailableHQ);
-                }
-                else
-                {
-                    desiredHQ = Math.Min(ingredient.NumTotal, ingredient.NumAvailableHQ);
                 }
 
                 var missingHQ = Math.Max(0, desiredHQ - ingredient.NumAssignedHQ);
@@ -403,7 +410,6 @@ public static class CraftingGameInterop
                     for (int m = 0; m < missingHQ; m++)
                         ClickMaterial(atkUnit, (uint)i, true);
                 }
-                int desiredNQ = ingredient.NumTotal - desiredHQ;
                 var missingNQ = Math.Max(0, desiredNQ - ingredient.NumAssignedNQ);
                 if (missingNQ > 0 && ingredient.NumAvailableNQ >= missingNQ)
                 {
@@ -771,6 +777,11 @@ public static class CraftingGameInterop
 
             var clampedQuantity = Math.Min(quantity, 99);
             GatherBuddy.Log.Information($"[Crafting] Confirming quick synthesis for {clampedQuantity} items");
+            var qualityPolicy = _currentQualityPolicy;
+            var allowHQMaterials = qualityPolicy?.AllowHQMaterialsInQuickSynthesis ?? true;
+            var synthesizeNQOnly = qualityPolicy?.OverrideMode == CraftingQualityOverrideMode.RequireNQOnly;
+            GatherBuddy.Log.Debug(
+                $"[Crafting] Quick synthesis flags: allowHQMaterials={allowHQMaterials}, synthesizeNQOnly={synthesizeNQOnly}");
             
             var values = stackalloc AtkValue[3];
             values[0] = new()
@@ -781,12 +792,12 @@ public static class CraftingGameInterop
             values[1] = new()
             {
                 Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
-                Byte = 1,
+                Byte = allowHQMaterials ? (byte)1 : (byte)0,
             };
             values[2] = new()
             {
                 Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
-                Byte = 1
+                Byte = synthesizeNQOnly ? (byte)1 : (byte)0
             };
             Callback.Fire(dialogUnit, true, values[0], values[1], values[2]);
             
@@ -935,8 +946,20 @@ public static class CraftingGameInterop
             (int)inventoryManager->GetInventoryItemCount(itemId, false, false, false),
             (int)inventoryManager->GetInventoryItemCount(itemId, true, false, false));
     }
+    private static CraftingQualityPolicy? GetActiveQualityPolicy()
+    {
+        if (_currentQualityPolicy != null)
+            return _currentQualityPolicy;
 
-    private static void SetMissingIngredientFailure(uint itemId, int needed, int availableNQ, int availableHQ)
+        if (!_currentRecipeId.HasValue)
+            return null;
+
+        return TryGetRecipe(_currentRecipeId.Value, out var recipe) && recipe.HasValue
+            ? CraftingQualityPolicyResolver.Resolve(recipe.Value, null)
+            : null;
+    }
+
+    private static void SetMissingIngredientFailure(uint itemId, int needed, int availableNQ, int availableHQ, string? detailsOverride = null)
     {
         if (!_currentRecipeId.HasValue)
             return;
@@ -944,7 +967,7 @@ public static class CraftingGameInterop
         var itemName = Dalamud.GameData.GetExcelSheet<Item>()?.TryGetRow(itemId, out var item) == true
             ? item.Name.ExtractText()
             : $"Item {itemId}";
-        var details = $"unable to select '{itemName}' (item {itemId}) in RecipeNote: needed {needed}, available NQ={availableNQ}, HQ={availableHQ}";
+        var details = detailsOverride ?? $"unable to select '{itemName}' (item {itemId}) in RecipeNote: needed {needed}, available NQ={availableNQ}, HQ={availableHQ}";
         _lastPreparationFailure = new CraftPreparationFailure(
             _currentRecipeId.Value,
             CraftPreparationFailureReason.MissingIngredientsUnableToSelect,
@@ -1040,6 +1063,10 @@ public static class CraftingGameInterop
             _quickSynthTarget = 0;
             _quickSynthCompleted = 0;
             _quickSynthWindowSeen = false;
+            _currentQualityPolicy = null;
+            _currentIngredientPreferences = null;
+            _currentUseAllNQ = false;
+            _currentSelectedMacroId = null;
             _currentRecipe = null;
             _currentRecipeId = null;
             CraftFinished?.Invoke(finishedRecipe, false);
@@ -1122,11 +1149,15 @@ public static class CraftingGameInterop
         var actualRecipe = recipe.Value;
         GatherBuddy.Log.Debug($"[Crafting] Building craft state for recipe {_currentRecipeId}");
         _vulcanCraftState = CraftingStateBuilder.BuildCraftState(actualRecipe);
-        if (_currentIngredientPreferences != null && _currentIngredientPreferences.Count > 0)
+        var qualityPolicy = GetActiveQualityPolicy();
+        if (qualityPolicy != null)
         {
-            var iq = QualityCalculator.CalculateInitialQuality(actualRecipe, _currentIngredientPreferences);
-            GatherBuddy.Log.Debug($"[Crafting] Setting InitialQuality={iq} from ingredient preferences for Raphael key");
-            _vulcanCraftState = _vulcanCraftState with { InitialQuality = iq };
+            var iq = qualityPolicy.CalculateGuaranteedInitialQuality(actualRecipe);
+            if (iq > 0)
+            {
+                GatherBuddy.Log.Debug($"[Crafting] Setting guaranteed InitialQuality={iq} from quality policy for Raphael key");
+                _vulcanCraftState = _vulcanCraftState with { InitialQuality = iq };
+            }
         }
         _vulcanStepState = CraftingStateBuilder.BuildInitialStepState(_vulcanCraftState);
         if (_vulcanCraftState != null && _vulcanStepState != null)
@@ -1263,6 +1294,7 @@ public static class CraftingGameInterop
         }
         
         _currentSelectedMacroId = null;
+        _currentQualityPolicy = null;
 
         _currentRecipe = null;
         _currentRecipeId = null;

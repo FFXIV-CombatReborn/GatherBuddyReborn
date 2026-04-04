@@ -42,35 +42,51 @@ public class CraftingListDefinition
     public bool ShouldForcePreferNQ(bool isOriginalRecipe)
         => QuickSynthAllPreferNQ && ShouldApplyQuickSynthAllOverrides(isOriginalRecipe);
 
+    public CraftingQualityOverrideMode GetQualityOverrideMode(Recipe recipe, bool isOriginalRecipe)
+    {
+        if (!ShouldForceQuickSynth(recipe, isOriginalRecipe))
+            return CraftingQualityOverrideMode.None;
+
+        return QuickSynthAllPreferNQ
+            ? CraftingQualityOverrideMode.RequireNQOnly
+            : CraftingQualityOverrideMode.PreferNQWithHQFallback;
+    }
+
+    public CraftingListPlan CreatePlan(bool useRetainerCraftableAvailability = false)
+        => CraftingListPlanner.Build(this, new CraftingListPlannerOptions(useRetainerCraftableAvailability));
+
     public void BuildExpandedList()
     {
+        var plan = CreatePlan();
         ExpandedList.Clear();
-        foreach (var recipe in Recipes)
-        {
-            if (recipe.Options.Skipping)
-                continue;
-
-            var recipeData = RecipeManager.GetRecipe(recipe.RecipeId);
-            if (recipeData == null)
-                continue;
-
-            var quantity = GetEffectiveOriginalCraftQuantity(recipe, recipeData.Value);
-            if (quantity > 0)
-            {
-                ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, quantity));
-            }
-        }
+        foreach (var recipe in plan.OriginalRecipes)
+            ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, recipe.Quantity));
     }
 
     public CraftingListDefinition CreateRetainerPlanningSnapshot()
     {
         var snapshot = new CraftingListDefinition
         {
+            ID = ID,
+            Name = Name,
+            Description = Description,
+            FolderPath = FolderPath,
+            CreatedAt = CreatedAt,
+            Consumables = Consumables.Clone(),
+            DefaultPrecraftMacroId = DefaultPrecraftMacroId,
+            DefaultFinalMacroId = DefaultFinalMacroId,
+            DefaultPrecraftSolverOverride = DefaultPrecraftSolverOverride,
+            DefaultFinalSolverOverride = DefaultFinalSolverOverride,
             SkipIfEnough = SkipIfEnough,
             SkipFinalIfEnough = SkipFinalIfEnough,
             QuickSynthAll = QuickSynthAll,
             QuickSynthAllPreferNQ = QuickSynthAllPreferNQ,
             QuickSynthAllPrecraftsOnly = QuickSynthAllPrecraftsOnly,
+            Materia = Materia,
+            Repair = Repair,
+            RepairPercent = RepairPercent,
+            RetainerRestock = RetainerRestock,
+            Ephemeral = Ephemeral,
         };
 
         foreach (var recipe in Recipes)
@@ -82,188 +98,32 @@ public class CraftingListDefinition
                     Skipping = recipe.Options.Skipping,
                     NQOnly = recipe.Options.NQOnly,
                 },
+                IngredientPreferences = new Dictionary<uint, int>(recipe.IngredientPreferences),
+                ConsumableOverrides = recipe.ConsumableOverrides.Clone(),
+                IsOriginalRecipe = recipe.IsOriginalRecipe,
+                CraftSettings = recipe.CraftSettings?.Clone(),
             });
         }
+
+        foreach (var (recipeId, options) in PrecraftOptions)
+        {
+            snapshot.PrecraftOptions[recipeId] = new ListItemOptions
+            {
+                Skipping = options.Skipping,
+                NQOnly = options.NQOnly,
+            };
+        }
+
+        foreach (var (recipeId, settings) in PrecraftCraftSettings)
+            snapshot.PrecraftCraftSettings[recipeId] = settings.Clone();
 
         return snapshot;
     }
 
-    public Dictionary<uint, int> ListMaterials() => ListMaterials(null, null);
-
-    public Dictionary<uint, int> ListMaterials(Dictionary<uint, int>? additionalAvailable) => ListMaterials(additionalAvailable, null);
-
-    public Dictionary<uint, int> ListMaterials(
-        Dictionary<uint, int>? additionalAvailable,
-        Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)>? qualityTargets)
-    {
-        var materials = new Dictionary<uint, int>();
-        foreach (var item in Recipes)
-        {
-            if (item.Options.Skipping || item.Quantity == 0)
-                continue;
-                
-            var recipe = RecipeManager.GetRecipe(item.RecipeId);
-            if (recipe == null)
-                continue;
-            var quantity = GetEffectiveOriginalCraftQuantity(item, recipe.Value);
-            if (quantity <= 0)
-                continue;
-            var resolved = new Dictionary<uint, int>();
-
-            ResolveIngredientsForQuantity(recipe.Value, quantity, resolved, SkipIfEnough, additionalAvailable, qualityTargets);
-            
-            foreach (var (itemId, amount) in resolved)
-            {
-                if (materials.ContainsKey(itemId))
-                    materials[itemId] += amount;
-                else
-                    materials[itemId] = amount;
-            }
-        }
-        return materials;
-    }
-
-    private unsafe void ResolveIngredientsForQuantity(
-        Recipe recipe, int quantity, Dictionary<uint, int> resolved,
-        bool skipIfEnough = false,
-        Dictionary<uint, int>? additionalAvailable = null,
-        Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)>? qualityTargets = null)
-    {
-        var ingredients = RecipeManager.GetIngredients(recipe);
-        
-        foreach (var (itemId, amount) in ingredients)
-        {
-            var actualAmount = amount * quantity;
-            var subRecipe = RecipeManager.GetRecipeForItem(itemId);
-            
-            if (subRecipe.HasValue)
-            {
-                var quantityToCraft = (int)System.Math.Ceiling((double)actualAmount / subRecipe.Value.AmountResult);
-                
-                if (skipIfEnough)
-                {
-                    try
-                    {
-                        var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-                        if (inventory != null)
-                        {
-                            var resultItemId = subRecipe.Value.ItemResult.RowId;
-                            var amountPerCraft = subRecipe.Value.AmountResult;
-                            var nqCount = inventory->GetInventoryItemCount(resultItemId, false, false, false);
-                            var hqCount = inventory->GetInventoryItemCount(resultItemId, true, false, false);
-                            int totalInInventory;
-                            if (qualityTargets != null && qualityTargets.TryGetValue(resultItemId, out var qt) && qt.TargetNQ == 0)
-                                totalInInventory = (int)hqCount;
-                            else
-                                totalInInventory = (int)(nqCount + hqCount);
-
-                            if (additionalAvailable != null && additionalAvailable.TryGetValue(resultItemId, out var fromRetainer))
-                                totalInInventory += fromRetainer;
-                            
-                            if (totalInInventory >= actualAmount)
-                            {
-                                continue;
-                            }
-                            
-                            var stillNeeded = actualAmount - totalInInventory;
-                            quantityToCraft = (int)System.Math.Ceiling((double)stillNeeded / amountPerCraft);
-                        }
-                    }
-                    catch { }
-                }
-                
-                ResolveIngredientsForQuantity(subRecipe.Value, quantityToCraft, resolved, skipIfEnough, additionalAvailable, qualityTargets);
-            }
-            else
-            {
-                if (resolved.ContainsKey(itemId))
-                    resolved[itemId] += actualAmount;
-                else
-                    resolved[itemId] = actualAmount;
-            }
-        }
-    }
+    public Dictionary<uint, int> ListMaterials() => new(CreatePlan().Materials);
 
     public Dictionary<uint, int> ListPrecrafts()
-    {
-        var precrafts = new Dictionary<uint, int>();
-        foreach (var item in Recipes)
-        {
-            if (item.Options.Skipping || item.Quantity == 0)
-                continue;
-
-            var recipe = RecipeManager.GetRecipe(item.RecipeId);
-            if (recipe == null)
-                continue;
-            var quantity = GetEffectiveOriginalCraftQuantity(item, recipe.Value);
-            if (quantity <= 0)
-                continue;
-
-            CollectPrecrafts(recipe.Value, quantity, precrafts, SkipIfEnough);
-        }
-        return precrafts;
-    }
-
-    private unsafe int GetEffectiveOriginalCraftQuantity(CraftingListItem item, Recipe recipe)
-    {
-        if (!SkipIfEnough || !SkipFinalIfEnough)
-            return item.Quantity;
-
-        try
-        {
-            var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-            if (inventory == null)
-                return item.Quantity;
-
-            var itemId = recipe.ItemResult.RowId;
-            var amountPerCraft = recipe.AmountResult;
-            var targetItems = item.Quantity * amountPerCraft;
-            var inInventory = (int)(inventory->GetInventoryItemCount(itemId, false, false, false)
-                                  + inventory->GetInventoryItemCount(itemId, true, false, false));
-            var stillNeeded = System.Math.Max(0, targetItems - inInventory);
-            return (int)System.Math.Ceiling((double)stillNeeded / amountPerCraft);
-        }
-        catch
-        {
-            return item.Quantity;
-        }
-    }
-
-    private unsafe void CollectPrecrafts(Recipe recipe, int parentCraftCount, Dictionary<uint, int> precrafts, bool skipIfEnough)
-    {
-        var ingredients = RecipeManager.GetIngredients(recipe);
-        foreach (var (itemId, amount) in ingredients)
-        {
-            var subRecipe = RecipeManager.GetRecipeForItem(itemId);
-            if (!subRecipe.HasValue)
-                continue;
-
-            var itemsNeeded = amount * parentCraftCount;
-            precrafts[itemId] = precrafts.GetValueOrDefault(itemId) + itemsNeeded;
-
-            var toRecurse = itemsNeeded;
-            if (skipIfEnough)
-            {
-                try
-                {
-                    var inv = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-                    if (inv != null)
-                    {
-                        var resultId = subRecipe.Value.ItemResult.RowId;
-                        var have = (int)inv->GetInventoryItemCount(resultId, false, false, false)
-                                 + (int)inv->GetInventoryItemCount(resultId, true, false, false);
-                        if (have >= itemsNeeded)
-                            continue;
-                        toRecurse = itemsNeeded - have;
-                    }
-                }
-                catch { }
-            }
-
-            var subCraftCount = (int)System.Math.Ceiling((double)toRecurse / subRecipe.Value.AmountResult);
-            CollectPrecrafts(subRecipe.Value, subCraftCount, precrafts, skipIfEnough);
-        }
-    }
+        => new(CreatePlan().Precrafts);
 
     public void AddRecipe(uint recipeId, int quantity)
     {

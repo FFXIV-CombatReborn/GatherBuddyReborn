@@ -164,8 +164,9 @@ public static class CraftingGatherBridge
 
         GatherBuddy.Log.Information($"[CraftingGatherBridge] Starting queue automation with {queue.Count} recipes, retainerRestock={retainerRestock}");
         _queueProcessor.StartQueue(queue, listConsumables, GatherBuddy.RaphaelSolveCoordinator, skipIfEnough, retainerRestock, missing, retainerPrecraftItems, retainerPlanningList);
-
-        if (!retainerRestock || !AllaganTools.Enabled || missing.Count == 0)
+        var hasRetainerWork = retainerRestock && AllaganTools.Enabled
+            && (missing.Count > 0 || (retainerPrecraftItems?.Count ?? 0) > 0);
+        if (!hasRetainerWork)
             CreateGatherListForMissingIngredients(missing);
 
         GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(_queueProcessor);

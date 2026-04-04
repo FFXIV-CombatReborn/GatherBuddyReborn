@@ -69,7 +69,7 @@ internal unsafe class RetainerTaskExecutor
     private int _addonRetryCount = 0;
     private const int MaxAddonRetries = 40;
     private readonly Dictionary<uint, int> _materials;
-    private readonly Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)> _qualityTargets;
+    private readonly Dictionary<uint, IngredientQualityDemand> _qualityTargets;
     private bool _withdrawalPlanBuilt;
 
     public bool IsComplete => _phase == Phase.Complete;
@@ -77,7 +77,7 @@ internal unsafe class RetainerTaskExecutor
 
     public RetainerTaskExecutor(
         Dictionary<uint, int> materials,
-        Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)> qualityTargets)
+        Dictionary<uint, IngredientQualityDemand> qualityTargets)
     {
         _materials = materials;
         _qualityTargets = qualityTargets;
@@ -99,8 +99,9 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var (itemId, totalNeeded) in _materials)
         {
-            if (!_qualityTargets.TryGetValue(itemId, out var qt))
-                qt = (totalNeeded, 0, false);
+            var demand = _qualityTargets.TryGetValue(itemId, out var qualityDemand)
+                ? qualityDemand
+                : IngredientQualityDemand.FromPreferHQ(totalNeeded);
 
             int inBagHQ = 0, inBagNQ = 0;
             var inventoryMgr = InventoryManager.Instance();
@@ -110,23 +111,12 @@ internal unsafe class RetainerTaskExecutor
                 inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
             }
 
-            int totalStillNeeded = Math.Max(0, (int)totalNeeded - inBagHQ - inBagNQ);
-            int hqStillWanted    = Math.Max(0, qt.TargetHQ - inBagHQ);
-            int nqStillNeeded    = Math.Max(0, qt.TargetNQ - inBagNQ);
-
-            if (totalStillNeeded <= 0 && hqStillWanted <= 0 && nqStillNeeded <= 0)
+            var remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
+            if (remainingDemand.Total <= 0)
                 continue;
-
-            int hqFromRetainers = 0;
-            int nqFromRetainers = 0;
 
             foreach (var retainerId in retainerIds)
             {
-                bool done = qt.IsExplicit
-                    ? hqFromRetainers >= hqStillWanted && nqFromRetainers >= nqStillNeeded
-                    : hqFromRetainers + nqFromRetainers >= totalStillNeeded;
-                if (done) break;
-
 
                 int retainerHQ = 0, retainerNQ = 0;
                 for (uint page = 10000; page <= 10006; page++)
@@ -138,19 +128,7 @@ internal unsafe class RetainerTaskExecutor
                 var crystalPageHQ = (int)AllaganTools.ItemCountHQ(itemId, retainerId, 12001);
                 retainerHQ += crystalPageHQ;
                 retainerNQ += (int)AllaganTools.ItemCount(itemId, retainerId, 12001) - crystalPageHQ;
-
-                int toTakeHQ, toTakeNQ;
-                if (qt.IsExplicit)
-                {
-                    toTakeHQ = Math.Min(hqStillWanted - hqFromRetainers, retainerHQ);
-                    toTakeNQ = Math.Min(nqStillNeeded - nqFromRetainers, retainerNQ);
-                }
-                else
-                {
-                    int canTake  = Math.Max(0, totalStillNeeded - hqFromRetainers - nqFromRetainers);
-                    toTakeHQ = Math.Min(Math.Min(hqStillWanted - hqFromRetainers, retainerHQ), canTake);
-                    toTakeNQ = Math.Min(canTake - toTakeHQ, retainerNQ);
-                }
+                var updatedDemand = remainingDemand.ConsumeSplit(retainerNQ, retainerHQ, out var toTakeNQ, out var toTakeHQ);
 
                 if (toTakeHQ <= 0 && toTakeNQ <= 0)
                     continue;
@@ -163,8 +141,9 @@ internal unsafe class RetainerTaskExecutor
                 else
                     perRetainerPlan[retainerId][itemId] = (toTakeHQ, toTakeNQ);
 
-                hqFromRetainers += toTakeHQ;
-                nqFromRetainers += toTakeNQ;
+                remainingDemand = updatedDemand;
+                if (remainingDemand.Total <= 0)
+                    break;
             }
         }
 
@@ -1053,134 +1032,40 @@ internal unsafe class RetainerTaskExecutor
         _nextRetry = DateTime.Now.AddMilliseconds(ms);
     }
 
-    internal static unsafe (Dictionary<uint, int> CorrectedMaterials, Dictionary<uint, int> PrecraftItems) PlanRetainerRestock(CraftingListDefinition list, List<CraftingListItem> expandedQueue)
-    {
-        if (!list.SkipIfEnough)
-        {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] PlanRetainerRestock: SkipIfEnough=false, pulling leaf materials only (Scenario 1)");
-            return (list.ListMaterials(), new Dictionary<uint, int>());
-        }
 
-        var precraftsTotal       = list.ListPrecrafts();
-        var precraftFromRetainer = new Dictionary<uint, int>();
-        var additionalAvailable  = new Dictionary<uint, int>();
-        var inventoryMgr         = InventoryManager.Instance();
-
-        var qualityTargets = ComputeQualityTargets(
-            precraftsTotal.ToDictionary(kv => kv.Key, kv => kv.Value),
-            expandedQueue);
-        var retainerSnapshot = RetainerItemQuery.CreateSnapshot(precraftsTotal.Keys);
-
-        foreach (var (precraftItemId, totalNeeded) in precraftsTotal)
-        {
-            int inBagHQ = 0, inBagNQ = 0;
-            if (inventoryMgr != null)
-            {
-                inBagHQ = (int)inventoryMgr->GetInventoryItemCount(precraftItemId, true,  false, false);
-                inBagNQ = (int)inventoryMgr->GetInventoryItemCount(precraftItemId, false, false, false);
-            }
-
-            qualityTargets.TryGetValue(precraftItemId, out var qt);
-            int stillNeeded = (qt.TargetNQ == 0)
-                ? Math.Max(0, totalNeeded - inBagHQ)
-                : Math.Max(0, totalNeeded - inBagHQ - inBagNQ);
-            if (stillNeeded <= 0) continue;
-
-            int hqStillWanted = Math.Max(0, qt.TargetHQ - inBagHQ);
-            int nqStillNeeded = Math.Max(0, qt.TargetNQ - inBagNQ);
-
-            int retainerHQ = retainerSnapshot.GetCountHQ(precraftItemId);
-            int retainerNQ = retainerSnapshot.GetCountNQ(precraftItemId);
-
-            int toWithdrawHQ = Math.Min(hqStillWanted, retainerHQ);
-            int toWithdrawNQ;
-            if (qt.IsExplicit)
-            {
-                toWithdrawNQ = Math.Min(nqStillNeeded, retainerNQ);
-            }
-            else
-            {
-                int remaining = Math.Max(0, stillNeeded - toWithdrawHQ);
-                toWithdrawNQ = Math.Min(remaining, retainerNQ);
-            }
-            int toWithdraw = toWithdrawHQ + toWithdrawNQ;
-
-            if (toWithdraw <= 0) continue;
-
-            precraftFromRetainer[precraftItemId] = toWithdraw;
-            additionalAvailable[precraftItemId]  = toWithdraw;
-
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Precraft {precraftItemId}: need={stillNeeded}, retainer HQ={retainerHQ} NQ={retainerNQ}, withdrawing {toWithdrawHQ} HQ + {toWithdrawNQ} NQ");
-        }
-
-        foreach (var pulledItemId in precraftFromRetainer.Keys.ToList())
-        {
-            if (!precraftFromRetainer.TryGetValue(pulledItemId, out var pullQty) || pullQty <= 0)
-                continue;
-
-            var pulledRecipe = RecipeManager.GetRecipeForItem(pulledItemId);
-            if (pulledRecipe == null) continue;
-
-            int craftsDisplaced = (int)Math.Ceiling((double)pullQty / pulledRecipe.Value.AmountResult);
-            foreach (var (subItemId, amtPerCraft) in RecipeManager.GetIngredients(pulledRecipe.Value))
-            {
-                if (!precraftFromRetainer.ContainsKey(subItemId)) continue;
-
-                int reduction = amtPerCraft * craftsDisplaced;
-                int newQty    = Math.Max(0, precraftFromRetainer[subItemId] - reduction);
-                GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Sub-precraft {subItemId} pull reduced by {reduction} (displaced by {pullQty}× pulled precraft {pulledItemId}), new qty={newQty}");
-                if (newQty <= 0)
-                {
-                    precraftFromRetainer.Remove(subItemId);
-                    additionalAvailable.Remove(subItemId);
-                }
-                else
-                {
-                    precraftFromRetainer[subItemId] = newQty;
-                    additionalAvailable[subItemId]  = newQty;
-                }
-            }
-        }
-
-        var correctedMaterials = list.ListMaterials(additionalAvailable, qualityTargets);
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] PlanRetainerRestock: {precraftFromRetainer.Count} precraft(s), {correctedMaterials.Count} leaf material(s)");
-        return (correctedMaterials, precraftFromRetainer);
-    }
-
-    internal static Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)> ComputeQualityTargets(
+    internal static Dictionary<uint, IngredientQualityDemand> ComputeQualityTargets(
         Dictionary<uint, int> materials,
         List<CraftingListItem> expandedQueue)
     {
-        var targets = new Dictionary<uint, (int TargetHQ, int TargetNQ, bool IsExplicit)>();
+        var targets = materials.Keys.ToDictionary(itemId => itemId, _ => default(IngredientQualityDemand));
+
+        foreach (var queueItem in expandedQueue)
+        {
+            var recipe = RecipeManager.GetRecipe(queueItem.RecipeId);
+            if (recipe == null)
+                continue;
+
+            var qualityPolicy = queueItem.QualityPolicy ?? CraftingQualityPolicyResolver.Resolve(recipe.Value, queueItem.CraftSettings);
+            foreach (var (itemId, _) in RecipeManager.GetIngredients(recipe.Value))
+            {
+                if (!targets.ContainsKey(itemId))
+                    continue;
+
+                targets[itemId] = targets[itemId].Add(qualityPolicy.GetDemand(itemId).Scale(Math.Max(1, queueItem.Quantity)));
+            }
+        }
 
         foreach (var (itemId, totalNeeded) in materials)
         {
-            int aggregateHQWanted = 0;
-            bool hasExplicitPref  = false;
-
-            foreach (var queueItem in expandedQueue)
+            var target = targets[itemId];
+            if (target.Total < totalNeeded)
             {
-                var recipe = RecipeManager.GetRecipe(queueItem.RecipeId);
-                if (recipe == null) continue;
-
-                var ingredients = RecipeManager.GetIngredients(recipe.Value);
-                var ingredientEntry = ingredients.FirstOrDefault(x => x.itemId == itemId);
-                if (ingredientEntry == default) continue;
-                int amtPerCraft = ingredientEntry.amount;
-
-                bool useAllNQ = queueItem.CraftSettings?.UseAllNQ ?? false;
-
-                if (queueItem.IngredientPreferences.TryGetValue(itemId, out var pref))
-                {
-                    aggregateHQWanted += Math.Min(pref, amtPerCraft);
-                    hasExplicitPref = true;
-                }
-                else if (!useAllNQ)
-                    aggregateHQWanted += amtPerCraft;
+                targets[itemId] = target.Add(IngredientQualityDemand.FromPreferHQ(totalNeeded - target.Total));
+                continue;
             }
 
-            aggregateHQWanted = Math.Min(aggregateHQWanted, totalNeeded);
-            targets[itemId] = (aggregateHQWanted, totalNeeded - aggregateHQWanted, hasExplicitPref);
+            if (target.Total > totalNeeded)
+                targets[itemId] = target.ConsumeUnknownQuality(target.Total - totalNeeded, out _);
         }
 
         return targets;

@@ -20,63 +20,14 @@ public partial class VulcanWindow
 
         if (list.QuickSynthAll)
             GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
+        var useRetainerCraftablePlanning = list.SkipIfEnough && list.RetainerRestock && AllaganTools.Enabled;
+        var plan = list.CreatePlan(useRetainerCraftablePlanning);
+        var expandedQueue = CraftingListQueueBuilder.CreateExpandedQueue(list, plan);
+        var materials = new Dictionary<uint, int>(plan.Materials);
+        var retainerPrecraftItems = new Dictionary<uint, int>(plan.RetainerConsumedCraftables);
+        var retainerPlanningList = list.RetainerRestock ? list.CreateRetainerPlanningSnapshot() : null;
 
-        var craftingQueue = new CraftingListQueue();
-        craftingQueue.AddFromList(list.Recipes.Where(r => !r.Options.Skipping), list.SkipIfEnough, list.SkipFinalIfEnough);
-
-        craftingQueue.BuildExpandedList();
-        var sortedRecipes = GetRecipesInDependencyOrder(craftingQueue.Recipes, craftingQueue.OriginalRecipes);
-
-        var expandedQueue = new List<CraftingListItem>();
-        foreach (var recipeItem in sortedRecipes)
-        {
-            var isOriginal    = recipeItem.IsOriginalRecipe;
-            var originalItem  = isOriginal ? list.Recipes.FirstOrDefault(r => r.RecipeId == recipeItem.RecipeId) : null;
-            var recipeOptions = list.GetRecipeOptions(recipeItem.RecipeId, isOriginal);
-            var recipeData    = RecipeManager.GetRecipe(recipeItem.RecipeId);
-            var forceQuickSynth = recipeData != null && list.ShouldForceQuickSynth(recipeData.Value, isOriginal);
-            var forcePreferNQ = list.ShouldForcePreferNQ(isOriginal);
-
-            for (var i = 0; i < recipeItem.Quantity; i++)
-            {
-                var queueItem = new CraftingListItem(recipeItem.RecipeId, 1);
-
-                queueItem.Options.NQOnly = recipeOptions.NQOnly || forceQuickSynth;
-
-                queueItem.Options.Skipping  = recipeOptions.Skipping;
-                queueItem.IsOriginalRecipe  = isOriginal;
-
-                if (isOriginal && originalItem != null)
-                    queueItem.ConsumableOverrides = originalItem.ConsumableOverrides.Clone();
-
-                var craftSettings = isOriginal
-                    ? originalItem?.CraftSettings
-                    : list.PrecraftCraftSettings.GetValueOrDefault(recipeItem.RecipeId);
-                var (effectiveMacroId, effectiveSolverOverride) = ResolveEffectiveMacroSelection(craftSettings, !isOriginal, list);
-                queueItem.CraftSettings = BuildEffectiveQueueCraftSettings(craftSettings, effectiveMacroId, effectiveSolverOverride, forcePreferNQ);
-
-                IReadOnlyDictionary<uint, int>? effectivePrefs = queueItem.CraftSettings?.IngredientPreferences;
-                if (!forcePreferNQ && isOriginal && originalItem != null && originalItem.IngredientPreferences.Count > 0)
-                    effectivePrefs = originalItem.IngredientPreferences;
-                if (effectivePrefs != null && effectivePrefs.Count > 0)
-                    queueItem.IngredientPreferences = new Dictionary<uint, int>(effectivePrefs);
-
-                expandedQueue.Add(queueItem);
-            }
-        }
-
-        var materials             = list.ListMaterials();
-        var retainerPrecraftItems = new Dictionary<uint, int>();
-        var retainerPlanningList  = list.RetainerRestock ? list.CreateRetainerPlanningSnapshot() : null;
-
-        if (list.RetainerRestock && AllaganTools.Enabled)
-        {
-            var (corrected, precraftItems) = RetainerTaskExecutor.PlanRetainerRestock(list, expandedQueue);
-            materials             = corrected;
-            retainerPrecraftItems = precraftItems;
-        }
-
-        GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {sortedRecipes.Count} recipes");
+        GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {plan.Recipes.Count} planned recipes");
         CraftingGatherBridge.StartQueueCraftAndGather(
             expandedQueue, materials, list.Consumables, list.SkipIfEnough,
             list.RetainerRestock, retainerPrecraftItems,

@@ -255,6 +255,7 @@ public class RecipeCraftSettingsPopup
                     {
                         _editingListItem.CraftSettings = null;
                     }
+                    _editingListItem.IngredientPreferences.Clear();
                     GatherBuddy.CraftingListManager.SaveList(_editingList);
                 }
                 else if (_isPrecraftMode && _editingList != null)
@@ -299,6 +300,7 @@ public class RecipeCraftSettingsPopup
                 if (_editingListItem != null && _editingList != null)
                 {
                     _editingListItem.CraftSettings = null;
+                    _editingListItem.IngredientPreferences.Clear();
                     GatherBuddy.CraftingListManager.SaveList(_editingList);
                 }
                 else if (_isPrecraftMode && _editingList != null)
@@ -393,8 +395,9 @@ public class RecipeCraftSettingsPopup
         };
 
         var recipe = RecipeManager.GetRecipe(_recipeId);
-        var ingredientPrefs = _editingSettings.UseAllNQ ? new Dictionary<uint, int>() : _editingSettings.IngredientPreferences;
-        var startingQuality = recipe.HasValue ? QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPrefs) : 0;
+        var startingQuality = recipe.HasValue
+            ? CraftingQualityPolicyResolver.Resolve(recipe.Value, _editingSettings).CalculateGuaranteedInitialQuality(recipe.Value)
+            : 0;
 
         if (macroId == _lastValidatedMacroId
             && effectiveFoodId == _lastValidatedFoodId

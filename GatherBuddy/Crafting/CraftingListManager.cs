@@ -255,6 +255,15 @@ public class CraftingListManager
     {
         try
         {
+            var canonicalizedLists = 0;
+            foreach (var list in _lists)
+            {
+                if (CanonicalizeOriginalItemQualitySettings(list))
+                    canonicalizedLists++;
+            }
+
+            if (canonicalizedLists > 0)
+                GatherBuddy.Log.Debug($"[CraftingListManager] Canonicalized original-item ingredient prefs in {canonicalizedLists} list(s) before save");
             GatherBuddy.Config.CraftingLists = JsonConvert.SerializeObject(_lists);
             GatherBuddy.Config.Save();
             GatherBuddy.Log.Debug($"[CraftingListManager] Saved {_lists.Count} crafting lists");
@@ -293,6 +302,8 @@ public class CraftingListManager
                     _lists[i].CreatedAt = baseTime.AddHours(i);
                     needsSave = true;
                 }
+                if (CanonicalizeOriginalItemQualitySettings(_lists[i]))
+                    needsSave = true;
             }
             if (needsSave)
             {
@@ -361,6 +372,7 @@ public class CraftingListManager
         if (list == null) return null;
 
         var copy = JsonConvert.DeserializeObject<CraftingListDefinition>(JsonConvert.SerializeObject(list))!;
+        CanonicalizeOriginalItemQualitySettings(copy);
         copy.ID = 0;
         copy.CreatedAt = DateTime.MinValue;
         copy.ExpandedList.Clear();
@@ -410,6 +422,7 @@ public class CraftingListManager
             newList.QuickSynthAll         = source.QuickSynthAll;
             newList.QuickSynthAllPreferNQ = source.QuickSynthAllPreferNQ;
             newList.QuickSynthAllPrecraftsOnly = source.QuickSynthAllPrecraftsOnly;
+            CanonicalizeOriginalItemQualitySettings(newList);
             Save();
 
             GatherBuddy.Log.Information($"[CraftingListManager] Imported list '{newList.Name}' with {newList.Recipes.Count} recipes");
@@ -424,5 +437,41 @@ public class CraftingListManager
             GatherBuddy.Log.Error($"[CraftingListManager] Import failed: {ex.Message}");
             return (null, $"Import failed: {ex.Message}");
         }
+    }
+
+    private static bool CanonicalizeOriginalItemQualitySettings(CraftingListDefinition list)
+    {
+        var changed = false;
+        foreach (var item in list.Recipes)
+        {
+            if (item.CraftSettings != null && !item.CraftSettings.HasAnySettings())
+            {
+                item.CraftSettings = null;
+                changed = true;
+            }
+
+            if (item.IngredientPreferences.Count == 0)
+                continue;
+
+            var hasCanonicalQualitySettings = item.CraftSettings?.UseAllNQ == true
+                || item.CraftSettings?.IngredientPreferences.Count > 0;
+            if (!hasCanonicalQualitySettings)
+            {
+                item.CraftSettings ??= new RecipeCraftSettings();
+                item.CraftSettings.IngredientPreferences = new Dictionary<uint, int>(item.IngredientPreferences);
+                changed = true;
+            }
+
+            item.IngredientPreferences.Clear();
+            changed = true;
+
+            if (item.CraftSettings != null && !item.CraftSettings.HasAnySettings())
+            {
+                item.CraftSettings = null;
+                changed = true;
+            }
+        }
+
+        return changed;
     }
 }
