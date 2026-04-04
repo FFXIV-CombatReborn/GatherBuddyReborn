@@ -152,48 +152,59 @@ public partial class VulcanWindow
         ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1.0f), "Filters");
         ImGui.Spacing();
 
-        if (ImGui.Checkbox("Regular Only", ref _filterBrowserRegularOnly))
+        if (ImGui.Checkbox("Leveling Only", ref _filterBrowserLevelingOnly))
         {
-            if (_filterBrowserRegularOnly)
+            if (_filterBrowserLevelingOnly)
             {
                 _filterBrowserMasterRecipes = false;
+                _filterBrowserHousingRecipes = false;
                 _filterBrowserCollectables = false;
                 _filterBrowserExpertRecipes = false;
                 _filterBrowserQuestRecipes = false;
             }
             _filtersDirty = true;
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Only show recipes from the level-based crafting log lists.");
         
         if (ImGui.Checkbox("Hide Crafted", ref _hideCrafted))
         {
             _filtersDirty = true;
         }
+        if (ImGui.Checkbox("Housing", ref _filterBrowserHousingRecipes))
+        {
+            if (_filterBrowserHousingRecipes)
+                _filterBrowserLevelingOnly = false;
+            _filtersDirty = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Only show recipes whose result item is in the housing item category range.");
 
         if (ImGui.Checkbox("Collectables", ref _filterBrowserCollectables))
         {
             if (_filterBrowserCollectables)
-                _filterBrowserRegularOnly = false;
+                _filterBrowserLevelingOnly = false;
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Master Recipes", ref _filterBrowserMasterRecipes))
         {
             if (_filterBrowserMasterRecipes)
-                _filterBrowserRegularOnly = false;
+                _filterBrowserLevelingOnly = false;
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Expert Recipes", ref _filterBrowserExpertRecipes))
         {
             if (_filterBrowserExpertRecipes)
-                _filterBrowserRegularOnly = false;
+                _filterBrowserLevelingOnly = false;
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Quest Recipes", ref _filterBrowserQuestRecipes))
         {
             if (_filterBrowserQuestRecipes)
-                _filterBrowserRegularOnly = false;
+                _filterBrowserLevelingOnly = false;
             _filtersDirty = true;
         }
 
@@ -317,6 +328,7 @@ public partial class VulcanWindow
                     GatherBuddy.Log.Information($"Recipe.DifficultyFactor: {recipe.Recipe.DifficultyFactor}");
                     GatherBuddy.Log.Information($"Recipe.QualityFactor: {recipe.Recipe.QualityFactor}");
                     GatherBuddy.Log.Information($"Recipe.RecipeLevelTable.RowId: {recipe.Recipe.RecipeLevelTable.RowId}");
+                    GatherBuddy.Log.Information($"Recipe.RecipeNotebookList.RowId: {recipe.Recipe.RecipeNotebookList.RowId}");
                     var resultItem = recipe.Recipe.ItemResult.Value;
                     GatherBuddy.Log.Information($"Item.RowId: {resultItem.RowId}");
                     GatherBuddy.Log.Information($"Item.AlwaysCollectable: {resultItem.AlwaysCollectable}");
@@ -325,6 +337,7 @@ public partial class VulcanWindow
                     GatherBuddy.Log.Information($"Item.ItemSearchCategory.RowId: {resultItem.ItemSearchCategory.RowId}");
                     GatherBuddy.Log.Information($"Item.ItemUICategory.RowId: {resultItem.ItemUICategory.RowId}");
                     GatherBuddy.Log.Information($"Item.Rarity: {resultItem.Rarity}");
+                    LogRecipeNotebookDivisionInfo(recipe.Recipe);
                 }
                 
                 ImGui.Separator();
