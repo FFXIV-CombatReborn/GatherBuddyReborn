@@ -28,6 +28,22 @@ public class CraftingMaterialsWindow : Window
     private static readonly Vector4 AccentVendor = new(1.00f, 0.85f, 0.20f, 1f);
     private static readonly Vector4 AccentCraft  = new(0.35f, 0.90f, 0.90f, 1f);
     private static readonly Vector4 PanelBg      = new(0.08f, 0.08f, 0.10f, 1.00f);
+    private enum RetainerColumnMode
+    {
+        None,
+        Total,
+        Split,
+    }
+    private readonly record struct MaterialEntry(
+        uint ItemId,
+        int Have,
+        int RetNQ,
+        int RetHQ,
+        int Needed,
+        int EffectiveAvailable,
+        string Name,
+        ushort IconId,
+        bool IsPrecraft);
 
     public CraftingMaterialsWindow() : base("Materials###CraftingMaterials")
     {
@@ -78,6 +94,7 @@ public class CraftingMaterialsWindow : Window
 
         var showRetainer = AllaganTools.Enabled;
         var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
+        var hideSatisfiedRows = _editor.SkipIfEnoughEnabled;
         var precrafts = _matsShowPrecrafts
             ? _editor.GetCachedPrecraftMaterials()
             : null;
@@ -86,7 +103,7 @@ public class CraftingMaterialsWindow : Window
             ? _editor.GetRetainerSnapshot(snapshotItemIds)
             : RetainerItemSnapshot.Empty;
 
-        var allEntries = new List<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)>();
+        var allEntries = new List<MaterialEntry>();
 
         foreach (var (itemId, needed) in materials)
         {
@@ -94,7 +111,8 @@ public class CraftingMaterialsWindow : Window
             var have  = _editor.GetInventoryCount(itemId);
             var retNQ = retainerSnapshot.GetCountNQ(itemId);
             var retHQ = retainerSnapshot.GetCountHQ(itemId);
-            allEntries.Add((itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon, false));
+            var effectiveAvailable = _editor.GetQualityAwareAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
+            allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, false));
         }
         if (precrafts != null)
         {
@@ -104,13 +122,16 @@ public class CraftingMaterialsWindow : Window
                 var have  = _editor.GetInventoryCount(itemId);
                 var retNQ = retainerSnapshot.GetCountNQ(itemId);
                 var retHQ = retainerSnapshot.GetCountHQ(itemId);
-                allEntries.Add((itemId, have, retNQ, retHQ, needed, item.Name.ExtractText(), item.Icon, true));
+                var effectiveAvailable = _editor.GetQualityAwareAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
+                allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, true));
             }
         }
 
-        var totalMissing = allEntries.Count(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) < e.needed);
+        var totalMissing = allEntries.Count(e => e.EffectiveAvailable < e.Needed);
         var totalReady   = allEntries.Count - totalMissing;
-        var visibleEntries = allEntries.Where(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) < e.needed).ToList();
+        var visibleEntries = hideSatisfiedRows
+            ? allEntries.Where(e => e.EffectiveAvailable < e.Needed).ToList()
+            : allEntries;
 
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"{totalMissing} missing  \u00b7  {totalReady} ready");
         ImGui.SameLine();
@@ -152,18 +173,20 @@ public class CraftingMaterialsWindow : Window
         var preferVendors = _matsPreferVendors;
         MaterialSource Cls(uint id) => MaterialSourceClassifier.Classify(id, preferVendors);
 
-        var gatherList = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
-        var dropList   = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Drop).ToList();
-        var shopList   = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
-        var vendorList = visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
-        var craftList  = _matsShowPrecrafts ? visibleEntries.Where(e => Cls(e.itemId) is MaterialSource.Craftable).ToList() : null;
+        var gatherList = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
+        var dropList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Drop).ToList();
+        var shopList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
+        var vendorList = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
+        var craftList  = _matsShowPrecrafts ? visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Craftable).ToList() : null;
 
-        var panels = new List<(string Id, string Label, Vector4 Accent, IEnumerable<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)> Entries)>();
-        if (gatherList.Count > 0)         panels.Add(("##gather", "Gather",          AccentGather, gatherList));
-        if (dropList.Count > 0)           panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList));
-        if (shopList.Count > 0)           panels.Add(("##shop",   "Scrip / Tomes",   AccentShop,   shopList));
-        if (vendorList.Count > 0)         panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList));
-        if (craftList is { Count: > 0 })  panels.Add(("##craft",  "Craft",           AccentCraft,  craftList));
+        var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
+        var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
+        var panels = new List<(string Id, string Label, Vector4 Accent, IEnumerable<MaterialEntry> Entries, RetainerColumnMode RetainerColumns)>();
+        if (gatherList.Count > 0)         panels.Add(("##gather", "Gather",          AccentGather, gatherList, nonCraftRetainerMode));
+        if (dropList.Count > 0)           panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList,   nonCraftRetainerMode));
+        if (shopList.Count > 0)           panels.Add(("##shop",   "Scrip / Tomes",   AccentShop,   shopList,   nonCraftRetainerMode));
+        if (vendorList.Count > 0)         panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList, nonCraftRetainerMode));
+        if (craftList is { Count: > 0 })  panels.Add(("##craft",  "Craft",           AccentCraft,  craftList,  craftRetainerMode));
 
         if (panels.Count == 0) return;
 
@@ -172,10 +195,10 @@ public class CraftingMaterialsWindow : Window
 
         for (var i = 0; i < panels.Count; i++)
         {
-            var (id, label, accent, entries) = panels[i];
+            var (id, label, accent, entries, retainerColumns) = panels[i];
             var isLast   = i == panels.Count - 1;
             var spanFull = isLast && panels.Count % 2 == 1;
-            DrawMaterialPanel(id, label, accent, entries, showRetainer, countRetainersTowardNeed, spanFull ? avail.X : panelW, panelH);
+            DrawMaterialPanel(id, label, accent, entries, retainerColumns, spanFull ? avail.X : panelW, panelH);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
@@ -183,19 +206,36 @@ public class CraftingMaterialsWindow : Window
 
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
-        IEnumerable<(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId, bool isPrecraft)> source,
-        bool showRetainer, bool countRetainersTowardNeed, float width, float height)
+        IEnumerable<MaterialEntry> source,
+        RetainerColumnMode retainerColumnMode, float width, float height)
     {
+        static void DrawCenteredHeader(string text, string? tooltip = null)
+        {
+            var textWidth = ImGui.CalcTextSize(text).X;
+            var availableWidth = ImGui.GetContentRegionAvail().X;
+            var offset = (availableWidth - textWidth) * 0.5f;
+            if (offset > 0f)
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+
+            ImGui.TextUnformatted(text);
+            if (tooltip != null && ImGui.IsItemHovered())
+                ImGui.SetTooltip(tooltip);
+        }
         var entries = source
-            .OrderBy(e => e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) >= e.needed)
-            .ThenBy(e => e.name)
+            .OrderBy(e => e.EffectiveAvailable >= e.Needed)
+            .ThenBy(e => e.Name)
             .ToList();
 
         using (ImRaii.PushColor(ImGuiCol.ChildBg, PanelBg))
         {
             ImGui.BeginChild(id, new Vector2(width, height), true);
-
-            var colCount   = showRetainer ? 6 : 4;
+            var colCount = retainerColumnMode switch
+            {
+                RetainerColumnMode.None  => 4,
+                RetainerColumnMode.Total => 5,
+                RetainerColumnMode.Split => 6,
+                _                        => 4,
+            };
             const float numW = 36f;
             const float barW = 46f;
             var tableFlags = ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
@@ -206,35 +246,49 @@ public class CraftingMaterialsWindow : Window
                 ImGui.TableSetupScrollFreeze(0, 1);
                 ImGui.TableSetupColumn("",     ImGuiTableColumnFlags.WidthStretch);
                 ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, numW);
-                if (showRetainer)
+                switch (retainerColumnMode)
                 {
-                    ImGui.TableSetupColumn("RNQ", ImGuiTableColumnFlags.WidthFixed, numW);
-                    ImGui.TableSetupColumn("RHQ", ImGuiTableColumnFlags.WidthFixed, numW);
+                    case RetainerColumnMode.Total:
+                        ImGui.TableSetupColumn("Ret", ImGuiTableColumnFlags.WidthFixed, numW);
+                        break;
+                    case RetainerColumnMode.Split:
+                        ImGui.TableSetupColumn("RNQ", ImGuiTableColumnFlags.WidthFixed, numW);
+                        ImGui.TableSetupColumn("RHQ", ImGuiTableColumnFlags.WidthFixed, numW);
+                        break;
                 }
                 ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, numW);
                 ImGui.TableSetupColumn("%",    ImGuiTableColumnFlags.WidthFixed, barW);
-
-                var needIdx = showRetainer ? 4 : 2;
+                var needIdx = retainerColumnMode switch
+                {
+                    RetainerColumnMode.None  => 2,
+                    RetainerColumnMode.Total => 3,
+                    RetainerColumnMode.Split => 4,
+                    _                        => 2,
+                };
 
                 ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
                 ImGui.TableSetColumnIndex(0);
                 using (ImRaii.PushColor(ImGuiCol.Text, accent))
                     ImGui.TableHeader(label);
                 ImGui.TableSetColumnIndex(1);
-                ImGui.TableHeader("Have");
-                if (showRetainer)
+                DrawCenteredHeader("Have");
+                switch (retainerColumnMode)
                 {
-                    ImGui.TableSetColumnIndex(2);
-                    ImGui.TableHeader("RNQ");
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Retainer NQ (via Allagan Tools)");
-                    ImGui.TableSetColumnIndex(3);
-                    ImGui.TableHeader("RHQ");
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Retainer HQ (via Allagan Tools)");
+                    case RetainerColumnMode.Total:
+                        ImGui.TableSetColumnIndex(2);
+                        DrawCenteredHeader("Ret", "Retainer total (via Allagan Tools)");
+                        break;
+                    case RetainerColumnMode.Split:
+                        ImGui.TableSetColumnIndex(2);
+                        DrawCenteredHeader("RNQ", "Retainer NQ (via Allagan Tools)");
+                        ImGui.TableSetColumnIndex(3);
+                        DrawCenteredHeader("RHQ", "Retainer HQ (via Allagan Tools)");
+                        break;
                 }
                 ImGui.TableSetColumnIndex(needIdx);
-                ImGui.TableHeader("Need");
+                DrawCenteredHeader("Need");
                 ImGui.TableSetColumnIndex(needIdx + 1);
-                ImGui.TableHeader("%");
+                DrawCenteredHeader("%");
 
                 if (entries.Count == 0)
                 {
@@ -246,9 +300,8 @@ public class CraftingMaterialsWindow : Window
                 {
                     foreach (var e in entries)
                     {
-                        var satisfied = e.have + (countRetainersTowardNeed ? e.retNQ + e.retHQ : 0) >= e.needed;
-                        DrawPanelRow(e.itemId, e.have, e.retNQ, e.retHQ, e.needed, e.name, e.iconId,
-                            satisfied, showRetainer, e.isPrecraft);
+                        DrawPanelRow(e.ItemId, e.Have, e.RetNQ, e.RetHQ, e.Needed, e.Name, e.IconId,
+                            e.EffectiveAvailable >= e.Needed, retainerColumnMode, e.IsPrecraft, e.EffectiveAvailable);
                     }
                 }
 
@@ -260,7 +313,7 @@ public class CraftingMaterialsWindow : Window
     }
 
     private void DrawPanelRow(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
-        bool satisfied, bool showRetainer, bool isPrecraft)
+        bool satisfied, RetainerColumnMode retainerColumnMode, bool isPrecraft, int effectiveAvailable)
     {
         ImGui.TableNextRow();
         Vector4 rowColor = (satisfied, isPrecraft) switch
@@ -309,25 +362,46 @@ public class CraftingMaterialsWindow : Window
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
         CenterNum(have, haveColor);
-
-        if (showRetainer)
+        switch (retainerColumnMode)
         {
-            ImGui.TableNextColumn();
-            var nqColor = retNQ > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-            if (retNQ > 0) CenterNum(retNQ, nqColor);
-            else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(nqColor, "-"); }
+            case RetainerColumnMode.Total:
+            {
+                ImGui.TableNextColumn();
+                var totalRetainer = retNQ + retHQ;
+                var retainerColor = totalRetainer > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
+                if (totalRetainer > 0)
+                    CenterNum(totalRetainer, retainerColor);
+                else
+                {
+                    var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f;
+                    if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off);
+                    ImGui.TextColored(retainerColor, "-");
+                }
+                break;
+            }
+            case RetainerColumnMode.Split:
+            {
+                ImGui.TableNextColumn();
+                var nqColor = retNQ > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
+                if (retNQ > 0) CenterNum(retNQ, nqColor);
+                else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(nqColor, "-"); }
 
-            ImGui.TableNextColumn();
-            var hqColor = retHQ > 0 ? new Vector4(0.5f, 0.85f, 1.0f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-            if (retHQ > 0) CenterNum(retHQ, hqColor);
-            else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(hqColor, "-"); }
+                ImGui.TableNextColumn();
+                var hqColor = retHQ > 0 ? new Vector4(0.5f, 0.85f, 1.0f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
+                if (retHQ > 0) CenterNum(retHQ, hqColor);
+                else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(hqColor, "-"); }
+                break;
+            }
+            case RetainerColumnMode.None:
+            default:
+                break;
         }
 
         ImGui.TableNextColumn();
         CenterNum(needed, new Vector4(1f, 1f, 1f, 1f));
 
         ImGui.TableNextColumn();
-        var ratio    = needed > 0 ? (float)have / needed : 1f;
+        var ratio    = needed > 0 ? (float)effectiveAvailable / needed : 1f;
         var progress = Math.Clamp(ratio, 0f, 1f);
         ImGui.PushStyleColor(ImGuiCol.PlotHistogram,
             satisfied ? new Vector4(0.2f, 0.65f, 0.2f, 0.9f) : new Vector4(0.65f, 0.2f, 0.2f, 0.9f));
@@ -345,4 +419,5 @@ public class CraftingMaterialsWindow : Window
             ImGui.GetColorU32(ImGuiCol.Text),
             pctText);
     }
+
 }

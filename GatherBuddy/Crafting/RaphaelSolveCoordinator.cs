@@ -178,7 +178,7 @@ public class RaphaelSolveCoordinator
                 CP: stats.CP,
                 Manipulation: stats.Manipulation,
                 Specialist: stats.Specialist,
-                InitialQuality: 0
+                InitialQuality: CalculateInitialQuality(item, recipe)
             );
 
             var key = request.GetKey();
@@ -231,9 +231,7 @@ public class RaphaelSolveCoordinator
             if (recipe == null)
                 continue;
             
-            int initialQuality = item.IngredientPreferences != null && item.IngredientPreferences.Count > 0
-                ? QualityCalculator.CalculateInitialQuality(recipe.Value, item.IngredientPreferences)
-                : 0;
+            var initialQuality = CalculateInitialQuality(item, recipe.Value);
 
             var request = new RaphaelSolveRequest(
                 RecipeId: stats.RecipeId,
@@ -420,7 +418,7 @@ public class RaphaelSolveCoordinator
                 CP: playerCP,
                 Manipulation: manipulationUnlocked,
                 Specialist: isSpecialist,
-                InitialQuality: 0
+                InitialQuality: CalculateInitialQuality(item, recipe.Value)
             );
 
             var key = request.GetKey();
@@ -428,6 +426,14 @@ public class RaphaelSolveCoordinator
         }
 
         return uniqueCrafts.Values.ToList();
+    }
+
+    private static int CalculateInitialQuality(CraftingListItem item, Recipe recipe)
+    {
+        item.QualityPolicy ??= CraftingQualityPolicyResolver.Resolve(recipe, item.CraftSettings);
+        if (item.IngredientPreferences.Count == 0)
+            item.IngredientPreferences = item.QualityPolicy.BuildGuaranteedHQPreferences();
+        return item.QualityPolicy.CalculateGuaranteedInitialQuality(recipe);
     }
 
     private void ProcessPendingQueue()

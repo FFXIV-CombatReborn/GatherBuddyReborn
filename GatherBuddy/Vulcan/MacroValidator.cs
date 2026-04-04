@@ -44,8 +44,8 @@ public static class MacroValidator
         var medicineId = ResolveId(settings?.MedicineMode, settings?.MedicineItemId, listConsumables?.MedicineItemId);
         var medicineHQ = ResolveHQ(settings?.MedicineMode, settings?.MedicineHQ ?? false, listConsumables?.MedicineHQ ?? false);
 
-        var ingredientPrefs = settings?.UseAllNQ == true ? new Dictionary<uint, int>() : (settings?.IngredientPreferences ?? new());
-        var startingQuality = QualityCalculator.CalculateInitialQuality(recipe.Value, ingredientPrefs);
+        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe.Value, settings);
+        var startingQuality = qualityPolicy.CalculateGuaranteedInitialQuality(recipe.Value);
 
         var key = (recipeId, macroId, foodId ?? 0, foodHQ, medicineId ?? 0, medicineHQ, startingQuality);
         if (_cache.TryGetValue(key, out var cached))
