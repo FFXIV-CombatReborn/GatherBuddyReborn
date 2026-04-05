@@ -17,7 +17,8 @@ using GatherBuddy.GatherHelper;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Structs;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ElliLib.Table;
+using ImRaii  = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -228,6 +229,48 @@ public partial class Interface
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(
                 $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new gather window preset." : CheckUnnamed(current.Name))}");
+    }
+
+    private void DrawAddAllFilteredToAutoGather<T>(Table<T> table, Func<T, IGatherable> selector, string label)
+    {
+        var lists = _plugin.AutoGatherListsManager.Lists.ToList();
+        if (lists.Count == 0)
+            return;
+
+        var popupId = $"##AddAllFiltered{label}Popup";
+        if (ImGui.Button($"Add All Filtered {label} to Auto-Gather List..."))
+            ImGui.OpenPopup(popupId);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Add all currently visible {label.ToLowerInvariant()} to a selected auto-gather list.\n"
+              + "Items already present in the list are skipped.");
+
+        using var popup = ImRaii.Popup(popupId);
+        if (!popup)
+            return;
+
+        foreach (var list in lists)
+        {
+            if (!ImGui.Selectable(CheckUnnamed(list.Name)))
+                continue;
+
+            var added = 0;
+            foreach (var (row, _) in table.GetFilteredItems())
+            {
+                var item = selector(row);
+                if (!item.Locations.Any())
+                    continue;
+
+                if (list.Add(item))
+                    added++;
+            }
+
+            _plugin.AutoGatherListsManager.Save();
+            if (list.Enabled)
+                _plugin.AutoGatherListsManager.SetActiveItems();
+
+            GatherBuddy.Log.Information($"[GatherUI] Added {added} {label.ToLowerInvariant()} to auto-gather list '{list.Name}'.");
+        }
     }
 
     private static AutoGatherList CreateAndAddPreset(IGatherable item)
