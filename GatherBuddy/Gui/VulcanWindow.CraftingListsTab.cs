@@ -24,7 +24,7 @@ public partial class VulcanWindow
 
         if (GatherBuddy.ControllerSupport != null && !_craftingListsRequestFocus)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 8);
+            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 9);
             tabItem = handle;
             tabOpen = handle;
         }

@@ -192,7 +192,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public override void Draw()
     {
-        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 8);
+        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 9);
         
         // Track window focus for controller input blocking
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
@@ -217,6 +217,7 @@ public partial class VulcanWindow : Window, IDisposable
                 {
                     DrawCraftingListsTab();
                     DrawRecipesTab();
+                    DrawWorkshopsTab();
                     DrawMacrosTab();
                     DrawStandardSolverConfigTab();
                     DrawSolutionsTab();

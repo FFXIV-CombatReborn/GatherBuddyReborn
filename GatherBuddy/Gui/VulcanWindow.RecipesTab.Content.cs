@@ -710,21 +710,21 @@ public partial class VulcanWindow
     private static void DrawIngredientSectionHeader(string title, bool showRetainer)
     {
         const float colWidth = 40f;
+        var currentX    = ImGui.GetCursorPosX();
         var headerY     = ImGui.GetCursorPosY();
         var contentMaxX = ImGui.GetContentRegionMax().X;
-        var nqColStart  = showRetainer ? contentMaxX - colWidth * 3 : contentMaxX - colWidth * 2;
-        var hqColStart  = showRetainer ? contentMaxX - colWidth * 2 : contentMaxX - colWidth;
+        var valueAreaStart = GetIngredientValueAreaStart(currentX, contentMaxX, showRetainer);
+        var nqColStart  = valueAreaStart;
+        var hqColStart  = valueAreaStart + colWidth;
 
-        var titleStartX   = ImGui.GetCursorPosX() + 12;
-        var titleMaxWidth = nqColStart - titleStartX - 8f;
-        if (titleMaxWidth > 0 && ImGui.CalcTextSize(title).X > titleMaxWidth)
-        {
-            while (title.Length > 0 && ImGui.CalcTextSize(title + "...").X > titleMaxWidth)
-                title = title[..^1];
-            title += "...";
-        }
+        var titleStartX   = currentX + 12f;
+        var titleMaxWidth = valueAreaStart - titleStartX - 8f;
+        title = TruncateTextToWidth(title, titleMaxWidth);
         ImGui.SetCursorPosX(titleStartX);
-        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1.0f), title);
+        if (title.Length > 0)
+            DrawClippedText(title, titleMaxWidth, new Vector4(0.7f, 0.9f, 1.0f, 1.0f));
+        else
+            ImGui.Dummy(new Vector2(0f, ImGui.GetTextLineHeight()));
 
         var colHeaderColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
 
@@ -740,7 +740,7 @@ public partial class VulcanWindow
 
         if (showRetainer)
         {
-            var retColStart = contentMaxX - colWidth;
+            var retColStart = valueAreaStart + colWidth * 2;
             var retW = ImGui.CalcTextSize("Ret").X;
             ImGui.SetCursorPosX(retColStart + (colWidth - retW) / 2);
             ImGui.SetCursorPosY(headerY);
@@ -757,13 +757,14 @@ public partial class VulcanWindow
         const float iconSize    = 24f;
         const float xnIconGap   = 4f;
         const float iconNameGap = 6f;
-
-        var rowStartX   = ImGui.GetCursorPosX() + 12;
+        var currentX    = ImGui.GetCursorPosX();
+        var rowStartX   = currentX + 12;
         var rowY        = ImGui.GetCursorPosY();
         var textY       = rowY + (iconSize - ImGui.GetTextLineHeight()) / 2;
         var contentMaxX = ImGui.GetContentRegionMax().X;
-        var nqColStart  = showRetainer ? contentMaxX - colWidth * 3 : contentMaxX - colWidth * 2;
-        var hqColStart  = showRetainer ? contentMaxX - colWidth * 2 : contentMaxX - colWidth;
+        var valueAreaStart = GetIngredientValueAreaStart(currentX, contentMaxX, showRetainer);
+        var nqColStart  = valueAreaStart;
+        var hqColStart  = valueAreaStart + colWidth;
 
         var xnText  = $"\u00d7{needed}";
         var xnTextW = ImGui.CalcTextSize(xnText).X;
@@ -781,17 +782,12 @@ public partial class VulcanWindow
             ImGui.Dummy(new Vector2(iconSize, iconSize));
 
         var nameStartX   = iconX + iconSize + iconNameGap;
-        var nameMaxWidth = nqColStart - nameStartX - 6f;
+        var nameMaxWidth = valueAreaStart - nameStartX - 6f;
         ImGui.SetCursorPosX(nameStartX);
         ImGui.SetCursorPosY(textY);
-        var name = item.Name.ExtractText();
-        if (nameMaxWidth > 0 && ImGui.CalcTextSize(name).X > nameMaxWidth)
-        {
-            while (name.Length > 0 && ImGui.CalcTextSize(name + "...").X > nameMaxWidth)
-                name = name[..^1];
-            name += "...";
-        }
-        ImGui.Text(name);
+        var name = TruncateTextToWidth(item.Name.ExtractText(), nameMaxWidth);
+        if (name.Length > 0)
+            DrawClippedText(name, nameMaxWidth, new Vector4(0.85f, 0.85f, 0.85f, 1.0f));
 
         var (nq, hq) = GetInventoryCountSplit(itemId);
         var total     = nq + hq;
@@ -809,7 +805,7 @@ public partial class VulcanWindow
 
         if (showRetainer)
         {
-            var retColStart = contentMaxX - colWidth;
+            var retColStart = valueAreaStart + colWidth * 2;
             var retCount    = GetRetainerItemCount(itemId);
             var retStr      = retCount > 9999 ? "9999+" : $"{retCount}";
             ImGui.SetCursorPosX(retColStart + (colWidth - ImGui.CalcTextSize(retStr).X) / 2);
@@ -818,6 +814,54 @@ public partial class VulcanWindow
         }
 
         ImGui.SetCursorPosY(rowY + iconSize + ImGui.GetStyle().ItemSpacing.Y);
+    }
+
+    private static string TruncateTextToWidth(string text, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0f)
+            return string.Empty;
+
+        var ellipsis = "...";
+        var ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
+        if (maxWidth <= ellipsisWidth)
+            return string.Empty;
+
+        if (ImGui.CalcTextSize(text).X <= maxWidth)
+            return text;
+
+        while (text.Length > 0 && ImGui.CalcTextSize(text + ellipsis).X > maxWidth)
+            text = text[..^1];
+
+        return text.Length == 0 ? string.Empty : text + ellipsis;
+    }
+
+    private static void DrawClippedText(string text, float maxWidth, Vector4 color)
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0f)
+            return;
+
+        var clipMin = ImGui.GetCursorScreenPos();
+        var clipMax = new Vector2(clipMin.X + maxWidth, clipMin.Y + ImGui.GetTextLineHeight());
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.PushClipRect(clipMin, clipMax, true);
+        ImGui.TextColored(color, text);
+        drawList.PopClipRect();
+    }
+
+    private static float GetIngredientValueAreaStart(float currentX, float contentMaxX, bool showRetainer)
+    {
+        const float leftIndent = 12f;
+        const float colWidth = 40f;
+        const float xnWidth = 32f;
+        const float xnIconGap = 4f;
+        const float iconSize = 24f;
+        const float iconNameGap = 6f;
+        const float minGapBeforeValues = 6f;
+
+        var valueColumnCount = showRetainer ? 3 : 2;
+        var desiredStart = contentMaxX - colWidth * valueColumnCount;
+        var minimumStart = currentX + leftIndent + xnWidth + xnIconGap + iconSize + iconNameGap + minGapBeforeValues;
+        return Math.Max(desiredStart, minimumStart);
     }
 
     private static unsafe (int nq, int hq) GetInventoryCountSplit(uint itemId)
