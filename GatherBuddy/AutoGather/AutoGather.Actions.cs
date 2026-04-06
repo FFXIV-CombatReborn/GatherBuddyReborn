@@ -248,9 +248,29 @@ namespace GatherBuddy.AutoGather
             }
         }
 
+        private bool _isSitting = false;
+        private bool _isUsingLight = false;
+
+        private void ResetFishingPreCastState()
+        {
+            _isSitting = false;
+            _isUsingLight = false;
+        }
+
         private void HandleReady(GatherTarget target, ConfigPreset config)
         {
             LureSuccess = false;
+
+            if (GatherBuddy.Config.AutoGatherConfig.SitWhenFishing && !_isSitting)
+            {
+                EnqueueActionWithDelay(() => Chat.ExecuteCommand("/sit"));
+                _isSitting = true;
+            }
+            if (GatherBuddy.Config.AutoGatherConfig.UseLightWhenFishing && !_isUsingLight)
+            {
+                EnqueueActionWithDelay(() => UseAction(Actions.CastLight));
+                _isUsingLight = true;
+            }
 
             SetupAutoHookForFishing(target);
 
@@ -660,6 +680,8 @@ namespace GatherBuddy.AutoGather
                 AutoHook.SetPluginState?.Invoke(false);
                 EnqueueEnsureAutoHookDisabled();
             }
+
+            ResetFishingPreCastState();
 
             EnqueueActionWithDelay(() => UseAction(Actions.Quit));
 
