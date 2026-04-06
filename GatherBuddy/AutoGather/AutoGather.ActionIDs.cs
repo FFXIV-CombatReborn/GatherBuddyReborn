@@ -124,6 +124,7 @@ public partial class AutoGather
         public static readonly BaseAction Tidings       = new(21204, 21203, 2667, type: EffectType.BoonYield);
 
         public static readonly FishingAction Cast             = new FishingAction(289);
+        public static readonly FishingAction CastLight        = new FishingAction(2135);
         public static readonly FishingAction Quit             = new FishingAction(299);
         public static readonly FishingAction Hook             = new FishingAction(296);
         public static readonly FishingAction Chum             = new FishingAction(4104,  5,  100, [763]);
