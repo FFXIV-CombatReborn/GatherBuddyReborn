@@ -205,22 +205,9 @@ public partial class VulcanWindow
     private static void StartBrowserQuickSynth(Recipe recipe, int quantity)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
-        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, settings);
-        var expandedQueue = new List<CraftingListItem>(quantity);
-        for (int i = 0; i < quantity; i++)
-        {
-            var item = new CraftingListItem(recipe.RowId, 1)
-            {
-                IsOriginalRecipe = true,
-                CraftSettings = settings?.Clone(),
-                QualityPolicy = qualityPolicy,
-                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
-            };
-            item.Options.NQOnly = true;
-            expandedQueue.Add(item);
-        }
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, settings, true);
         GatherBuddy.Log.Information($"[VulcanWindow] Browser quick synth: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, new Dictionary<uint, int>());
+        CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
     }
 
     private static void StartBrowserCraft(Recipe recipe, int quantity)
@@ -249,22 +236,31 @@ public partial class VulcanWindow
             };
         }
 
-        var expandedQueue = new List<CraftingListItem>(quantity);
-        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, craftSettings);
-        for (int i = 0; i < quantity; i++)
-        {
-            var item = new CraftingListItem(recipe.RowId, 1)
-            {
-                IsOriginalRecipe = true,
-                CraftSettings = craftSettings?.Clone(),
-                QualityPolicy = qualityPolicy,
-                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
-            };
-            expandedQueue.Add(item);
-        }
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, craftSettings, false);
 
         GatherBuddy.Log.Information($"[VulcanWindow] Browser craft: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, new Dictionary<uint, int>());
+        CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
+    }
+
+    private static CraftingExecutionPlan CreateBrowserExecutionPlan(Recipe recipe, int quantity, RecipeCraftSettings? craftSettings, bool nqOnly)
+    {
+        var list = new CraftingListDefinition
+        {
+            ID = -1,
+            Name = recipe.ItemResult.Value.Name.ExtractText(),
+        };
+
+        list.Recipes.Add(new CraftingListItem(recipe.RowId, quantity)
+        {
+            IsOriginalRecipe = true,
+            CraftSettings = craftSettings?.Clone(),
+            Options = new ListItemOptions
+            {
+                NQOnly = nqOnly,
+            },
+        });
+
+        return CraftingExecutionPlan.Create(list);
     }
 
 }

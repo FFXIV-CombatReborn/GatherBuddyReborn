@@ -20,7 +20,7 @@ public partial class VulcanWindow
 
         if (GatherBuddy.ControllerSupport != null)
         {
-        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 5, 8);
+        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 6, 9);
             tabItem = handle;
             tabOpen = handle;
         }

@@ -36,10 +36,13 @@ public partial class VulcanWindow : Window, IDisposable
     private bool _wasFocusedLastFrame = false;
     
     // TeamCraft import state
+    private static readonly Vector2 DefaultTeamCraftImportWindowSize = new(520, 310);
     private bool _showTeamCraftImport    = false;
     private string _teamCraftListName    = string.Empty;
     private string _teamCraftFinalItems  = string.Empty;
     private bool _teamCraftEphemeral     = false;
+    private Vector2 _teamCraftImportWindowSize;
+    private bool _teamCraftImportWindowSizeDirty;
     
     // Debug tab state
     private uint _debugSelectedJobId = 8;
@@ -57,6 +60,7 @@ public partial class VulcanWindow : Window, IDisposable
             MinimumSize = new Vector2(500, 300),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
+        _teamCraftImportWindowSize = NormalizeTeamCraftImportWindowSize(GatherBuddy.Config.TeamCraftImportWindowSize);
         
         CraftingGameInterop.CraftFinished += OnCraftFinished;
     }
@@ -188,7 +192,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public override void Draw()
     {
-        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 8);
+        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 9);
         
         // Track window focus for controller input blocking
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
@@ -213,6 +217,7 @@ public partial class VulcanWindow : Window, IDisposable
                 {
                     DrawCraftingListsTab();
                     DrawRecipesTab();
+                    DrawWorkshopsTab();
                     DrawMacrosTab();
                     DrawStandardSolverConfigTab();
                     DrawSolutionsTab();

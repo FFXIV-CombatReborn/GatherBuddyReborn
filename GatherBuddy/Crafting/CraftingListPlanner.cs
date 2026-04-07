@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
@@ -16,7 +17,10 @@ public sealed class CraftingListPlan
     public Dictionary<uint, int> RetainerConsumedCraftables { get; } = new();
 }
 
-public readonly record struct CraftingListPlannerOptions(bool UseRetainerCraftableAvailability = false);
+public readonly record struct CraftingListPlannerOptions(
+    bool UseRetainerCraftableAvailability = false,
+    bool ConsumeIntermediateAvailability = true,
+    bool ConsumeFinalAvailability = true);
 
 public static class CraftingListPlanner
 {
@@ -29,12 +33,16 @@ public static class CraftingListPlanner
         private readonly CraftingListPlan _plan = new();
         private readonly AvailabilityLedger _availability;
         private readonly bool _useRetainers;
+        private readonly bool _consumeIntermediateAvailability;
+        private readonly bool _consumeFinalAvailability;
         private readonly Dictionary<uint, CraftingListItem> _originalRecipeLookup;
 
         public Planner(CraftingListDefinition list, CraftingListPlannerOptions options)
         {
             _list = list;
             _useRetainers = options.UseRetainerCraftableAvailability;
+            _consumeIntermediateAvailability = options.ConsumeIntermediateAvailability;
+            _consumeFinalAvailability = options.ConsumeFinalAvailability;
             _availability = new AvailabilityLedger(_useRetainers);
             _originalRecipeLookup = list.Recipes
                 .GroupBy(item => item.RecipeId)
@@ -43,7 +51,7 @@ public static class CraftingListPlanner
 
         public CraftingListPlan Build()
         {
-            foreach (var item in _list.Recipes)
+            foreach (var item in GetOriginalRecipesInDependencyOrder())
             {
                 if (item.Options.Skipping || item.Quantity <= 0)
                     continue;
@@ -58,6 +66,50 @@ public static class CraftingListPlanner
             return _plan;
         }
 
+        private List<CraftingListItem> GetOriginalRecipesInDependencyOrder()
+        {
+            var orderedRecipes = new List<CraftingListItem>();
+            var processedRecipeIds = new HashSet<uint>();
+            var visitingRecipeIds = new HashSet<uint>();
+
+            foreach (var item in _list.Recipes)
+                VisitOriginalRecipe(item, processedRecipeIds, visitingRecipeIds, orderedRecipes);
+
+            return orderedRecipes;
+        }
+
+        private void VisitOriginalRecipe(
+            CraftingListItem item,
+            HashSet<uint> processedRecipeIds,
+            HashSet<uint> visitingRecipeIds,
+            List<CraftingListItem> orderedRecipes)
+        {
+            if (processedRecipeIds.Contains(item.RecipeId))
+                return;
+
+            if (!visitingRecipeIds.Add(item.RecipeId))
+                return;
+
+            var recipe = RecipeManager.GetRecipe(item.RecipeId);
+            if (recipe.HasValue)
+            {
+                foreach (var (itemId, _) in RecipeManager.GetIngredients(recipe.Value))
+                {
+                    var dependencyRecipe = RecipeManager.GetRecipeForItem(itemId);
+                    if (!dependencyRecipe.HasValue)
+                        continue;
+
+                    var dependencyItem = _list.Recipes.FirstOrDefault(candidate => candidate.RecipeId == dependencyRecipe.Value.RowId);
+                    if (dependencyItem != null)
+                        VisitOriginalRecipe(dependencyItem, processedRecipeIds, visitingRecipeIds, orderedRecipes);
+                }
+            }
+
+            visitingRecipeIds.Remove(item.RecipeId);
+            processedRecipeIds.Add(item.RecipeId);
+            orderedRecipes.Add(item);
+        }
+
         private void PlanOriginalRecipe(CraftingListItem item, Recipe recipe)
         {
             var resultItemId = recipe.ItemResult.RowId;
@@ -66,8 +118,21 @@ public static class CraftingListPlanner
 
             remainingItemCount -= _availability.ConsumePlanned(resultItemId, remainingItemCount);
 
-            if (_list.SkipIfEnough && _list.SkipFinalIfEnough)
-                remainingItemCount -= _availability.ConsumeInventory(resultItemId, remainingItemCount);
+            if (_list.SkipIfEnough && _list.SkipFinalIfEnough && _consumeFinalAvailability)
+            {
+                var consumedInventory = _availability.ConsumeInventory(resultItemId, remainingItemCount);
+                remainingItemCount -= consumedInventory;
+                var consumedRetainers = 0;
+                if (_useRetainers)
+                {
+                    consumedRetainers = _availability.ConsumeRetainers(resultItemId, remainingItemCount);
+                    remainingItemCount -= consumedRetainers;
+                }
+
+
+                if (consumedRetainers > 0)
+                    AddCount(_plan.RetainerConsumedCraftables, resultItemId, consumedRetainers);
+            }
 
             if (remainingItemCount <= 0)
                 return;
@@ -106,7 +171,7 @@ public static class CraftingListPlanner
             var resultItemId = recipe.ItemResult.RowId;
             var remainingDemand = _availability.ConsumePlanned(resultItemId, itemDemand);
 
-            if (_list.SkipIfEnough)
+            if (_list.SkipIfEnough && _consumeIntermediateAvailability)
             {
                 remainingDemand = _availability.ConsumeInventory(resultItemId, remainingDemand);
 
@@ -219,6 +284,11 @@ public static class CraftingListPlanner
             => _useRetainers
                 ? ConsumeSplit(_retainerAvailable, itemId, demand, GetRetainerSplitCounts)
                 : demand;
+
+        public int ConsumeRetainers(uint itemId, int requested)
+            => _useRetainers
+                ? ConsumeTotal(_retainerAvailable, itemId, requested, GetRetainerSplitCounts)
+                : 0;
 
         public void AddPlanned(uint itemId, int amount)
         {

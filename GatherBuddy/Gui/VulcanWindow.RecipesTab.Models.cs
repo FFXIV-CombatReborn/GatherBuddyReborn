@@ -338,6 +338,7 @@ public partial class VulcanWindow
                         GatherBuddy.Log.Information($"Recipe.DifficultyFactor: {item.Recipe.DifficultyFactor}");
                         GatherBuddy.Log.Information($"Recipe.QualityFactor: {item.Recipe.QualityFactor}");
                         GatherBuddy.Log.Information($"Recipe.RecipeLevelTable.RowId: {item.Recipe.RecipeLevelTable.RowId}");
+                        GatherBuddy.Log.Information($"Recipe.RecipeNotebookList.RowId: {item.Recipe.RecipeNotebookList.RowId}");
                         var resultItem = item.Recipe.ItemResult.Value;
                         GatherBuddy.Log.Information($"Item.RowId: {resultItem.RowId}");
                         GatherBuddy.Log.Information($"Item.AlwaysCollectable: {resultItem.AlwaysCollectable}");
@@ -346,6 +347,7 @@ public partial class VulcanWindow
                         GatherBuddy.Log.Information($"Item.ItemSearchCategory.RowId: {resultItem.ItemSearchCategory.RowId}");
                         GatherBuddy.Log.Information($"Item.ItemUICategory.RowId: {resultItem.ItemUICategory.RowId}");
                         GatherBuddy.Log.Information($"Item.Rarity: {resultItem.Rarity}");
+                        LogRecipeNotebookDivisionInfo(item.Recipe);
                     }
                     
                     ImGui.Separator();
@@ -434,29 +436,9 @@ public partial class VulcanWindow
 
                 if (item.Level < _minLevel || item.Level > _maxLevel)
                     return false;
-                
-                if (_filterBrowserRegularOnly)
-                {
-                    if (item.Recipe.SecretRecipeBook.RowId > 0 ||
-                        item.Recipe.ItemResult.Value.AlwaysCollectable ||
-                        item.Recipe.IsExpert ||
-                        item.Recipe.ItemResult.Value.ItemSearchCategory.RowId == 0)
-                        return false;
-                }
-                else
-                {
-                    if (_filterBrowserMasterRecipes && item.Recipe.SecretRecipeBook.RowId == 0)
-                        return false;
-                    
-                    if (_filterBrowserCollectables && !item.Recipe.ItemResult.Value.AlwaysCollectable)
-                        return false;
-                    
-                    if (_filterBrowserExpertRecipes && !item.Recipe.IsExpert)
-                        return false;
-                    
-                    if (_filterBrowserQuestRecipes && item.Recipe.ItemResult.Value.ItemSearchCategory.RowId != 0)
-                        return false;
-                }
+
+                if (!PassesRecipeTypeFilters(item.Recipe))
+                    return false;
 
                 return true;
             }

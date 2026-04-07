@@ -8,10 +8,17 @@ public static class CraftingListQueueBuilder
 {
     public static List<CraftingListItem> CreateExpandedQueue(CraftingListDefinition list, bool useRetainerCraftableAvailability = false)
         => CreateExpandedQueue(list, list.CreatePlan(useRetainerCraftableAvailability));
+    public static List<CraftingListItem> CreateGroupedQueue(CraftingListPlan plan)
+        => GetRecipesInDependencyOrder(plan.Recipes, plan.OriginalRecipes)
+            .Select(item => new CraftingListItem(item.RecipeId, item.Quantity)
+            {
+                IsOriginalRecipe = item.IsOriginalRecipe,
+            })
+            .ToList();
 
     public static List<CraftingListItem> CreateExpandedQueue(CraftingListDefinition list, CraftingListPlan plan)
     {
-        var sortedRecipes = GetRecipesInDependencyOrder(plan.Recipes, plan.OriginalRecipes);
+        var sortedRecipes = CreateGroupedQueue(plan);
         var expandedQueue = new List<CraftingListItem>();
 
         foreach (var recipeItem in sortedRecipes)
@@ -90,8 +97,7 @@ public static class CraftingListQueueBuilder
     {
         var precrafts = recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
         var finalProducts = new List<CraftingListItem>(originalRecipesList);
-
-        var result = new List<CraftingListItem>();
+        var sortedPrecrafts = new List<CraftingListItem>();
         var processed = new HashSet<uint>();
 
         var precraftsByJob = precrafts
@@ -101,10 +107,25 @@ public static class CraftingListQueueBuilder
         foreach (var jobGroup in precraftsByJob)
         {
             foreach (var recipeItem in jobGroup.ToList())
-                ProcessRecipeWithDependencies(recipeItem, precrafts, processed, result);
+                ProcessRecipeWithDependencies(recipeItem, precrafts, processed, sortedPrecrafts);
+        }
+
+        var result = new List<CraftingListItem>();
+        var attachedFinalRecipeIds = new HashSet<uint>();
+        var finalProductsByRecipeId = finalProducts.ToDictionary(recipe => recipe.RecipeId);
+
+        foreach (var precraft in sortedPrecrafts)
+        {
+            result.Add(precraft);
+            if (!finalProductsByRecipeId.TryGetValue(precraft.RecipeId, out var finalProduct))
+                continue;
+
+            result.Add(finalProduct);
+            attachedFinalRecipeIds.Add(precraft.RecipeId);
         }
 
         var sortedFinalProducts = finalProducts
+            .Where(recipe => !attachedFinalRecipeIds.Contains(recipe.RecipeId))
             .GroupBy(r => RecipeManager.GetRecipe(r.RecipeId)?.CraftType.RowId ?? uint.MaxValue)
             .OrderBy(g => g.Key)
             .SelectMany(g => g)
