@@ -246,7 +246,6 @@ public class ContextMenu : IDisposable
                 else if (itemId >= 500000u) itemId -= 500000u;
                 var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId);
                 _lastRecipeId = recipe?.RowId;
-                GatherBuddy.Log.Debug($"[ContextMenu] Inventory item {itemId} -> recipe {_lastRecipeId}");
             }
         }
         else

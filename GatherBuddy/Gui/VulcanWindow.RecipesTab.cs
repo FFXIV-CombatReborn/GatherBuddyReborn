@@ -49,6 +49,7 @@ public partial class VulcanWindow
     private static int _maxLevel = 100;
     private static bool _filterBrowserMasterRecipes = false;
     private static bool _filterBrowserHousingRecipes = false;
+    private static bool _filterBrowserDyeRecipes = false;
     private static bool _filterBrowserCollectables = false;
     private static bool _filterBrowserExpertRecipes = false;
     private static bool _filterBrowserQuestRecipes = false;
@@ -123,6 +124,9 @@ public partial class VulcanWindow
     private static bool IsHousingRecipe(Recipe recipe)
         => recipe.ItemResult.Value.ItemSearchCategory.RowId is 56 or >= 65 and <= 72;
 
+    private static bool IsDyeRecipe(Recipe recipe)
+        => recipe.ItemResult.Value.ItemSearchCategory.RowId == 54;
+
     private static void LogRecipeNotebookDivisionInfo(Recipe recipe)
     {
 
@@ -138,6 +142,9 @@ public partial class VulcanWindow
             return IsLevelingRecipe(recipe);
 
         if (_filterBrowserHousingRecipes && !IsHousingRecipe(recipe))
+            return false;
+
+        if (_filterBrowserDyeRecipes && !IsDyeRecipe(recipe))
             return false;
 
         if (_filterBrowserMasterRecipes && recipe.SecretRecipeBook.RowId == 0)

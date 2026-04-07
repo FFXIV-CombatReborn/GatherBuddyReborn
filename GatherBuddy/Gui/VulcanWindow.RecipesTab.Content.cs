@@ -158,6 +158,7 @@ public partial class VulcanWindow
             {
                 _filterBrowserMasterRecipes = false;
                 _filterBrowserHousingRecipes = false;
+                _filterBrowserDyeRecipes = false;
                 _filterBrowserCollectables = false;
                 _filterBrowserExpertRecipes = false;
                 _filterBrowserQuestRecipes = false;
@@ -179,6 +180,15 @@ public partial class VulcanWindow
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Only show recipes whose result item is in the housing item category range.");
+
+        if (ImGui.Checkbox("Dyes", ref _filterBrowserDyeRecipes))
+        {
+            if (_filterBrowserDyeRecipes)
+                _filterBrowserLevelingOnly = false;
+            _filtersDirty = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Only show recipes whose result item is a dye.");
 
         if (ImGui.Checkbox("Collectables", ref _filterBrowserCollectables))
         {

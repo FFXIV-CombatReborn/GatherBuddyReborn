@@ -365,6 +365,9 @@ internal static class WorkshopDataService
         return ($"Item {itemId}", 0);
     }
 
+    internal static string GetDefaultListName(WorkshopScopeNode scope, int loopCount)
+        => BuildListName(scope, Math.Max(1, loopCount));
+
     private static string BuildListName(WorkshopScopeNode scope, int loopCount)
         => scope switch
         {
@@ -375,16 +378,7 @@ internal static class WorkshopDataService
         };
 
     private static string BuildDescription(WorkshopScopeNode scope, int loopCount)
-        => $"Generated from FC Workshop {GetScopeLabel(scope)} '{scope.DisplayName}' x{loopCount}. Only workshop supplies with recipes were added; Vulcan will expand precrafts automatically.";
-
-    private static string GetScopeLabel(WorkshopScopeNode scope)
-        => scope.Kind switch
-        {
-            WorkshopScopeKind.Project => "project",
-            WorkshopScopeKind.Part => "part",
-            WorkshopScopeKind.Phase => "phase",
-            _ => "scope",
-        };
+        => $"{scope.DisplayName} x{loopCount}";
 
     private static int DivideRoundUp(int value, int divisor)
         => (int)Math.Ceiling((double)value / Math.Max(1, divisor));

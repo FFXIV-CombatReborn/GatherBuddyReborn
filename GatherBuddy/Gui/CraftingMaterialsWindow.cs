@@ -21,6 +21,7 @@ public class CraftingMaterialsWindow : Window
     private bool _matsOvercapPercent;
     private bool _matsShowPrecrafts;
     private bool _matsPreferVendors;
+    private bool _matsKeepFulfilled;
 
     private static readonly Vector4 AccentGather = new(0.45f, 1.00f, 0.45f, 1f);
     private static readonly Vector4 AccentDrop   = new(1.00f, 0.45f, 0.45f, 1f);
@@ -72,7 +73,7 @@ public class CraftingMaterialsWindow : Window
             return;
         }
 
-        if (!_editor.HasCachedMaterials && !_editor.IsGeneratingMaterials)
+        if (!_editor.HasCachedDisplayMaterials && !_editor.IsGeneratingMaterials)
             _editor.TriggerMaterialsRegeneration();
 
         if (_editor.IsGeneratingMaterials)
@@ -81,7 +82,7 @@ public class CraftingMaterialsWindow : Window
             return;
         }
 
-        var materials = _editor.GetCachedMaterials();
+        var materials = _editor.GetDisplayMaterials();
 
         if (materials.Count == 0)
         {
@@ -94,11 +95,11 @@ public class CraftingMaterialsWindow : Window
 
         var showRetainer = AllaganTools.Enabled;
         var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
-        var hideSatisfiedRows = _editor.SkipIfEnoughEnabled;
-        var precrafts = _matsShowPrecrafts
-            ? _editor.GetCachedPrecraftMaterials()
+        var hideSatisfiedRows = _editor.SkipIfEnoughEnabled && !_matsKeepFulfilled;
+        var craftMaterials = _matsShowPrecrafts
+            ? _editor.GetDisplayPrecraftMaterials()
             : null;
-        var snapshotItemIds = materials.Keys.Concat(precrafts != null ? precrafts.Keys : Enumerable.Empty<uint>());
+        var snapshotItemIds = materials.Keys.Concat(craftMaterials != null ? craftMaterials.Keys : Enumerable.Empty<uint>());
         var retainerSnapshot = showRetainer
             ? _editor.GetRetainerSnapshot(snapshotItemIds)
             : RetainerItemSnapshot.Empty;
@@ -111,18 +112,18 @@ public class CraftingMaterialsWindow : Window
             var have  = _editor.GetInventoryCount(itemId);
             var retNQ = retainerSnapshot.GetCountNQ(itemId);
             var retHQ = retainerSnapshot.GetCountHQ(itemId);
-            var effectiveAvailable = _editor.GetQualityAwareAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
+            var effectiveAvailable = _editor.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
             allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, false));
         }
-        if (precrafts != null)
+        if (craftMaterials != null)
         {
-            foreach (var (itemId, needed) in precrafts)
+            foreach (var (itemId, needed) in craftMaterials)
             {
                 if (!itemSheet.TryGetRow(itemId, out var item)) continue;
                 var have  = _editor.GetInventoryCount(itemId);
                 var retNQ = retainerSnapshot.GetCountNQ(itemId);
                 var retHQ = retainerSnapshot.GetCountHQ(itemId);
-                var effectiveAvailable = _editor.GetQualityAwareAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
+                var effectiveAvailable = _editor.GetDisplayCraftMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
                 allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, true));
             }
         }
@@ -141,7 +142,7 @@ public class CraftingMaterialsWindow : Window
         ImGui.SameLine();
         ImGui.Checkbox("Precrafts##precrafts", ref _matsShowPrecrafts);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Include intermediate craftable components");
+            ImGui.SetTooltip("Include intermediate craftable components and non-gear final craftables");
         ImGui.SameLine();
         ImGui.Checkbox("Prefer Vendors##preferVendors", ref _matsPreferVendors);
         if (ImGui.IsItemHovered())
@@ -150,6 +151,10 @@ public class CraftingMaterialsWindow : Window
                 "  Gather > Fish > Scrip > Drops > Craft > Vendor > Tomes > Other\n\n" +
                 "When ON: Gil Vendor overrides Gather, Fish, Drops, and Craft\n" +
                 "for items also sold at a Gil shop.");
+        ImGui.SameLine();
+        ImGui.Checkbox("Keep Fulfilled##keepFulfilled", ref _matsKeepFulfilled);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Keep fulfilled materials visible even when \"Skip if Already Have Enough\" is enabled on the list.");
         if (showRetainer)
         {
             ImGui.SameLine();

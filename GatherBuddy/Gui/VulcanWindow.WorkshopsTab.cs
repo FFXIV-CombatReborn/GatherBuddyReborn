@@ -24,6 +24,9 @@ public partial class VulcanWindow
     private bool _workshopEphemeral = false;
     private bool _openWorkshopAddToListPopup = false;
     private string _workshopExistingListSearch = string.Empty;
+    private string _workshopListName = string.Empty;
+    private WorkshopScopeNode? _workshopListNameScope = null;
+    private int _workshopListNameLoopCount = 0;
 
     private void DrawWorkshopsTab()
     {
@@ -312,10 +315,23 @@ public partial class VulcanWindow
 
         ImGui.Spacing();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
+
+        if (_workshopListNameScope != scope || _workshopListNameLoopCount != _workshopLoopCount)
+        {
+            _workshopListName = WorkshopDataService.GetDefaultListName(scope, _workshopLoopCount);
+            _workshopListNameScope = scope;
+            _workshopListNameLoopCount = _workshopLoopCount;
+        }
+
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputText("##workshopListName", ref _workshopListName, 256);
+
+        ImGui.Spacing();
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
         using (ImRaii.Disabled(scope.CraftableRequirementCount == 0))
         {
             if (ImGui.Button("Create Crafting List##createWorkshopList", new Vector2(-1, 22f)))
-                CreateWorkshopCraftingList(scope);
+                CreateWorkshopCraftingList(scope, _workshopListName);
         }
 
         if (scope.CraftableRequirementCount == 0 && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -416,7 +432,7 @@ public partial class VulcanWindow
         }
     }
 
-    private void CreateWorkshopCraftingList(WorkshopScopeNode scope)
+    private void CreateWorkshopCraftingList(WorkshopScopeNode scope, string listName)
     {
         var draft = WorkshopDataService.CreateListDraft(scope, _workshopLoopCount);
         if (draft == null)
@@ -425,7 +441,8 @@ public partial class VulcanWindow
             return;
         }
 
-        var list = GatherBuddy.CraftingListManager.CreateNewList(draft.Name, _workshopEphemeral);
+        var resolvedName = string.IsNullOrWhiteSpace(listName) ? draft.Name : listName.Trim();
+        var list = GatherBuddy.CraftingListManager.CreateNewList(resolvedName, _workshopEphemeral);
         list.Description = draft.Description;
         list.SkipIfEnough = true;
 
@@ -538,6 +555,10 @@ public partial class VulcanWindow
 
         foreach (var (recipeId, quantity) in draft.Recipes)
             list.AddRecipe(recipeId, quantity);
+
+        list.Description = string.IsNullOrEmpty(list.Description)
+            ? draft.Description
+            : list.Description + "\n" + draft.Description;
 
         if (!GatherBuddy.CraftingListManager.SaveList(list))
         {

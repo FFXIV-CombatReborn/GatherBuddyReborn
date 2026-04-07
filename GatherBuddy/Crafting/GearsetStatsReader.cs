@@ -119,7 +119,6 @@ public static unsafe class GearsetStatsReader
 
             var manipulation = IsManipulationUnlocked(jobId);
             var isSpecialist = equippedContainer->Size > 13 && (equippedContainer->Items + 13)->ItemId != 0;
-            GatherBuddy.Log.Debug($"[GearsetStatsReader] ReadFromCurrentlyEquipped: Crafts={craftsmanship}, Ctrl={control}, CP={cp}, Specialist={isSpecialist}");
 
             return new GameStateBuilder.PlayerStats(
                 Craftsmanship: craftsmanship,

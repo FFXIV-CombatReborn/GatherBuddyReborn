@@ -240,7 +240,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Done;
         }
 
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Interacting with bell: {bell.Name}");
         TargetSystem.Instance()->OpenObjectInteraction((FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)bell.Address);
         _phase = Phase.WaitOccupied;
         _addonRetryCount = 0;
@@ -252,7 +251,6 @@ internal unsafe class RetainerTaskExecutor
     {
         if (Dalamud.Conditions[ConditionFlag.OccupiedSummoningBell])
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Bell occupied, waiting for RetainerList");
             _phase = Phase.WaitRetainerList;
             _addonRetryCount = 0;
             return CraftingTasks.TaskResult.Retry;
@@ -300,8 +298,6 @@ internal unsafe class RetainerTaskExecutor
 
                 _withdrawalPlanBuilt = true;
             }
-
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList open");
             _retainerVisitIndex = 0;
             _addonRetryCount = 0;
             _phase = _retainersToVisit.Count == 0 ? Phase.CloseRetainerList : Phase.SelectRetainer;
@@ -331,7 +327,6 @@ internal unsafe class RetainerTaskExecutor
     {
         if (_retainerVisitIndex >= _retainersToVisit.Count)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] All retainers visited, closing list");
             _phase = Phase.CloseRetainerList;
             return CraftingTasks.TaskResult.Retry;
         }
@@ -343,7 +338,6 @@ internal unsafe class RetainerTaskExecutor
         }
 
         var entry = _retainersToVisit[_retainerVisitIndex];
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting retainer at sorted index {entry.SortedIndex}");
         Callback.Fire(addon, true, 2, (uint)entry.SortedIndex);
         _addonRetryCount = 0;
         _phase = Phase.WaitRetainerMenu;
@@ -356,7 +350,6 @@ internal unsafe class RetainerTaskExecutor
         if (GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var menu) &&
             menu->AtkUnitBase.IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer SelectString menu open");
             _phase = Phase.SelectEntrustWithdraw;
             _addonRetryCount = 0;
             Delay(200);
@@ -391,7 +384,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting 'Entrust or Withdraw' at index 0 ({entryCount} entries total)");
         new AddonMaster.SelectString((nint)menu).Entries[0].Select();
         _addonRetryCount = 0;
         _phase = Phase.WaitInventory;
@@ -404,7 +396,6 @@ internal unsafe class RetainerTaskExecutor
         var agentRetainer = AgentModule.Instance()->GetAgentByInternalId(AgentId.Retainer);
         if (agentRetainer != null && agentRetainer->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer inventory open");
             var entry = _retainersToVisit[_retainerVisitIndex];
             _currentRetainerItems = BuildItemListForRetainer(entry.RetainerId);
             _currentItemIndex = 0;
@@ -452,7 +443,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        GatherBuddy.Log.Debug("[RetainerTaskExecutor] All items for this retainer withdrawn, closing inventory");
         _phase = Phase.CloseRetainerInventory;
         return CraftingTasks.TaskResult.Retry;
     }
@@ -593,7 +583,6 @@ internal unsafe class RetainerTaskExecutor
                 return CraftingTasks.TaskResult.Retry;
             }
 
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Retrieve all ({_foundSlotQty}): index {idxAll}");
             Callback.Fire(menu, true, 0, idxAll, 0, 0, 0);
 
             if (_lookingForHQ) target.RemainingHQ -= _foundSlotQty;
@@ -723,7 +712,6 @@ internal unsafe class RetainerTaskExecutor
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent != null && retainerAgent->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Hiding retainer agent");
             retainerAgent->Hide();
             _addonRetryCount = 0;
             _phase = Phase.WaitInventoryClosed;
@@ -742,7 +730,6 @@ internal unsafe class RetainerTaskExecutor
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent == null || !retainerAgent->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer inventory closed");
             _phase = Phase.SelectQuit;
             _addonRetryCount = 0;
             return CraftingTasks.TaskResult.Retry;
@@ -787,7 +774,6 @@ internal unsafe class RetainerTaskExecutor
             if (!label.Contains(quitText, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting 'Quit' at index {i}");
             new AddonMaster.SelectString((nint)menu).Entries[i].Select();
             _retainerVisitIndex++;
             _addonRetryCount = 0;
@@ -816,7 +802,6 @@ internal unsafe class RetainerTaskExecutor
         if (!GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var menu) ||
             !menu->AtkUnitBase.IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer menu closed after Quit");
             _phase = Phase.SelectRetainer;
             _addonRetryCount = 0;
             Delay(200);
@@ -861,12 +846,10 @@ internal unsafe class RetainerTaskExecutor
                 return CraftingTasks.TaskResult.Retry;
             }
 
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList gone and bell released, extraction complete");
             _phase = Phase.Complete;
             return CraftingTasks.TaskResult.Done;
         }
 
-        GatherBuddy.Log.Debug("[RetainerTaskExecutor] Closing RetainerList");
         Callback.Fire(addon, true, -1);
         _addonRetryCount = 0;
         _phase = Phase.WaitListClosed;
@@ -885,7 +868,6 @@ internal unsafe class RetainerTaskExecutor
 
         if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("RetainerList", out var addon) || !addon->IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList closed, extraction complete");
             _phase = Phase.Complete;
             return CraftingTasks.TaskResult.Done;
         }
