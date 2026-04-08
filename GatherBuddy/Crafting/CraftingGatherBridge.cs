@@ -187,7 +187,7 @@ public static class CraftingGatherBridge
         {
             if (_plugin != null)
             {
-                var enabledLists = _plugin.AutoGatherListsManager.Lists.Where(l => l.Enabled).ToList();
+                var enabledLists = _plugin.AutoGatherListsManager.Lists.Where(l => l.Enabled && !l.Fallback).ToList();
                 if (enabledLists.Count > 0)
                 {
                     _disabledGatherLists.Clear();

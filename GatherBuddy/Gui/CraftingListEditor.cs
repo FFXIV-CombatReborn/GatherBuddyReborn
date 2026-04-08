@@ -73,6 +73,8 @@ public class CraftingListEditor
     
     private int _editingQuantityIndex = -1;
     private int _tempQuantityInput = 0;
+    private readonly HashSet<int> _selectedRecipeIndices = new();
+    private int _lastClickedRecipeIndex = -1;
     private Dictionary<uint, int>? _cachedPrecraftMaterials = null;
     private Dictionary<uint, IngredientQualityDemand>? _cachedIngredientDemands = null;
     private Dictionary<uint, IngredientQualityDemand>? _cachedCraftMaterialDemands = null;
@@ -169,6 +171,8 @@ public class CraftingListEditor
     internal void RefreshFromExternalListChange()
     {
         GatherBuddy.Log.Debug($"[CraftingListEditor] Refreshing cached queue/materials for externally modified list '{_list.Name}'");
+        _selectedRecipeIndices.Clear();
+        _lastClickedRecipeIndex = -1;
         _cachedQueueValid = false;
         InvalidateMaterialCaches();
         TriggerQueueRegeneration();
@@ -517,6 +521,67 @@ public class CraftingListEditor
                         else
                         {
                             _craftSettingsPopup.OpenForPrecraft(queueItem.RecipeId, itemName, _list);
+                        }
+                    }
+
+                    {
+                        var resultItemId = recipeData.Value.ItemResult.RowId;
+                        var altRecipes = RecipeManager.GetRecipesForItem(resultItemId);
+                        if (altRecipes.Count > 1 && ImGui.BeginMenu("Change Job..."))
+                        {
+                            if (isOriginalRecipe)
+                            {
+                                foreach (var alt in altRecipes)
+                                {
+                                    var altJob = GetCraftingJobName(alt.CraftType.RowId);
+                                    var isCurrent = alt.RowId == queueItem.RecipeId;
+                                    if (ImGui.MenuItem(altJob, string.Empty, isCurrent) && !isCurrent)
+                                    {
+                                        var listItem = _list.Recipes.FirstOrDefault(r => r.RecipeId == queueItem.RecipeId);
+                                        if (listItem != null)
+                                        {
+                                            listItem.RecipeId = alt.RowId;
+                                            GatherBuddy.CraftingListManager.SaveList(_list);
+                                            _cachedQueueValid = false;
+                                            InvalidateMaterialCaches();
+                                            TriggerQueueRegeneration();
+                                            TriggerMaterialsRegeneration();
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                var activeRecipeId = _list.PrecraftRecipeOverrides.TryGetValue(resultItemId, out var ov) ? ov : altRecipes[0].RowId;
+                                foreach (var alt in altRecipes)
+                                {
+                                    var altJob = GetCraftingJobName(alt.CraftType.RowId);
+                                    var isCurrent = alt.RowId == activeRecipeId;
+                                    if (ImGui.MenuItem(altJob, string.Empty, isCurrent) && !isCurrent)
+                                    {
+                                        _list.PrecraftRecipeOverrides[resultItemId] = alt.RowId;
+                                        GatherBuddy.CraftingListManager.SaveList(_list);
+                                        _cachedQueueValid = false;
+                                        InvalidateMaterialCaches();
+                                        TriggerQueueRegeneration();
+                                        TriggerMaterialsRegeneration();
+                                    }
+                                }
+                                if (_list.PrecraftRecipeOverrides.ContainsKey(resultItemId))
+                                {
+                                    ImGui.Separator();
+                                    if (ImGui.MenuItem("Reset to Default"))
+                                    {
+                                        _list.PrecraftRecipeOverrides.Remove(resultItemId);
+                                        GatherBuddy.CraftingListManager.SaveList(_list);
+                                        _cachedQueueValid = false;
+                                        InvalidateMaterialCaches();
+                                        TriggerQueueRegeneration();
+                                        TriggerMaterialsRegeneration();
+                                    }
+                                }
+                            }
+                            ImGui.EndMenu();
                         }
                     }
 
@@ -983,8 +1048,16 @@ public class CraftingListEditor
             return;
         }
 
-        int indexToRemove = -1;
-        
+        var indicesToRemove = new List<int>();
+
+        if (_selectedRecipeIndices.Count > 1)
+        {
+            if (ImGui.Button($"Remove Selected ({_selectedRecipeIndices.Count})##removeSelected"))
+                indicesToRemove.AddRange(_selectedRecipeIndices);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Remove the {_selectedRecipeIndices.Count} selected recipes from this list.");
+        }
+
         for (int i = 0; i < _list.Recipes.Count; i++)
         {
             var item = _list.Recipes[i];
@@ -1025,23 +1098,68 @@ public class CraftingListEditor
                 ImGui.SameLine();
             }
 
+            var isSelected = _selectedRecipeIndices.Contains(i);
             ImGui.PushStyleColor(ImGuiCol.Text, textColor);
-            ImGui.Selectable($"{quickSynthIndicator}{craftSettingsIndicator}{hqIndicator}{skipIndicator}{itemName} x{item.Quantity} ({jobName})##recipe_{i}", false);
+            var clicked = ImGui.Selectable($"{quickSynthIndicator}{craftSettingsIndicator}{hqIndicator}{skipIndicator}{itemName} x{item.Quantity} ({jobName})##recipe_{i}", isSelected);
             ImGui.PopStyleColor();
-            
+
+            if (clicked)
+            {
+                if (ImGui.GetIO().KeyShift && _lastClickedRecipeIndex >= 0)
+                {
+                    if (!ImGui.GetIO().KeyCtrl)
+                        _selectedRecipeIndices.Clear();
+                    var min = Math.Min(_lastClickedRecipeIndex, i);
+                    var max = Math.Max(_lastClickedRecipeIndex, i);
+                    for (var j = min; j <= max; j++)
+                        _selectedRecipeIndices.Add(j);
+                }
+                else if (ImGui.GetIO().KeyCtrl)
+                {
+                    if (!_selectedRecipeIndices.Remove(i))
+                        _selectedRecipeIndices.Add(i);
+                    _lastClickedRecipeIndex = i;
+                }
+                else
+                {
+                    _selectedRecipeIndices.Clear();
+                    _selectedRecipeIndices.Add(i);
+                    _lastClickedRecipeIndex = i;
+                }
+            }
+
             var isPopupOpen = GatherBuddy.ControllerSupport != null
                 ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"context_{i}", Dalamud.GamepadState)
                 : ImGui.BeginPopupContextItem($"context_{i}");
-            
+
             if (isPopupOpen)
             {
                 if (ImGui.MenuItem("Craft Settings..."))
-                {
                     _craftSettingsPopup.OpenForListItem(item, _list, itemName);
+
+                var resultItemId = recipe.Value.ItemResult.RowId;
+                var altRecipes = RecipeManager.GetRecipesForItem(resultItemId);
+                if (altRecipes.Count > 1 && ImGui.BeginMenu("Change Job..."))
+                {
+                    foreach (var alt in altRecipes)
+                    {
+                        var altJob = GetCraftingJobName(alt.CraftType.RowId);
+                        var isCurrent = alt.RowId == item.RecipeId;
+                        if (ImGui.MenuItem(altJob, string.Empty, isCurrent) && !isCurrent)
+                        {
+                            item.RecipeId = alt.RowId;
+                            GatherBuddy.CraftingListManager.SaveList(_list);
+                            _cachedQueueValid = false;
+                            InvalidateMaterialCaches();
+                            TriggerQueueRegeneration();
+                            TriggerMaterialsRegeneration();
+                        }
+                    }
+                    ImGui.EndMenu();
                 }
-                
+
                 ImGui.Separator();
-                
+
                 ImGui.Text("Quantity:");
                 ImGui.SetNextItemWidth(100);
                 if (_editingQuantityIndex != i)
@@ -1049,13 +1167,13 @@ public class CraftingListEditor
                     _tempQuantityInput = item.Quantity;
                     _editingQuantityIndex = i;
                 }
-                
+
                 if (ImGui.InputInt($"##qty_{i}", ref _tempQuantityInput, 1))
                 {
                     if (_tempQuantityInput < 1)
                         _tempQuantityInput = 1;
                 }
-                
+
                 if (ImGui.IsItemDeactivatedAfterEdit() && _tempQuantityInput != item.Quantity)
                 {
                     _list.UpdateRecipeQuantity(item.RecipeId, _tempQuantityInput);
@@ -1064,9 +1182,9 @@ public class CraftingListEditor
                     InvalidateMaterialCaches();
                     TriggerQueueRegeneration();
                 }
-                
+
                 ImGui.Separator();
-                
+
                 if (ImGui.MenuItem(item.Options.Skipping ? "Enable" : "Skip"))
                 {
                     item.Options.Skipping = !item.Options.Skipping;
@@ -1075,12 +1193,18 @@ public class CraftingListEditor
                     InvalidateMaterialCaches();
                     TriggerQueueRegeneration();
                 }
-                
-                if (ImGui.MenuItem("Remove"))
+
+                if (_selectedRecipeIndices.Count > 1 && _selectedRecipeIndices.Contains(i))
                 {
-                    indexToRemove = i;
+                    if (ImGui.MenuItem($"Remove Selected ({_selectedRecipeIndices.Count})"))
+                        indicesToRemove.AddRange(_selectedRecipeIndices);
                 }
-                
+                else
+                {
+                    if (ImGui.MenuItem("Remove"))
+                        indicesToRemove.Add(i);
+                }
+
                 ImGui.EndPopup();
             }
             else if (_editingQuantityIndex == i)
@@ -1089,9 +1213,12 @@ public class CraftingListEditor
             }
         }
 
-        if (indexToRemove >= 0)
+        if (indicesToRemove.Count > 0)
         {
-            _list.Recipes.RemoveAt(indexToRemove);
+            foreach (var idx in indicesToRemove.Distinct().OrderByDescending(x => x))
+                _list.Recipes.RemoveAt(idx);
+            _selectedRecipeIndices.Clear();
+            _lastClickedRecipeIndex = -1;
             GatherBuddy.CraftingListManager.SaveList(_list);
             _cachedQueueValid = false;
             InvalidateMaterialCaches();
@@ -1158,7 +1285,7 @@ public class CraftingListEditor
         var useRetainers = displayList.SkipIfEnough && displayList.RetainerRestock && AllaganTools.Enabled;
         return CraftingListPlanner.Build(displayList, new CraftingListPlannerOptions(
             UseRetainerCraftableAvailability: useRetainers,
-            ConsumeIntermediateAvailability: false,
+            ConsumeIntermediateAvailability: true,
             ConsumeFinalAvailability: true));
     }
 

@@ -297,6 +297,15 @@ public partial class VulcanWindow
 
         DrawWorkshopStatRow("With Recipes:", scope.CraftableRequirementCount.ToString(), scope.CraftableRequirementCount > 0 ? new Vector4(0.65f, 0.85f, 1.0f, 1.0f) : ImGuiColors.DalamudGrey3);
         DrawWorkshopStatRow("Skipped:", scope.UncraftableRequirementCount.ToString(), scope.UncraftableRequirementCount > 0 ? ImGuiColors.DalamudOrange : ImGuiColors.DalamudGrey3);
+        if (scope.UncraftableRequirementCount > 0 && ImGui.IsItemHovered())
+        {
+            ImGui.BeginTooltip();
+            ImGui.TextColored(ImGuiColors.DalamudOrange, "No recipe found for:");
+            ImGui.Spacing();
+            foreach (var req in scope.Requirements.Where(r => !r.IsCraftable))
+                ImGui.TextUnformatted($"  {req.ItemName}  x{req.RequiredQuantity}");
+            ImGui.EndTooltip();
+        }
         DrawWorkshopStatRow("Required:", scope.TotalRequiredItemCount.ToString(), new Vector4(0.85f, 0.85f, 0.85f, 1.0f));
         DrawWorkshopStatRow("Crafts:", scope.TotalCraftsNeeded.ToString(), scope.TotalCraftsNeeded > 0 ? new Vector4(0.75f, 1.0f, 0.75f, 1.0f) : ImGuiColors.DalamudGrey3);
 
@@ -457,6 +466,7 @@ public partial class VulcanWindow
 
         GatherBuddy.Log.Information(
             $"[WorkshopsTab] Created workshop list '{list.Name}' from {scope.Kind} '{scope.DisplayName}' with {draft.Recipes.Count} recipe(s)");
+        Communicator.Print($"Created workshop list '{list.Name}' with {draft.Recipes.Count} recipe(s).");
         OpenCraftingList(list);
         _craftingListsRequestFocus = true;
         _previewList = list;
@@ -571,5 +581,6 @@ public partial class VulcanWindow
         _previewFolderPath = null;
         GatherBuddy.Log.Information(
             $"[WorkshopsTab] Added {draft.Recipes.Count} workshop recipe(s) from {scope.Kind} '{scope.DisplayName}' to existing list '{list.Name}'");
+        Communicator.Print($"Added {draft.Recipes.Count} recipe(s) from '{scope.DisplayName}' to '{list.Name}'.");
     }
 }

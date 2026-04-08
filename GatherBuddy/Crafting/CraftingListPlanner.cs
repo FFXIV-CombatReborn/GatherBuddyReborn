@@ -154,7 +154,7 @@ public static class CraftingListPlanner
             {
                 var itemDemand = qualityPolicy.GetDemand(itemId).Scale(craftCount);
                 AddDemand(_plan.IngredientDemands, itemId, itemDemand);
-                var subRecipe = RecipeManager.GetRecipeForItem(itemId);
+                var subRecipe = ResolveSubRecipe(itemId);
                 if (!subRecipe.HasValue)
                 {
                     AddCount(_plan.Materials, itemId, itemDemand.Total);
@@ -194,6 +194,17 @@ public static class CraftingListPlanner
             _availability.AddPlanned(resultItemId, surplus);
 
             PlanIngredients(recipe, craftCount, false);
+        }
+
+        private Recipe? ResolveSubRecipe(uint itemId)
+        {
+            if (_list.PrecraftRecipeOverrides.TryGetValue(itemId, out var overrideRecipeId))
+            {
+                var overrideRecipe = RecipeManager.GetRecipe(overrideRecipeId);
+                if (overrideRecipe.HasValue)
+                    return overrideRecipe;
+            }
+            return RecipeManager.GetRecipeForItem(itemId);
         }
 
         private CraftingQualityPolicy ResolveQualityPolicy(Recipe recipe, bool isOriginalRecipe)

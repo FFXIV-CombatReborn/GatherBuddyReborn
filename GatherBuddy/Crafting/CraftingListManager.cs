@@ -414,8 +414,9 @@ public class CraftingListManager
             var newList = CreateNewList(name);
             newList.Recipes               = source.Recipes;
             newList.Consumables           = source.Consumables;
-            newList.PrecraftOptions       = source.PrecraftOptions;
-            newList.PrecraftCraftSettings = source.PrecraftCraftSettings;
+            newList.PrecraftOptions           = source.PrecraftOptions;
+            newList.PrecraftCraftSettings     = source.PrecraftCraftSettings;
+            newList.PrecraftRecipeOverrides   = source.PrecraftRecipeOverrides;
             newList.DefaultPrecraftSolverOverride = source.DefaultPrecraftSolverOverride;
             newList.DefaultFinalSolverOverride = source.DefaultFinalSolverOverride;
             newList.SkipIfEnough          = source.SkipIfEnough;
