@@ -22,6 +22,7 @@ public class CraftingListDefinition
     public SolverOverrideMode DefaultPrecraftSolverOverride { get; set; } = SolverOverrideMode.Default;
     public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
     
+    public Dictionary<uint, uint> PrecraftRecipeOverrides { get; set; } = new();
     public bool SkipIfEnough { get; set; } = false;
     public bool SkipFinalIfEnough { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
@@ -116,6 +117,9 @@ public class CraftingListDefinition
 
         foreach (var (recipeId, settings) in PrecraftCraftSettings)
             snapshot.PrecraftCraftSettings[recipeId] = settings.Clone();
+
+        foreach (var (itemId, recipeId) in PrecraftRecipeOverrides)
+            snapshot.PrecraftRecipeOverrides[itemId] = recipeId;
 
         return snapshot;
     }

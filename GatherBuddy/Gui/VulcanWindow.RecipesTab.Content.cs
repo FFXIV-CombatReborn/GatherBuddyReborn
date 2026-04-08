@@ -375,6 +375,7 @@ public partial class VulcanWindow
                     GatherBuddy.CraftingListManager.SaveList(newList);
                     RefreshOpenCraftingList(newList.ID);
                     GatherBuddy.Log.Information($"[VulcanWindow] Created list '{newList.Name}' and added {recipe.Name} x{_contextMenuAddQuantity}");
+                    Communicator.Print($"Created '{newList.Name}' and added {recipe.Name} x{_contextMenuAddQuantity}.");
                     ImGui.CloseCurrentPopup();
                 }
 
@@ -411,9 +412,26 @@ public partial class VulcanWindow
                             GatherBuddy.CraftingListManager.SaveList(list);
                             RefreshOpenCraftingList(list.ID);
                             GatherBuddy.Log.Information($"Added {recipe.Name} x{_contextMenuAddQuantity} to crafting list '{list.Name}'");
+                            Communicator.Print($"Added {recipe.Name} x{_contextMenuAddQuantity} to '{list.Name}'.");
+                            _contextMenuLastAddedList = list.Name;
+                            _contextMenuLastAddedAt   = DateTime.Now;
                         }
                     }
                     ImGui.EndChild();
+
+                    if (_contextMenuLastAddedList != null)
+                    {
+                        var elapsed = (DateTime.Now - _contextMenuLastAddedAt).TotalSeconds;
+                        if (elapsed < 1.5)
+                        {
+                            var alpha = (float)(1.0 - elapsed / 1.5);
+                            ImGui.TextColored(new Vector4(0.4f, 1f, 0.4f, alpha), $"Added to '{_contextMenuLastAddedList}'!");
+                        }
+                        else
+                        {
+                            _contextMenuLastAddedList = null;
+                        }
+                    }
 
                     ImGui.Spacing();
                     ImGui.Separator();
@@ -444,6 +462,7 @@ public partial class VulcanWindow
                             GatherBuddy.CraftingListManager.SaveList(list);
                             RefreshOpenCraftingList(list.ID);
                             GatherBuddy.Log.Information($"Added {uncraftedCount} uncrafted recipes to list '{list.Name}'");
+                            Communicator.Print($"Added {uncraftedCount} uncrafted recipe(s) to '{list.Name}'.");
                         }
                     }
                     ImGui.EndChild();

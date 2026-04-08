@@ -58,10 +58,12 @@ public partial class VulcanWindow
     private static bool _craftedStatusDirty = false;
     private static int _browserCraftQuantity = 1;
     private static RecipeCraftSettingsPopup _craftSettingsPopup = new();
-    private static string _contextMenuListSearch   = string.Empty;
-    private static int    _contextMenuAddQuantity   = 1;
-    private static string _contextMenuNewListName   = string.Empty;
+    private static string _contextMenuListSearch    = string.Empty;
+    private static int    _contextMenuAddQuantity    = 1;
+    private static string _contextMenuNewListName    = string.Empty;
     private static bool   _contextMenuNewListEphemeral = false;
+    private static string? _contextMenuLastAddedList  = null;
+    private static DateTime _contextMenuLastAddedAt;
     private static readonly uint[] CraftTypeToClassJobId = { 8, 9, 10, 11, 12, 13, 14, 15 };
     private static readonly string[] JobNames = { "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL" };
 
