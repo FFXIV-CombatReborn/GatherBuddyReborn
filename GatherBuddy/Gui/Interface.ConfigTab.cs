@@ -1646,6 +1646,8 @@ public partial class Interface
                 ConfigFunctions.DrawAmbitiousLureConfig();
                 ConfigFunctions.DrawModestLureConfig();
                 ConfigFunctions.DrawManualPresetGenerator();
+                ConfigFunctions.DrawSitWhenFishingBox();
+                ConfigFunctions.DrawUseLightWhenFishingBox();
                 ImGui.TreePop();
             }
 
