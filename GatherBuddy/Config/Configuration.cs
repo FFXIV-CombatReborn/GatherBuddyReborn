@@ -82,6 +82,7 @@ public partial class Configuration : IPluginConfiguration
     public string UserMacros             { get; set; } = string.Empty;
     public bool   SkipMacroStepIfUnable { get; set; } = true;
     public bool   MacroFallbackEnabled  { get; set; } = true;
+    public bool   EnableAutoPrepareOnCraft { get; set; } = false;
 
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;

@@ -183,6 +183,7 @@ public partial class GatherBuddy : IDalamudPlugin
             WindowSystem.AddWindow(_craftingStatusWindow);
             WindowSystem.AddWindow(_craftingMaterialsWindow);
             Dalamud.PluginInterface.UiBuilder.Draw         += WindowSystem.Draw;
+            Dalamud.PluginInterface.UiBuilder.Draw         += () => CraftingLogOverlay.DrawCraftingLogOptions();
             Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.Toggle;
             Dalamud.PluginInterface.UiBuilder.OpenMainUi   += Interface.Toggle;
             Dalamud.Framework.Update                       += Update;
