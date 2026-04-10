@@ -70,6 +70,7 @@ internal unsafe class RetainerTaskExecutor
     private const int MaxAddonRetries = 40;
     private readonly Dictionary<uint, int> _materials;
     private readonly Dictionary<uint, IngredientQualityDemand> _qualityTargets;
+    private readonly HashSet<uint> _precraftItemIds;
     private bool _withdrawalPlanBuilt;
 
     public bool IsComplete => _phase == Phase.Complete;
@@ -77,10 +78,12 @@ internal unsafe class RetainerTaskExecutor
 
     public RetainerTaskExecutor(
         Dictionary<uint, int> materials,
-        Dictionary<uint, IngredientQualityDemand> qualityTargets)
+        Dictionary<uint, IngredientQualityDemand> qualityTargets,
+        HashSet<uint>? precraftItemIds = null)
     {
         _materials = materials;
         _qualityTargets = qualityTargets;
+        _precraftItemIds = precraftItemIds ?? [];
     }
 
     private bool BuildWithdrawalPlan()
@@ -103,15 +106,24 @@ internal unsafe class RetainerTaskExecutor
                 ? qualityDemand
                 : IngredientQualityDemand.FromPreferHQ(totalNeeded);
 
-            int inBagHQ = 0, inBagNQ = 0;
-            var inventoryMgr = InventoryManager.Instance();
-            if (inventoryMgr != null)
+            IngredientQualityDemand remainingDemand;
+            if (_precraftItemIds.Contains(itemId))
             {
-                inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true,  false, false);
-                inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
+                GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Precraft item {itemId}: pulling exact retainer amount {demand.Total} (inventory already accounted for in plan)");
+                remainingDemand = demand;
+            }
+            else
+            {
+                int inBagHQ = 0, inBagNQ = 0;
+                var inventoryMgr = InventoryManager.Instance();
+                if (inventoryMgr != null)
+                {
+                    inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true,  false, false);
+                    inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
+                }
+                remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
             }
 
-            var remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
             if (remainingDemand.Total <= 0)
                 continue;
 

@@ -1288,7 +1288,7 @@ public class CraftingQueueProcessor
         }
 
         var qualityTargets = _executionPlan?.BuildQualityTargetsForItems(combinedItems) ?? new Dictionary<uint, IngredientQualityDemand>();
-        _retainerExecutor = new RetainerTaskExecutor(combinedItems, qualityTargets);
+        _retainerExecutor = new RetainerTaskExecutor(combinedItems, qualityTargets, RetainerPrecraftTargets.Keys.ToHashSet());
 
         QueueRetainerWithdrawalExecutionTasks();
     }
