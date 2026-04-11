@@ -118,7 +118,7 @@ public partial class AutoGatherListsManager
     {
         try
         {
-            var fishInList = list.Items.OfType<Fish>().Where(f => !f.IsSpearFish && list.EnabledItems.TryGetValue(f, out var enabled) && enabled).ToList();
+            var fishInList = list.Entries.Where(e => e.Enabled).Select(e => e.Item).OfType<Fish>().Where(f => !f.IsSpearFish).ToList();
             if (fishInList.Count == 0)
                 return true;
             
@@ -214,7 +214,7 @@ public partial class AutoGatherListsManager
     {
         try
         {
-            var gatherablesInList = list.Items.OfType<Gatherable>().Where(g => list.EnabledItems.TryGetValue(g, out var enabled) && enabled).ToList();
+            var gatherablesInList = list.Entries.Where(e => e.Enabled).Select(e => e.Item).OfType<Gatherable>().ToList();
             if (gatherablesInList.Count == 0)
                 return true;
             
@@ -372,16 +372,8 @@ public partial class AutoGatherListsManager
 
     public void AddItem(AutoGatherList list, IGatherable item)
     {
-        if (list.Add(item))
+        if (AddItemInternal(list, item, null))
         {
-            if (list.Enabled && !ValidateSingleFishBait(item))
-            {
-                list.SetEnabled(item, false);
-            }
-            if (list.Enabled && !ValidateSingleGatherablePerception(item))
-            {
-                list.SetEnabled(item, false);
-            }
             Save();
             if (list.Enabled)
                 SetActiveItems();
@@ -390,7 +382,7 @@ public partial class AutoGatherListsManager
 
     public void RemoveItem(AutoGatherList list, int idx)
     {
-        if (idx < 0 || idx >= list.Items.Count)
+        if (idx < 0 || idx >= list.Entries.Count)
             return;
 
         list.RemoveAt(idx);
@@ -401,7 +393,7 @@ public partial class AutoGatherListsManager
 
     public void ChangeItem(AutoGatherList list, IGatherable item, int idx)
     {
-        if (idx < 0 || idx >= list.Items.Count)
+        if (idx < 0 || idx >= list.Entries.Count)
             return;
 
         if (list.Replace(idx, item))
@@ -412,9 +404,9 @@ public partial class AutoGatherListsManager
         }
     }
 
-    public void ChangeQuantity(AutoGatherList list, IGatherable item, uint quantity)
+    public void ChangeQuantity(AutoGatherList list, int idx, uint quantity)
     {
-        if (list.SetQuantity(item, quantity))
+        if (list.SetQuantity(idx, quantity))
         {
             Save();
             if (list.Enabled)
@@ -422,8 +414,12 @@ public partial class AutoGatherListsManager
         }
     }
 
-    public void ChangeEnabled(AutoGatherList list, IGatherable item, bool enabled)
+    public void ChangeEnabled(AutoGatherList list, int idx, bool enabled)
     {
+        if (idx < 0 || idx >= list.Entries.Count)
+            return;
+
+        var item = list.Entries[idx].Item;
         if (enabled && list.Enabled && !ValidateSingleFishBait(item))
         {
             return;
@@ -434,7 +430,7 @@ public partial class AutoGatherListsManager
             return;
         }
         
-        if (list.SetEnabled(item, enabled))
+        if (list.SetEnabled(idx, enabled))
         {
             Save();
             if (list.Enabled)
@@ -454,16 +450,18 @@ public partial class AutoGatherListsManager
 
     public void MoveItem(AutoGatherList source, AutoGatherList destination, int idx)
     {
-        var item = source.Items[idx];
-        var quantity = source.Quantities[item];
-        if (destination.Add(item, quantity))
+        var entry = source.Entries[idx];
+        if (destination.Add(entry.Item, entry.Quantity, entry.PreferredLocation))
         {
-            destination.SetEnabled(item, source.EnabledItems[item]);
-            destination.SetPreferredLocation(item, source.PreferredLocations.GetValueOrDefault(item));
+            destination.SetEnabled(destination.Entries.Count - 1, entry.Enabled);
         }
         else
         {
-            destination.SetQuantity(item, destination.Quantities[item] + quantity);
+            var existingIdx = destination.Entries
+                .Select((e, i) => (Entry: e, Index: i))
+                .First(x => x.Entry.Item == entry.Item && x.Entry.PreferredLocation == entry.PreferredLocation)
+                .Index;
+            destination.SetQuantity(existingIdx, destination.Entries[existingIdx].Quantity + entry.Quantity);
         }
         source.RemoveAt(idx);
         Save();
@@ -471,13 +469,13 @@ public partial class AutoGatherListsManager
             SetActiveItems();
     }
 
-    public void ChangePreferredLocation(AutoGatherList list, IGatherable? item, ILocation? location)
+    public void ChangePreferredLocation(AutoGatherList list, int idx, ILocation? location)
     {
-        if (item == null)
-            return;
-        if (list.SetPreferredLocation(item, location))
+        if (list.SetPreferredLocation(idx, location))
         {
             Save();
+            if (list.Enabled)
+                SetActiveItems();
         }
     }
 
@@ -526,15 +524,22 @@ public partial class AutoGatherListsManager
         }
     }
 
-    public ILocation? GetPreferredLocation(IGatherable item)
+    private bool AddItemInternal(AutoGatherList list, IGatherable item, ILocation? location)
     {
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        if (!list.Add(item, preferredLocation: location))
+            return false;
+
+        var idx = list.Entries.Count - 1;
+        if (list.Enabled && !ValidateSingleFishBait(item))
         {
-            if (list.Enabled && !list.Fallback && list.PreferredLocations.TryGetValue(item, out var loc))
-            {
-                return loc;
-            }
+            list.SetEnabled(idx, false);
         }
-        return null;
+
+        if (list.Enabled && !ValidateSingleGatherablePerception(item))
+        {
+            list.SetEnabled(idx, false);
+        }
+
+        return true;
     }
 }

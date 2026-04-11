@@ -194,7 +194,7 @@ public partial class Interface
                 foreach (var item in diademItems)
                 {
                     list.Add(item);
-                    list.SetQuantity(item, 1000);
+                    list.SetQuantity(list.Entries.Count - 1, 1000);
                 }
                 _plugin.AutoGatherListsManager.AddList(list);
             }

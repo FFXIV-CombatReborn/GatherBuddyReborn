@@ -15,17 +15,31 @@ namespace GatherBuddy.AutoGather.Lists;
 
 public class AutoGatherList
 {
+    public sealed class Entry
+    {
+        public required IGatherable Item { get; set; }
+        public uint Quantity { get; set; }
+        public ILocation? PreferredLocation { get; set; }
+        public bool Enabled { get; set; } = true;
+    }
+
+    public ReadOnlyCollection<Entry> Entries
+        => entries.AsReadOnly();
+
     public ReadOnlyCollection<IGatherable> Items
-        => items.AsReadOnly();
+        => entries.Select(e => e.Item).ToList().AsReadOnly();
 
     public ReadOnlyDictionary<IGatherable, uint> Quantities
-        => quantities.AsReadOnly();
+        => entries.GroupBy(e => e.Item).ToDictionary(g => g.Key, g => g.First().Quantity).AsReadOnly();
 
     public ReadOnlyDictionary<IGatherable, ILocation> PreferredLocations
-        => preferredLocations.AsReadOnly();
+        => entries.Where(e => e.PreferredLocation != null)
+            .GroupBy(e => e.Item)
+            .ToDictionary(g => g.Key, g => g.First().PreferredLocation!)
+            .AsReadOnly();
 
     public ReadOnlyDictionary<IGatherable, bool> EnabledItems
-        => enabledItems.AsReadOnly();
+        => entries.GroupBy(e => e.Item).ToDictionary(g => g.Key, g => g.First().Enabled).AsReadOnly();
 
     public string Name        { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -34,96 +48,86 @@ public class AutoGatherList
     public bool   Enabled     { get; set; } = false;
     public bool   Fallback    { get; set; } = false;
 
-    private List<IGatherable>                  items              = [];
-    private Dictionary<IGatherable, uint>      quantities         = [];
-    private Dictionary<IGatherable, ILocation> preferredLocations = [];
-    private Dictionary<IGatherable, bool>      enabledItems       = [];
+    private List<Entry> entries = [];
 
     public AutoGatherList Clone()
         => new()
         {
-            items              = new(items),
-            quantities         = new(quantities),
-            preferredLocations = new(preferredLocations),
-            enabledItems       = new(enabledItems),
-            Name               = Name,
-            Description        = Description,
-            FolderPath         = FolderPath,
-            Order              = Order,
-            Enabled            = false,
-            Fallback           = Fallback
+            entries = entries.Select(e => new Entry
+            {
+                Item = e.Item,
+                Quantity = e.Quantity,
+                PreferredLocation = e.PreferredLocation,
+                Enabled = e.Enabled,
+            }).ToList(),
+            Name        = Name,
+            Description = Description,
+            FolderPath  = FolderPath,
+            Order       = Order,
+            Enabled     = false,
+            Fallback    = Fallback,
         };
 
-    public bool Add(IGatherable item, uint quantity = 1)
+    public bool Add(IGatherable item, uint quantity = 1, ILocation? preferredLocation = null)
     {
-        if (quantities.ContainsKey(item))
+        if (entries.Any(e => e.Item == item && e.PreferredLocation == preferredLocation))
             return false;
 
-        items.Add(item);
-        quantities[item]   = NormalizeQuantity(item, quantity);
-        enabledItems[item] = true;
+        entries.Add(new Entry
+        {
+            Item = item,
+            Quantity = NormalizeQuantity(item, quantity),
+            PreferredLocation = preferredLocation,
+            Enabled = true,
+        });
         return true;
     }
 
     public void RemoveAt(int index)
-    {
-        var item = items[index];
-        enabledItems.Remove(item);
-        quantities.Remove(item);
-        preferredLocations.Remove(item);
-        items.RemoveAt(index);
-    }
+        => entries.RemoveAt(index);
 
     public bool Replace(int index, IGatherable item)
     {
-        if (quantities.ContainsKey(item))
+        var entry = entries[index];
+        if (entries.Where((_, i) => i != index).Any(e => e.Item == item && e.PreferredLocation == entry.PreferredLocation))
             return false;
 
-        var old = items[index];
-        quantities.Remove(old, out var quantity);
-        enabledItems.Remove(old, out var enabled);
-        if (old is Gatherable gatherable)
-            preferredLocations.Remove(gatherable);
-        items[index]       = item;
-        quantities[item]   = NormalizeQuantity(item, quantity);
-        enabledItems[item] = enabled;
+        entry.Item = item;
+        entry.Quantity = NormalizeQuantity(item, entry.Quantity);
+        if (entry.PreferredLocation != null && !item.Locations.Contains(entry.PreferredLocation))
+            entry.PreferredLocation = null;
 
         return true;
     }
 
     public bool Move(int from, int to)
+        => Functions.Move(entries, from, to);
+
+    public bool SetQuantity(int index, uint quantity)
     {
-        return Functions.Move(items, from, to);
+        if (index < 0 || index >= entries.Count)
+            return false;
+
+        var entry = entries[index];
+        quantity = NormalizeQuantity(entry.Item, quantity);
+        if (entry.Quantity == quantity)
+            return false;
+
+        entry.Quantity = quantity;
+        return true;
     }
 
-    public bool SetQuantity(IGatherable item, uint quantity)
+    public bool SetEnabled(int index, bool enabled)
     {
-        if (quantities.TryGetValue(item, out var old))
-        {
-            quantity = NormalizeQuantity(item, quantity);
+        if (index < 0 || index >= entries.Count)
+            return false;
 
-            if (old != quantity)
-            {
-                quantities[item] = quantity;
-                return true;
-            }
-        }
+        var entry = entries[index];
+        if (entry.Enabled == enabled)
+            return false;
 
-        return false;
-    }
-
-    public bool SetEnabled(IGatherable item, bool enabled)
-    {
-        if (enabledItems.TryGetValue(item, out var old))
-        {
-            if (old != enabled)
-            {
-                enabledItems[item] = enabled;
-                return true;
-            }
-        }
-
-        return false;
+        entry.Enabled = enabled;
+        return true;
     }
 
     private static uint NormalizeQuantity(IGatherable item, uint quantity)
@@ -135,36 +139,42 @@ public class AutoGatherList
         return quantity;
     }
 
-    public bool SetPreferredLocation(IGatherable item, ILocation? location)
+    public bool SetPreferredLocation(int index, ILocation? location)
     {
-        if (quantities.ContainsKey(item))
-        {
-            var old = preferredLocations.GetValueOrDefault(item);
-            if (old != location)
-            {
-                if (location == null)
-                    preferredLocations.Remove(item);
-                else
-                    preferredLocations[item] = location;
+        if (index < 0 || index >= entries.Count)
+            return false;
 
-                return true;
-            }
-        }
+        var entry = entries[index];
+        if (entry.PreferredLocation == location)
+            return false;
 
-        return false;
+        if (entries.Where((_, i) => i != index).Any(e => e.Item == entry.Item && e.PreferredLocation == location))
+            return false;
+
+        entry.PreferredLocation = location;
+        return true;
     }
 
     public bool HasItems()
-        => Enabled && Items.Count > 0;
+        => Enabled && entries.Count > 0;
 
     public struct Config(AutoGatherList list)
     {
-        public const byte CurrentVersion = 5;
+        public const byte CurrentVersion = 6;
 
-        public uint[]                 ItemIds            = list.Items.Select(i => i.ItemId).ToArray();
-        public Dictionary<uint, uint> Quantities         = list.Quantities.ToDictionary(v => v.Key.ItemId, v => v.Value);
-        public Dictionary<uint, uint> PrefferedLocations = list.PreferredLocations.ToDictionary(v => v.Key.ItemId, v => v.Value.Id);
-        public Dictionary<uint, bool> EnabledItems       = list.EnabledItems.ToDictionary(v => v.Key.ItemId, v => v.Value);
+        public struct EntryConfig(Entry entry)
+        {
+            public uint ItemId = entry.Item.ItemId;
+            public uint Quantity = entry.Quantity;
+            public uint? PreferredLocationId = entry.PreferredLocation?.Id;
+            public bool Enabled = entry.Enabled;
+        }
+
+        public EntryConfig[]          Entries            = list.entries.Select(e => new EntryConfig(e)).ToArray();
+        public uint[]                 ItemIds            = [];
+        public Dictionary<uint, uint> Quantities         = [];
+        public Dictionary<uint, uint> PrefferedLocations = [];
+        public Dictionary<uint, bool> EnabledItems       = [];
         public string                 Name               = list.Name;
         public string                 Description        = list.Description;
         public string                 FolderPath         = list.FolderPath;
@@ -186,12 +196,13 @@ public class AutoGatherList
             try
             {
                 var bytes = Functions.DecompressedBase64(data);
-                if (bytes.Length == 0 || (bytes[0] != CurrentVersion && bytes[0] != 4))
+                if (bytes.Length == 0 || (bytes[0] != CurrentVersion && bytes[0] != 5 && bytes[0] != 4))
                     return false;
 
                 var json = Encoding.UTF8.GetString(bytes.AsSpan()[1..]);
                 cfg = JsonConvert.DeserializeObject<Config>(json);
                 if (cfg.ItemIds == null
+                 || cfg.Entries == null
                  || cfg.Name == null
                  || cfg.Description == null
                  || cfg.Quantities == null
@@ -210,64 +221,98 @@ public class AutoGatherList
 
     public static bool FromConfig(Config cfg, out AutoGatherList list)
     {
-        //Migrate Individual Enabled
         if (cfg.EnabledItems == null || cfg.EnabledItems.Count == 0)
         {
             cfg.EnabledItems = new(cfg.ItemIds.Length);
             foreach (var item in cfg.ItemIds)
-            {
                 cfg.EnabledItems[item] = true;
-            }
         }
 
-        list = new AutoGatherList()
+        list = new AutoGatherList
         {
-            Name               = cfg.Name,
-            Description        = cfg.Description,
-            FolderPath         = cfg.FolderPath ?? string.Empty,
-            Order              = cfg.Order,
-            Enabled            = cfg.Enabled,
-            Fallback           = cfg.Fallback,
-            items              = new(cfg.ItemIds.Length),
-            quantities         = new(cfg.ItemIds.Length),
-            preferredLocations = new(cfg.PrefferedLocations.Count),
-            enabledItems       = new(cfg.EnabledItems.Count),
+            Name        = cfg.Name,
+            Description = cfg.Description,
+            FolderPath  = cfg.FolderPath ?? string.Empty,
+            Order       = cfg.Order,
+            Enabled     = cfg.Enabled,
+            Fallback    = cfg.Fallback,
         };
+
         var changes = false;
-        foreach (var itemId in cfg.ItemIds)
+
+        if (cfg.Entries.Length > 0)
         {
-            uint quantity;
-            IGatherable? item;
-
-            if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
-                item = gatherable;
-            else if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
-                item = fish;
-            else
-                continue;
-
-            if (list.Add(item, quantity = cfg.Quantities.GetValueOrDefault(item.ItemId)))
+            foreach (var entryCfg in cfg.Entries)
             {
-                changes |= list.quantities[item] != quantity;
-                if (cfg.PrefferedLocations.TryGetValue(itemId, out var locId))
+                if (!TryResolveItem(entryCfg.ItemId, out var item))
+                    continue;
+
+                ILocation? location = null;
+                if (entryCfg.PreferredLocationId is { } locId)
                 {
-                    if (item.Locations.FirstOrDefault(n => n.Id == locId) is var loc and not null)
-                        list.SetPreferredLocation(item, loc);
-                    else
+                    location = item.Locations.FirstOrDefault(n => n.Id == locId);
+                    if (location == null)
                         changes = true;
                 }
 
-                if (cfg.EnabledItems.TryGetValue(itemId, out var enabled))
-                    list.SetEnabled(item, enabled);
+                list.entries.Add(new Entry
+                {
+                    Item = item,
+                    Quantity = NormalizeQuantity(item, entryCfg.Quantity),
+                    PreferredLocation = location,
+                    Enabled = entryCfg.Enabled,
+                });
             }
+
+            return changes;
+        }
+
+        foreach (var itemId in cfg.ItemIds)
+        {
+            if (!TryResolveItem(itemId, out var item))
+                continue;
+
+            var quantity = cfg.Quantities.GetValueOrDefault(item.ItemId);
+            if (!list.Add(item, quantity))
+                continue;
+
+            var entry = list.entries[^1];
+            changes |= entry.Quantity != quantity;
+            if (cfg.PrefferedLocations.TryGetValue(itemId, out var locId))
+            {
+                if (item.Locations.FirstOrDefault(n => n.Id == locId) is var loc and not null)
+                    entry.PreferredLocation = loc;
+                else
+                    changes = true;
+            }
+
+            if (cfg.EnabledItems.TryGetValue(itemId, out var enabled))
+                entry.Enabled = enabled;
         }
 
         return changes;
     }
 
+    private static bool TryResolveItem(uint itemId, [NotNullWhen(true)] out IGatherable? item)
+    {
+        if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
+        {
+            item = gatherable;
+            return true;
+        }
+
+        if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
+        {
+            item = fish;
+            return true;
+        }
+
+        item = null;
+        return false;
+    }
+
     public AutoGatherList()
     { }
-
 
     public AutoGatherList(TimedGroup group)
     {
