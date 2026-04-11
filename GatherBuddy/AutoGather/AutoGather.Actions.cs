@@ -244,8 +244,25 @@ namespace GatherBuddy.AutoGather
                     case FishingState.PoleReady:
                         HandleReady(target, config);
                         break;
+                    case FishingState.PoleOut:
+                    case FishingState.Waiting:
+                    case FishingState.Waiting2:
+                    case FishingState.Waiting3:
+                        if (GatherBuddy.Config.AutoGatherConfig.SitWhenFishing && !_isSitting)
+                        {
+                            EnqueueActionWithDelay(() => Chat.ExecuteCommand("/sit"));
+                            _isSitting = true;
+                        }
+                        break;
                 }
             }
+        }
+
+        private bool _isSitting = false;
+
+        private void ResetFishingPreCastState()
+        {
+            _isSitting = false;
         }
 
         private void HandleReady(GatherTarget target, ConfigPreset config)
@@ -660,6 +677,8 @@ namespace GatherBuddy.AutoGather
                 AutoHook.SetPluginState?.Invoke(false);
                 EnqueueEnsureAutoHookDisabled();
             }
+
+            ResetFishingPreCastState();
 
             EnqueueActionWithDelay(() => UseAction(Actions.Quit));
 

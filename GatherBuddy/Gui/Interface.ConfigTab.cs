@@ -877,6 +877,14 @@ public partial class Interface
             }
         }
 
+        public static void DrawSitWhenFishingBox()
+            => DrawCheckbox("Sit When Fishing",
+                "Automatically sit when fishing.",
+                GatherBuddy.Config.AutoGatherConfig.SitWhenFishing, b => GatherBuddy.Config.AutoGatherConfig.SitWhenFishing = b);
+
+
+
+
         public static void DrawAlarmFormatInput()
             => DrawFormatInput("Alarm Chat Format",
                 "Keep empty to have no chat output.\nCan replace:\n- {Alarm} with the alarm name in brackets.\n- {Item} with the item link.\n- {Offset} with the alarm offset in seconds.\n- {DurationString} with 'will be up for the next ...' or 'is currently up for ...'.\n- {Location} with the map flag link and location name.",
@@ -1636,6 +1644,7 @@ public partial class Interface
                 ConfigFunctions.DrawAmbitiousLureConfig();
                 ConfigFunctions.DrawModestLureConfig();
                 ConfigFunctions.DrawManualPresetGenerator();
+                ConfigFunctions.DrawSitWhenFishingBox();
                 ImGui.TreePop();
             }
 
