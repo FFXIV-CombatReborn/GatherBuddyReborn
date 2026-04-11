@@ -882,10 +882,8 @@ public partial class Interface
                 "Automatically sit when fishing.",
                 GatherBuddy.Config.AutoGatherConfig.SitWhenFishing, b => GatherBuddy.Config.AutoGatherConfig.SitWhenFishing = b);
 
-        public static void DrawUseLightWhenFishingBox()
-            => DrawCheckbox("Use Light When Fishing",
-                "Toggle whether to use light when fishing.",
-                GatherBuddy.Config.AutoGatherConfig.UseLightWhenFishing, b => GatherBuddy.Config.AutoGatherConfig.UseLightWhenFishing = b);
+
+
 
         public static void DrawAlarmFormatInput()
             => DrawFormatInput("Alarm Chat Format",
@@ -1646,6 +1644,7 @@ public partial class Interface
                 ConfigFunctions.DrawAmbitiousLureConfig();
                 ConfigFunctions.DrawModestLureConfig();
                 ConfigFunctions.DrawManualPresetGenerator();
+                ConfigFunctions.DrawSitWhenFishingBox();
                 ImGui.TreePop();
             }
 

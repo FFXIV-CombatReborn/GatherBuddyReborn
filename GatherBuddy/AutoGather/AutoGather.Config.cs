@@ -45,7 +45,6 @@ namespace GatherBuddy.AutoGather
         public bool UseNavigation { get; set; } = true;
         public bool UseAutoHook { get; set; } = true;
         public bool SitWhenFishing { get; set; } = false;
-        public bool UseLightWhenFishing { get; set; } = false;
         public bool DisableAutoHookOnStop { get; set; } = false;
         public bool UseExistingAutoHookPresets { get; set; } = false;
         public bool EnableSurfaceSlap { get; set; } = false;
