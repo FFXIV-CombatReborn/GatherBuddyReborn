@@ -244,33 +244,30 @@ namespace GatherBuddy.AutoGather
                     case FishingState.PoleReady:
                         HandleReady(target, config);
                         break;
+                    case FishingState.PoleOut:
+                    case FishingState.Waiting:
+                    case FishingState.Waiting2:
+                    case FishingState.Waiting3:
+                        if (GatherBuddy.Config.AutoGatherConfig.SitWhenFishing && !_isSitting)
+                        {
+                            EnqueueActionWithDelay(() => Chat.ExecuteCommand("/sit"));
+                            _isSitting = true;
+                        }
+                        break;
                 }
             }
         }
 
         private bool _isSitting = false;
-        private bool _isUsingLight = false;
 
         private void ResetFishingPreCastState()
         {
             _isSitting = false;
-            _isUsingLight = false;
         }
 
         private void HandleReady(GatherTarget target, ConfigPreset config)
         {
             LureSuccess = false;
-
-            if (GatherBuddy.Config.AutoGatherConfig.SitWhenFishing && !_isSitting)
-            {
-                EnqueueActionWithDelay(() => Chat.ExecuteCommand("/sit"));
-                _isSitting = true;
-            }
-            if (GatherBuddy.Config.AutoGatherConfig.UseLightWhenFishing && !_isUsingLight)
-            {
-                EnqueueActionWithDelay(() => UseAction(Actions.CastLight));
-                _isUsingLight = true;
-            }
 
             SetupAutoHookForFishing(target);
 
