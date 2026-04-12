@@ -31,6 +31,7 @@ namespace GatherBuddy.AutoGather
         public bool HonkMode { get; set; } = true;
         public SortingType SortingMethod { get; set; } = SortingType.Location;
         public bool TeleportToNextNode { get; set; } = false;
+        public bool SplitGatherableForAllLocationsIfNoPreferenceSelected { get; set; } = false;
         public bool GoHomeWhenIdle { get; set; } = true;
         public bool GoHomeWhenDone { get; set; } = true;
         public bool UseSkillsForFallbackItems { get; set; } = false;
