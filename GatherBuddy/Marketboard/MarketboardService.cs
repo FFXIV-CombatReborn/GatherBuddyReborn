@@ -240,7 +240,7 @@ public sealed class MarketboardService : IDisposable
         var result = new List<string>();
         try
         {
-            var worldId = Dalamud.ClientState.LocalPlayer?.HomeWorld.RowId ?? 0u;
+            var worldId = Dalamud.Objects.LocalPlayer?.HomeWorld.RowId ?? 0u;
             if (worldId == 0) return result;
 
             var worldSheet = Dalamud.GameData.GetExcelSheet<World>();
@@ -270,7 +270,7 @@ public sealed class MarketboardService : IDisposable
     {
         try
         {
-            var worldId = Dalamud.ClientState.LocalPlayer?.HomeWorld.RowId ?? 0u;
+            var worldId = Dalamud.Objects.LocalPlayer?.HomeWorld.RowId ?? 0u;
             if (worldId == 0) return "Aether";
             var worldSheet = Dalamud.GameData.GetExcelSheet<World>();
             if (worldSheet?.TryGetRow(worldId, out var world) == true)

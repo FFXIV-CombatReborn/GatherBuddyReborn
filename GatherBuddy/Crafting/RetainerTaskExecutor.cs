@@ -936,7 +936,7 @@ internal unsafe class RetainerTaskExecutor
 
     public static IGameObject? FindNearestBellForNavigation()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null) return null;
 
         var bellName = GetBellName();
@@ -969,7 +969,7 @@ internal unsafe class RetainerTaskExecutor
 
     private static IGameObject? FindNearestBell()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null) return null;
 
         var bellName = GetBellName();

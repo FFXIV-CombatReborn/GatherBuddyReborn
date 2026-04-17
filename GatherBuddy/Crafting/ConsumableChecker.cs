@@ -18,7 +18,7 @@ public static class ConsumableChecker
     
     public static bool HasFoodBuff(uint foodItemId)
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
             return false;
         
@@ -47,7 +47,7 @@ public static class ConsumableChecker
     
     public static bool HasMedicineBuff(uint medicineItemId)
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
             return false;
         
@@ -76,7 +76,7 @@ public static class ConsumableChecker
     
     public static bool HasManualBuff()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
             return false;
         
@@ -85,7 +85,7 @@ public static class ConsumableChecker
     
     public static bool HasSquadronManualBuff()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
             return false;
         

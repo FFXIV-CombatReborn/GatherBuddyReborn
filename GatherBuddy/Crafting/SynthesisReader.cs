@@ -68,7 +68,7 @@ public static unsafe class SynthesisReader
             Progress = GetProgress(synthWindow),
             Quality = GetQuality(synthWindow),
             Durability = GetDurability(synthWindow),
-            RemainingCP = (int)(Dalamud.ClientState.LocalPlayer?.CurrentCp ?? 0),
+            RemainingCP = (int)(Dalamud.Objects.LocalPlayer?.CurrentCp ?? 0),
             Condition = GetCondition(synthWindow),
             TrainedPerfectionAvailable = previousStep?.TrainedPerfectionAvailable ?? true,
             HeartAndSoulAvailable = previousStep?.HeartAndSoulAvailable ?? craft.Specialist,
@@ -89,7 +89,7 @@ public static unsafe class SynthesisReader
     
     private static void ReadBuffsIntoStepState(StepState step)
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
             return;
         

@@ -5,6 +5,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.GamePad;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
 using ImRaii = ElliLib.Raii.ImRaii;
 
@@ -52,6 +53,11 @@ public partial class VulcanWindow
             ImGui.SetTooltip("Maximum number of recent crafting lists to show in context menus (1-50)");
 
         ImGui.EndGroup();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        DrawVendorNpcLocationDebug();
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -138,6 +144,31 @@ public partial class VulcanWindow
 
         DrawGamepadInputTest();
         }
+    }
+
+    private static void DrawVendorNpcLocationDebug()
+    {
+        ImGui.BeginGroup();
+        ImGui.Text("Vendor NPC Location Source");
+        ImGui.Spacing();
+
+        var dataShareFirst = GatherBuddy.Config.VendorNpcLocationsDataShareFirst;
+        if (ImGui.RadioButton("DataShare first###vendorNpcLocationDataShareFirst", dataShareFirst))
+            SetVendorNpcLocationSourcePreference(true);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Prefer AllaganTools DataShare locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and planevent.lgb.");
+
+        ImGui.SameLine();
+
+        if (ImGui.RadioButton("LGB first###vendorNpcLocationLgbFirst", !dataShareFirst))
+            SetVendorNpcLocationSourcePreference(false);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Prefer planevent.lgb locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and AllaganTools DataShare.");
+
+        ImGui.Spacing();
+        ImGui.Text($"  Source Order: {(dataShareFirst ? "DataShare -> Level -> Supplemental -> LGB" : "LGB -> Level -> Supplemental -> DataShare")}");
+        ImGui.Text($"  Cache Status: {GetVendorNpcLocationCacheStatus()}");
+        ImGui.EndGroup();
     }
     
     private void DrawGamepadInputTest()
@@ -259,5 +290,29 @@ public partial class VulcanWindow
             return territory.PlaceName.ValueNullable?.Name.ExtractText() ?? "Unknown";
         }
         return "Unknown";
+    }
+
+    private static void SetVendorNpcLocationSourcePreference(bool dataShareFirst)
+    {
+        if (GatherBuddy.Config.VendorNpcLocationsDataShareFirst == dataShareFirst)
+            return;
+
+        GatherBuddy.Config.VendorNpcLocationsDataShareFirst = dataShareFirst;
+        GatherBuddy.Config.Save();
+        GatherBuddy.Log.Debug($"[VulcanWindow] Vendor NPC location source order set to {(dataShareFirst ? "DataShare -> Level -> Supplemental -> LGB" : "LGB -> Level -> Supplemental -> DataShare")}");
+        VendorNpcLocationCache.ReloadAsync();
+    }
+
+    private static string GetVendorNpcLocationCacheStatus()
+    {
+        if (VendorNpcLocationCache.IsInitializing)
+            return $"Rebuilding ({VendorNpcLocationCache.ResolvedNpcCount}/{VendorNpcLocationCache.RequestedNpcCount})";
+        if (VendorNpcLocationCache.IsInitialized)
+            return $"Ready ({VendorNpcLocationCache.ResolvedNpcCount}/{VendorNpcLocationCache.RequestedNpcCount})";
+        if (VendorShopResolver.IsInitializing)
+            return "Waiting for vendor data";
+        if (!VendorShopResolver.IsInitialized)
+            return "Vendor data not initialized";
+        return "Location cache not initialized";
     }
 }

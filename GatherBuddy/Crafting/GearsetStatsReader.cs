@@ -141,7 +141,7 @@ public static unsafe class GearsetStatsReader
     {
         try
         {
-            var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+            var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
             
             if (currentJob == jobId)
             {
