@@ -28,7 +28,8 @@ public partial class VulcanWindow : Window, IDisposable
     private bool                    _deferEditorDraw = false;
     private bool                    _craftingListsRequestFocus = false;
     private bool                    _recipesTabRequestFocus    = false;
-    private uint?                   _pendingRecipeItemId       = null;
+    private uint?                   _pendingRecipeId           = null;
+    private uint?                   _pendingRecipeScrollId     = null;
     private bool                    _openCreateListPopup = false;
     private bool                    _openCreateFolderPopup = false;
 
@@ -94,13 +95,13 @@ public partial class VulcanWindow : Window, IDisposable
         _mbDetailLastItemId = 0;
     }
 
-    public void OpenToRecipe(uint itemId)
+    public void OpenToRecipe(uint recipeId)
     {
         _isMinimized            = false;
         IsOpen                  = true;
         _recipesTabRequestFocus = true;
-        _pendingRecipeItemId    = itemId;
-        GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for item {itemId}");
+        _pendingRecipeId        = recipeId;
+        GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for recipe {recipeId}");
     }
 
     public void OpenToList(string argument)

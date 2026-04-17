@@ -119,6 +119,118 @@ public partial class VulcanWindow
         GatherBuddy.Log.Debug($"[VulcanWindow] Filtered to {_filteredRecipes.Count} recipes");
     }
 
+    private static bool EnsureRecipeVisibleInBrowser(ExtendedRecipe recipe)
+    {
+        if (PassesFilters(recipe))
+            return false;
+
+        var changed = false;
+
+        if (!string.IsNullOrWhiteSpace(_recipeSearchText) && !recipe.Name.Contains(_recipeSearchText, StringComparison.OrdinalIgnoreCase))
+        {
+            _recipeSearchText = recipe.Name;
+            changed = true;
+        }
+
+        if (_selectedJobFilters.Count > 0 && !_selectedJobFilters.Contains(recipe.JobId))
+        {
+            _selectedJobFilters.Clear();
+            _selectedJobFilters.Add(recipe.JobId);
+            changed = true;
+        }
+
+        if (_filterByEquipLevel && recipe.ItemEquipLevel == 0)
+        {
+            _filterByEquipLevel = false;
+            changed = true;
+        }
+
+        var levelValue = (int)(_filterByEquipLevel ? recipe.ItemEquipLevel : recipe.Level);
+        if (levelValue < _minLevel)
+        {
+            _minLevel = levelValue;
+            changed = true;
+        }
+
+        if (levelValue > _maxLevel)
+        {
+            _maxLevel = levelValue;
+            changed = true;
+        }
+
+        if (_hideCrafted && recipe.IsCrafted)
+        {
+            _hideCrafted = false;
+            changed = true;
+        }
+
+        if (_filterBrowserLevelingOnly && !IsLevelingRecipe(recipe.Recipe))
+        {
+            _filterBrowserLevelingOnly = false;
+            changed = true;
+        }
+
+        if (_filterBrowserHousingRecipes && !IsHousingRecipe(recipe.Recipe))
+        {
+            _filterBrowserHousingRecipes = false;
+            changed = true;
+        }
+
+        if (_filterBrowserDyeRecipes && !IsDyeRecipe(recipe.Recipe))
+        {
+            _filterBrowserDyeRecipes = false;
+            changed = true;
+        }
+
+        if (_filterBrowserMasterRecipes && recipe.Recipe.SecretRecipeBook.RowId == 0)
+        {
+            _filterBrowserMasterRecipes = false;
+            changed = true;
+        }
+
+        if (_filterBrowserCollectables && !recipe.Recipe.ItemResult.Value.AlwaysCollectable)
+        {
+            _filterBrowserCollectables = false;
+            changed = true;
+        }
+
+        if (_filterBrowserExpertRecipes && !recipe.Recipe.IsExpert)
+        {
+            _filterBrowserExpertRecipes = false;
+            changed = true;
+        }
+
+        if (_filterBrowserQuestRecipes && recipe.Recipe.ItemResult.Value.ItemSearchCategory.RowId != 0)
+        {
+            _filterBrowserQuestRecipes = false;
+            changed = true;
+        }
+
+        if (!PassesFilters(recipe))
+        {
+            _recipeSearchText = recipe.Name;
+            _selectedJobFilters.Clear();
+            _selectedJobFilters.Add(recipe.JobId);
+            _minLevel = 1;
+            _maxLevel = 100;
+            _hideCrafted = false;
+            _filterByEquipLevel = false;
+            _filterBrowserMasterRecipes = false;
+            _filterBrowserHousingRecipes = false;
+            _filterBrowserDyeRecipes = false;
+            _filterBrowserCollectables = false;
+            _filterBrowserExpertRecipes = false;
+            _filterBrowserQuestRecipes = false;
+            _filterBrowserLevelingOnly = false;
+            changed = true;
+        }
+
+        if (changed)
+            _filtersDirty = true;
+
+        return changed;
+    }
+
 
     private static bool IsLevelingRecipe(Recipe recipe)
         => recipe.SecretRecipeBook.RowId == 0 && recipe.RecipeNotebookList.RowId < 1000;
@@ -236,19 +348,23 @@ public partial class VulcanWindow
             InitializeRecipeList();
         }
 
-        if (_pendingRecipeItemId.HasValue && _extendedRecipeList != null)
+        if (_pendingRecipeId.HasValue && _extendedRecipeList != null)
         {
-            var targetItemId = _pendingRecipeItemId.Value;
-            _pendingRecipeItemId = null;
-            var target = _extendedRecipeList.FirstOrDefault(r => r.Recipe.ItemResult.RowId == targetItemId);
+            var targetRecipeId = _pendingRecipeId.Value;
+            _pendingRecipeId = null;
+            var target = _extendedRecipeList.FirstOrDefault(r => r.Recipe.RowId == targetRecipeId);
             if (target != null)
             {
+                var revealed = EnsureRecipeVisibleInBrowser(target);
                 _selectedRecipe = target;
-                GatherBuddy.Log.Debug($"[VulcanWindow] Navigated to recipe for item {targetItemId}: {target.Name}");
+                _pendingRecipeScrollId = targetRecipeId;
+                GatherBuddy.Log.Debug(revealed
+                    ? $"[VulcanWindow] Navigated to recipe {targetRecipeId}: {target.Name} and adjusted browser filters."
+                    : $"[VulcanWindow] Navigated to recipe {targetRecipeId}: {target.Name}");
             }
             else
             {
-                GatherBuddy.Log.Debug($"[VulcanWindow] No recipe found in browser for item {targetItemId}");
+                GatherBuddy.Log.Debug($"[VulcanWindow] No recipe found in browser for recipe {targetRecipeId}");
             }
         }
 

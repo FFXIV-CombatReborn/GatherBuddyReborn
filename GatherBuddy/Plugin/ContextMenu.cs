@@ -83,12 +83,32 @@ public class ContextMenu : IDisposable
             PrefixChar  = 'V',
             Name        = "Add to Vendor Buy List",
             OnClicked   = OnClickVendorBuyList,
-            IsSubmenu   = false,
+            IsSubmenu   = true,
             PrefixColor = 42,
         };
 
         if (GatherBuddy.Config.AddIngameContextMenus)
             Enable();
+    }
+
+    private void OpenCreateVendorBuyListPopup(uint itemId)
+    {
+        var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
+        if (vendorBuyListWindow == null)
+        {
+            GatherBuddy.Log.Warning($"[ContextMenu] Unable to open Create Vendor List popup for item {itemId}: vendor buy list window unavailable.");
+            return;
+        }
+
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Create Vendor List popup for item {itemId}");
+        if (!vendorBuyListWindow.OpenCreateListPopup(itemId))
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to create a new vendor buy list for item {itemId}.");
+    }
+
+    private void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
+    {
+        if (!GatherBuddy.VendorBuyListManager.TryIncrementTarget(listId, itemId, 1, selectList: true, openWindow: true, announce: true))
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to add item {itemId} to vendor buy list '{listName}'.");
     }
 
     private void OnClick(IMenuItemClickedArgs args)
@@ -135,8 +155,8 @@ public class ContextMenu : IDisposable
             return;
         }
 
-        GatherBuddy.Log.Debug($"[ContextMenu] Opening Vulcan to recipe for item {recipe.Value.ItemResult.RowId}");
-        vulcanWindow.OpenToRecipe(recipe.Value.ItemResult.RowId);
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Vulcan to recipe {recipe.Value.RowId} for item {recipe.Value.ItemResult.RowId}");
+        vulcanWindow.OpenToRecipe(recipe.Value.RowId);
     }
 
     private void OnClickCrafting(IMenuItemClickedArgs args)
@@ -212,9 +232,32 @@ public class ContextMenu : IDisposable
             GatherBuddy.Log.Debug("[ContextMenu] Vendor buy-list context menu clicked without a cached item id.");
             return;
         }
+        var itemId = _lastVendorBuyListItemId.Value;
+        var menuItems = new List<MenuItem>
+        {
+            new()
+            {
+                Name = "Create New List...",
+                PrefixChar = 'V',
+                PrefixColor = 42,
+                OnClicked = _ => OpenCreateVendorBuyListPopup(itemId),
+            },
+        };
 
-        if (!GatherBuddy.VendorBuyListManager.TryIncrementTarget(_lastVendorBuyListItemId.Value, 1, true, true))
-            GatherBuddy.Log.Debug($"[ContextMenu] Unable to add item {_lastVendorBuyListItemId.Value} to the vendor buy list.");
+        foreach (var list in GatherBuddy.VendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        {
+            var listId = list.Id;
+            var listName = list.Name;
+            menuItems.Add(new MenuItem
+            {
+                Name = listName,
+                PrefixChar = 'V',
+                PrefixColor = 42,
+                OnClicked = _ => AddItemToVendorBuyList(itemId, listId, listName),
+            });
+        }
+
+        args.OpenSubmenu(menuItems);
     }
     private void OpenCreateCraftingListPopup(uint recipeId)
     {

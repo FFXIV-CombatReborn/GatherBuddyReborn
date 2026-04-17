@@ -47,6 +47,25 @@ public sealed class VendorBuyListWindow : Window
     public void Open()
         => IsOpen = true;
 
+    public bool OpenCreateListPopup(uint itemId)
+    {
+        var manager = GatherBuddy.VendorBuyListManager;
+        if (manager == null)
+            return false;
+
+        var list = manager.CreateList("Vendor List", false);
+        if (!manager.TryIncrementTarget(list.Id, itemId, 1, selectList: true, openWindow: false, announce: false))
+        {
+            GatherBuddy.Log.Warning($"[VendorBuyListWindow] Failed to add item {itemId} to newly created vendor list '{list.Name}'.");
+            return false;
+        }
+
+        Open();
+        if (!manager.IsBusy)
+            OpenListNamePopup(list.Id, list.Name);
+        return true;
+    }
+
     public override void Draw()
     {
         var manager = GatherBuddy.VendorBuyListManager;

@@ -198,62 +198,19 @@ public sealed class VendorBuyListManager : IDisposable
     }
 
     public bool TryAddTarget(VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool openWindow = true, bool announce = false)
-    {
-        if (!VendorPurchaseManager.IsPurchaseSupported(entry, vendor))
-            return false;
-
-        var list = GetOrCreateActiveList();
-        targetQuantity = Math.Max(1u, targetQuantity);
-
-        var existing = FindMatchingEntry(list, entry, vendor);
-        if (existing == null)
-        {
-            existing = new VendorBuyListEntry();
-            list.Entries.Add(existing);
-        }
-
-        UpdateEntry(existing, entry, vendor, targetQuantity);
-        GatherBuddy.Config.Save();
-
-        if (openWindow)
-            OpenWindow();
-
-        if (!IsBusy)
-            _statusText = $"{entry.ItemName} target set to {targetQuantity:N0} in '{list.Name}'.";
-
-        if (announce)
-            Communicator.Print($"[GatherBuddyReborn] Added {entry.ItemName} to '{list.Name}' with target {targetQuantity:N0}.");
-        return true;
-    }
+        => TryAddTarget(GetOrCreateActiveList(), entry, vendor, targetQuantity, false, openWindow, announce);
 
     public bool TryIncrementTarget(uint itemId, uint amount = 1, bool openWindow = true, bool announce = false)
+        => TryIncrementTarget(GetOrCreateActiveList(), itemId, amount, false, openWindow, announce);
+
+    public bool TryIncrementTarget(Guid listId, uint itemId, uint amount = 1, bool selectList = false, bool openWindow = true, bool announce = false)
     {
-        var list = GetOrCreateActiveList();
-        amount = Math.Max(1u, amount);
-
-        var existing = list.Entries
-            .FirstOrDefault(entry => entry.ItemId == itemId && entry.ShopType == VendorShopType.GilShop);
-        if (existing != null)
-        {
-            existing.TargetQuantity = SaturatingAdd(Math.Max(existing.TargetQuantity, (uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId))), amount);
-            GatherBuddy.Config.Save();
-
-            if (openWindow)
-                OpenWindow();
-
-            if (!IsBusy)
-                _statusText = $"{existing.ItemName} target set to {existing.TargetQuantity:N0} in '{list.Name}'.";
-
-            if (announce)
-                Communicator.Print($"[GatherBuddyReborn] Added {existing.ItemName} to '{list.Name}' with target {existing.TargetQuantity:N0}.");
-            return true;
-        }
-
-        if (!TryResolveDefaultEntry(itemId, out var liveEntry, out var vendor))
+        EnsureListState();
+        var list = GetList(listId);
+        if (list == null)
             return false;
 
-        var targetQuantity = SaturatingAdd((uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId)), amount);
-        return TryAddTarget(liveEntry, vendor, targetQuantity, openWindow, announce);
+        return TryIncrementTarget(list, itemId, amount, selectList, openWindow, announce);
     }
 
     public void UpdateTargetQuantity(Guid entryId, uint targetQuantity)
@@ -513,6 +470,68 @@ public sealed class VendorBuyListManager : IDisposable
 
     private VendorBuyListDefinition? GetList(Guid listId)
         => GatherBuddy.Config.VendorBuyLists.FirstOrDefault(list => list.Id == listId);
+
+    private bool TryAddTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool selectList,
+        bool openWindow, bool announce)
+    {
+        if (!VendorPurchaseManager.IsPurchaseSupported(entry, vendor))
+            return false;
+
+        targetQuantity = Math.Max(1u, targetQuantity);
+
+        var existing = FindMatchingEntry(list, entry, vendor);
+        if (existing == null)
+        {
+            existing = new VendorBuyListEntry();
+            list.Entries.Add(existing);
+        }
+
+        UpdateEntry(existing, entry, vendor, targetQuantity);
+        if (selectList)
+            GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
+        GatherBuddy.Config.Save();
+
+        if (openWindow)
+            OpenWindow();
+
+        if (!IsBusy)
+            _statusText = $"{entry.ItemName} target set to {targetQuantity:N0} in '{list.Name}'.";
+
+        if (announce)
+            Communicator.Print($"[GatherBuddyReborn] Added {entry.ItemName} to '{list.Name}' with target {targetQuantity:N0}.");
+        return true;
+    }
+
+    private bool TryIncrementTarget(VendorBuyListDefinition list, uint itemId, uint amount, bool selectList, bool openWindow, bool announce)
+    {
+        amount = Math.Max(1u, amount);
+
+        var existing = list.Entries
+            .FirstOrDefault(entry => entry.ItemId == itemId && entry.ShopType == VendorShopType.GilShop);
+        if (existing != null)
+        {
+            existing.TargetQuantity = SaturatingAdd(Math.Max(existing.TargetQuantity, (uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId))), amount);
+            if (selectList)
+                GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
+            GatherBuddy.Config.Save();
+
+            if (openWindow)
+                OpenWindow();
+
+            if (!IsBusy)
+                _statusText = $"{existing.ItemName} target set to {existing.TargetQuantity:N0} in '{list.Name}'.";
+
+            if (announce)
+                Communicator.Print($"[GatherBuddyReborn] Added {existing.ItemName} to '{list.Name}' with target {existing.TargetQuantity:N0}.");
+            return true;
+        }
+
+        if (!TryResolveDefaultEntry(itemId, out var liveEntry, out var vendor))
+            return false;
+
+        var targetQuantity = SaturatingAdd((uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId)), amount);
+        return TryAddTarget(list, liveEntry, vendor, targetQuantity, selectList, openWindow, announce);
+    }
 
     private VendorBuyListDefinition? GetExecutionList()
         => _runningListId.HasValue
