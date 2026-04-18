@@ -66,6 +66,26 @@ public sealed class VendorBuyListWindow : Window
         return true;
     }
 
+    public bool OpenCreateListPopup(IReadOnlyList<VendorBuyListManager.GilShopTargetRequest> requests)
+    {
+        var manager = GatherBuddy.VendorBuyListManager;
+        if (manager == null || requests.Count == 0)
+            return false;
+
+        var list = manager.CreateList("Vendor List", false);
+        var addedCount = manager.TrySetGilShopTargets(list.Id, requests, selectList: true, openWindow: false, announce: false);
+        if (addedCount == 0)
+        {
+            GatherBuddy.Log.Warning($"[VendorBuyListWindow] Failed to add {requests.Count:N0} vendor targets to newly created vendor list '{list.Name}'.");
+            return false;
+        }
+
+        Open();
+        if (!manager.IsBusy)
+            OpenListNamePopup(list.Id, list.Name);
+        return true;
+    }
+
     public override void Draw()
     {
         var manager = GatherBuddy.VendorBuyListManager;
@@ -230,7 +250,7 @@ public sealed class VendorBuyListWindow : Window
             ImGui.Separator();
             ImGui.Spacing();
             ImGui.TextColored(ImGuiColors.DalamudGrey3, "This list is empty.");
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Add supported vendor items from the Vendors tab to populate it.");
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Add supported vendor items from the Vendors tab or Materials window to populate it.");
             return;
         }
 

@@ -107,7 +107,7 @@ public class VendorNavigator
         FinalApproachPoint,
     }
 
-    private static bool TryFindHousingRoute(uint targetTerritoryId, out uint aetheryteId)
+    private static bool TryFindHousingRoute(uint targetTerritoryId, out uint aetheryteId, bool logRouteDiagnostics = true)
     {
         aetheryteId = 0;
         if (!TryGetHousingDistrict(targetTerritoryId, out var district))
@@ -128,10 +128,11 @@ public class VendorNavigator
 
         if (!Teleporter.IsAttuned(aetheryteId))
         {
-            GatherBuddy.Log.Debug($"[VendorNavigator] Housing route for territory {targetTerritoryId} requires unattuned aetheryte {aetheryteId}");
+            if (logRouteDiagnostics)
+                GatherBuddy.Log.Debug($"[VendorNavigator] Housing route for territory {targetTerritoryId} requires unattuned aetheryte {aetheryteId}");
             aetheryteId = 0;
         }
-        else
+        else if (logRouteDiagnostics)
         {
             GatherBuddy.Log.Debug($"[VendorNavigator] Using housing route for territory {targetTerritoryId}: district={district}, cityAetheryte={aetheryteId}, ward=1");
         }
@@ -306,7 +307,7 @@ public class VendorNavigator
         return null;
     }
 
-    private static bool IsEquivalentTerritory(uint currentTerritoryId, uint targetTerritoryId)
+    internal static bool IsEquivalentTerritory(uint currentTerritoryId, uint targetTerritoryId)
     {
         if (currentTerritoryId == targetTerritoryId)
             return true;
@@ -598,7 +599,7 @@ public class VendorNavigator
 
         if (_teleportAttempted) return;
 
-        var (aetheryteId, aethernetName, requiresHousingEntry) = FindBestRoute(_target!.TerritoryId, _target.Position);
+        var (aetheryteId, aethernetName, requiresHousingEntry) = FindBestRoute(_target!.TerritoryId, _target.Position, true);
         if (aetheryteId == 0)
         {
             if (TryGetHousingDistrict(_target.TerritoryId, out _))
@@ -2294,9 +2295,13 @@ public class VendorNavigator
             path.RemoveRange(0, removeCount);
     }
 
-    private static (uint AetheryteId, string? AethernetName, bool RequiresHousingEntry) FindBestRoute(uint targetTerritoryId, Vector3 npcPosition)
+    internal static uint GetPrimaryRouteAetheryteId(uint targetTerritoryId, Vector3 npcPosition)
+        => FindBestRoute(targetTerritoryId, npcPosition, false).AetheryteId;
+
+    private static (uint AetheryteId, string? AethernetName, bool RequiresHousingEntry) FindBestRoute(uint targetTerritoryId, Vector3 npcPosition,
+        bool logRouteDiagnostics)
     {
-        if (TryFindHousingRoute(targetTerritoryId, out var housingAetheryteId))
+        if (TryFindHousingRoute(targetTerritoryId, out var housingAetheryteId, logRouteDiagnostics))
             return (housingAetheryteId, null, housingAetheryteId != 0);
         var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
         if (aetheryteSheet == null) return (0, null, false);

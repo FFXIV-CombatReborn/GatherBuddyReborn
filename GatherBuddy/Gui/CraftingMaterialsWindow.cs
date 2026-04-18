@@ -11,6 +11,7 @@ using ElliLib.Raii;
 using ElliLib.Text;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Gui;
@@ -182,16 +183,18 @@ public class CraftingMaterialsWindow : Window
         var dropList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Drop).ToList();
         var shopList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
         var vendorList = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
+        var vendorTargets = BuildVendorBuyListTargets(vendorList);
         var craftList  = _matsShowPrecrafts ? visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Craftable).ToList() : null;
 
         var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
         var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
-        var panels = new List<(string Id, string Label, Vector4 Accent, IEnumerable<MaterialEntry> Entries, RetainerColumnMode RetainerColumns)>();
-        if (gatherList.Count > 0)         panels.Add(("##gather", "Gather",          AccentGather, gatherList, nonCraftRetainerMode));
-        if (dropList.Count > 0)           panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList,   nonCraftRetainerMode));
-        if (shopList.Count > 0)           panels.Add(("##shop",   "Scrip / Tomes",   AccentShop,   shopList,   nonCraftRetainerMode));
-        if (vendorList.Count > 0)         panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList, nonCraftRetainerMode));
-        if (craftList is { Count: > 0 })  panels.Add(("##craft",  "Craft",           AccentCraft,  craftList,  craftRetainerMode));
+        var panels = new List<(string Id, string Label, Vector4 Accent, IReadOnlyList<MaterialEntry> Entries, RetainerColumnMode RetainerColumns,
+            IReadOnlyList<VendorBuyListManager.GilShopTargetRequest>? VendorTargets)>();
+        if (gatherList.Count > 0)        panels.Add(("##gather", "Gather",          AccentGather, gatherList, nonCraftRetainerMode, null));
+        if (dropList.Count > 0)          panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList,   nonCraftRetainerMode, null));
+        if (shopList.Count > 0)          panels.Add(("##shop",   "Scrip / Tomes",   AccentShop,   shopList,   nonCraftRetainerMode, null));
+        if (vendorList.Count > 0)        panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList, nonCraftRetainerMode, vendorTargets));
+        if (craftList is { Count: > 0 }) panels.Add(("##craft",  "Craft",           AccentCraft,  craftList,  craftRetainerMode, null));
 
         if (panels.Count == 0) return;
 
@@ -200,10 +203,10 @@ public class CraftingMaterialsWindow : Window
 
         for (var i = 0; i < panels.Count; i++)
         {
-            var (id, label, accent, entries, retainerColumns) = panels[i];
+            var (id, label, accent, entries, retainerColumns, panelVendorTargets) = panels[i];
             var isLast   = i == panels.Count - 1;
             var spanFull = isLast && panels.Count % 2 == 1;
-            DrawMaterialPanel(id, label, accent, entries, retainerColumns, spanFull ? avail.X : panelW, panelH);
+            DrawMaterialPanel(id, label, accent, entries, retainerColumns, spanFull ? avail.X : panelW, panelH, panelVendorTargets);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
@@ -212,7 +215,7 @@ public class CraftingMaterialsWindow : Window
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
         IEnumerable<MaterialEntry> source,
-        RetainerColumnMode retainerColumnMode, float width, float height)
+        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.GilShopTargetRequest>? vendorTargets)
     {
         static void DrawCenteredHeader(string text, string? tooltip = null)
         {
@@ -304,10 +307,7 @@ public class CraftingMaterialsWindow : Window
                 else
                 {
                     foreach (var e in entries)
-                    {
-                        DrawPanelRow(e.ItemId, e.Have, e.RetNQ, e.RetHQ, e.Needed, e.Name, e.IconId,
-                            e.EffectiveAvailable >= e.Needed, retainerColumnMode, e.IsPrecraft, e.EffectiveAvailable);
-                    }
+                        DrawPanelRow(e, retainerColumnMode, vendorTargets);
                 }
 
                 ImGui.EndTable();
@@ -317,9 +317,19 @@ public class CraftingMaterialsWindow : Window
         }
     }
 
-    private void DrawPanelRow(uint itemId, int have, int retNQ, int retHQ, int needed, string name, ushort iconId,
-        bool satisfied, RetainerColumnMode retainerColumnMode, bool isPrecraft, int effectiveAvailable)
+    private void DrawPanelRow(MaterialEntry entry, RetainerColumnMode retainerColumnMode,
+        IReadOnlyList<VendorBuyListManager.GilShopTargetRequest>? vendorTargets)
     {
+        var itemId            = entry.ItemId;
+        var have              = entry.Have;
+        var retNQ             = entry.RetNQ;
+        var retHQ             = entry.RetHQ;
+        var needed            = entry.Needed;
+        var name              = entry.Name;
+        var iconId            = entry.IconId;
+        var effectiveAvailable = entry.EffectiveAvailable;
+        var satisfied         = effectiveAvailable >= needed;
+        var isPrecraft        = entry.IsPrecraft;
         ImGui.TableNextRow();
         Vector4 rowColor = (satisfied, isPrecraft) switch
         {
@@ -352,7 +362,7 @@ public class CraftingMaterialsWindow : Window
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
         ImUtf8.CopyOnClickSelectable(name.AsSpan());
-        if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}"))
+        if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
         {
             if (ImGui.Selectable("Create Link"))
                 Communicator.Print(SeString.CreateItemLink(itemId));
@@ -361,6 +371,8 @@ public class CraftingMaterialsWindow : Window
                 GatherBuddy.MarketboardService?.QueueLookup(itemId, name, iconId);
                 GatherBuddy.VulcanWindow?.OpenToMarketboardItem(itemId);
             }
+
+            DrawVendorBuyListPopup(entry, vendorTargets);
             ImGui.EndPopup();
         }
 
@@ -423,6 +435,102 @@ public class CraftingMaterialsWindow : Window
                 barMin.Y + (barMax.Y - barMin.Y - pctSize.Y) * 0.5f),
             ImGui.GetColorU32(ImGuiCol.Text),
             pctText);
+    }
+
+    private void DrawVendorBuyListPopup(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.GilShopTargetRequest>? vendorTargets)
+    {
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null)
+            return;
+
+        var hasSingleTarget = TryCreateVendorBuyListTarget(entry, out var singleTarget);
+        var hasBatchTargets = vendorTargets is { Count: > 0 };
+        if (!hasSingleTarget && !hasBatchTargets)
+            return;
+
+        ImGui.Separator();
+
+        if (hasSingleTarget)
+        {
+            DrawVendorBuyListExistingListMenu("Add to Existing List", new[] { singleTarget });
+            if (ImGui.Selectable("Create New List"))
+                OpenCreateVendorBuyListPopup(new[] { singleTarget });
+        }
+
+        if (hasBatchTargets && vendorTargets!.Count > 1)
+        {
+            DrawVendorBuyListExistingListMenu("Add Current Vendor View to Existing List", vendorTargets);
+            if (ImGui.Selectable("Create New List from Current Vendor View"))
+                OpenCreateVendorBuyListPopup(vendorTargets);
+        }
+    }
+
+    private void DrawVendorBuyListExistingListMenu(string label, IReadOnlyList<VendorBuyListManager.GilShopTargetRequest> targets)
+    {
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null)
+            return;
+
+        if (!ImGui.BeginMenu(label, buyListManager.Lists.Count > 0))
+            return;
+
+        foreach (var list in buyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        {
+            if (ImGui.Selectable(list.Name))
+                AddTargetsToVendorBuyList(list.Id, list.Name, targets);
+        }
+
+        ImGui.EndMenu();
+    }
+
+    private void AddTargetsToVendorBuyList(Guid listId, string listName, IReadOnlyList<VendorBuyListManager.GilShopTargetRequest> targets)
+    {
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null)
+            return;
+
+        var addedCount = buyListManager.TrySetGilShopTargets(listId, targets, selectList: true, openWindow: true, announce: true);
+        if (addedCount == 0)
+            GatherBuddy.Log.Debug($"[CraftingMaterialsWindow] Unable to add {targets.Count:N0} vendor target(s) to vendor buy list '{listName}'.");
+    }
+
+    private void OpenCreateVendorBuyListPopup(IReadOnlyList<VendorBuyListManager.GilShopTargetRequest> targets)
+    {
+        var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
+        if (vendorBuyListWindow == null)
+        {
+            GatherBuddy.Log.Warning("[CraftingMaterialsWindow] Unable to open Create Vendor List popup: vendor buy list window unavailable.");
+            return;
+        }
+
+        if (!vendorBuyListWindow.OpenCreateListPopup(targets))
+            GatherBuddy.Log.Debug($"[CraftingMaterialsWindow] Unable to create a new vendor buy list for {targets.Count:N0} vendor target(s).");
+    }
+
+    private static List<VendorBuyListManager.GilShopTargetRequest> BuildVendorBuyListTargets(IEnumerable<MaterialEntry> entries)
+        => entries
+            .Select(entry => TryCreateVendorBuyListTarget(entry, out var target)
+                ? target
+                : default)
+            .Where(target => target.ItemId != 0 && target.TargetQuantity > 0)
+            .GroupBy(target => target.ItemId)
+            .Select(group => new VendorBuyListManager.GilShopTargetRequest(group.Key, group.Max(target => target.TargetQuantity)))
+            .ToList();
+
+    private static bool TryCreateVendorBuyListTarget(MaterialEntry entry, out VendorBuyListManager.GilShopTargetRequest target)
+    {
+        target = default;
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null || !buyListManager.CanAddGilShopItem(entry.ItemId))
+            return false;
+
+        var missingQuantity = entry.Needed - entry.EffectiveAvailable;
+        if (missingQuantity <= 0)
+            return false;
+
+        var currentCount = (uint)Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
+        target = new VendorBuyListManager.GilShopTargetRequest(entry.ItemId, currentCount + (uint)missingQuantity);
+        return true;
     }
 
 }

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using GatherBuddy.AutoGather.Collectables;
+using GatherBuddy.Helpers;
 using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Vulcan.Vendors;
@@ -9,6 +11,18 @@ namespace GatherBuddy.Vulcan.Vendors;
 public sealed class VendorBuyListManager : IDisposable
 {
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
+    public readonly record struct GilShopTargetRequest(uint ItemId, uint TargetQuantity);
+    private readonly record struct PendingEntrySelection(
+        VendorBuyListEntry Entry,
+        VendorShopEntry LiveEntry,
+        VendorNpc Vendor,
+        VendorNpcLocation Location,
+        uint RemainingQuantity,
+        int PriorityBucket,
+        float DistanceSquared,
+        uint RouteAetheryteId,
+        int ListIndex);
+    private readonly record struct VendorOrderingContext(uint TerritoryId, Vector3 Position, bool HasPosition, uint RouteAetheryteId);
     private enum PurchaseContextResolutionResult
     {
         Success,
@@ -216,6 +230,20 @@ public sealed class VendorBuyListManager : IDisposable
             return false;
 
         return TryIncrementTarget(list, itemId, amount, selectList, openWindow, announce);
+    }
+
+    public bool TrySetGilShopTarget(Guid listId, uint itemId, uint targetQuantity, bool selectList = false, bool openWindow = true, bool announce = false)
+        => TrySetGilShopTargets(listId, new[] { new GilShopTargetRequest(itemId, targetQuantity) }, selectList, openWindow, announce) > 0;
+
+    public int TrySetGilShopTargets(Guid listId, IReadOnlyList<GilShopTargetRequest> requests, bool selectList = false, bool openWindow = true,
+        bool announce = false)
+    {
+        EnsureListState();
+        var list = GetList(listId);
+        if (list == null)
+            return 0;
+
+        return TrySetGilShopTargets(list, requests, selectList, openWindow, announce);
     }
 
     public void UpdateTargetQuantity(Guid entryId, uint targetQuantity)
@@ -568,6 +596,25 @@ public sealed class VendorBuyListManager : IDisposable
     private bool TryAddTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool selectList,
         bool openWindow, bool announce)
     {
+        if (!TrySetResolvedTarget(list, entry, vendor, targetQuantity))
+            return false;
+        if (selectList)
+            GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
+        GatherBuddy.Config.Save();
+
+        if (openWindow)
+            OpenWindow();
+
+        if (!IsBusy)
+            _statusText = $"{entry.ItemName} target set to {targetQuantity:N0} in '{list.Name}'.";
+
+        if (announce)
+            Communicator.Print($"[GatherBuddyReborn] Added {entry.ItemName} to '{list.Name}' with target {targetQuantity:N0}.");
+        return true;
+    }
+
+    private bool TrySetResolvedTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
+    {
         if (!VendorPurchaseManager.IsPurchaseSupported(entry, vendor))
             return false;
 
@@ -581,18 +628,6 @@ public sealed class VendorBuyListManager : IDisposable
         }
 
         UpdateEntry(existing, entry, vendor, targetQuantity);
-        if (selectList)
-            GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
-        GatherBuddy.Config.Save();
-
-        if (openWindow)
-            OpenWindow();
-
-        if (!IsBusy)
-            _statusText = $"{entry.ItemName} target set to {targetQuantity:N0} in '{list.Name}'.";
-
-        if (announce)
-            Communicator.Print($"[GatherBuddyReborn] Added {entry.ItemName} to '{list.Name}' with target {targetQuantity:N0}.");
         return true;
     }
 
@@ -625,6 +660,61 @@ public sealed class VendorBuyListManager : IDisposable
 
         var targetQuantity = SaturatingAdd((uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId)), amount);
         return TryAddTarget(list, liveEntry, vendor, targetQuantity, selectList, openWindow, announce);
+    }
+
+    private int TrySetGilShopTargets(VendorBuyListDefinition list, IReadOnlyList<GilShopTargetRequest> requests, bool selectList, bool openWindow,
+        bool announce)
+    {
+        var normalizedRequests = requests
+            .Where(request => request.ItemId != 0 && request.TargetQuantity > 0)
+            .GroupBy(request => request.ItemId)
+            .Select(group => new GilShopTargetRequest(group.Key, group.Max(request => request.TargetQuantity)))
+            .ToList();
+        if (normalizedRequests.Count == 0)
+            return 0;
+
+        var addedTargets = new List<(VendorShopEntry Entry, uint TargetQuantity)>();
+        foreach (var request in normalizedRequests)
+        {
+            if (!TryResolveDefaultEntry(request.ItemId, out var liveEntry, out var vendor))
+            {
+                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not resolve a default gil-shop entry for item {request.ItemId} while setting vendor targets.");
+                continue;
+            }
+
+            if (!TrySetResolvedTarget(list, liveEntry, vendor, request.TargetQuantity))
+            {
+                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not set a gil-shop target for {liveEntry.ItemName} in '{list.Name}'.");
+                continue;
+            }
+
+            addedTargets.Add((liveEntry, request.TargetQuantity));
+        }
+
+        if (addedTargets.Count == 0)
+            return 0;
+
+        if (selectList)
+            GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
+        GatherBuddy.Config.Save();
+
+        if (openWindow)
+            OpenWindow();
+
+        if (!IsBusy)
+            _statusText = addedTargets.Count == 1
+                ? $"{addedTargets[0].Entry.ItemName} target set to {addedTargets[0].TargetQuantity:N0} in '{list.Name}'."
+                : $"{addedTargets.Count:N0} vendor targets updated in '{list.Name}'.";
+
+        if (announce)
+        {
+            if (addedTargets.Count == 1)
+                Communicator.Print($"[GatherBuddyReborn] Added {addedTargets[0].Entry.ItemName} to '{list.Name}' with target {addedTargets[0].TargetQuantity:N0}.");
+            else
+                Communicator.Print($"[GatherBuddyReborn] Added {addedTargets.Count:N0} items to '{list.Name}'.");
+        }
+
+        return addedTargets.Count;
     }
 
     private VendorBuyListDefinition? GetExecutionList()
@@ -755,21 +845,118 @@ public sealed class VendorBuyListManager : IDisposable
         return false;
     }
 
-    private VendorBuyListEntry? GetNextPendingEntry(VendorBuyListDefinition list)
+    private PendingEntrySelection? GetNextPendingEntry(VendorBuyListDefinition list)
     {
-        if (_currentExecutionVendor.HasValue)
+        var orderingContext = CaptureVendorOrderingContext();
+        PendingEntrySelection? bestSelection = null;
+
+        for (var index = 0; index < list.Entries.Count; index++)
         {
-            var currentVendor = _currentExecutionVendor.Value;
-            var groupedEntry = list.Entries.FirstOrDefault(entry =>
-                !IsDeferredForCurrentRun(entry)
-             && entry.VendorNpcId == currentVendor.NpcId
-             && entry.MenuShopType == currentVendor.MenuShopType
-             && entry.ShopId == currentVendor.ShopId
-             && GetRemainingQuantity(entry) > 0);
-            if (groupedEntry != null)
-                return groupedEntry;
+            var entry = list.Entries[index];
+            if (IsDeferredForCurrentRun(entry))
+                continue;
+
+            var remainingQuantity = GetRemainingQuantity(entry);
+            if (remainingQuantity == 0)
+                continue;
+
+            var resolutionResult = TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage);
+            if (resolutionResult != PurchaseContextResolutionResult.Success)
+            {
+                HandleEntryResolutionFailure(entry, errorMessage, resolutionResult);
+                if (!_isRunning)
+                    return null;
+                continue;
+            }
+
+            var routeAetheryteId = VendorNavigator.GetPrimaryRouteAetheryteId(location.TerritoryId, location.Position);
+            var priorityBucket = GetVendorOrderingPriorityBucket(orderingContext, location, routeAetheryteId);
+            var distanceSquared = GetVendorOrderingDistanceSquared(orderingContext, location, priorityBucket);
+            var candidate = new PendingEntrySelection(entry, liveEntry, vendor, location, remainingQuantity, priorityBucket, distanceSquared,
+                routeAetheryteId, index);
+            if (!bestSelection.HasValue || ComparePendingEntrySelections(candidate, bestSelection.Value) < 0)
+                bestSelection = candidate;
         }
-        return list.Entries.FirstOrDefault(entry => !IsDeferredForCurrentRun(entry) && GetRemainingQuantity(entry) > 0);
+
+        if (bestSelection is not { } selected)
+            return null;
+
+        var distanceText = selected.DistanceSquared < float.MaxValue
+            ? $"{MathF.Sqrt(selected.DistanceSquared):F1}m"
+            : "route-ranked";
+        GatherBuddy.Log.Debug(
+            $"[VendorBuyListManager] Selected {selected.Entry.ItemName} from {selected.Vendor.Name} next using ordering bucket {selected.PriorityBucket} (territory={selected.Location.TerritoryId}, route={selected.RouteAetheryteId}, distance={distanceText}).");
+        return selected;
+    }
+
+    private static VendorOrderingContext CaptureVendorOrderingContext()
+    {
+        var territoryId = Player.Territory;
+        if (!Player.Available)
+            return new VendorOrderingContext(territoryId, Vector3.Zero, false, 0);
+
+        var position = Player.Position;
+        return new VendorOrderingContext(
+            territoryId,
+            position,
+            position != Vector3.Zero,
+            VendorNavigator.GetPrimaryRouteAetheryteId(territoryId, position));
+    }
+
+    private static int GetVendorOrderingPriorityBucket(VendorOrderingContext orderingContext, VendorNpcLocation location, uint routeAetheryteId)
+    {
+        if (orderingContext.TerritoryId == location.TerritoryId)
+            return 0;
+        if (VendorNavigator.IsEquivalentTerritory(orderingContext.TerritoryId, location.TerritoryId))
+            return 1;
+        if (orderingContext.RouteAetheryteId != 0 && routeAetheryteId != 0 && orderingContext.RouteAetheryteId == routeAetheryteId)
+            return 2;
+        return 3;
+    }
+
+    private static float GetVendorOrderingDistanceSquared(VendorOrderingContext orderingContext, VendorNpcLocation location, int priorityBucket)
+    {
+        if (!orderingContext.HasPosition || priorityBucket != 0)
+            return float.MaxValue;
+
+        var playerPosition = new Vector2(orderingContext.Position.X, orderingContext.Position.Z);
+        var vendorPosition = new Vector2(location.Position.X, location.Position.Z);
+        return Vector2.DistanceSquared(playerPosition, vendorPosition);
+    }
+
+    private static int ComparePendingEntrySelections(PendingEntrySelection left, PendingEntrySelection right)
+    {
+        var priorityComparison = left.PriorityBucket.CompareTo(right.PriorityBucket);
+        if (priorityComparison != 0)
+            return priorityComparison;
+
+        var distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+        if (distanceComparison != 0)
+            return distanceComparison;
+
+        var leftRouteAetheryteId = left.RouteAetheryteId == 0 ? uint.MaxValue : left.RouteAetheryteId;
+        var rightRouteAetheryteId = right.RouteAetheryteId == 0 ? uint.MaxValue : right.RouteAetheryteId;
+        var routeComparison = leftRouteAetheryteId.CompareTo(rightRouteAetheryteId);
+        if (routeComparison != 0)
+            return routeComparison;
+
+        var territoryComparison = left.Location.TerritoryId.CompareTo(right.Location.TerritoryId);
+        if (territoryComparison != 0)
+            return territoryComparison;
+
+        var mapComparison = left.Location.MapRowId.CompareTo(right.Location.MapRowId);
+        if (mapComparison != 0)
+            return mapComparison;
+
+        var xComparison = left.Location.Position.X.CompareTo(right.Location.Position.X);
+        if (xComparison != 0)
+            return xComparison;
+
+        var zComparison = left.Location.Position.Z.CompareTo(right.Location.Position.Z);
+        if (zComparison != 0)
+            return zComparison;
+
+        return left.ListIndex.CompareTo(right.ListIndex);
     }
 
     private bool TryStartResolvedEntry(VendorBuyListDefinition list, VendorBuyListEntry entry, VendorShopEntry liveEntry, VendorNpc vendor, VendorNpcLocation location,
@@ -858,24 +1045,16 @@ public sealed class VendorBuyListManager : IDisposable
 
         while (_isRunning)
         {
-            var entry = GetNextPendingEntry(list);
-            if (entry == null)
+            var nextSelection = GetNextPendingEntry(list);
+            if (nextSelection == null)
             {
+                if (!_isRunning)
+                    return;
                 FinishCurrentRun(list);
                 return;
             }
-
-            var remainingQuantity = GetRemainingQuantity(entry);
-            var resolutionResult = TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage);
-            if (resolutionResult != PurchaseContextResolutionResult.Success)
-            {
-                HandleEntryResolutionFailure(entry, errorMessage, resolutionResult);
-                if (!_isRunning)
-                    return;
-                continue;
-            }
-
-            if (TryStartResolvedEntry(list, entry, liveEntry, vendor, location, remainingQuantity, false))
+            if (TryStartResolvedEntry(list, nextSelection.Value.Entry, nextSelection.Value.LiveEntry, nextSelection.Value.Vendor,
+                    nextSelection.Value.Location, nextSelection.Value.RemainingQuantity, false))
                 return;
         }
     }
