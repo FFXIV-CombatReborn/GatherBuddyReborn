@@ -36,22 +36,27 @@ public static class VendorNpcLocationCache
 
     public static void InitializeAsync(IReadOnlySet<uint> vendorNpcIds)
     {
-        var npcIds = vendorNpcIds.Where(id => id != 0).ToHashSet();
+        if (vendorNpcIds.Count == 0)
+            return;
+
         var previousNpcIds = _lastVendorNpcIds;
-        var requestedChanged = !previousNpcIds.SetEquals(npcIds);
-        _lastVendorNpcIds = npcIds;
+        var requestedChanged = !ReferenceEquals(previousNpcIds, vendorNpcIds)
+            && (previousNpcIds.Count != vendorNpcIds.Count || !previousNpcIds.SetEquals(vendorNpcIds));
+        if (requestedChanged)
+            _lastVendorNpcIds = vendorNpcIds as HashSet<uint> ?? vendorNpcIds.ToHashSet();
+        else if (!ReferenceEquals(previousNpcIds, vendorNpcIds) && vendorNpcIds is HashSet<uint> requestedNpcIdSet)
+            _lastVendorNpcIds = requestedNpcIdSet;
+
+        var requestedNpcIds = _lastVendorNpcIds;
         var shouldRefreshForDataShare = _initialized
             && !requestedChanged
-            && _locations.Count < _lastVendorNpcIds.Count
+            && _locations.Count < requestedNpcIds.Count
             && !_lastBuildHadDataShareLocations
             && HasDataShareLocations();
-
-        if (_lastVendorNpcIds.Count == 0)
-            return;
         if (_initializing)
         {
             if (requestedChanged)
-                GatherBuddy.Log.Debug($"[VendorNpcLocationCache] Vendor NPC set changed during active build ({previousNpcIds.Count} -> {_lastVendorNpcIds.Count}), scheduling a rebuild after the current pass completes");
+                GatherBuddy.Log.Debug($"[VendorNpcLocationCache] Vendor NPC set changed during active build ({previousNpcIds.Count} -> {requestedNpcIds.Count}), scheduling a rebuild after the current pass completes");
             return;
         }
         if (_initialized && !requestedChanged && !shouldRefreshForDataShare)
@@ -61,16 +66,15 @@ public static class VendorNpcLocationCache
 
         if (_initialized && requestedChanged)
         {
-            GatherBuddy.Log.Debug($"[VendorNpcLocationCache] Vendor NPC set changed ({previousNpcIds.Count} -> {_lastVendorNpcIds.Count}), rebuilding location cache");
+            GatherBuddy.Log.Debug($"[VendorNpcLocationCache] Vendor NPC set changed ({previousNpcIds.Count} -> {requestedNpcIds.Count}), rebuilding location cache");
             _initialized = false;
         }
         else if (shouldRefreshForDataShare)
         {
-            GatherBuddy.Log.Debug($"[VendorNpcLocationCache] DataShare locations became available after an early fallback build, rebuilding location cache ({_locations.Count}/{_lastVendorNpcIds.Count})");
+            GatherBuddy.Log.Debug($"[VendorNpcLocationCache] DataShare locations became available after an early fallback build, rebuilding location cache ({_locations.Count}/{requestedNpcIds.Count})");
             _initialized = false;
         }
-
-        StartBuild(_lastVendorNpcIds);
+        StartBuild(requestedNpcIds);
     }
 
     private static bool HasDataShareLocations()

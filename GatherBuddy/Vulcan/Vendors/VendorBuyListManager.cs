@@ -9,6 +9,12 @@ namespace GatherBuddy.Vulcan.Vendors;
 public sealed class VendorBuyListManager : IDisposable
 {
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
+    private enum PurchaseContextResolutionResult
+    {
+        Success,
+        RetryableFailure,
+        SkippableFailure,
+    }
     private enum SameVendorContinuationResult
     {
         Started,
@@ -29,6 +35,7 @@ public sealed class VendorBuyListManager : IDisposable
     private DateTime _lastShopCloseAttemptTime   = DateTime.MinValue;
     private DateTime _lastShopCloseBlockerLogTime = DateTime.MinValue;
     private VendorExecutionGroup? _currentExecutionVendor;
+    private readonly HashSet<Guid> _skippedEntryIds = new();
     private string   _statusText = string.Empty;
 
     public VendorBuyListManager()
@@ -102,10 +109,7 @@ public sealed class VendorBuyListManager : IDisposable
             return;
 
         ResetShopCloseWaitState();
-        _activeEntryId = null;
-        _isRunning     = false;
-        _runningListId = null;
-        _currentExecutionVendor = null;
+        ResetExecutionState();
         _statusText    = "Timed out leaving the previous vendor interaction.";
         GatherBuddy.Log.Error($"[VendorBuyListManager] Timed out leaving the previous vendor interaction. Last blocker: {blocker}");
         Communicator.PrintError("[GatherBuddyReborn] Timed out leaving the previous vendor interaction.");
@@ -252,7 +256,7 @@ public sealed class VendorBuyListManager : IDisposable
         if (MatchesVendor(entry, selectedVendor))
             return true;
 
-        var existing = FindMatchingEntry(list, liveEntry, selectedVendor);
+        var existing = FindMatchingEntry(list, liveEntry, selectedVendor, entry.Id);
         if (existing != null)
         {
             var mergedTargetQuantity = Math.Max(existing.TargetQuantity, entry.TargetQuantity);
@@ -306,6 +310,7 @@ public sealed class VendorBuyListManager : IDisposable
         EnsureListState();
         if (_isRunning)
             return;
+        _skippedEntryIds.Clear();
 
         var activeList = ActiveList;
         if (activeList == null)
@@ -362,12 +367,9 @@ public sealed class VendorBuyListManager : IDisposable
     {
         if (!_isRunning && !_waitingForCancelledPurchase && _activeEntryId == null && !_waitingForShopClose)
             return;
-
-        _isRunning = false;
-        _runningListId = null;
-        _currentExecutionVendor = null;
-        _statusText = "Vendor list stopped.";
         var shouldStopPurchase = _activeEntryId.HasValue && GatherBuddy.VendorPurchaseManager.IsRunning;
+        ResetExecutionState();
+        _statusText = "Vendor list stopped.";
         _activeEntryId = null;
         _waitingForCancelledPurchase = shouldStopPurchase;
 
@@ -393,12 +395,7 @@ public sealed class VendorBuyListManager : IDisposable
         liveEntry = null;
         vendor    = null;
         location  = null;
-
-        var candidates = GetCandidateEntries(entry)
-            .Where(candidate => candidate.ItemId == entry.ItemId
-                && candidate.CurrencyItemId == entry.CurrencyItemId
-                && candidate.Cost == entry.Cost)
-            .ToList();
+        var candidates = GetMatchingCandidates(entry);
         if (candidates.Count == 0)
             return false;
 
@@ -449,6 +446,51 @@ public sealed class VendorBuyListManager : IDisposable
     private int GetPendingEntryCount(VendorBuyListDefinition? list)
         => list?.Entries.Count(entry => GetRemainingQuantity(entry) > 0) ?? 0;
 
+    private void ResetExecutionState()
+    {
+        _isRunning = false;
+        _activeEntryId = null;
+        _runningListId = null;
+        _currentExecutionVendor = null;
+        _skippedEntryIds.Clear();
+    }
+
+    private bool IsSkippedForCurrentRun(VendorBuyListEntry entry)
+        => _skippedEntryIds.Contains(entry.Id);
+
+    private void SkipEntryForCurrentRun(VendorBuyListEntry entry, string message, bool announceFailure)
+    {
+        if (!_skippedEntryIds.Add(entry.Id))
+            return;
+
+        GatherBuddy.Log.Debug($"[VendorBuyListManager] Skipping {entry.ItemName} for the current vendor-list run: {message}");
+        if (announceFailure)
+            Communicator.PrintError($"[GatherBuddyReborn] {message}");
+    }
+
+    private void FailCurrentRun(string message)
+    {
+        ResetExecutionState();
+        _statusText = message;
+    }
+
+    private void FinishCurrentRun(VendorBuyListDefinition list)
+    {
+        var skippedCount = _skippedEntryIds.Count;
+        ResetExecutionState();
+        if (skippedCount == 0)
+        {
+            _statusText = $"Vendor list '{list.Name}' complete.";
+            GatherBuddy.Log.Information($"[VendorBuyListManager] Vendor list '{list.Name}' complete.");
+            Communicator.Print($"[GatherBuddyReborn] Vendor list '{list.Name}' complete.");
+            return;
+        }
+
+        _statusText = $"Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.";
+        GatherBuddy.Log.Warning($"[VendorBuyListManager] Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.");
+        Communicator.PrintError($"[GatherBuddyReborn] Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.");
+    }
+
     private void EnsureListState()
     {
         if (GatherBuddy.Config.EnsureVendorBuyListState())
@@ -470,6 +512,40 @@ public sealed class VendorBuyListManager : IDisposable
 
     private VendorBuyListDefinition? GetList(Guid listId)
         => GatherBuddy.Config.VendorBuyLists.FirstOrDefault(list => list.Id == listId);
+
+    private static List<VendorShopEntry> GetMatchingCandidates(VendorBuyListEntry entry)
+    {
+        var candidates = GetCandidateEntries(entry)
+            .Where(candidate => candidate.ItemId == entry.ItemId
+                && candidate.Cost == entry.Cost)
+            .ToList();
+        if (entry.ShopType != VendorShopType.GrandCompanySeals)
+            return candidates
+                .Where(candidate => candidate.CurrencyItemId == entry.CurrencyItemId)
+                .ToList();
+
+        if (entry.GcRankIndex >= 0)
+            candidates = candidates
+                .Where(candidate => candidate.Npcs.Any(npc => npc.GcRankIndex == entry.GcRankIndex))
+                .ToList();
+        if (entry.GcCategoryIndex >= 0)
+            candidates = candidates
+                .Where(candidate => candidate.Npcs.Any(npc => npc.GcCategoryIndex == entry.GcCategoryIndex))
+                .ToList();
+
+        var currentCurrencyItemId = VendorShopResolver.GetCurrentGrandCompanySealCurrencyItemId();
+        if (currentCurrencyItemId != 0)
+            return candidates
+                .Where(candidate => candidate.CurrencyItemId == currentCurrencyItemId)
+                .ToList();
+
+        var savedCurrencyCandidates = candidates
+            .Where(candidate => candidate.CurrencyItemId == entry.CurrencyItemId)
+            .ToList();
+        return savedCurrencyCandidates.Count > 0
+            ? savedCurrencyCandidates
+            : candidates;
+    }
 
     private bool TryAddTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool selectList,
         bool openWindow, bool announce)
@@ -589,19 +665,26 @@ public sealed class VendorBuyListManager : IDisposable
              _ => true,
          });
 
-    private static VendorBuyListEntry? FindMatchingEntry(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor)
+    private static VendorBuyListEntry? FindMatchingEntry(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, Guid? excludeEntryId = null)
         => list.Entries.FirstOrDefault(existing =>
-            existing.ShopType == entry.ShopType
-         && existing.SourceShopId == vendor.SourceShopId
-         && existing.ShopItemIndex == vendor.ShopItemIndex
-         && existing.GcRankIndex == vendor.GcRankIndex
-         && existing.GcCategoryIndex == vendor.GcCategoryIndex
+            (!excludeEntryId.HasValue || existing.Id != excludeEntryId.Value)
+         && existing.ShopType == entry.ShopType
          && existing.ItemId == entry.ItemId
-         && existing.CurrencyItemId == entry.CurrencyItemId
          && existing.Cost == entry.Cost
-         && existing.VendorNpcId == vendor.NpcId
-         && existing.MenuShopType == vendor.MenuShopType
-         && existing.ShopId == vendor.ShopId);
+         && (entry.ShopType == VendorShopType.GrandCompanySeals
+             ? existing.GcRankIndex == vendor.GcRankIndex
+            && existing.GcCategoryIndex == vendor.GcCategoryIndex
+             : existing.ShopType == entry.ShopType
+            && existing.SourceShopId == vendor.SourceShopId
+            && existing.ShopItemIndex == vendor.ShopItemIndex
+            && existing.GcRankIndex == vendor.GcRankIndex
+            && existing.GcCategoryIndex == vendor.GcCategoryIndex
+            && existing.ItemId == entry.ItemId
+            && existing.CurrencyItemId == entry.CurrencyItemId
+            && existing.Cost == entry.Cost
+            && existing.VendorNpcId == vendor.NpcId
+            && existing.MenuShopType == vendor.MenuShopType
+            && existing.ShopId == vendor.ShopId));
 
     private static void UpdateEntry(VendorBuyListEntry target, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
     {
@@ -660,7 +743,8 @@ public sealed class VendorBuyListManager : IDisposable
         {
             var currentVendor = _currentExecutionVendor.Value;
             var groupedEntry = list.Entries.FirstOrDefault(entry =>
-                entry.VendorNpcId == currentVendor.NpcId
+                !IsSkippedForCurrentRun(entry)
+             && entry.VendorNpcId == currentVendor.NpcId
              && entry.MenuShopType == currentVendor.MenuShopType
              && entry.ShopId == currentVendor.ShopId
              && GetRemainingQuantity(entry) > 0);
@@ -668,7 +752,38 @@ public sealed class VendorBuyListManager : IDisposable
                 return groupedEntry;
         }
 
-        return list.Entries.FirstOrDefault(entry => GetRemainingQuantity(entry) > 0);
+        return list.Entries.FirstOrDefault(entry => !IsSkippedForCurrentRun(entry) && GetRemainingQuantity(entry) > 0);
+    }
+
+    private bool TryStartResolvedEntry(VendorBuyListDefinition list, VendorBuyListEntry entry, VendorShopEntry liveEntry, VendorNpc vendor, VendorNpcLocation location,
+        uint remainingQuantity, bool continueCurrentVendorInteraction)
+    {
+        _currentExecutionVendor = new VendorExecutionGroup(vendor.NpcId, vendor.MenuShopType, vendor.ShopId);
+        _activeEntryId = entry.Id;
+        _statusText = $"Buying {remainingQuantity:N0}x {entry.ItemName} from {vendor.Name} in '{list.Name}'.";
+        GatherBuddy.VendorPurchaseManager.StartPurchase(liveEntry, vendor, location, remainingQuantity, continueCurrentVendorInteraction);
+        if (GatherBuddy.VendorPurchaseManager.IsRunning)
+            return true;
+
+        _activeEntryId = null;
+        if (!continueCurrentVendorInteraction)
+            _currentExecutionVendor = null;
+
+        SkipEntryForCurrentRun(entry, $"Failed to start vendor purchase for {entry.ItemName}. Skipping it for the current run.", true);
+        return false;
+    }
+
+    private void HandleEntryResolutionFailure(VendorBuyListEntry entry, string errorMessage, PurchaseContextResolutionResult resolutionResult)
+    {
+        switch (resolutionResult)
+        {
+            case PurchaseContextResolutionResult.RetryableFailure:
+                FailCurrentRun(errorMessage);
+                break;
+            case PurchaseContextResolutionResult.SkippableFailure:
+                SkipEntryForCurrentRun(entry, $"{errorMessage} Skipping it for the current run.", true);
+                break;
+        }
     }
 
     private SameVendorContinuationResult TryContinueWithCurrentVendor(VendorExecutionGroup vendorGroup)
@@ -679,54 +794,34 @@ public sealed class VendorBuyListManager : IDisposable
         var list = GetExecutionList();
         if (list == null)
         {
-            _isRunning = false;
-            _activeEntryId = null;
-            _runningListId = null;
-            _currentExecutionVendor = null;
-            _statusText = "The active vendor list is no longer available.";
+            FailCurrentRun("The active vendor list is no longer available.");
             return SameVendorContinuationResult.Failed;
         }
 
         foreach (var entry in list.Entries)
         {
-            if (entry.VendorNpcId != vendorGroup.NpcId || entry.MenuShopType != vendorGroup.MenuShopType || entry.ShopId != vendorGroup.ShopId)
+            if (IsSkippedForCurrentRun(entry))
                 continue;
 
             var remainingQuantity = GetRemainingQuantity(entry);
             if (remainingQuantity == 0)
                 continue;
 
-            if (!TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage))
+            var resolutionResult = TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage);
+            if (resolutionResult != PurchaseContextResolutionResult.Success)
             {
-                _isRunning = false;
-                _activeEntryId = null;
-                _runningListId = null;
-                _currentExecutionVendor = null;
-                _statusText = errorMessage;
-                return SameVendorContinuationResult.Failed;
+                HandleEntryResolutionFailure(entry, errorMessage, resolutionResult);
+                if (!_isRunning)
+                    return SameVendorContinuationResult.Failed;
+                continue;
             }
 
             var resolvedVendorGroup = new VendorExecutionGroup(vendor.NpcId, vendor.MenuShopType, vendor.ShopId);
             if (resolvedVendorGroup != vendorGroup)
-            {
-                GatherBuddy.Log.Debug($"[VendorBuyListManager] {entry.ItemName} no longer resolves to the current vendor batch {vendorGroup.NpcId}/{vendorGroup.MenuShopType}/{vendorGroup.ShopId}; closing the shop before switching vendors");
-                return SameVendorContinuationResult.NoCompatibleEntry;
-            }
+                continue;
 
-            _activeEntryId = entry.Id;
-            _statusText = $"Buying {remainingQuantity:N0}x {entry.ItemName} from {vendor.Name} in '{list.Name}'.";
-            GatherBuddy.VendorPurchaseManager.StartPurchase(liveEntry, vendor, location, remainingQuantity, true);
-            if (!GatherBuddy.VendorPurchaseManager.IsRunning)
-            {
-                _isRunning = false;
-                _activeEntryId = null;
-                _runningListId = null;
-                _currentExecutionVendor = null;
-                _statusText = $"Failed to start vendor purchase for {entry.ItemName}.";
-                return SameVendorContinuationResult.Failed;
-            }
-
-            return SameVendorContinuationResult.Started;
+            if (TryStartResolvedEntry(list, entry, liveEntry, vendor, location, remainingQuantity, true))
+                return SameVendorContinuationResult.Started;
         }
 
         return SameVendorContinuationResult.NoCompatibleEntry;
@@ -740,55 +835,35 @@ public sealed class VendorBuyListManager : IDisposable
         var list = GetExecutionList();
         if (list == null)
         {
-            _isRunning = false;
-            _activeEntryId = null;
-            _runningListId = null;
-            _currentExecutionVendor = null;
-            _statusText = "The active vendor list is no longer available.";
+            FailCurrentRun("The active vendor list is no longer available.");
             return;
         }
 
-        var entry = GetNextPendingEntry(list);
-        if (entry == null)
+        while (_isRunning)
         {
-            _isRunning = false;
-            _activeEntryId = null;
-            _runningListId = null;
-            _currentExecutionVendor = null;
-            _statusText = $"Vendor list '{list.Name}' complete.";
-            GatherBuddy.Log.Information($"[VendorBuyListManager] Vendor list '{list.Name}' complete.");
-            Communicator.Print($"[GatherBuddyReborn] Vendor list '{list.Name}' complete.");
+            var entry = GetNextPendingEntry(list);
+            if (entry == null)
+            {
+                FinishCurrentRun(list);
+                return;
+            }
 
-            return;
-        }
-        var remainingQuantity = GetRemainingQuantity(entry);
-        if (!TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage))
-        {
-            _isRunning = false;
-            _activeEntryId = null;
-            _runningListId = null;
-            _currentExecutionVendor = null;
-            _statusText = errorMessage;
-            return;
-        }
+            var remainingQuantity = GetRemainingQuantity(entry);
+            var resolutionResult = TryResolvePurchaseContext(entry, out var liveEntry, out var vendor, out var location, out var errorMessage);
+            if (resolutionResult != PurchaseContextResolutionResult.Success)
+            {
+                HandleEntryResolutionFailure(entry, errorMessage, resolutionResult);
+                if (!_isRunning)
+                    return;
+                continue;
+            }
 
-        var nextVendorGroup = new VendorExecutionGroup(vendor.NpcId, vendor.MenuShopType, vendor.ShopId);
-
-        _currentExecutionVendor = nextVendorGroup;
-        _activeEntryId = entry.Id;
-        _statusText = $"Buying {remainingQuantity:N0}x {entry.ItemName} from {vendor.Name} in '{list.Name}'.";
-        GatherBuddy.VendorPurchaseManager.StartPurchase(liveEntry, vendor, location, remainingQuantity);
-        if (!GatherBuddy.VendorPurchaseManager.IsRunning)
-        {
-            _isRunning = false;
-            _activeEntryId = null;
-            _runningListId = null;
-            _currentExecutionVendor = null;
-            _statusText = $"Failed to start vendor purchase for {entry.ItemName}.";
+            if (TryStartResolvedEntry(list, entry, liveEntry, vendor, location, remainingQuantity, false))
+                return;
         }
     }
 
-    private bool TryResolvePurchaseContext(VendorBuyListEntry entry, out VendorShopEntry liveEntry, out VendorNpc vendor, out VendorNpcLocation location, out string errorMessage)
+    private PurchaseContextResolutionResult TryResolvePurchaseContext(VendorBuyListEntry entry, out VendorShopEntry liveEntry, out VendorNpc vendor, out VendorNpcLocation location, out string errorMessage)
     {
         errorMessage = string.Empty;
         if (!VendorNpcLocationCache.IsInitialized)
@@ -800,8 +875,9 @@ public sealed class VendorBuyListManager : IDisposable
             errorMessage = VendorNpcLocationCache.IsInitializing
                 ? "Vendor location data is still loading."
                 : "Vendor location data is not ready yet.";
-            return false;
+            return PurchaseContextResolutionResult.RetryableFailure;
         }
+
         if (!TryResolveLiveEntry(entry, out var resolvedEntry, out var resolvedVendor, out var resolvedLocation)
          || resolvedEntry == null
          || resolvedVendor == null)
@@ -810,7 +886,7 @@ public sealed class VendorBuyListManager : IDisposable
             vendor       = null!;
             location     = null!;
             errorMessage = $"Could not resolve {entry.ItemName} in the {DescribeShopType(entry.ShopType)} vendor data.";
-            return false;
+            return PurchaseContextResolutionResult.SkippableFailure;
         }
 
         if (resolvedLocation == null)
@@ -819,13 +895,20 @@ public sealed class VendorBuyListManager : IDisposable
             vendor       = null!;
             location     = null!;
             errorMessage = $"No vendor location data is available for {resolvedVendor.Name}.";
-            return false;
+            return PurchaseContextResolutionResult.SkippableFailure;
+        }
+
+        if (entry.ShopType == VendorShopType.GrandCompanySeals
+         && (entry.CurrencyItemId != resolvedEntry.CurrencyItemId || !MatchesVendor(entry, resolvedVendor)))
+        {
+            UpdateEntry(entry, resolvedEntry, resolvedVendor, entry.TargetQuantity);
+            GatherBuddy.Config.Save();
         }
 
         liveEntry = resolvedEntry;
         vendor    = resolvedVendor;
         location  = resolvedLocation;
-        return true;
+        return PurchaseContextResolutionResult.Success;
     }
 
     private void OnPurchaseFinished(VendorPurchaseManager.PurchaseResult result)
@@ -856,18 +939,27 @@ public sealed class VendorBuyListManager : IDisposable
                 BeginShopCloseTransition($"Leaving {result.Vendor.Name}.");
                 break;
             case VendorPurchaseManager.CompletionState.Cancelled:
-                _isRunning = false;
-                _activeEntryId = null;
-                _runningListId = null;
-                _currentExecutionVendor = null;
+                ResetExecutionState();
                 BeginShopCloseTransition("Leaving vendor interaction.");
                 break;
             case VendorPurchaseManager.CompletionState.Failed:
-                _isRunning = false;
+                if (_activeEntryId is { } activeEntryId && TryFindEntry(activeEntryId, out _, out var failedEntry) && failedEntry != null)
+                    SkipEntryForCurrentRun(failedEntry, $"{result.Message} Skipping it for the current run.", false);
                 _activeEntryId = null;
-                _runningListId = null;
-                _currentExecutionVendor = null;
-                BeginShopCloseTransition(result.Message);
+
+                if (!VendorInteractionHelper.IsReadyToLeaveVendor())
+                {
+                    switch (TryContinueWithCurrentVendor(new VendorExecutionGroup(result.Vendor.NpcId, result.Vendor.MenuShopType, result.Vendor.ShopId)))
+                    {
+                        case SameVendorContinuationResult.Started:
+                            return;
+                        case SameVendorContinuationResult.Failed:
+                            BeginShopCloseTransition(_statusText);
+                            return;
+                    }
+                }
+
+                BeginShopCloseTransition($"Skipping {result.ItemName} and continuing the vendor list.");
                 break;
         }
     }
@@ -904,8 +996,7 @@ public sealed class VendorBuyListManager : IDisposable
         VendorShopResolver.InitializeAsync();
         if (!VendorShopResolver.IsInitialized)
             return;
-
-        VendorNpcLocationCache.InitializeAsync(VendorShopResolver.GetAllVendorNpcIds());
+        VendorNpcLocationCache.InitializeAsync(VendorShopResolver.AllVendorNpcIds);
     }
 
     private static string DescribeShopType(VendorShopType shopType)

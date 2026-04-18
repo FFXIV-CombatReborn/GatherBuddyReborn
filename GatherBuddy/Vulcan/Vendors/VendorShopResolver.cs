@@ -57,6 +57,7 @@ public static class VendorShopResolver
     private static List<VendorShopEntry> _gilShopEntries     = new();
     private static List<VendorShopEntry> _specialShopEntries = new();
     private static List<VendorShopEntry> _gcShopEntries      = new();
+    private static HashSet<uint>         _allVendorNpcIds    = new();
 
     private static HashSet<uint> _gatherableIds = new();
     private static HashSet<uint> _fishIds       = new();
@@ -70,6 +71,7 @@ public static class VendorShopResolver
     public static IReadOnlyList<VendorShopEntry> GilShopEntries     => _gilShopEntries;
     public static IReadOnlyList<VendorShopEntry> SpecialShopEntries => _specialShopEntries;
     public static IReadOnlyList<VendorShopEntry> GcShopEntries      => _gcShopEntries;
+    public static IReadOnlySet<uint>             AllVendorNpcIds    => _allVendorNpcIds;
 
     public static IReadOnlySet<uint> GatherableIds => _gatherableIds;
     public static IReadOnlySet<uint> FishIds       => _fishIds;
@@ -78,27 +80,27 @@ public static class VendorShopResolver
     public static IReadOnlySet<uint> DyeItemIds     => _dyeItemIds;
 
     public static HashSet<uint> GetAllVendorNpcIds()
-        => BuildVendorNpcIdSet(_gilShopEntries, _specialShopEntries, _gcShopEntries);
+        => new(_allVendorNpcIds);
 
     public static void InitializeAsync()
     {
+        if (_initializing) return;
+        if (_initialized && _lastBuildHadCompleteDataShare) return;
+        if ((DateTime.UtcNow - _lastInitializeAttemptUtc) < RetryCooldown) return;
+        _lastInitializeAttemptUtc = DateTime.UtcNow;
         var (gilMap, specialMap, gcMap, inclusionMap) = GetShopNpcMapsFromDataShare();
         var hasCompleteDataShare = HasCompleteShopDataShare(gilMap, specialMap, gcMap, inclusionMap);
         var shouldRefreshForDataShare = _initialized
             && !_lastBuildHadCompleteDataShare
             && hasCompleteDataShare;
-
-        if (_initializing) return;
         if (_initialized && !shouldRefreshForDataShare) return;
-        if ((DateTime.UtcNow - _lastInitializeAttemptUtc) < RetryCooldown) return;
 
         if (shouldRefreshForDataShare)
         {
-            GatherBuddy.Log.Debug($"[VendorShopResolver] Full AllaganTools DataShare became available after an early fallback build, rebuilding vendor shop cache ({GetAllVendorNpcIds().Count} NPCs; {DescribeShopDataShareAvailability(gilMap, specialMap, gcMap, inclusionMap)})");
+            GatherBuddy.Log.Debug($"[VendorShopResolver] Full AllaganTools DataShare became available after an early fallback build, rebuilding vendor shop cache ({AllVendorNpcIds.Count} NPCs; {DescribeShopDataShareAvailability(gilMap, specialMap, gcMap, inclusionMap)})");
             _initialized = false;
         }
         _initializing = true;
-        _lastInitializeAttemptUtc = DateTime.UtcNow;
         Task.Run(Initialize);
     }
 
@@ -155,8 +157,8 @@ public static class VendorShopResolver
 
             GatherBuddy.Log.Debug($"[VendorShopResolver] {_gilShopEntries.Count} gil, {_specialShopEntries.Count} special, {_gcShopEntries.Count} GC");
 
-            var allNpcIds = BuildVendorNpcIdSet(_gilShopEntries, _specialShopEntries, _gcShopEntries);
-            VendorNpcLocationCache.InitializeAsync(allNpcIds);
+            _allVendorNpcIds = BuildVendorNpcIdSet(_gilShopEntries, _specialShopEntries, _gcShopEntries);
+            VendorNpcLocationCache.InitializeAsync(_allVendorNpcIds);
             success = true;
         }
         catch (Exception ex)
@@ -179,7 +181,8 @@ public static class VendorShopResolver
         => new(
             gilEntries    .SelectMany(entry => entry.Npcs.Select(npc => npc.NpcId))
             .Concat(specialEntries.SelectMany(entry => entry.Npcs.Select(npc => npc.NpcId)))
-            .Concat(gcEntries     .SelectMany(entry => entry.Npcs.Select(npc => npc.NpcId))));
+            .Concat(gcEntries     .SelectMany(entry => entry.Npcs.Select(npc => npc.NpcId)))
+            .Where(npcId => npcId != 0));
 
     private static Dictionary<uint, HashSet<uint>>? TryGetShopNpcMap(string lookupName)
     {
@@ -837,13 +840,12 @@ public static class VendorShopResolver
     }
 
 
-    private static unsafe byte GetCurrentGrandCompanyId()
+    public static unsafe byte GetCurrentGrandCompanyId()
     {
         var playerState = PlayerState.Instance();
         return playerState == null ? (byte)0 : playerState->GrandCompany;
     }
-
-    private static uint GetGrandCompanySealCurrencyItemId(uint grandCompanyId)
+    public static uint GetGrandCompanySealCurrencyItemId(uint grandCompanyId)
         => grandCompanyId switch
         {
             1 => 20u,
@@ -851,6 +853,14 @@ public static class VendorShopResolver
             3 => 22u,
             _ => 0u,
         };
+
+    public static uint GetCurrentGrandCompanySealCurrencyItemId()
+        => GetGrandCompanySealCurrencyItemId(GetCurrentGrandCompanyId());
+
+    public static bool MatchesCurrentGrandCompany(VendorShopEntry entry)
+        => entry.ShopType != VendorShopType.GrandCompanySeals
+        || GetCurrentGrandCompanySealCurrencyItemId() == 0
+        || entry.CurrencyItemId == GetCurrentGrandCompanySealCurrencyItemId();
 
     private static string GetGrandCompanySealCurrencyName(ExcelSheet<Item> itemSheet, uint grandCompanyId)
     {
@@ -894,7 +904,6 @@ public static class VendorShopResolver
             foreach (var gcShop in gcShopSheet)
                 if (gcShop.GrandCompany.RowId > 0)
                     grandCompanyToGcShop.TryAdd(gcShop.GrandCompany.RowId, gcShop.RowId);
-        var currentGrandCompanyId = GetCurrentGrandCompanyId();
 
         foreach (var categoryRow in catSheet)
         {
@@ -903,8 +912,6 @@ public static class VendorShopResolver
 
             var grandCompanyId = category.GrandCompany.RowId;
             if (grandCompanyId == 0)
-                continue;
-            if (currentGrandCompanyId > 0 && grandCompanyId != currentGrandCompanyId)
                 continue;
             if (!grandCompanyToGcShop.TryGetValue(grandCompanyId, out var gcShopId))
                 continue;

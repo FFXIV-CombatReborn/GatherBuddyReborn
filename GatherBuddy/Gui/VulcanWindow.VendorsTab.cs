@@ -115,6 +115,9 @@ public partial class VulcanWindow
     private static string GetVendorDisplayRowId(VendorShopEntry entry)
         => $"{(int)entry.ShopType}_{(int)entry.Group}_{entry.ItemId}_{entry.CurrencyItemId}_{entry.Cost}";
 
+    private static int GetCurrentGrandCompanyEntryCount()
+        => VendorShopResolver.GcShopEntries.Count(VendorShopResolver.MatchesCurrentGrandCompany);
+
     private static string GetVendorRouteLabel(VendorNpc npc)
     {
         var routeParts = new List<string>();
@@ -370,7 +373,7 @@ public partial class VulcanWindow
         ImGui.Spacing();
 
         DrawVendorTypeSelectable("Gil Shops", VendorShopType.GilShop,          VendorShopResolver.GilShopEntries.Count);
-        DrawVendorTypeSelectable("GC Seals",  VendorShopType.GrandCompanySeals, VendorShopResolver.GcShopEntries.Count);
+        DrawVendorTypeSelectable("GC Seals",  VendorShopType.GrandCompanySeals, GetCurrentGrandCompanyEntryCount());
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -473,7 +476,7 @@ public partial class VulcanWindow
             ImGui.Spacing();
         }
 
-        if (_vendorCategory == VendorShopType.GrandCompanySeals && VendorShopResolver.GcShopEntries.Count == 0)
+        if (_vendorCategory == VendorShopType.GrandCompanySeals && GetCurrentGrandCompanyEntryCount() == 0)
         {
             ImGui.TextColored(ImGuiColors.DalamudGrey, "Loading GC Seal data...");
             return;
@@ -711,7 +714,8 @@ public partial class VulcanWindow
                 VendorGilFilter.Other      => VendorShopResolver.GilShopEntries.Where(IsGilOtherEntry),
                 _                         => VendorShopResolver.GilShopEntries,
             },
-            VendorShopType.GrandCompanySeals => VendorShopResolver.GcShopEntries,
+            VendorShopType.GrandCompanySeals => VendorShopResolver.GcShopEntries
+                .Where(VendorShopResolver.MatchesCurrentGrandCompany),
             VendorShopType.SpecialCurrency   => VendorShopResolver.SpecialShopEntries
                 .Where(e => _vendorSelectedGroup == null || e.Group == _vendorSelectedGroup),
             _                                => Enumerable.Empty<VendorShopEntry>(),
