@@ -36,6 +36,7 @@ public sealed class VendorBuyListManager : IDisposable
     private DateTime _lastShopCloseBlockerLogTime = DateTime.MinValue;
     private VendorExecutionGroup? _currentExecutionVendor;
     private readonly HashSet<Guid> _skippedEntryIds = new();
+    private readonly HashSet<Guid> _partiallyFulfilledEntryIds = new();
     private string   _statusText = string.Empty;
 
     public VendorBuyListManager()
@@ -311,6 +312,7 @@ public sealed class VendorBuyListManager : IDisposable
         if (_isRunning)
             return;
         _skippedEntryIds.Clear();
+        _partiallyFulfilledEntryIds.Clear();
 
         var activeList = ActiveList;
         if (activeList == null)
@@ -453,10 +455,11 @@ public sealed class VendorBuyListManager : IDisposable
         _runningListId = null;
         _currentExecutionVendor = null;
         _skippedEntryIds.Clear();
+        _partiallyFulfilledEntryIds.Clear();
     }
 
-    private bool IsSkippedForCurrentRun(VendorBuyListEntry entry)
-        => _skippedEntryIds.Contains(entry.Id);
+    private bool IsDeferredForCurrentRun(VendorBuyListEntry entry)
+        => _skippedEntryIds.Contains(entry.Id) || _partiallyFulfilledEntryIds.Contains(entry.Id);
 
     private void SkipEntryForCurrentRun(VendorBuyListEntry entry, string message, bool announceFailure)
     {
@@ -468,6 +471,14 @@ public sealed class VendorBuyListManager : IDisposable
             Communicator.PrintError($"[GatherBuddyReborn] {message}");
     }
 
+    private void MarkEntryPartiallyFulfilledForCurrentRun(VendorBuyListEntry entry, string message)
+    {
+        if (!_partiallyFulfilledEntryIds.Add(entry.Id))
+            return;
+
+        GatherBuddy.Log.Debug($"[VendorBuyListManager] Deferring the remaining target for {entry.ItemName} until a future vendor-list run after a partial purchase: {message}");
+    }
+
     private void FailCurrentRun(string message)
     {
         ResetExecutionState();
@@ -477,18 +488,25 @@ public sealed class VendorBuyListManager : IDisposable
     private void FinishCurrentRun(VendorBuyListDefinition list)
     {
         var skippedCount = _skippedEntryIds.Count;
+        var partiallyFulfilledCount = _partiallyFulfilledEntryIds.Count;
         ResetExecutionState();
-        if (skippedCount == 0)
+        if (skippedCount == 0 && partiallyFulfilledCount == 0)
         {
             _statusText = $"Vendor list '{list.Name}' complete.";
             GatherBuddy.Log.Information($"[VendorBuyListManager] Vendor list '{list.Name}' complete.");
             Communicator.Print($"[GatherBuddyReborn] Vendor list '{list.Name}' complete.");
             return;
         }
+        var resultParts = new List<string>();
+        if (partiallyFulfilledCount > 0)
+            resultParts.Add($"{partiallyFulfilledCount} partially fulfilled entr{(partiallyFulfilledCount == 1 ? "y" : "ies")}");
+        if (skippedCount > 0)
+            resultParts.Add($"{skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}");
 
-        _statusText = $"Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.";
-        GatherBuddy.Log.Warning($"[VendorBuyListManager] Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.");
-        Communicator.PrintError($"[GatherBuddyReborn] Vendor list '{list.Name}' completed with {skippedCount} skipped entr{(skippedCount == 1 ? "y" : "ies")}.");
+        var detail = string.Join(" and ", resultParts);
+        _statusText = $"Vendor list '{list.Name}' completed with {detail}.";
+        GatherBuddy.Log.Warning($"[VendorBuyListManager] Vendor list '{list.Name}' completed with {detail}.");
+        Communicator.PrintError($"[GatherBuddyReborn] Vendor list '{list.Name}' completed with {detail}.");
     }
 
     private void EnsureListState()
@@ -743,7 +761,7 @@ public sealed class VendorBuyListManager : IDisposable
         {
             var currentVendor = _currentExecutionVendor.Value;
             var groupedEntry = list.Entries.FirstOrDefault(entry =>
-                !IsSkippedForCurrentRun(entry)
+                !IsDeferredForCurrentRun(entry)
              && entry.VendorNpcId == currentVendor.NpcId
              && entry.MenuShopType == currentVendor.MenuShopType
              && entry.ShopId == currentVendor.ShopId
@@ -751,8 +769,7 @@ public sealed class VendorBuyListManager : IDisposable
             if (groupedEntry != null)
                 return groupedEntry;
         }
-
-        return list.Entries.FirstOrDefault(entry => !IsSkippedForCurrentRun(entry) && GetRemainingQuantity(entry) > 0);
+        return list.Entries.FirstOrDefault(entry => !IsDeferredForCurrentRun(entry) && GetRemainingQuantity(entry) > 0);
     }
 
     private bool TryStartResolvedEntry(VendorBuyListDefinition list, VendorBuyListEntry entry, VendorShopEntry liveEntry, VendorNpc vendor, VendorNpcLocation location,
@@ -800,7 +817,7 @@ public sealed class VendorBuyListManager : IDisposable
 
         foreach (var entry in list.Entries)
         {
-            if (IsSkippedForCurrentRun(entry))
+            if (IsDeferredForCurrentRun(entry))
                 continue;
 
             var remainingQuantity = GetRemainingQuantity(entry);
@@ -937,6 +954,27 @@ public sealed class VendorBuyListManager : IDisposable
                         return;
                 }
                 BeginShopCloseTransition($"Leaving {result.Vendor.Name}.");
+                break;
+            case VendorPurchaseManager.CompletionState.PartiallyCompleted:
+                if (_activeEntryId is { } partiallyFulfilledEntryId
+                 && TryFindEntry(partiallyFulfilledEntryId, out _, out var partiallyFulfilledEntry)
+                 && partiallyFulfilledEntry != null)
+                    MarkEntryPartiallyFulfilledForCurrentRun(partiallyFulfilledEntry, result.Message);
+                _activeEntryId = null;
+
+                if (!VendorInteractionHelper.IsReadyToLeaveVendor())
+                {
+                    switch (TryContinueWithCurrentVendor(new VendorExecutionGroup(result.Vendor.NpcId, result.Vendor.MenuShopType, result.Vendor.ShopId)))
+                    {
+                        case SameVendorContinuationResult.Started:
+                            return;
+                        case SameVendorContinuationResult.Failed:
+                            BeginShopCloseTransition(_statusText);
+                            return;
+                    }
+                }
+
+                BeginShopCloseTransition($"Continuing the vendor list after partially purchasing {result.ItemName}.");
                 break;
             case VendorPurchaseManager.CompletionState.Cancelled:
                 ResetExecutionState();

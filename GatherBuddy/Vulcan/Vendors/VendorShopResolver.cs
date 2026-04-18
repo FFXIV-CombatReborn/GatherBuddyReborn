@@ -13,12 +13,16 @@ public static class VendorShopResolver
 {
     private readonly record struct ResolvedSpecialShopCost(uint CurrencyItemId, uint Amount, string CurrencyName, VendorCurrencyGroup Group, int OriginalIndex);
     private readonly record struct InclusionShopRoute(uint InclusionShopId, int PageIndex, int SubPageIndex);
+    public const            uint          GilCurrencyItemId        = 1;
+    public const            uint          AlliedSealCurrencyItemId = 27;
+    public const            uint          CenturioSealCurrencyItemId = 10307;
+    public const            uint          SackOfNutsCurrencyItemId = 26533;
+    public const            uint          BicolorCurrencyItemId    = 26807;
+    public const            uint          MgpCurrencyItemId        = 29;
+    public const            uint          WolfMarkCurrencyItemId   = 25;
     private static readonly HashSet<uint> TomestoneIds   = new() { 28, 48, 49 };                 // Poetics, Mathematics, Mnemonics
-    private static readonly HashSet<uint> HuntSealIds    = new() { 27, 10307, 26533 };           // Allied, Centurio, Sack of Nuts
+    private static readonly HashSet<uint> HuntSealIds    = new() { AlliedSealCurrencyItemId, CenturioSealCurrencyItemId, SackOfNutsCurrencyItemId };
     private static readonly HashSet<uint> ScripIds       = new() { 33913, 33914, 41784, 41785 }; // Purple/Orange Crafter/Gatherer
-    private const           uint          BicolorId      = 26807;
-    private const           uint          MgpId          = 29;
-    private const           uint          WolfMarkId     = 25;
 
     // Sourced from AllaganLib SpecialShopListing.currencies
     private static readonly Dictionary<uint, uint> CurrencyTypeMap = new()
@@ -658,12 +662,12 @@ public static class VendorShopResolver
 
     private static VendorCurrencyGroup ClassifyCurrency(uint currencyItemId, IReadOnlySet<uint> tomestoneItemIds)
     {
-        if (currencyItemId == BicolorId)             return VendorCurrencyGroup.BicolorGemstones;
+        if (currencyItemId == BicolorCurrencyItemId) return VendorCurrencyGroup.BicolorGemstones;
         if (TomestoneIds.Contains(currencyItemId) || IsLegacyTomestoneCurrency(currencyItemId, tomestoneItemIds)) return VendorCurrencyGroup.Tomestones;
         if (HuntSealIds.Contains(currencyItemId))    return VendorCurrencyGroup.HuntSeals;
         if (ScripIds.Contains(currencyItemId))       return VendorCurrencyGroup.Scrips;
-        if (currencyItemId == MgpId)                 return VendorCurrencyGroup.MGP;
-        if (currencyItemId == WolfMarkId)            return VendorCurrencyGroup.PvP;
+        if (currencyItemId == MgpCurrencyItemId)     return VendorCurrencyGroup.MGP;
+        if (currencyItemId == WolfMarkCurrencyItemId) return VendorCurrencyGroup.PvP;
         return VendorCurrencyGroup.Other;
     }
     private static uint NormalizeCurrencyItemIdForVendorGrouping(uint currencyItemId, IReadOnlySet<uint> tomestoneItemIds)
@@ -754,7 +758,7 @@ public static class VendorShopResolver
 
                 entries.Add(new VendorShopEntry(
                     itemId, item.Name.ExtractText(), (ushort)item.Icon,
-                    price, 1, "Gil", new List<VendorNpc>(npcs), VendorShopType.GilShop, VendorCurrencyGroup.Gil));
+                    price, GilCurrencyItemId, "Gil", new List<VendorNpc>(npcs), VendorShopType.GilShop, VendorCurrencyGroup.Gil));
             }
         }
 
@@ -853,6 +857,30 @@ public static class VendorShopResolver
             3 => 22u,
             _ => 0u,
         };
+
+    public static bool TryGetGrandCompanyIdFromSealCurrencyItemId(uint currencyItemId, out byte grandCompanyId)
+    {
+        if (currencyItemId == GetGrandCompanySealCurrencyItemId(1))
+        {
+            grandCompanyId = 1;
+            return true;
+        }
+
+        if (currencyItemId == GetGrandCompanySealCurrencyItemId(2))
+        {
+            grandCompanyId = 2;
+            return true;
+        }
+
+        if (currencyItemId == GetGrandCompanySealCurrencyItemId(3))
+        {
+            grandCompanyId = 3;
+            return true;
+        }
+
+        grandCompanyId = 0;
+        return false;
+    }
 
     public static uint GetCurrentGrandCompanySealCurrencyItemId()
         => GetGrandCompanySealCurrencyItemId(GetCurrentGrandCompanyId());

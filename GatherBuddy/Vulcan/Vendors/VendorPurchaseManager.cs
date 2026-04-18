@@ -6,7 +6,6 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.AutoGather.Collectables;
 using GatherBuddy.Automation;
 using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
@@ -25,6 +24,7 @@ public sealed class VendorPurchaseManager : IDisposable
     public enum CompletionState
     {
         Completed,
+        PartiallyCompleted,
         Failed,
         Cancelled,
     }
@@ -34,6 +34,8 @@ public sealed class VendorPurchaseManager : IDisposable
         string            ItemName,
         uint              Cost,
         uint              CurrencyItemId,
+        string            CurrencyName,
+        VendorCurrencyGroup CurrencyGroup,
         uint              Quantity,
         VendorNpc         Vendor,
         VendorNpcLocation Location,
@@ -129,7 +131,8 @@ public sealed class VendorPurchaseManager : IDisposable
 
         var requestedQuantity = quantity == 0 ? 1u : quantity;
         VendorInteractionHelper.ResetShopSelectionState(vendor);
-        _request = new VendorPurchaseRequest(entry.ItemId, entry.ItemName, entry.Cost, entry.CurrencyItemId, requestedQuantity, vendor, location, entry.ShopType);
+        _request = new VendorPurchaseRequest(entry.ItemId, entry.ItemName, entry.Cost, entry.CurrencyItemId, entry.CurrencyName, entry.Group, requestedQuantity, vendor,
+            location, entry.ShopType);
         _interactionAttempts = 0;
         _ownedCountBeforePurchase = CountItemOnCharacter(entry.ItemId);
         _completedQuantity = 0;
@@ -208,6 +211,66 @@ public sealed class VendorPurchaseManager : IDisposable
 
     private static bool RequiresSinglePurchaseBatch(uint itemId)
         => VendorShopResolver.HousingItemIds.Contains(itemId);
+
+    private uint GetDesiredBatchQuantity(uint remainingQuantity)
+    {
+        if (_request == null || remainingQuantity == 0)
+            return 0;
+
+        var requiresSinglePurchaseBatch = RequiresSinglePurchaseBatch(_request.ItemId);
+        return Math.Min(remainingQuantity, requiresSinglePurchaseBatch ? 1u : MaxPurchaseBatchSize);
+    }
+
+    private bool TryPrepareBatchQuantity(uint remainingQuantity)
+    {
+        if (_request == null)
+            return false;
+
+        _currentBatchQuantity = 0;
+        var desiredBatchQuantity = GetDesiredBatchQuantity(remainingQuantity);
+        if (desiredBatchQuantity == 0)
+            return false;
+
+        if (_request.Cost == 0)
+        {
+            _currentBatchQuantity = desiredBatchQuantity;
+            return true;
+        }
+
+        var availability = VendorCurrencyAvailabilityResolver.Resolve(_request.CurrencyGroup, _request.CurrencyItemId, _request.CurrencyName);
+        var affordableBatchQuantity = Math.Min(desiredBatchQuantity, availability.AvailableAmount / _request.Cost);
+        if (affordableBatchQuantity == 0)
+        {
+            HandleCurrencyExhaustion(availability);
+            return false;
+        }
+
+        if (affordableBatchQuantity < desiredBatchQuantity)
+            GatherBuddy.Log.Warning(
+                $"[VendorPurchaseManager] Only {availability.AvailableAmount:N0} {availability.CurrencyName} are available for {_request.ItemName}; capping the current batch from {desiredBatchQuantity:N0} to {affordableBatchQuantity:N0} (cost {_request.Cost:N0} each, source={availability.Source}).");
+
+        _currentBatchQuantity = affordableBatchQuantity;
+        return true;
+    }
+
+    private void HandleCurrencyExhaustion(VendorCurrencyAvailability availability)
+    {
+        if (_request == null)
+            return;
+
+        var remainingQuantity = GetRemainingQuantity();
+        var message = _completedQuantity > 0
+            ? $"Purchased {_completedQuantity:N0}/{_request.Quantity:N0}x {_request.ItemName} from {_request.Vendor.Name}. Could not afford the remaining {remainingQuantity:N0}x with {availability.AvailableAmount:N0} {availability.CurrencyName} remaining (cost {_request.Cost:N0} each)."
+            : $"Not enough {availability.CurrencyName} to buy {_request.ItemName} from {_request.Vendor.Name}. Need {_request.Cost:N0} for 1x and only {availability.AvailableAmount:N0} are available.";
+
+        if (_completedQuantity > 0)
+        {
+            CompletePartially(message);
+            return;
+        }
+
+        Fail(message);
+    }
 
     private void BeginNextBatch()
     {
@@ -420,9 +483,8 @@ public sealed class VendorPurchaseManager : IDisposable
             Fail($"Could not find {_request.ItemName} in {_request.Vendor.Name}'s gil shop.");
             return;
         }
-
-        var requiresSinglePurchaseBatch = RequiresSinglePurchaseBatch(_request.ItemId);
-        _currentBatchQuantity = Math.Min(remainingQuantity, requiresSinglePurchaseBatch ? 1u : MaxPurchaseBatchSize);
+        if (!TryPrepareBatchQuantity(remainingQuantity))
+            return;
         _ownedCountBeforePurchase = CountItemOnCharacter(_request.ItemId);
         Callback.Fire(shop, true, 0, targetItem.Index, _currentBatchQuantity, 0);
 
@@ -460,8 +522,8 @@ public sealed class VendorPurchaseManager : IDisposable
             return;
 
         var remainingQuantity = GetRemainingQuantity();
-        var requiresSinglePurchaseBatch = RequiresSinglePurchaseBatch(_request.ItemId);
-        _currentBatchQuantity = Math.Min(remainingQuantity, requiresSinglePurchaseBatch ? 1u : MaxPurchaseBatchSize);
+        if (!TryPrepareBatchQuantity(remainingQuantity))
+            return;
         _ownedCountBeforePurchase = CountItemOnCharacter(_request.ItemId);
         if (!VendorInteractionHelper.TrySelectSpecialShopItem(_request.Vendor.ShopItemIndex, _request.ItemId, _currentBatchQuantity, out var itemError))
         {
@@ -537,8 +599,8 @@ public sealed class VendorPurchaseManager : IDisposable
         }
 
         var remainingQuantity = GetRemainingQuantity();
-        var requiresSinglePurchaseBatch = RequiresSinglePurchaseBatch(_request.ItemId);
-        _currentBatchQuantity = Math.Min(remainingQuantity, requiresSinglePurchaseBatch ? 1u : MaxPurchaseBatchSize);
+        if (!TryPrepareBatchQuantity(remainingQuantity))
+            return;
         _ownedCountBeforePurchase = CountItemOnCharacter(_request.ItemId);
         if (!VendorInteractionHelper.TrySelectInclusionShopItem(_request.Vendor.ShopItemIndex, _request.ItemId, _currentBatchQuantity, out var itemError))
         {
@@ -639,16 +701,12 @@ public sealed class VendorPurchaseManager : IDisposable
             Fail($"{_request.ItemName} is not sold by the current Grand Company.");
             return;
         }
-
-        var desiredBatchQuantity = GetMaxAffordableGrandCompanyBatchSize(currentGrandCompanyId, GetRemainingQuantity());
-        if (desiredBatchQuantity == 0)
-        {
-            Fail($"Not enough {DescribeGrandCompanySeals(currentGrandCompanyId)} to buy {_request.ItemName}.");
+        var remainingQuantity = GetRemainingQuantity();
+        if (!TryPrepareBatchQuantity(remainingQuantity))
             return;
-        }
 
         _ownedCountBeforePurchase = CountItemOnCharacter(_request.ItemId);
-        if (!VendorInteractionHelper.TrySelectGrandCompanyItem(_request.ItemId, desiredBatchQuantity, GetCurrentGrandCompanyRank(currentGrandCompanyId),
+        if (!VendorInteractionHelper.TrySelectGrandCompanyItem(_request.ItemId, _currentBatchQuantity, GetCurrentGrandCompanyRank(currentGrandCompanyId),
                 out var selectedQuantity, out var opensCurrencyExchange, out var itemError))
         {
             if (itemError != null)
@@ -764,6 +822,25 @@ public sealed class VendorPurchaseManager : IDisposable
         PurchaseFinished?.Invoke(result);
     }
 
+    private void CompletePartially(string message)
+    {
+        if (_request == null)
+            return;
+
+        GatherBuddy.Log.Error($"[VendorPurchaseManager] {message}");
+        Communicator.PrintError($"[GatherBuddyReborn] {message}");
+        var result = new PurchaseResult(
+            CompletionState.PartiallyCompleted,
+            _request.ItemId,
+            _request.ItemName,
+            _request.Quantity,
+            _completedQuantity,
+            _request.Vendor,
+            message);
+        ResetState();
+        PurchaseFinished?.Invoke(result);
+    }
+
     private void Fail(string message)
     {
         if (_request == null)
@@ -837,30 +914,6 @@ public sealed class VendorPurchaseManager : IDisposable
             : playerState->GetGrandCompanyRank();
     }
 
-    private static unsafe uint GetCurrentGrandCompanySeals(byte grandCompanyId)
-    {
-        if (grandCompanyId == 0)
-            return 0;
-
-        var inventoryManager = InventoryManager.Instance();
-        return inventoryManager == null ? 0u : inventoryManager->GetCompanySeals(grandCompanyId);
-    }
-
-    private uint GetMaxAffordableGrandCompanyBatchSize(byte grandCompanyId, uint remainingQuantity)
-    {
-        if (_request == null || remainingQuantity == 0)
-            return 0;
-
-        var requiresSinglePurchaseBatch = RequiresSinglePurchaseBatch(_request.ItemId);
-        var desiredBatchSize = Math.Min(remainingQuantity, requiresSinglePurchaseBatch ? 1u : MaxPurchaseBatchSize);
-        if (_request.Cost == 0)
-            return desiredBatchSize;
-
-        var availableSeals = GetCurrentGrandCompanySeals(grandCompanyId);
-        var affordableBatchSize = availableSeals / _request.Cost;
-        return Math.Min(desiredBatchSize, affordableBatchSize);
-    }
-
     private static uint GetGrandCompanySealCurrencyItemId(uint grandCompanyId)
         => grandCompanyId switch
         {
@@ -869,15 +922,6 @@ public sealed class VendorPurchaseManager : IDisposable
             3 => 22u,
             _ => 0u,
         };
-
-    private static string DescribeGrandCompanySeals(byte grandCompanyId)
-    {
-        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
-        var currencyItemId = GetGrandCompanySealCurrencyItemId(grandCompanyId);
-        return itemSheet != null && currencyItemId != 0 && itemSheet.TryGetRow(currencyItemId, out var currencyItem)
-            ? currencyItem.Name.ExtractText()
-            : "GC Seals";
-    }
 
     private static int CountItemOnCharacter(uint itemId)
         => ItemHelper.GetInventoryAndArmoryItemCount(itemId);
