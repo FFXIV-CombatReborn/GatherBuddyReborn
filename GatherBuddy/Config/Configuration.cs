@@ -18,7 +18,7 @@ namespace GatherBuddy.Config;
 
 public partial class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 13;
+    public int Version { get; set; } = 14;
 
     // Set Names
     public string BotanistSetName { get; set; } = "Botanist";
@@ -192,6 +192,7 @@ public partial class Configuration : IPluginConfiguration
                 config.Migrate10To11();
                 config.Migrate11To12();
                 config.Migrate12To13();
+                config.Migrate13To14();
                 config.VendorNpcPreferences ??= new();
                 config.VendorRoutePreferences ??= new();
                 config.VendorBuyLists ??= new();
@@ -328,6 +329,23 @@ public partial class Configuration : IPluginConfiguration
 
         EnsureVendorBuyListState();
         Version = 13;
+        Save();
+    }
+
+    public void Migrate13To14()
+    {
+        if (Version >= 14)
+            return;
+
+        EnsureVendorBuyListState();
+        if (LegacyVendorBuyListEntries != null)
+            foreach (var entry in LegacyVendorBuyListEntries)
+                entry.Enabled = true;
+        foreach (var list in VendorBuyLists)
+            foreach (var entry in list.Entries)
+                entry.Enabled = true;
+
+        Version = 14;
         Save();
     }
 

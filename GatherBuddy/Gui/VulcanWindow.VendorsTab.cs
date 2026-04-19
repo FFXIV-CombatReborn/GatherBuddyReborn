@@ -20,20 +20,23 @@ public partial class VulcanWindow
     private sealed record VendorDisplayRow(
         VendorShopEntry Entry,
         ISharedImmediateTexture Icon,
+        ushort CurrencyIconId,
         IReadOnlyList<VendorDisplayNpcOption> NpcOptions,
         string FallbackVendorName,
         string IdSuffix,
         string CostText
     );
-    private static readonly (VendorCurrencyGroup Group, string Label)[] SpecialCurrencyGroups =
+    private enum VendorSortColumn { Name, Cost, Currency, Vendor, Location }
+    private enum VendorSortDirection { Ascending, Descending }
+    private static readonly (VendorCurrencyGroup Group, string Label, uint CurrencyItemId)[] SpecialCurrencyGroups =
     [
-        (VendorCurrencyGroup.Tomestones,       "Tomestones"),
-        (VendorCurrencyGroup.BicolorGemstones, "Bicolor Gemstones"),
-        (VendorCurrencyGroup.HuntSeals,        "The Hunt"),
-        (VendorCurrencyGroup.Scrips,           "Scrips"),
-        (VendorCurrencyGroup.MGP,              "MGP"),
-        (VendorCurrencyGroup.PvP,              "PvP"),
-        (VendorCurrencyGroup.Other,            "Other"),
+        (VendorCurrencyGroup.Tomestones,       "Tomestones",       28),
+        (VendorCurrencyGroup.BicolorGemstones, "Bicolor Gemstones", VendorShopResolver.BicolorCurrencyItemId),
+        (VendorCurrencyGroup.HuntSeals,        "The Hunt",         VendorShopResolver.AlliedSealCurrencyItemId),
+        (VendorCurrencyGroup.Scrips,           "Scrips",           33913),
+        (VendorCurrencyGroup.MGP,              "MGP",              VendorShopResolver.MgpCurrencyItemId),
+        (VendorCurrencyGroup.PvP,              "PvP",              VendorShopResolver.WolfMarkCurrencyItemId),
+        (VendorCurrencyGroup.Other,            "Other",            0),
     ];
 
     private static readonly (VendorGilFilter Filter, string Label)[] GilFilters =
@@ -46,16 +49,27 @@ public partial class VulcanWindow
         (VendorGilFilter.Dyes,       "Dyes"),
         (VendorGilFilter.Other,      "Other"),
     ];
+    private const uint MinerClassJobId          = 16;
+    private const uint FisherClassJobId         = 18;
+    private const uint CraftingLogMainCommandId = 9;
+    private const uint HousingMainCommandId     = 44;
+    private const uint DyeGeneralActionId       = 15;
 
     private VendorShopType                               _vendorCategory       = VendorShopType.GilShop;
     private VendorCurrencyGroup?                         _vendorSelectedGroup  = null;
+    private uint?                                        _vendorSelectedCurrencyItemId;
     private VendorGilFilter                              _vendorGilFilter      = VendorGilFilter.All;
+    private VendorSortColumn                             _vendorSortColumn     = VendorSortColumn.Name;
+    private VendorSortDirection                          _vendorSortDirection  = VendorSortDirection.Ascending;
     private string                                       _vendorSearch         = string.Empty;
     private bool                                         _vendorFilterDirty    = true;
     private List<VendorDisplayRow>                       _vendorDisplay        = new();
     private bool                                         _vendorDisplayBuiltWithResolvedLocations;
     private Dictionary<VendorCurrencyGroup, int>?        _vendorGroupCounts;
     private Dictionary<VendorGilFilter, int>?            _vendorGilCounts;
+    private readonly Dictionary<VendorGilFilter, ushort> _vendorGilFilterIconIds = new();
+    private readonly Dictionary<uint, ushort>            _vendorCurrencyIconIds = new();
+    private readonly Dictionary<uint, string>            _vendorCurrencyNames   = new();
     private readonly Dictionary<uint, string>            _vendorZoneNames = new();
     private readonly Dictionary<(VendorShopType ShopType, uint ItemId, uint CurrencyItemId, uint Cost), int> _vendorPurchaseQuantities = new();
     private (VendorShopType ShopType, uint ItemId, uint CurrencyItemId, uint Cost)? _vendorEditingQuantityKey;
@@ -64,6 +78,7 @@ public partial class VulcanWindow
     private static readonly Vector4                      VendorMarkerButtonColor     = new(0.45f, 0.80f, 1.00f, 1f);
     private static readonly Vector4                      VendorBuyListButtonColor    = new(0.95f, 0.80f, 0.35f, 1f);
     private static readonly Vector4                      VendorAutomationButtonColor = new(0.60f, 0.95f, 0.60f, 1f);
+    private static readonly Vector4                      VendorSelectedFilterColor   = new(0.25f, 0.50f, 0.85f, 1.00f);
     private static (VendorShopType ShopType, uint ItemId, uint CurrencyItemId, uint Cost) VendorQuantityKey(VendorShopEntry entry)
         => (entry.ShopType, entry.ItemId, entry.CurrencyItemId, entry.Cost);
 
@@ -117,6 +132,39 @@ public partial class VulcanWindow
 
     private static int GetCurrentGrandCompanyEntryCount()
         => VendorShopResolver.GcShopEntries.Count(VendorShopResolver.MatchesCurrentGrandCompany);
+
+    private static uint GetCurrentGrandCompanyCurrencyItemId()
+        => VendorShopResolver.GetCurrentGrandCompanySealCurrencyItemId() is var currencyItemId && currencyItemId != 0
+            ? currencyItemId
+            : VendorShopResolver.GetGrandCompanySealCurrencyItemId(1);
+
+    private ushort GetVendorCurrencyIconId(uint currencyItemId)
+    {
+        if (_vendorCurrencyIconIds.TryGetValue(currencyItemId, out var iconId))
+            return iconId;
+
+        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+        iconId = itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)
+            ? (ushort)item.Icon
+            : (ushort)0;
+        _vendorCurrencyIconIds[currencyItemId] = iconId;
+        return iconId;
+    }
+
+    private string GetVendorCurrencyName(uint currencyItemId, string fallbackName = "")
+    {
+        if (_vendorCurrencyNames.TryGetValue(currencyItemId, out var currencyName))
+            return currencyName;
+
+        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+        currencyName = itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)
+            ? item.Name.ExtractText()
+            : string.IsNullOrWhiteSpace(fallbackName)
+                ? $"Currency {currencyItemId}"
+                : fallbackName;
+        _vendorCurrencyNames[currencyItemId] = currencyName;
+        return currencyName;
+    }
 
     private static string GetVendorRouteLabel(VendorNpc npc)
     {
@@ -193,6 +241,7 @@ public partial class VulcanWindow
         return new VendorDisplayRow(
             entry,
             Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(entry.IconId)),
+            GetVendorCurrencyIconId(entry.CurrencyItemId),
             npcOptions,
             selectableNpcs.Count > 0
                 ? selectableNpcs[0].Name
@@ -237,7 +286,9 @@ public partial class VulcanWindow
         }
         var duplicateName = row.NpcOptions.Count(other => other.Npc.Name.Equals(option.Npc.Name, StringComparison.OrdinalIgnoreCase)) > 1;
         if (!duplicateName)
-            return option.Npc.Name;
+            return !string.IsNullOrWhiteSpace(option.ZoneName)
+                ? $"{option.Npc.Name} ({option.ZoneName})"
+                : option.Npc.Name;
 
         if (!string.IsNullOrWhiteSpace(option.ZoneName))
             return $"{option.Npc.Name} ({option.ZoneName})";
@@ -363,81 +414,410 @@ public partial class VulcanWindow
         && !VendorShopResolver.CraftableIds.Contains(entry.ItemId)
         && !VendorShopResolver.HousingItemIds.Contains(entry.ItemId)
         && !VendorShopResolver.DyeItemIds.Contains(entry.ItemId);
+    private int GetVendorTopLevelFilterCount(VendorShopType shopType, VendorCurrencyGroup? group = null)
+        => shopType switch
+        {
+            VendorShopType.GilShop           => VendorShopResolver.GilShopEntries.Count,
+            VendorShopType.GrandCompanySeals => GetCurrentGrandCompanyEntryCount(),
+            VendorShopType.SpecialCurrency when group.HasValue => GetGroupCounts().GetValueOrDefault(group.Value, 0),
+            VendorShopType.SpecialCurrency   => VendorShopResolver.SpecialShopEntries.Count,
+            _                                => 0,
+        };
+
+    private bool IsVendorTopLevelFilterSelected(VendorShopType shopType, VendorCurrencyGroup? group = null)
+        => _vendorCategory == shopType
+        && (shopType != VendorShopType.SpecialCurrency || _vendorSelectedGroup == group);
+
+    private void SelectVendorTopLevelFilter(VendorShopType shopType, VendorCurrencyGroup? group = null)
+    {
+        if (IsVendorTopLevelFilterSelected(shopType, group))
+            return;
+
+        _vendorCategory               = shopType;
+        _vendorSelectedGroup          = shopType == VendorShopType.SpecialCurrency ? group : null;
+        _vendorSelectedCurrencyItemId = null;
+        _vendorFilterDirty            = true;
+    }
+
+    private static ushort GetVendorClassJobIconId(uint classJobId)
+        => classJobId == 0 ? (ushort)0 : (ushort)(62100 + classJobId);
+
+    private ushort GetVendorMainCommandIconId(uint mainCommandId)
+    {
+        var sheet = Dalamud.GameData.GetExcelSheet<MainCommand>();
+        return sheet != null && sheet.TryGetRow(mainCommandId, out var mainCommand)
+            ? (ushort)mainCommand.Icon
+            : (ushort)0;
+    }
+
+    private ushort GetVendorGeneralActionIconId(uint generalActionId)
+    {
+        var sheet = Dalamud.GameData.GetExcelSheet<GeneralAction>();
+        return sheet != null && sheet.TryGetRow(generalActionId, out var generalAction)
+            ? (ushort)generalAction.Icon
+            : (ushort)0;
+    }
+
+    private ushort GetVendorGilFilterIconId(VendorGilFilter filter)
+    {
+        if (_vendorGilFilterIconIds.TryGetValue(filter, out var iconId))
+            return iconId;
+
+        iconId = filter switch
+        {
+            VendorGilFilter.All        => GetVendorCurrencyIconId(VendorShopResolver.GilCurrencyItemId),
+            VendorGilFilter.Gatherable => GetVendorClassJobIconId(MinerClassJobId),
+            VendorGilFilter.Fish       => GetVendorClassJobIconId(FisherClassJobId),
+            VendorGilFilter.Craftable  => GetVendorMainCommandIconId(CraftingLogMainCommandId),
+            VendorGilFilter.Housing    => GetVendorMainCommandIconId(HousingMainCommandId),
+            VendorGilFilter.Dyes       => GetVendorGeneralActionIconId(DyeGeneralActionId),
+            _                          => 0,
+        };
+
+        if (iconId == 0 && filter != VendorGilFilter.Other)
+            GatherBuddy.Log.Debug($"[VulcanWindow] Failed to resolve an icon for vendor gil filter {filter}.");
+
+        _vendorGilFilterIconIds[filter] = iconId;
+        return iconId;
+    }
+
+    private static (float ButtonSize, float ButtonPad, Vector2 IconSize) GetVendorIconButtonMetrics(float availableWidth)
+    {
+        const int columns = 4;
+        const float buttonPad = 4f;
+        var framePad = ImGui.GetStyle().FramePadding;
+        var buttonSize = Math.Max(32f, (availableWidth - (columns - 1) * buttonPad) / columns);
+        var iconWidth = Math.Max(18f, buttonSize - framePad.X * 2f);
+        var iconHeight = Math.Max(18f, buttonSize - framePad.Y * 2f);
+        return (buttonSize, buttonPad, new Vector2(iconWidth, iconHeight));
+    }
+
+    private bool DrawVendorFilterButton(string id, string label, ushort iconId, bool selected, string tooltip, float buttonSize, Vector2 iconSize)
+    {
+        if (selected)
+            ImGui.PushStyleColor(ImGuiCol.Button, VendorSelectedFilterColor);
+
+        bool clicked;
+        ImGui.PushID(id);
+        if (iconId != 0)
+        {
+            var wrap = Icons.DefaultStorage.TextureProvider
+                .GetFromGameIcon(new GameIconLookup(iconId))
+                .GetWrapOrDefault();
+            clicked = wrap != null
+                ? ImGui.ImageButton(wrap.Handle, iconSize)
+                : ImGui.Button(label, new Vector2(buttonSize, buttonSize));
+        }
+        else
+        {
+            clicked = ImGui.Button(label, new Vector2(buttonSize, buttonSize));
+        }
+        ImGui.PopID();
+
+        if (selected)
+            ImGui.PopStyleColor();
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+        return clicked;
+    }
+
+    private void DrawVendorTopLevelCurrencyFilters()
+    {
+        var currentGcCurrencyItemId = GetCurrentGrandCompanyCurrencyItemId();
+        var topLevelFilters = new List<(VendorShopType ShopType, VendorCurrencyGroup? Group, string Label, uint CurrencyItemId)>
+        {
+            (VendorShopType.GilShop,           null,                         "Gil",      VendorShopResolver.GilCurrencyItemId),
+            (VendorShopType.GrandCompanySeals, null,                         "GC Seals", currentGcCurrencyItemId),
+        };
+        topLevelFilters.AddRange(SpecialCurrencyGroups.Select(group => (VendorShopType.SpecialCurrency, (VendorCurrencyGroup?)group.Group, group.Label, group.CurrencyItemId)));
+
+        var visibleFilters = topLevelFilters
+            .Where(filter => GetVendorTopLevelFilterCount(filter.ShopType, filter.Group) > 0)
+            .ToList();
+        if (visibleFilters.Count == 0)
+            return;
+
+        var (buttonSize, buttonPad, iconSize) = GetVendorIconButtonMetrics(ImGui.GetContentRegionAvail().X);
+        for (var i = 0; i < visibleFilters.Count; i++)
+        {
+            var (shopType, group, label, currencyItemId) = visibleFilters[i];
+            var count = GetVendorTopLevelFilterCount(shopType, group);
+
+            if (DrawVendorFilterButton(
+                    $"vendorTopLevel_{shopType}_{group}",
+                    label,
+                    currencyItemId != 0 ? GetVendorCurrencyIconId(currencyItemId) : (ushort)0,
+                    IsVendorTopLevelFilterSelected(shopType, group),
+                    $"{label}\n{count:N0} item(s)",
+                    buttonSize,
+                    iconSize))
+                SelectVendorTopLevelFilter(shopType, group);
+
+            if ((i + 1) % 4 != 0 && i < visibleFilters.Count - 1)
+                ImGui.SameLine(0, buttonPad);
+        }
+    }
+
+    private void DrawVendorGilFilterButtons()
+    {
+        var gilCounts = GetGilCounts();
+        var (buttonSize, buttonPad, iconSize) = GetVendorIconButtonMetrics(ImGui.GetContentRegionAvail().X);
+
+        for (var i = 0; i < GilFilters.Length; i++)
+        {
+            var (filter, label) = GilFilters[i];
+            gilCounts.TryGetValue(filter, out var count);
+            var isSelected = _vendorGilFilter == filter;
+
+            if (DrawVendorFilterButton(
+                    $"vendorGil_{filter}",
+                    label,
+                    GetVendorGilFilterIconId(filter),
+                    isSelected,
+                    $"{label}\n{count:N0} item(s)",
+                    buttonSize,
+                    iconSize)
+             && !isSelected)
+            {
+                _vendorGilFilter            = filter;
+                _vendorSelectedCurrencyItemId = null;
+                _vendorFilterDirty          = true;
+            }
+
+            if ((i + 1) % 4 != 0 && i < GilFilters.Length - 1)
+                ImGui.SameLine(0, buttonPad);
+        }
+    }
+
+    private List<(uint CurrencyItemId, string Label, int Count)> GetSpecificCurrencyFilters()
+        => GetVendorBaseEntries()
+            .GroupBy(entry => entry.CurrencyItemId)
+            .Select(group => (group.Key, GetVendorCurrencyName(group.Key, group.First().CurrencyName), group.Count()))
+            .OrderBy(group => group.Item2, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void DrawVendorSpecificCurrencyButtons()
+    {
+        var currencyFilters = GetSpecificCurrencyFilters();
+        if (currencyFilters.Count <= 1)
+            return;
+
+        var (buttonSize, buttonPad, iconSize) = GetVendorIconButtonMetrics(ImGui.GetContentRegionAvail().X);
+        var renderedButtonCount = currencyFilters.Count + 1;
+        var renderedButtons     = 0;
+        var isAllSelected = _vendorSelectedCurrencyItemId == null;
+        if (DrawVendorFilterButton("vendorCurrency_all", "All", 0, isAllSelected, "All currencies", buttonSize, iconSize))
+        {
+            if (!isAllSelected)
+            {
+                _vendorSelectedCurrencyItemId = null;
+                _vendorFilterDirty            = true;
+            }
+        }
+
+        renderedButtons++;
+        if (renderedButtons % 4 != 0 && renderedButtons < renderedButtonCount)
+            ImGui.SameLine(0, buttonPad);
+
+        for (var i = 0; i < currencyFilters.Count; i++)
+        {
+            var (currencyItemId, label, count) = currencyFilters[i];
+            if (DrawVendorFilterButton(
+                    $"vendorCurrency_{currencyItemId}",
+                    label,
+                    GetVendorCurrencyIconId(currencyItemId),
+                    _vendorSelectedCurrencyItemId == currencyItemId,
+                    $"{label}\n{count:N0} item(s)",
+                    buttonSize,
+                    iconSize))
+            {
+                if (_vendorSelectedCurrencyItemId != currencyItemId)
+                {
+                    _vendorSelectedCurrencyItemId = currencyItemId;
+                    _vendorFilterDirty            = true;
+                }
+            }
+
+            renderedButtons++;
+            if (renderedButtons % 4 != 0 && renderedButtons < renderedButtonCount)
+                ImGui.SameLine(0, buttonPad);
+        }
+    }
 
     private void DrawVendorSidebar()
     {
         ImGui.Spacing();
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Shop Type");
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        DrawVendorTypeSelectable("Gil Shops", VendorShopType.GilShop,          VendorShopResolver.GilShopEntries.Count);
-        DrawVendorTypeSelectable("GC Seals",  VendorShopType.GrandCompanySeals, GetCurrentGrandCompanyEntryCount());
-
-        ImGui.Spacing();
-        ImGui.Separator();
+        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Currency");
         ImGui.Spacing();
 
         ImGui.BeginChild("##vendorSidebarScroll", new Vector2(-1, ImGui.GetContentRegionAvail().Y), false);
+        DrawVendorTopLevelCurrencyFilters();
 
         if (_vendorCategory == VendorShopType.GilShop)
         {
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Source");
-            ImGui.Spacing();
-            var gilCounts = GetGilCounts();
-            foreach (var (filter, label) in GilFilters)
-            {
-                gilCounts.TryGetValue(filter, out var count);
-                var isSelected = _vendorGilFilter == filter;
-                if (ImGui.Selectable($"{label}##vendorGil_{filter}", isSelected) && !isSelected)
-                {
-                    _vendorGilFilter   = filter;
-                    _vendorFilterDirty = true;
-                }
-                ImGui.SameLine();
-                ImGui.SetCursorPosX(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(count.ToString()).X - ImGui.GetStyle().ItemSpacing.X);
-                ImGui.TextColored(ImGuiColors.DalamudGrey3, count.ToString());
-            }
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Source");
+            ImGui.Spacing();
+            DrawVendorGilFilterButtons();
         }
-
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Currency");
-        ImGui.Spacing();
-        var counts = GetGroupCounts();
-        foreach (var (group, label) in SpecialCurrencyGroups)
+        else
         {
-            counts.TryGetValue(group, out var count);
-            if (count == 0) continue;
-            var isSelected = _vendorCategory == VendorShopType.SpecialCurrency && _vendorSelectedGroup == group;
-            if (ImGui.Selectable($"{label}##vendorGroup_{group}", isSelected) && !isSelected)
+            var currencyFilters = GetSpecificCurrencyFilters();
+            if (currencyFilters.Count > 1)
             {
-                _vendorCategory      = VendorShopType.SpecialCurrency;
-                _vendorSelectedGroup = group;
-                _vendorFilterDirty   = true;
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+                ImGui.TextColored(ImGuiColors.DalamudGrey3, "Specific Currency");
+                ImGui.Spacing();
+                DrawVendorSpecificCurrencyButtons();
             }
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(count.ToString()).X - ImGui.GetStyle().ItemSpacing.X);
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, count.ToString());
         }
         ImGui.EndChild();
     }
 
-    private void DrawVendorTypeSelectable(string label, VendorShopType type, int count)
-    {
-        var isSelected = _vendorCategory == type;
-        if (ImGui.Selectable($"{label}##vendorType_{type}", isSelected) && !isSelected)
+    private IEnumerable<VendorShopEntry> GetVendorBaseEntries()
+        => _vendorCategory switch
         {
-            _vendorCategory      = type;
-            _vendorSelectedGroup = null;
-            _vendorGilFilter     = VendorGilFilter.All;
-            _vendorFilterDirty   = true;
-        }
+            VendorShopType.GilShop => _vendorGilFilter switch
+            {
+                VendorGilFilter.Gatherable => VendorShopResolver.GilShopEntries.Where(entry => VendorShopResolver.GatherableIds.Contains(entry.ItemId)),
+                VendorGilFilter.Fish       => VendorShopResolver.GilShopEntries.Where(entry => VendorShopResolver.FishIds.Contains(entry.ItemId)),
+                VendorGilFilter.Craftable  => VendorShopResolver.GilShopEntries.Where(entry => VendorShopResolver.CraftableIds.Contains(entry.ItemId)),
+                VendorGilFilter.Housing    => VendorShopResolver.GilShopEntries.Where(entry => VendorShopResolver.HousingItemIds.Contains(entry.ItemId)),
+                VendorGilFilter.Dyes       => VendorShopResolver.GilShopEntries.Where(entry => VendorShopResolver.DyeItemIds.Contains(entry.ItemId)),
+                VendorGilFilter.Other      => VendorShopResolver.GilShopEntries.Where(IsGilOtherEntry),
+                _                          => VendorShopResolver.GilShopEntries,
+            },
+            VendorShopType.GrandCompanySeals => VendorShopResolver.GcShopEntries
+                .Where(VendorShopResolver.MatchesCurrentGrandCompany),
+            VendorShopType.SpecialCurrency => VendorShopResolver.SpecialShopEntries
+                .Where(entry => _vendorSelectedGroup == null || entry.Group == _vendorSelectedGroup),
+            _ => Enumerable.Empty<VendorShopEntry>(),
+        };
+
+    private string GetVendorSortLabel()
+        => _vendorSortColumn switch
+        {
+            VendorSortColumn.Name     => "Name",
+            VendorSortColumn.Cost     => "Cost",
+            VendorSortColumn.Currency => "Currency",
+            VendorSortColumn.Vendor   => "Vendor",
+            VendorSortColumn.Location => "Location",
+            _                         => "Sort",
+        };
+
+    private string GetVendorSortVendorName(VendorDisplayRow row)
+        => GetSelectedVendorOption(row)?.Npc.Name
+        ?? row.FallbackVendorName;
+
+    private string GetVendorSortZoneName(VendorDisplayRow row)
+        => GetSelectedVendorOption(row)?.ZoneName ?? "Unknown";
+
+    private void SortVendorDisplayRows(List<VendorDisplayRow> rows)
+    {
+        if (rows.Count <= 1)
+            return;
+
+        IOrderedEnumerable<VendorDisplayRow> ordered = _vendorSortColumn switch
+        {
+            VendorSortColumn.Cost => _vendorSortDirection == VendorSortDirection.Ascending
+                ? rows.OrderBy(row => row.Entry.Cost)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                : rows.OrderByDescending(row => row.Entry.Cost)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase),
+            VendorSortColumn.Currency => _vendorSortDirection == VendorSortDirection.Ascending
+                ? rows.OrderBy(row => GetVendorCurrencyName(row.Entry.CurrencyItemId, row.Entry.CurrencyName), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.Cost)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                : rows.OrderByDescending(row => GetVendorCurrencyName(row.Entry.CurrencyItemId, row.Entry.CurrencyName), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.Cost)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase),
+            VendorSortColumn.Vendor => _vendorSortDirection == VendorSortDirection.Ascending
+                ? rows.OrderBy(GetVendorSortVendorName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                : rows.OrderByDescending(GetVendorSortVendorName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase),
+            VendorSortColumn.Location => _vendorSortDirection == VendorSortDirection.Ascending
+                ? rows.OrderBy(row => GetSelectedVendorOption(row)?.Location == null ? 1 : 0)
+                    .ThenBy(row => GetSelectedVendorOption(row)?.Location?.TerritoryId == Dalamud.ClientState.TerritoryType ? 0 : 1)
+                    .ThenBy(GetVendorSortZoneName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                : rows.OrderBy(row => GetSelectedVendorOption(row)?.Location == null ? 1 : 0)
+                    .ThenByDescending(row => GetSelectedVendorOption(row)?.Location?.TerritoryId == Dalamud.ClientState.TerritoryType ? 0 : 1)
+                    .ThenByDescending(GetVendorSortZoneName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase),
+            _ => _vendorSortDirection == VendorSortDirection.Ascending
+                ? rows.OrderBy(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.Cost)
+                : rows.OrderByDescending(row => row.Entry.ItemName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(row => row.Entry.Cost),
+        };
+
+        var originalCount = rows.Count;
+        var sortedRows    = ordered.ToList();
+        if (sortedRows.Count != originalCount)
+            GatherBuddy.Log.Debug($@"[VulcanWindow] Vendor sort changed row count unexpectedly ({originalCount} -> {sortedRows.Count}) for category={_vendorCategory}, group={_vendorSelectedGroup?.ToString() ?? "none"}, currency={_vendorSelectedCurrencyItemId?.ToString() ?? "all"}, gil={_vendorGilFilter}, search=""{_vendorSearch}""");
+
+        rows.Clear();
+        rows.AddRange(sortedRows);
+    }
+
+    private void DrawVendorSortControl()
+    {
+        var sortIcon = _vendorSortDirection == VendorSortDirection.Ascending
+            ? FontAwesomeIcon.ArrowUp
+            : FontAwesomeIcon.ArrowDown;
+
+        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Sort:");
         ImGui.SameLine();
-        ImGui.SetCursorPosX(ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(count.ToString()).X - ImGui.GetStyle().ItemSpacing.X);
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, count.ToString());
+        if (ImGui.Button($"{GetVendorSortLabel()}##vendorSortBtn", new Vector2(90f, 0f)))
+            ImGui.OpenPopup("##vendorSortMenu");
+
+        ImGui.SameLine(0f, 4f);
+        using (ImRaii.PushFont(UiBuilder.IconFont))
+            ImGui.Text(sortIcon.ToIconString());
+
+        if (!ImGui.BeginPopup("##vendorSortMenu"))
+            return;
+
+        foreach (var sortColumn in Enum.GetValues<VendorSortColumn>())
+        {
+            var isSelected = _vendorSortColumn == sortColumn;
+            if (!ImGui.MenuItem(sortColumn.ToString(), string.Empty, isSelected))
+                continue;
+
+            if (isSelected)
+                _vendorSortDirection = _vendorSortDirection == VendorSortDirection.Ascending
+                    ? VendorSortDirection.Descending
+                    : VendorSortDirection.Ascending;
+            else
+                _vendorSortColumn = sortColumn;
+            _vendorFilterDirty = true;
+        }
+
+        ImGui.EndPopup();
+    }
+
+    private void DrawVendorCostCell(VendorDisplayRow row, Vector2 iconVec, float iconSize)
+    {
+        if (row.CurrencyIconId != 0)
+        {
+            var currencyIcon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(row.CurrencyIconId));
+            if (currencyIcon.TryGetWrap(out var wrap, out _))
+            {
+                ImGui.Image(wrap.Handle, iconVec);
+                ImGui.SameLine(0, 4f);
+            }
+        }
+
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
+        ImGui.TextUnformatted(row.CostText);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(GetVendorCurrencyName(row.Entry.CurrencyItemId, row.Entry.CurrencyName));
     }
 
     private void DrawVendorItemTable()
@@ -486,6 +866,8 @@ public partial class VulcanWindow
         ImGui.TextColored(ImGuiColors.DalamudGrey3, overflow
             ? $"Showing 500 of {_vendorDisplay.Count} \u2014 refine your search"
             : $"{_vendorDisplay.Count} result(s)");
+        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - 140f));
+        DrawVendorSortControl();
         ImGui.Spacing();
         var showAutomationControls = _vendorCategory is VendorShopType.GilShop or VendorShopType.SpecialCurrency or VendorShopType.GrandCompanySeals;
         var quantityColumnWidth = GetVendorQuantityInputWidth() + ImGui.GetStyle().CellPadding.X * 2f;
@@ -498,7 +880,7 @@ public partial class VulcanWindow
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Item",     ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Cost",     ImGuiTableColumnFlags.WidthFixed, 80f);
+        ImGui.TableSetupColumn("Cost",     ImGuiTableColumnFlags.WidthFixed, 110f);
         if (showAutomationControls)
             ImGui.TableSetupColumn("Qty",      ImGuiTableColumnFlags.WidthFixed, quantityColumnWidth);
         ImGui.TableSetupColumn("Vendor",   ImGuiTableColumnFlags.WidthFixed, 170f);
@@ -548,7 +930,7 @@ public partial class VulcanWindow
         ImGui.TextUnformatted(entry.ItemName);
 
         ImGui.TableNextColumn();
-        ImGui.TextUnformatted(row.CostText);
+        DrawVendorCostCell(row, iconVec, iconSize);
         if (showGilControls)
         {
             ImGui.TableNextColumn();
@@ -630,6 +1012,34 @@ public partial class VulcanWindow
         }
     }
 
+    private void DrawVendorAddToListPopup(VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
+    {
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null)
+            return;
+
+        if (ImGui.Selectable("Create New List..."))
+        {
+            var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
+            if (vendorBuyListWindow == null)
+                GatherBuddy.Log.Warning($"[VulcanWindow] Unable to open Create Vendor List popup for {entry.ItemName}: vendor buy list window unavailable.");
+            else if (!vendorBuyListWindow.OpenCreateListPopup(entry, vendor, targetQuantity))
+                GatherBuddy.Log.Debug($"[VulcanWindow] Unable to create a new vendor buy list for {entry.ItemName} with target {targetQuantity:N0}.");
+        }
+
+        if (!ImGui.BeginMenu("Add to Existing List", buyListManager.Lists.Count > 0))
+            return;
+
+        foreach (var list in buyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        {
+            if (ImGui.Selectable(list.Name)
+             && !buyListManager.TryAddTarget(list.Id, entry, vendor, targetQuantity, selectList: true, openWindow: true, announce: true))
+                GatherBuddy.Log.Debug($"[VulcanWindow] Unable to add {entry.ItemName} to vendor list '{list.Name}' with target {targetQuantity:N0}.");
+        }
+
+        ImGui.EndMenu();
+    }
+
     private void DrawVendorAddToListButton(VendorDisplayRow row, VendorDisplayNpcOption? selectedNpc)
     {
         if (selectedNpc == null)
@@ -646,9 +1056,16 @@ public partial class VulcanWindow
         }
 
         var targetQuantity = (uint)Math.Max(1, GetVendorPurchaseQuantity(row.Entry));
+        var popupId = $"##vendorAddToListPopup_{row.IdSuffix}";
         if (DrawVendorIconButton($"vendor_add_{row.IdSuffix}", FontAwesomeIcon.Plus,
-                VendorBuyListButtonColor, $"Add {row.Entry.ItemName} to the vendor buy list with target {targetQuantity:N0}"))
-            GatherBuddy.VendorBuyListManager.TryAddTarget(row.Entry, selectedNpc.Npc, targetQuantity);
+                VendorBuyListButtonColor, $"Choose a vendor buy list for {row.Entry.ItemName} with target {targetQuantity:N0}"))
+            ImGui.OpenPopup(popupId);
+
+        if (ImGui.BeginPopup(popupId))
+        {
+            DrawVendorAddToListPopup(row.Entry, selectedNpc.Npc, targetQuantity);
+            ImGui.EndPopup();
+        }
     }
 
     private void DrawVendorGoButton(VendorDisplayRow row, VendorDisplayNpcOption? selectedNpc)
@@ -701,36 +1118,20 @@ public partial class VulcanWindow
     {
         _vendorFilterDirty = false;
         var locationCacheReady = VendorNpcLocationCache.IsInitialized;
+        IEnumerable<VendorShopEntry> source = GetVendorBaseEntries();
 
-        IEnumerable<VendorShopEntry> source = _vendorCategory switch
-        {
-            VendorShopType.GilShop => _vendorGilFilter switch
-            {
-                VendorGilFilter.Gatherable => VendorShopResolver.GilShopEntries.Where(e => VendorShopResolver.GatherableIds.Contains(e.ItemId)),
-                VendorGilFilter.Fish       => VendorShopResolver.GilShopEntries.Where(e => VendorShopResolver.FishIds.Contains(e.ItemId)),
-                VendorGilFilter.Craftable  => VendorShopResolver.GilShopEntries.Where(e => VendorShopResolver.CraftableIds.Contains(e.ItemId)),
-                VendorGilFilter.Housing    => VendorShopResolver.GilShopEntries.Where(e => VendorShopResolver.HousingItemIds.Contains(e.ItemId)),
-                VendorGilFilter.Dyes       => VendorShopResolver.GilShopEntries.Where(e => VendorShopResolver.DyeItemIds.Contains(e.ItemId)),
-                VendorGilFilter.Other      => VendorShopResolver.GilShopEntries.Where(IsGilOtherEntry),
-                _                         => VendorShopResolver.GilShopEntries,
-            },
-            VendorShopType.GrandCompanySeals => VendorShopResolver.GcShopEntries
-                .Where(VendorShopResolver.MatchesCurrentGrandCompany),
-            VendorShopType.SpecialCurrency   => VendorShopResolver.SpecialShopEntries
-                .Where(e => _vendorSelectedGroup == null || e.Group == _vendorSelectedGroup),
-            _                                => Enumerable.Empty<VendorShopEntry>(),
-        };
+        if (_vendorSelectedCurrencyItemId.HasValue)
+            source = source.Where(entry => entry.CurrencyItemId == _vendorSelectedCurrencyItemId.Value);
 
         if (!string.IsNullOrWhiteSpace(_vendorSearch))
         {
             var search = _vendorSearch;
-            source = source.Where(e =>
-                e.ItemName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                e.Npcs.Any(n => n.Name.Contains(search, StringComparison.OrdinalIgnoreCase)));
+            source = source.Where(entry => entry.ItemName.Contains(search, StringComparison.OrdinalIgnoreCase));
         }
         _vendorDisplay = source
             .Select(entry => BuildVendorDisplayRow(entry, locationCacheReady))
             .ToList();
+        SortVendorDisplayRows(_vendorDisplay);
 
         if (_vendorEditingQuantityKey.HasValue
          && !_vendorDisplay.Any(row => VendorQuantityKey(row.Entry) == _vendorEditingQuantityKey.Value))

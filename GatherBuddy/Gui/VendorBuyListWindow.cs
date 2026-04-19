@@ -17,9 +17,17 @@ namespace GatherBuddy.Gui;
 public sealed class VendorBuyListWindow : Window
 {
     private sealed record VendorListNpcOption(VendorNpc Npc, VendorNpcLocation? Location, string ZoneName);
+    private readonly record struct VendorCurrencyRequirement(
+        uint CurrencyItemId,
+        string CurrencyName,
+        ushort IconId,
+        ulong AvailableAmount,
+        ulong RequiredAmount);
     public const string WindowId = "Vendor Buy List###VendorBuyListWindow";
     private const string ListNamePopupId = "Vendor Buy List Name###VendorBuyListNamePopup";
     private static readonly Vector4 PanelBackgroundColor = new(0.08f, 0.08f, 0.10f, 1f);
+    private readonly Dictionary<uint, ushort> _currencyIconIds = new();
+    private readonly Dictionary<uint, string> _currencyNames = new();
 
     private readonly Dictionary<uint, string> _zoneNames = new();
     private bool   _wasFocusedLastFrame;
@@ -77,6 +85,25 @@ public sealed class VendorBuyListWindow : Window
         if (addedCount == 0)
         {
             GatherBuddy.Log.Warning($"[VendorBuyListWindow] Failed to add {requests.Count:N0} vendor targets to newly created vendor list '{list.Name}'.");
+            return false;
+        }
+
+        Open();
+        if (!manager.IsBusy)
+            OpenListNamePopup(list.Id, list.Name);
+        return true;
+    }
+
+    public bool OpenCreateListPopup(VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
+    {
+        var manager = GatherBuddy.VendorBuyListManager;
+        if (manager == null)
+            return false;
+
+        var list = manager.CreateList("Vendor List", false);
+        if (!manager.TryAddTarget(list.Id, entry, vendor, targetQuantity, selectList: true, openWindow: false, announce: false))
+        {
+            GatherBuddy.Log.Warning($"[VendorBuyListWindow] Failed to add {entry.ItemName} to newly created vendor list '{list.Name}'.");
             return false;
         }
 
@@ -211,6 +238,7 @@ public sealed class VendorBuyListWindow : Window
     {
         var entries = manager.Entries.ToList();
         var pending = manager.GetPendingEntryCount();
+        var currencyRequirements = BuildCurrencyRequirements(entries, manager);
 
         ImGui.TextColored(ImGuiColors.ParsedGold, activeList.Name);
         ImGui.TextColored(ImGuiColors.DalamudGrey3, $"{entries.Count} entry(s) · {pending} pending");
@@ -244,6 +272,14 @@ public sealed class VendorBuyListWindow : Window
                 manager.Clear();
         }
 
+        if (entries.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            DrawCurrencyRequirementSummary(currencyRequirements);
+        }
+
         if (entries.Count == 0)
         {
             ImGui.Spacing();
@@ -261,6 +297,103 @@ public sealed class VendorBuyListWindow : Window
         ImGui.Spacing();
 
         DrawEntryTable(entries, manager);
+    }
+
+    private List<VendorCurrencyRequirement> BuildCurrencyRequirements(IReadOnlyList<VendorBuyListEntry> entries, VendorBuyListManager manager)
+    {
+        var requirements = new Dictionary<uint, VendorCurrencyRequirement>();
+        foreach (var entry in entries)
+        {
+            var remainingQuantity = manager.GetRemainingQuantity(entry);
+            if (remainingQuantity == 0 || entry.Cost == 0)
+                continue;
+
+            var currencyItemId = entry.CurrencyItemId;
+            var currencyName = GetCurrencyName(currencyItemId, entry.CurrencyName);
+            var currencyGroup = VendorShopResolver.GetCurrencyGroup(entry.ShopType, currencyItemId);
+            var availability = VendorCurrencyAvailabilityResolver.Resolve(currencyGroup, currencyItemId, currencyName);
+            var iconId = GetCurrencyIconId(currencyItemId);
+            var requiredAmount = (ulong)remainingQuantity * entry.Cost;
+            if (requirements.TryGetValue(currencyItemId, out var existing))
+            {
+                requirements[currencyItemId] = existing with
+                {
+                    RequiredAmount = existing.RequiredAmount + requiredAmount,
+                    CurrencyName = string.IsNullOrWhiteSpace(existing.CurrencyName) ? availability.CurrencyName : existing.CurrencyName,
+                    IconId = existing.IconId != 0 ? existing.IconId : iconId,
+                    AvailableAmount = existing.AvailableAmount != 0 ? existing.AvailableAmount : availability.AvailableAmount,
+                };
+                continue;
+            }
+
+            requirements.Add(currencyItemId, new VendorCurrencyRequirement(
+                currencyItemId,
+                availability.CurrencyName,
+                iconId,
+                availability.AvailableAmount,
+                requiredAmount));
+        }
+
+        return requirements.Values
+            .OrderBy(requirement => requirement.CurrencyName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(requirement => requirement.CurrencyItemId)
+            .ToList();
+    }
+
+    private void DrawCurrencyRequirementSummary(IReadOnlyList<VendorCurrencyRequirement> requirements)
+    {
+        if (requirements.Count == 1)
+        {
+            ImGui.TextColored(ImGuiColors.DalamudYellow, "Currency (Have / Need):");
+            ImGui.SameLine();
+            DrawCurrencyRequirementInline(requirements[0]);
+            return;
+        }
+
+        ImGui.TextColored(ImGuiColors.DalamudYellow, "Currency (Have / Need)");
+        ImGui.Spacing();
+        if (requirements.Count == 0)
+        {
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "No currency needed.");
+            return;
+        }
+
+        foreach (var requirement in requirements)
+        {
+            ImGui.Bullet();
+            ImGui.SameLine();
+            DrawCurrencyRequirementInline(requirement);
+        }
+    }
+
+    private void DrawCurrencyRequirementInline(VendorCurrencyRequirement requirement)
+    {
+        const float iconSize = 18f;
+        var haveColor = requirement.AvailableAmount >= requirement.RequiredAmount
+            ? ImGuiColors.HealerGreen
+            : new Vector4(1.0f, 0.5f, 0.5f, 1.0f);
+        var iconVec = new Vector2(iconSize, iconSize);
+        var rowStartY = ImGui.GetCursorPosY();
+        ImGui.BeginGroup();
+        if (requirement.IconId != 0)
+        {
+            var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(requirement.IconId));
+            if (icon.TryGetWrap(out var wrap, out _))
+            {
+                ImGui.Image(wrap.Handle, iconVec);
+                ImGui.SameLine(0, 4f);
+                ImGui.SetCursorPosY(rowStartY + (iconSize - ImGui.GetTextLineHeight()) / 2f);
+            }
+        }
+
+        ImGui.TextColored(haveColor, $"{requirement.AvailableAmount:N0}");
+        ImGui.SameLine(0, 4f);
+        ImGui.TextColored(ImGuiColors.DalamudGrey3, "/");
+        ImGui.SameLine(0, 4f);
+        ImGui.TextUnformatted($"{requirement.RequiredAmount:N0}");
+        ImGui.EndGroup();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"{requirement.CurrencyName}\nHave: {requirement.AvailableAmount:N0}\nNeed: {requirement.RequiredAmount:N0}");
     }
 
     private void DrawEntryTable(List<VendorBuyListEntry> entries, VendorBuyListManager manager)
@@ -312,8 +445,16 @@ public sealed class VendorBuyListWindow : Window
             ImGui.OpenPopup(ListNamePopupId);
             _openListNamePopup = false;
         }
-        var isOpen = true;
-        if (!ImGui.BeginPopupModal(ListNamePopupId, ref isOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        var popupOpen = ImGui.IsPopupOpen(ListNamePopupId);
+        if (!popupOpen)
+        {
+            _editingListId = null;
+            return;
+        }
+
+        var windowCenter = ImGui.GetWindowPos() + ImGui.GetWindowSize() * 0.5f;
+        ImGui.SetNextWindowPos(windowCenter, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+        if (!ImGui.BeginPopup(ListNamePopupId, ImGuiWindowFlags.AlwaysAutoResize))
             return;
 
         ImGui.Text("List Name");
@@ -341,9 +482,6 @@ public sealed class VendorBuyListWindow : Window
             ImGui.CloseCurrentPopup();
         }
 
-        if (!isOpen)
-            _editingListId = null;
-
         ImGui.EndPopup();
     }
 
@@ -353,6 +491,7 @@ public sealed class VendorBuyListWindow : Window
         var vendorOptions = BuildVendorOptions(liveEntry);
         var selectedVendor = GetSelectedVendorOption(vendorOptions, resolvedVendor);
         var isActive     = manager.ActiveEntryId == entry.Id;
+        var isEnabled    = entry.Enabled;
         var currentCount = Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
         var remaining    = manager.GetRemainingQuantity(entry);
         var targetCount  = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
@@ -363,6 +502,14 @@ public sealed class VendorBuyListWindow : Window
 
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
+        using (ImRaii.Disabled(isActive || manager.IsBusy))
+        {
+            if (ImGui.Checkbox($"##vendorBuyListEnabled_{entry.Id}", ref isEnabled))
+                manager.SetEntryEnabled(entry.Id, isEnabled);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(isEnabled ? "Enabled" : "Disabled");
+        ImGui.SameLine(0, 4f);
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(entry.IconId));
         if (icon.TryGetWrap(out var wrap, out _))
         {
@@ -378,6 +525,8 @@ public sealed class VendorBuyListWindow : Window
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
         if (isActive)
             ImGui.TextColored(ImGuiColors.ParsedGold, entry.ItemName);
+        else if (!entry.Enabled)
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, entry.ItemName);
         else
             ImGui.TextUnformatted(entry.ItemName);
         if (ImGui.IsItemHovered())
@@ -400,7 +549,9 @@ public sealed class VendorBuyListWindow : Window
 
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
-        if (remaining > 0)
+        if (!entry.Enabled)
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Off");
+        else if (remaining > 0)
             ImGui.TextColored(ImGuiColors.HealerGreen, $"{remaining:N0}");
         else
             ImGui.TextColored(ImGuiColors.DalamudGrey3, "0");
@@ -578,5 +729,36 @@ public sealed class VendorBuyListWindow : Window
             : $"Territory {location.TerritoryId}";
         _zoneNames[location.TerritoryId] = zoneName;
         return zoneName;
+    }
+
+    private ushort GetCurrencyIconId(uint currencyItemId)
+    {
+        if (_currencyIconIds.TryGetValue(currencyItemId, out var iconId))
+            return iconId;
+
+        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+        iconId = currencyItemId != 0 && itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)
+            ? (ushort)item.Icon
+            : (ushort)0;
+        _currencyIconIds[currencyItemId] = iconId;
+        return iconId;
+    }
+
+    private string GetCurrencyName(uint currencyItemId, string fallbackName)
+    {
+        if (!string.IsNullOrWhiteSpace(fallbackName))
+            return fallbackName;
+
+        if (_currencyNames.TryGetValue(currencyItemId, out var currencyName))
+            return currencyName;
+
+        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+        currencyName = currencyItemId != 0 && itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)
+            ? item.Name.ExtractText()
+            : currencyItemId == 0
+                ? "Currency"
+                : $"Currency {currencyItemId}";
+        _currencyNames[currencyItemId] = currencyName;
+        return currencyName;
     }
 }

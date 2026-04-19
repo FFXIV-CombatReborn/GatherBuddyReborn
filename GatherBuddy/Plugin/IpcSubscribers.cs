@@ -235,6 +235,9 @@ namespace GatherBuddy.Plugin
         [EzIPC("Lifestream.AethernetTeleport", applyPrefix: false)]
         internal static readonly Func<string, bool> AethernetTeleport;
 
+        [EzIPC("Lifestream.AethernetTeleportToFirmament", applyPrefix: false)]
+        internal static readonly Func<bool>? AethernetTeleportToFirmament;
+
         [EzIPC("Lifestream.GetActiveAetheryte", applyPrefix: false)]
         internal static readonly Func<uint>? GetActiveAetheryte;
 
@@ -255,6 +258,12 @@ namespace GatherBuddy.Plugin
 
         internal static uint ActiveResidentialAetheryteId
             => GetActiveResidentialAetheryte?.Invoke() ?? 0;
+
+        internal static bool SupportsFirmamentTeleport
+            => Enabled && AethernetTeleportToFirmament != null;
+
+        internal static bool TryEnterFirmament()
+            => AethernetTeleportToFirmament?.Invoke() ?? false;
     }
 
     internal static class YesAlready

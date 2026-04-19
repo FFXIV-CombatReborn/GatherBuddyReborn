@@ -63,6 +63,21 @@ public class VendorNavigator
         "要移動到",
         "이동하시겠습니까?",
     ];
+    private const uint FirmamentTerritoryId = 886u;
+    private const uint FirmamentAetheryteId = 70u;
+    private readonly record struct CustomAethernetDestination(Vector2 Position, uint PlaceNameId);
+
+    private static readonly CustomAethernetDestination[] FirmamentAethernetDestinations =
+    [
+        new(new Vector2(23.9f, 169.4f), 3436u),
+        new(new Vector2(76.0f, 10.3f), 3473u),
+        new(new Vector2(149.5f, 98.6f), 3475u),
+        new(new Vector2(207.8f, -25.6f), 3474u),
+        new(new Vector2(-78.8f, 76.0f), 3525u),
+        new(new Vector2(-132.6f, -14.7f), 3528u),
+        new(new Vector2(-91.7f, -115.2f), 3646u),
+        new(new Vector2(114.3f, -107.4f), 3645u),
+    ];
 
     private static readonly uint[] KnownAethernetShardSeedDataIds =
     [
@@ -140,10 +155,71 @@ public class VendorNavigator
         return true;
     }
 
+    private static bool TryFindFirmamentRoute(uint targetTerritoryId, out uint aetheryteId, bool logRouteDiagnostics = true)
+    {
+        aetheryteId = 0;
+        if (targetTerritoryId != FirmamentTerritoryId)
+            return false;
+
+        if (!Lifestream.SupportsFirmamentTeleport)
+        {
+            if (logRouteDiagnostics)
+                GatherBuddy.Log.Debug($"[VendorNavigator] Firmament route for territory {targetTerritoryId} requires Lifestream Firmament entry support.");
+            return true;
+        }
+
+        aetheryteId = FirmamentAetheryteId;
+        if (!Teleporter.IsAttuned(aetheryteId))
+        {
+            if (logRouteDiagnostics)
+                GatherBuddy.Log.Debug($"[VendorNavigator] Firmament route for territory {targetTerritoryId} requires unattuned aetheryte {aetheryteId}");
+            aetheryteId = 0;
+        }
+        else if (logRouteDiagnostics)
+        {
+            GatherBuddy.Log.Debug($"[VendorNavigator] Using Firmament route for territory {targetTerritoryId}: cityAetheryte={aetheryteId}");
+        }
+
+        return true;
+    }
+
+    private bool HandlePendingFirmamentEntry()
+    {
+        if (!_pendingFirmamentEntry || !Lifestream.SupportsFirmamentTeleport)
+            return false;
+
+        if (_pendingAethernetParentTerritoryId != 0
+         && Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+            return true;
+
+        if (!CanIssueTeleportRequest())
+            return true;
+
+        if (Lifestream.ActiveAetheryteId != FirmamentAetheryteId)
+        {
+            LogHousingEntryStatus($"[VendorNavigator] Waiting to reach Foundation aetheryte {FirmamentAetheryteId} before entering the Firmament (active={Lifestream.ActiveAetheryteId})");
+            return true;
+        }
+
+        if (Lifestream.TryEnterFirmament())
+        {
+            GatherBuddy.Log.Debug("[VendorNavigator] Entering the Firmament from the Foundation aetheryte.");
+            _stateStartTime = DateTime.UtcNow;
+            _teleportWaitStartTime = _stateStartTime;
+            return true;
+        }
+
+        LogHousingEntryStatus("[VendorNavigator] Lifestream did not accept the Firmament entry request yet; retrying.");
+        _stateStartTime = DateTime.UtcNow;
+        return true;
+    }
+
     private static bool TryFindNearestShardInTerritory(uint territoryId, Vector3 npcPosition, out string shardName, out float shardDistanceToVendor, out float shardDistanceToPlayer)
     {
         if (TryGetHousingDistrict(territoryId, out var housingDistrict))
             return TryFindNearestResidentialShard(housingDistrict, npcPosition, out shardName, out shardDistanceToVendor, out shardDistanceToPlayer);
+        if (TryFindNearestCustomAethernetShardInTerritory(territoryId, npcPosition, out shardName, out shardDistanceToVendor, out shardDistanceToPlayer))
+            return true;
         shardName             = string.Empty;
         shardDistanceToVendor = float.MaxValue;
         shardDistanceToPlayer = float.MaxValue;
@@ -176,6 +252,49 @@ public class VendorNavigator
             shardName             = currentShardName;
             shardDistanceToVendor = distanceToVendor;
             shardDistanceToPlayer = player != null ? Vector2.Distance(playerXZ, shardXZ.Value) : float.MaxValue;
+        }
+
+        return shardName.Length > 0;
+    }
+
+    private static bool TryFindNearestCustomAethernetShardInTerritory(uint territoryId, Vector3 npcPosition, out string shardName, out float shardDistanceToVendor, out float shardDistanceToPlayer)
+    {
+        shardName             = string.Empty;
+        shardDistanceToVendor = float.MaxValue;
+        shardDistanceToPlayer = float.MaxValue;
+
+        var destinations = territoryId switch
+        {
+            FirmamentTerritoryId => FirmamentAethernetDestinations,
+            _                    => Array.Empty<CustomAethernetDestination>(),
+        };
+        if (destinations.Length == 0)
+            return false;
+
+        var placeNameSheet = Dalamud.GameData.GetExcelSheet<PlaceName>();
+        if (placeNameSheet == null)
+            return false;
+
+        var npcXZ    = new Vector2(npcPosition.X, npcPosition.Z);
+        var player   = Dalamud.Objects.LocalPlayer;
+        var playerXZ = player != null ? new Vector2(player.Position.X, player.Position.Z) : Vector2.Zero;
+
+        foreach (var destination in destinations)
+        {
+            if (!placeNameSheet.TryGetRow(destination.PlaceNameId, out var placeName))
+                continue;
+
+            var currentShardName = placeName.Name.ExtractText();
+            if (string.IsNullOrWhiteSpace(currentShardName))
+                continue;
+
+            var distanceToVendor = Vector2.Distance(npcXZ, destination.Position);
+            if (distanceToVendor >= shardDistanceToVendor)
+                continue;
+
+            shardName             = currentShardName;
+            shardDistanceToVendor = distanceToVendor;
+            shardDistanceToPlayer = player != null ? Vector2.Distance(playerXZ, destination.Position) : float.MaxValue;
         }
 
         return shardName.Length > 0;
@@ -333,6 +452,7 @@ public class VendorNavigator
     private const float  RepathDistanceThreshold    = 1.5f;
     private const double RepathCooldown             = 0.75;
     private const double TeleportCooldown           = 3.0;
+    private const double TeleportWaitTimeout        = 15.0;
     private const double ZoneLoadWait               = 5.0;
     private const double MountRetryCooldown         = 2.0;
     private const double LandingRetryCooldown       = 1.0;
@@ -400,11 +520,13 @@ public class VendorNavigator
     private State              _state = State.Idle;
     private VendorNpcLocation? _target;
     private DateTime           _stateStartTime;
+    private DateTime           _teleportWaitStartTime;
     private DateTime           _lastRepathTime;
     private bool               _teleportAttempted;
     private string?            _pendingAethernetName;
     private bool               _pendingAethernetNeedsSourceApproach;
     private bool               _pendingHousingEntry;
+    private bool               _pendingFirmamentEntry;
     private string?            _pendingHousingShardTeleportName;
     private float              _pendingHousingShardDistanceToVendor;
     private uint               _pendingAethernetParentTerritoryId;
@@ -453,6 +575,7 @@ public class VendorNavigator
         _stateStartTime    = DateTime.UtcNow;
         _forcedHousingEntryOriginTerritoryId = 0;
         _awaitingForcedHousingOriginExit     = false;
+        _teleportWaitStartTime               = DateTime.MinValue;
 
         GatherBuddy.Log.Information($"[VendorNavigator] Starting navigation to {target.NpcName} (territory {target.TerritoryId})");
 
@@ -530,6 +653,7 @@ public class VendorNavigator
         _pendingAethernetName               = null;
         _pendingAethernetNeedsSourceApproach = false;
         _pendingHousingEntry                = false;
+        _pendingFirmamentEntry              = false;
         _pendingHousingShardTeleportName    = null;
         _pendingHousingShardDistanceToVendor = 0f;
         _pendingAethernetParentTerritoryId  = 0;
@@ -560,6 +684,7 @@ public class VendorNavigator
         _lastGroundRetryTime                 = DateTime.MinValue;
         _groundRetryCount                    = 0;
         _forceInteractionRangeApproachUntil  = DateTime.MinValue;
+        _teleportWaitStartTime               = DateTime.MinValue;
     }
 
     private static unsafe void PlaceMapFlag(VendorNpcLocation target)
@@ -599,18 +724,28 @@ public class VendorNavigator
 
         if (_teleportAttempted) return;
 
-        var (aetheryteId, aethernetName, requiresHousingEntry) = FindBestRoute(_target!.TerritoryId, _target.Position, true);
+        var (aetheryteId, aethernetName, requiresHousingEntry, requiresFirmamentEntry) = FindBestRoute(_target!.TerritoryId, _target.Position, true);
         if (aetheryteId == 0)
         {
             if (TryGetHousingDistrict(_target.TerritoryId, out _))
                 GatherBuddy.Log.Error($"[VendorNavigator] Housing route unavailable for territory {_target.TerritoryId}; the required city aetheryte may be unattuned.");
+            else if (_target.TerritoryId == FirmamentTerritoryId)
+                GatherBuddy.Log.Error($"[VendorNavigator] Firmament route unavailable for territory {_target.TerritoryId}; Lifestream may be unavailable or the Foundation aetheryte may be unattuned.");
             GatherBuddy.Log.Error($"[VendorNavigator] No route found to territory {_target.TerritoryId}");
             _state = State.Failed;
             return;
         }
-        var parentTerritoryId = (aethernetName != null || requiresHousingEntry)
+        var parentTerritoryId = (aethernetName != null || requiresHousingEntry || requiresFirmamentEntry)
             ? Dalamud.GameData.GetExcelSheet<Aetheryte>()?.GetRow(aetheryteId).Territory.RowId ?? 0
             : 0;
+        if (requiresFirmamentEntry
+         && parentTerritoryId != 0
+         && Dalamud.ClientState.TerritoryType == parentTerritoryId
+         && Lifestream.ActiveAetheryteId == FirmamentAetheryteId)
+        {
+            QueueFirmamentEntry(parentTerritoryId);
+            return;
+        }
 
         if (aethernetName != null
          && parentTerritoryId != 0
@@ -626,13 +761,17 @@ public class VendorNavigator
             _pendingAethernetName               = aethernetName;
             _pendingAethernetNeedsSourceApproach = false;
             _pendingHousingEntry                = requiresHousingEntry;
+            _pendingFirmamentEntry              = requiresFirmamentEntry;
             _pendingAethernetParentTerritoryId  = parentTerritoryId;
             _stateStartTime       = DateTime.UtcNow;
+            _teleportWaitStartTime = _stateStartTime;
             _state                = State.WaitingForTeleport;
             var followUp = aethernetName != null
                 ? $", then aethernet to '{aethernetName}'"
                 : requiresHousingEntry
                     ? ", then enter the housing ward from the city aetheryte"
+                    : requiresFirmamentEntry
+                        ? ", then enter the Firmament from the Foundation aetheryte"
                     : string.Empty;
             GatherBuddy.Log.Debug($"[VendorNavigator] Teleporting to aetheryte {aetheryteId}{followUp}");
         }
@@ -645,7 +784,12 @@ public class VendorNavigator
 
     private void UpdateWaitingForTeleport()
     {
-        if (_pendingAethernetName != null && Lifestream.Enabled && Lifestream.IsBusy()) return;
+        if (HasTeleportWaitTimedOut())
+        {
+            FailTeleportWait();
+            return;
+        }
+        if ((_pendingAethernetName != null || _pendingFirmamentEntry) && Lifestream.Enabled && Lifestream.IsBusy()) return;
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < TeleportCooldown) return;
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51]) return;
         if (_awaitingForcedHousingOriginExit)
@@ -678,6 +822,7 @@ public class VendorNavigator
                 _pendingAethernetNeedsSourceApproach = false;
                 _pendingAethernetParentTerritoryId = 0;
                 _stateStartTime                    = DateTime.UtcNow;
+                _teleportWaitStartTime             = _stateStartTime;
             }
             else
             {
@@ -691,8 +836,10 @@ public class VendorNavigator
             _pendingAethernetName = null;
             _pendingAethernetNeedsSourceApproach = false;
             _pendingHousingEntry = false;
+            _pendingFirmamentEntry = false;
             _pendingAethernetParentTerritoryId = 0;
             _forcedHousingEntryOriginTerritoryId = 0;
+            _teleportWaitStartTime = DateTime.MinValue;
             _state                = State.WaitingForZoneLoad;
             _stateStartTime       = DateTime.UtcNow;
             return;
@@ -705,12 +852,15 @@ public class VendorNavigator
             TryAdvanceHousingEntry();
             return;
         }
-
-        if ((DateTime.UtcNow - _stateStartTime).TotalSeconds > 45)
+        if (_pendingFirmamentEntry)
         {
-            GatherBuddy.Log.Error("[VendorNavigator] Teleport/aethernet timeout");
-            _state = State.Failed;
+            if (_pendingAethernetParentTerritoryId != 0
+             && Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+                return;
+            if (HandlePendingFirmamentEntry())
+                return;
         }
+
     }
 
     private void UpdateWaitingForZoneLoad()
@@ -817,6 +967,7 @@ public class VendorNavigator
             _pendingHousingShardDistanceToVendor = 0f;
             _lastHousingEntryActionTime          = DateTime.UtcNow;
             _stateStartTime                      = DateTime.UtcNow;
+            _teleportWaitStartTime               = _stateStartTime;
             return true;
         }
 
@@ -876,6 +1027,7 @@ public class VendorNavigator
             _pendingAethernetNeedsSourceApproach = false;
             _pendingAethernetParentTerritoryId   = 0;
             _stateStartTime                      = DateTime.UtcNow;
+            _teleportWaitStartTime               = _stateStartTime;
         }
         else
         {
@@ -923,11 +1075,48 @@ public class VendorNavigator
         _pendingAethernetName               = aethernetName;
         _pendingAethernetNeedsSourceApproach = true;
         _pendingHousingEntry                = false;
+        _pendingFirmamentEntry              = false;
         _pendingHousingShardTeleportName    = null;
         _pendingHousingShardDistanceToVendor = 0f;
         _pendingAethernetParentTerritoryId  = parentTerritoryId;
         _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
+        _teleportWaitStartTime              = DateTime.UtcNow;
         _state                              = State.WaitingForTeleport;
+    }
+
+    private void QueueFirmamentEntry(uint parentTerritoryId)
+    {
+        _teleportAttempted                  = true;
+        _pendingAethernetName               = null;
+        _pendingAethernetNeedsSourceApproach = false;
+        _pendingHousingEntry                = false;
+        _pendingFirmamentEntry              = true;
+        _pendingHousingShardTeleportName    = null;
+        _pendingHousingShardDistanceToVendor = 0f;
+        _pendingAethernetParentTerritoryId  = parentTerritoryId;
+        _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
+        _teleportWaitStartTime              = DateTime.UtcNow;
+        _state                              = State.WaitingForTeleport;
+    }
+
+    private bool HasTeleportWaitTimedOut()
+        => _teleportWaitStartTime != DateTime.MinValue
+        && (DateTime.UtcNow - _teleportWaitStartTime).TotalSeconds > TeleportWaitTimeout;
+
+    private void FailTeleportWait()
+    {
+        var lifestreamBusy = Lifestream.Enabled && Lifestream.IsBusy();
+        GatherBuddy.Log.Debug(
+            $"[VendorNavigator] Teleport wait timed out for {_target?.NpcName ?? "vendor"}: currentTerritory={Dalamud.ClientState.TerritoryType}, targetTerritory={_target?.TerritoryId ?? 0}, pendingAethernet={_pendingAethernetName ?? "none"}, needsSourceApproach={_pendingAethernetNeedsSourceApproach}, pendingHousingEntry={_pendingHousingEntry}, pendingFirmamentEntry={_pendingFirmamentEntry}, pendingHousingShard={_pendingHousingShardTeleportName ?? "none"}, awaitingForcedHousingExit={_awaitingForcedHousingOriginExit}, lifestreamBusy={lifestreamBusy}");
+        if (lifestreamBusy)
+        {
+            GatherBuddy.Log.Debug("[VendorNavigator] Aborting busy Lifestream state after teleport timeout.");
+            Lifestream.Abort();
+        }
+
+        GatherBuddy.Log.Error("[VendorNavigator] Teleport/aethernet timeout");
+        _teleportWaitStartTime = DateTime.MinValue;
+        _state = State.Failed;
     }
 
     private void StartVNavmesh(Vector3 destination, bool usingLiveNpc, NavigationDestinationMode destinationMode)
@@ -1625,7 +1814,8 @@ public class VendorNavigator
     private static bool IsAethernetSource(IGameObject obj)
         => obj.IsTargetable
         && (obj.ObjectKind == ObjectKind.Aetheryte
-         || (obj.ObjectKind == ObjectKind.EventObj && IsKnownAethernetShardDataId(obj.BaseId)));
+         || IsKnownAethernetShardDataId(obj.DataId)
+         || IsKnownAethernetShardDataId(obj.BaseId));
 
     private static bool IsKnownAethernetShardDataId(uint dataId)
         => GetKnownAethernetShardDataIds().Contains(dataId);
@@ -2297,18 +2487,19 @@ public class VendorNavigator
 
     internal static uint GetPrimaryRouteAetheryteId(uint targetTerritoryId, Vector3 npcPosition)
         => FindBestRoute(targetTerritoryId, npcPosition, false).AetheryteId;
-
-    private static (uint AetheryteId, string? AethernetName, bool RequiresHousingEntry) FindBestRoute(uint targetTerritoryId, Vector3 npcPosition,
+    private static (uint AetheryteId, string? AethernetName, bool RequiresHousingEntry, bool RequiresFirmamentEntry) FindBestRoute(uint targetTerritoryId, Vector3 npcPosition,
         bool logRouteDiagnostics)
     {
         if (TryFindHousingRoute(targetTerritoryId, out var housingAetheryteId, logRouteDiagnostics))
-            return (housingAetheryteId, null, housingAetheryteId != 0);
+            return (housingAetheryteId, null, housingAetheryteId != 0, false);
+        if (TryFindFirmamentRoute(targetTerritoryId, out var firmamentAetheryteId, logRouteDiagnostics))
+            return (firmamentAetheryteId, null, false, firmamentAetheryteId != 0);
         var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
-        if (aetheryteSheet == null) return (0, null, false);
+        if (aetheryteSheet == null) return (0, null, false, false);
 
         foreach (var a in aetheryteSheet)
             if (a.IsAetheryte && a.Territory.RowId == targetTerritoryId && Teleporter.IsAttuned(a.RowId))
-                return (a.RowId, null, false);
+                return (a.RowId, null, false, false);
 
         var bestDist              = float.MaxValue;
         uint bestAetheryteId      = 0;
@@ -2357,8 +2548,8 @@ public class VendorNavigator
         }
 
         if (bestAetheryteId != 0)
-            return (bestAetheryteId, bestShardName, false);
-        return (fallbackAetheryteId, fallbackShardName, false);
+            return (bestAetheryteId, bestShardName, false, false);
+        return (fallbackAetheryteId, fallbackShardName, false, false);
     }
 
     // Port of Lifestream DataStore.GetTinyAetheryte position logic.

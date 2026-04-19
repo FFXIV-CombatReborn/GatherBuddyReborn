@@ -660,6 +660,20 @@ public static class VendorShopResolver
         && tomestoneItemIds.Contains(currencyItemId)
         && !TomestoneIds.Contains(currencyItemId);
 
+    public static VendorCurrencyGroup GetCurrencyGroup(VendorShopType shopType, uint currencyItemId)
+        => shopType switch
+        {
+            VendorShopType.GilShop           => VendorCurrencyGroup.Gil,
+            VendorShopType.GrandCompanySeals => VendorCurrencyGroup.GrandCompanySeals,
+            _ when currencyItemId == BicolorCurrencyItemId => VendorCurrencyGroup.BicolorGemstones,
+            _ when TomestoneIds.Contains(currencyItemId) => VendorCurrencyGroup.Tomestones,
+            _ when HuntSealIds.Contains(currencyItemId) => VendorCurrencyGroup.HuntSeals,
+            _ when ScripIds.Contains(currencyItemId) => VendorCurrencyGroup.Scrips,
+            _ when currencyItemId == MgpCurrencyItemId => VendorCurrencyGroup.MGP,
+            _ when currencyItemId == WolfMarkCurrencyItemId => VendorCurrencyGroup.PvP,
+            _ => VendorCurrencyGroup.Other,
+        };
+
     private static VendorCurrencyGroup ClassifyCurrency(uint currencyItemId, IReadOnlySet<uint> tomestoneItemIds)
     {
         if (currencyItemId == BicolorCurrencyItemId) return VendorCurrencyGroup.BicolorGemstones;

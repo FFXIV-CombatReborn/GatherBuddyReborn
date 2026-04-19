@@ -219,6 +219,17 @@ public sealed class VendorBuyListManager : IDisposable
     public bool TryAddTarget(VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool openWindow = true, bool announce = false)
         => TryAddTarget(GetOrCreateActiveList(), entry, vendor, targetQuantity, false, openWindow, announce);
 
+    public bool TryAddTarget(Guid listId, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity, bool selectList = false,
+        bool openWindow = true, bool announce = false)
+    {
+        EnsureListState();
+        var list = GetList(listId);
+        if (list == null)
+            return false;
+
+        return TryAddTarget(list, entry, vendor, targetQuantity, selectList, openWindow, announce);
+    }
+
     public bool TryIncrementTarget(uint itemId, uint amount = 1, bool openWindow = true, bool announce = false)
         => TryIncrementTarget(GetOrCreateActiveList(), itemId, amount, false, openWindow, announce);
 
@@ -262,6 +273,29 @@ public sealed class VendorBuyListManager : IDisposable
             _statusText = $"{entry.ItemName} target set to {entry.TargetQuantity:N0} in '{list.Name}'.";
     }
 
+    public bool SetEntryEnabled(Guid entryId, bool enabled)
+    {
+        if (IsBusy)
+        {
+            GatherBuddy.Log.Debug($"[VendorBuyListManager] Ignoring enabled-state update for vendor buy list entry {entryId} because the manager is busy.");
+            return false;
+        }
+
+        if (!TryFindEntry(entryId, out var list, out var entry) || list == null || entry == null)
+        {
+            GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not find vendor buy list entry {entryId} while updating its enabled state.");
+            return false;
+        }
+
+        if (entry.Enabled == enabled)
+            return true;
+
+        entry.Enabled = enabled;
+        GatherBuddy.Config.Save();
+        _statusText = $"{(enabled ? "Enabled" : "Disabled")} {entry.ItemName} in '{list.Name}'.";
+        return true;
+    }
+
     public bool UpdateEntryVendor(Guid entryId, VendorNpc vendor)
     {
         if (IsBusy)
@@ -290,6 +324,7 @@ public sealed class VendorBuyListManager : IDisposable
         {
             var mergedTargetQuantity = Math.Max(existing.TargetQuantity, entry.TargetQuantity);
             UpdateEntry(existing, liveEntry, selectedVendor, mergedTargetQuantity);
+            existing.Enabled |= entry.Enabled;
             list.Entries.Remove(entry);
             GatherBuddy.Config.Save();
             _statusText = $"Merged {entry.ItemName} onto vendor '{selectedVendor.Name}' in '{list.Name}'.";
@@ -363,6 +398,12 @@ public sealed class VendorBuyListManager : IDisposable
             return;
         }
 
+        if (GetPendingEntryCount(activeList) == 0)
+        {
+            _statusText = $"Vendor list '{activeList.Name}' has no enabled pending entries.";
+            return;
+        }
+
         if (!VendorShopResolver.IsInitialized)
         {
             EnsureVendorCachesAvailable();
@@ -414,6 +455,8 @@ public sealed class VendorBuyListManager : IDisposable
 
     public uint GetRemainingQuantity(VendorBuyListEntry entry)
     {
+        if (!entry.Enabled)
+            return 0;
         var currentCount = (uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(entry.ItemId));
         return entry.TargetQuantity > currentCount
             ? entry.TargetQuantity - currentCount
@@ -628,6 +671,7 @@ public sealed class VendorBuyListManager : IDisposable
         }
 
         UpdateEntry(existing, entry, vendor, targetQuantity);
+        existing.Enabled = true;
         return true;
     }
 
@@ -640,6 +684,7 @@ public sealed class VendorBuyListManager : IDisposable
         if (existing != null)
         {
             existing.TargetQuantity = SaturatingAdd(Math.Max(existing.TargetQuantity, (uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId))), amount);
+            existing.Enabled = true;
             if (selectList)
                 GatherBuddy.Config.ActiveVendorBuyListId = list.Id;
             GatherBuddy.Config.Save();

@@ -20,5 +20,6 @@ public sealed class VendorBuyListEntry
     public string             VendorNpcName  { get; set; } = string.Empty;
     public VendorMenuShopType MenuShopType   { get; set; } = VendorMenuShopType.GilShop;
     public uint               ShopId         { get; set; }
+    public bool               Enabled        { get; set; } = true;
     public uint               TargetQuantity { get; set; } = 1;
 }

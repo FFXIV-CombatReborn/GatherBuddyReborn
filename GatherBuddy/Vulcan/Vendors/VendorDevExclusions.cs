@@ -8,10 +8,19 @@ public static class VendorDevExclusions
     private static readonly HashSet<uint> ExcludedNpcIds =
     [
         1008119u,
+        1016296u,
+        1019797u,
+        1026074u,
+        1028250u,
+        1034489u,
         1033259u,
+        1036894u,
+        1042833u,
+        1044880u,
+        1046491u,
+        1049034u,
     ];
     private static readonly HashSet<string> ExcludedRouteKeys = new(StringComparer.Ordinal);
-    private static readonly HashSet<string> LoggedExcludedRouteKeys = new(StringComparer.Ordinal);
 
     public static IReadOnlyList<VendorNpc> GetSelectableNpcs(IReadOnlyList<VendorNpc> npcs, string context, string? itemName = null)
     {
@@ -20,15 +29,8 @@ public static class VendorDevExclusions
 
         var selectableNpcs = new List<VendorNpc>(npcs.Count);
         foreach (var npc in npcs)
-        {
-            if (!TryGetExclusionReason(npc, out var reason))
-            {
+            if (!TryGetExclusionReason(npc, out _))
                 selectableNpcs.Add(npc);
-                continue;
-            }
-
-            LogExcludedNpc(npc, reason, context, itemName);
-        }
 
         return selectableNpcs;
     }
@@ -56,17 +58,5 @@ public static class VendorDevExclusions
 
         reason = string.Empty;
         return false;
-    }
-
-    private static void LogExcludedNpc(VendorNpc npc, string reason, string context, string? itemName)
-    {
-        var routeKey = VendorPreferenceHelper.GetRouteKey(npc);
-        if (!LoggedExcludedRouteKeys.Add(routeKey))
-            return;
-
-        var itemSuffix = string.IsNullOrWhiteSpace(itemName)
-            ? string.Empty
-            : $" for {itemName}";
-        GatherBuddy.Log.Debug($"[VendorDevExclusions] Excluding {npc.Name}{itemSuffix} while {context}: npcId={npc.NpcId}, menu={npc.MenuShopType}, shop={npc.ShopId}, source={npc.SourceShopId}, itemIndex={npc.ShopItemIndex}, route={routeKey}, reason={reason}");
     }
 }
