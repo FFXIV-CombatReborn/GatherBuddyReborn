@@ -268,21 +268,6 @@ public partial class VulcanWindow : Window, IDisposable
                 TryToggleArtisan(!artisanLoaded);
         }
 
-        if (ImGui.IsItemHovered())
-        {
-            var tooltip = !artisanInstalled
-                ? "Artisan is not installed."
-                : artisanToggleInProgress
-                    ? _pendingArtisanEnabledState == true
-                        ? "Waiting for Artisan to finish enabling."
-                        : "Waiting for Artisan to finish disabling."
-                    : artisanToggleBlocked
-                        ? artisanToggleState.BlockedReason ?? "Artisan cannot be toggled right now."
-                    : artisanLoaded
-                        ? "Disable Artisan from the Vulcan header."
-                        : "Enable Artisan from the Vulcan header.";
-            ImGui.SetTooltip(tooltip);
-        }
     }
 
     private bool UpdatePendingArtisanToggle(bool artisanInstalled, bool artisanLoaded)

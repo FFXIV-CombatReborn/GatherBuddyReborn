@@ -161,8 +161,7 @@ public sealed class VendorBuyListWindow : Window
 
     private static void DrawHeader()
     {
-        ImGui.TextColored(ImGuiColors.DalamudYellow, "Vendor Buy Lists");
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Manage named vendor lists and run the active list through Vulcan.");
+        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Manage vendor lists and run active list.");
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();

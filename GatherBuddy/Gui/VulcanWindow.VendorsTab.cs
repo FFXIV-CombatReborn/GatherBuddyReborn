@@ -351,16 +351,30 @@ public partial class VulcanWindow
     private static bool DrawVendorIconButton(string id, FontAwesomeIcon icon, Vector4 color, string tooltip, bool disabled = false)
     {
         var hoveredFlags = disabled ? ImGuiHoveredFlags.AllowWhenDisabled : ImGuiHoveredFlags.None;
-        var size         = new Vector2(ImGui.GetFrameHeight(), 0f);
+        var size         = Vector2.One * ImGui.GetFrameHeight();
+
+        bool DrawCenteredButton()
+        {
+            using var font = ImRaii.PushFont(UiBuilder.IconFont);
+            var iconText = icon.ToIconString();
+            var cursor   = ImGui.GetCursorScreenPos();
+            var iconSize = ImGui.CalcTextSize(iconText);
+
+            bool clicked;
+            using (ImRaii.PushId(id))
+                clicked = ImGui.Button(string.Empty, size);
+
+            var iconPos = cursor + ((size - iconSize) / 2f);
+            ImGui.GetWindowDrawList().AddText(iconPos, ImGui.GetColorU32(color), iconText);
+            return clicked;
+        }
 
         if (disabled)
         {
             bool disabledHovered;
             using (ImRaii.Disabled())
-            using (ImRaii.PushFont(UiBuilder.IconFont))
-            using (ImRaii.PushColor(ImGuiCol.Text, color))
             {
-                ImGui.Button($"{icon.ToIconString()}##{id}", size);
+                DrawCenteredButton();
                 disabledHovered = ImGui.IsItemHovered(hoveredFlags);
             }
             if (disabledHovered)
@@ -369,13 +383,8 @@ public partial class VulcanWindow
         }
         bool clicked;
         bool hovered;
-
-        using (ImRaii.PushFont(UiBuilder.IconFont))
-        using (ImRaii.PushColor(ImGuiCol.Text, color))
-        {
-            clicked = ImGui.Button($"{icon.ToIconString()}##{id}", size);
-            hovered = ImGui.IsItemHovered();
-        }
+        clicked = DrawCenteredButton();
+        hovered = ImGui.IsItemHovered();
 
         if (hovered)
             ImGui.SetTooltip(tooltip);
@@ -831,7 +840,7 @@ public partial class VulcanWindow
 
         ImGui.Spacing();
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##vendorSearch", "Search items or vendors...", ref _vendorSearch, 256))
+        if (ImGui.InputTextWithHint("##vendorSearch", "Search items...", ref _vendorSearch, 256))
             _vendorFilterDirty = true;
 
         ImGui.Spacing();
@@ -841,12 +850,12 @@ public partial class VulcanWindow
         if (ImGui.Button("Open Vendor Buy List"))
             buyListManager.OpenWindow();
         ImGui.SameLine();
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, $"{buyListManager.ActiveListName}: {buyListManager.Entries.Count} item(s)");
+        ImGui.TextColored(ImGuiColors.DalamudYellow, $"{buyListManager.ActiveListName}: {buyListManager.Entries.Count} item(s)");
         ImGui.Spacing();
 
         if (!string.IsNullOrWhiteSpace(buyListManager.StatusText))
         {
-            ImGui.TextColored(buyListManager.IsRunning ? ImGuiColors.ParsedGold : ImGuiColors.DalamudGrey3,
+            ImGui.TextColored(ImGuiColors.DalamudYellow,
                 $"Buy List: {buyListManager.StatusText}");
             ImGui.Spacing();
         }
@@ -1054,14 +1063,23 @@ public partial class VulcanWindow
                 VendorBuyListButtonColor, "Automation is not available for the selected vendor route", true);
             return;
         }
+        var buyListManager = GatherBuddy.VendorBuyListManager;
+        if (buyListManager == null)
+        {
+            DrawVendorIconButton($"vendor_add_disabled_{row.IdSuffix}", FontAwesomeIcon.Plus,
+                VendorBuyListButtonColor, "Vendor buy list manager unavailable", true);
+            return;
+        }
 
         var targetQuantity = (uint)Math.Max(1, GetVendorPurchaseQuantity(row.Entry));
-        var popupId = $"##vendorAddToListPopup_{row.IdSuffix}";
+        var contextMenuId = $"##vendorAddToListPopup_{row.IdSuffix}";
         if (DrawVendorIconButton($"vendor_add_{row.IdSuffix}", FontAwesomeIcon.Plus,
-                VendorBuyListButtonColor, $"Choose a vendor buy list for {row.Entry.ItemName} with target {targetQuantity:N0}"))
-            ImGui.OpenPopup(popupId);
+                VendorBuyListButtonColor,
+                "Add to active list - right-click for more options")
+         && !buyListManager.TryAddTarget(row.Entry, selectedNpc.Npc, targetQuantity, openWindow: false, announce: false))
+            GatherBuddy.Log.Debug($@"[VulcanWindow] Unable to add {row.Entry.ItemName} to active vendor list '{buyListManager.ActiveListName}' with target {targetQuantity:N0}.");
 
-        if (ImGui.BeginPopup(popupId))
+        if (ImGui.BeginPopupContextItem(contextMenuId))
         {
             DrawVendorAddToListPopup(row.Entry, selectedNpc.Npc, targetQuantity);
             ImGui.EndPopup();
