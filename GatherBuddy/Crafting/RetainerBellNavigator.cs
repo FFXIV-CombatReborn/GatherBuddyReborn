@@ -33,7 +33,7 @@ public class RetainerBellNavigator
     public bool StartNavigation(IGameObject bell)
     {
         _targetBell = bell;
-        var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+        var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
 
         if (playerPos == Vector3.Zero)
         {
@@ -75,7 +75,7 @@ public class RetainerBellNavigator
 
         try
         {
-            var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+            var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
             if (playerPos == Vector3.Zero)
                 return;
 

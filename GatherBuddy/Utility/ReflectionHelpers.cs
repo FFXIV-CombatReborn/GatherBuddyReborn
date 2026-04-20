@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Reflection;
 using Dalamud.Plugin;
 
@@ -33,39 +34,24 @@ public static class ReflectionHelpers
     {
         try
         {
-            var pluginManager = GetPluginManager();
-            if (pluginManager == null)
+            if (!TryGetInstalledPluginEntry(internalName, out var plugin, false))
             {
                 instance = null;
                 return false;
             }
 
-            var installedPlugins = (System.Collections.IList?)pluginManager.GetType().GetProperty("InstalledPlugins")?.GetValue(pluginManager);
-            if (installedPlugins == null)
+            var type = plugin.GetType().Name == "LocalDevPlugin" ? plugin.GetType().BaseType : plugin.GetType();
+            if (type == null)
             {
                 instance = null;
                 return false;
             }
 
-            foreach (var plugin in installedPlugins)
+            var pluginInstance = (IDalamudPlugin?)type.GetField("instance", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(plugin);
+            if (pluginInstance != null)
             {
-                var pluginInternalName = (string?)plugin.GetType().GetProperty("InternalName")?.GetValue(plugin);
-                if (pluginInternalName == internalName)
-                {
-                    var type = plugin.GetType().Name == "LocalDevPlugin" ? plugin.GetType().BaseType : plugin.GetType();
-                    if (type == null)
-                    {
-                        instance = null;
-                        return false;
-                    }
-
-                    var pluginInstance = (IDalamudPlugin?)type.GetField("instance", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(plugin);
-                    if (pluginInstance != null)
-                    {
-                        instance = pluginInstance;
-                        return true;
-                    }
-                }
+                instance = pluginInstance;
+                return true;
             }
 
             instance = null;
@@ -79,20 +65,53 @@ public static class ReflectionHelpers
         }
     }
 
-    private static object? GetPluginManager()
+    internal static bool TryGetInstalledPluginEntry(string internalName, out object? pluginEntry, bool logIfMissing)
+    {
+        pluginEntry = null;
+
+        var pluginManager = GetDalamudService("Dalamud.Plugin.Internal.PluginManager");
+        if (pluginManager == null)
+        {
+            GatherBuddy.Log.Debug("[ReflectionHelpers] Could not resolve the Dalamud plugin manager.");
+            return false;
+        }
+
+        var installedPlugins = pluginManager.GetType().GetProperty("InstalledPlugins")?.GetValue(pluginManager) as IEnumerable;
+        if (installedPlugins == null)
+        {
+            GatherBuddy.Log.Debug("[ReflectionHelpers] Could not read InstalledPlugins from the Dalamud plugin manager.");
+            return false;
+        }
+
+        foreach (var plugin in installedPlugins)
+        {
+            var pluginInternalName = plugin.GetFoP<string>("InternalName");
+            if (string.Equals(pluginInternalName, internalName, StringComparison.OrdinalIgnoreCase))
+            {
+                pluginEntry = plugin;
+                return true;
+            }
+        }
+
+        if (logIfMissing)
+            GatherBuddy.Log.Debug($"[ReflectionHelpers] Plugin entry {internalName} was not found in InstalledPlugins.");
+        return false;
+    }
+
+    internal static object? GetDalamudService(string serviceName)
     {
         try
         {
             var dalamudAssembly = Dalamud.PluginInterface.GetType().Assembly;
             var serviceType = dalamudAssembly.GetType("Dalamud.Service`1", true);
-            var pluginManagerType = dalamudAssembly.GetType("Dalamud.Plugin.Internal.PluginManager", true);
-            
-            if (serviceType == null || pluginManagerType == null)
+            var targetType = dalamudAssembly.GetType(serviceName, true);
+
+            if (serviceType == null || targetType == null)
                 return null;
 
-            var genericServiceType = serviceType.MakeGenericType(pluginManagerType);
+            var genericServiceType = serviceType.MakeGenericType(targetType);
             var getMethod = genericServiceType.GetMethod("Get");
-            
+
             return getMethod?.Invoke(null, BindingFlags.Default, null, Array.Empty<object>(), null);
         }
         catch

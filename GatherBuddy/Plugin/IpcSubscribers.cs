@@ -30,6 +30,7 @@ namespace GatherBuddy.Plugin
                 Debug.Assert(Reload != null);
                 Debug.Assert(Rebuild != null);
                 Debug.Assert(Pathfind != null);
+                Debug.Assert(PathfindWithTolerance != null);
                 Debug.Assert(PathfindCancelable != null);
                 Debug.Assert(PathfindCancelAll != null);
                 Debug.Assert(PathfindInProgress != null);
@@ -52,6 +53,9 @@ namespace GatherBuddy.Plugin
 
             [EzIPC("vnavmesh.Nav.Pathfind", applyPrefix: false)]
             internal static readonly Func<Vector3, Vector3, bool, Task<List<Vector3>>> Pathfind;
+
+            [EzIPC("vnavmesh.Nav.PathfindWithTolerance", applyPrefix: false)]
+            internal static readonly Func<Vector3, Vector3, bool, float, Task<List<Vector3>>> PathfindWithTolerance;
 
             [EzIPC("vnavmesh.Nav.PathfindCancelable", applyPrefix: false)]
             internal static readonly Func<Vector3, Vector3, bool, CancellationToken, Task<List<Vector3>>> PathfindCancelable;
@@ -230,9 +234,36 @@ namespace GatherBuddy.Plugin
 
         [EzIPC("Lifestream.AethernetTeleport", applyPrefix: false)]
         internal static readonly Func<string, bool> AethernetTeleport;
+
+        [EzIPC("Lifestream.AethernetTeleportToFirmament", applyPrefix: false)]
+        internal static readonly Func<bool>? AethernetTeleportToFirmament;
+
+        [EzIPC("Lifestream.GetActiveAetheryte", applyPrefix: false)]
+        internal static readonly Func<uint>? GetActiveAetheryte;
+
+        [EzIPC("Lifestream.GetActiveCustomAetheryte", applyPrefix: false)]
+        internal static readonly Func<uint>? GetActiveCustomAetheryte;
+
+        [EzIPC("Lifestream.GetActiveResidentialAetheryte", applyPrefix: false)]
+        internal static readonly Func<uint>? GetActiveResidentialAetheryte;
         
         [EzIPC("Lifestream.ChangeCharacter", applyPrefix: false)]
         internal static readonly Func<string, string, int> ChangeCharacter;
+
+        internal static uint ActiveAetheryteId
+            => GetActiveAetheryte?.Invoke() ?? 0;
+
+        internal static uint ActiveCustomAetheryteId
+            => GetActiveCustomAetheryte?.Invoke() ?? 0;
+
+        internal static uint ActiveResidentialAetheryteId
+            => GetActiveResidentialAetheryte?.Invoke() ?? 0;
+
+        internal static bool SupportsFirmamentTeleport
+            => Enabled && AethernetTeleportToFirmament != null;
+
+        internal static bool TryEnterFirmament()
+            => AethernetTeleportToFirmament?.Invoke() ?? false;
     }
 
     internal static class YesAlready

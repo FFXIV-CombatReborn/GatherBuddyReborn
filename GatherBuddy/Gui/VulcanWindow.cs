@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.GamePad;
 using Dalamud.Interface.Textures;
@@ -11,6 +12,7 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using ElliLib;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
+using GatherBuddy.Utility;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
 using ElliLib.Raii;
@@ -28,7 +30,8 @@ public partial class VulcanWindow : Window, IDisposable
     private bool                    _deferEditorDraw = false;
     private bool                    _craftingListsRequestFocus = false;
     private bool                    _recipesTabRequestFocus    = false;
-    private uint?                   _pendingRecipeItemId       = null;
+    private uint?                   _pendingRecipeId           = null;
+    private uint?                   _pendingRecipeScrollId     = null;
     private bool                    _openCreateListPopup = false;
     private bool                    _openCreateFolderPopup = false;
 
@@ -43,6 +46,11 @@ public partial class VulcanWindow : Window, IDisposable
     private bool _teamCraftEphemeral     = false;
     private Vector2 _teamCraftImportWindowSize;
     private bool _teamCraftImportWindowSizeDirty;
+    private const string ArtisanPluginName = "Artisan";
+    private const double ArtisanToggleTimeoutSeconds = 10.0;
+    private bool? _pendingArtisanEnabledState = null;
+    private DateTime _artisanToggleRequestedAt = DateTime.MinValue;
+    private Task? _artisanToggleTask = null;
     
     // Debug tab state
     private uint _debugSelectedJobId = 8;
@@ -94,13 +102,13 @@ public partial class VulcanWindow : Window, IDisposable
         _mbDetailLastItemId = 0;
     }
 
-    public void OpenToRecipe(uint itemId)
+    public void OpenToRecipe(uint recipeId)
     {
         _isMinimized            = false;
         IsOpen                  = true;
         _recipesTabRequestFocus = true;
-        _pendingRecipeItemId    = itemId;
-        GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for item {itemId}");
+        _pendingRecipeId        = recipeId;
+        GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for recipe {recipeId}");
     }
 
     public void OpenToList(string argument)
@@ -192,7 +200,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public override void Draw()
     {
-        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 9);
+        GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 10);
         
         // Track window focus for controller input blocking
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
@@ -208,7 +216,7 @@ public partial class VulcanWindow : Window, IDisposable
             _wasFocusedLastFrame = false;
         }
         
-        ImGui.Text("Crafting System");
+        DrawHeader();
         ImGui.Separator();
 
             using (var tab = ImRaii.TabBar("VulcanTabs###VulcanTabs", ImGuiTabBarFlags.None))
@@ -224,12 +232,111 @@ public partial class VulcanWindow : Window, IDisposable
                     DrawSettingsTab();
                     DrawDebugTab();
                     DrawMarketboardTab();
+                    DrawVendorsTab();
                 }
             }
         
         _craftSettingsPopup.Draw();
         
         GatherBuddy.ControllerSupport?.UpdateEndOfFrame();
+    }
+
+    private void DrawHeader()
+    {
+        var artisanToggleState = DalamudPluginToggleHelper.GetPluginToggleState(ArtisanPluginName);
+        var artisanInstalled = artisanToggleState.IsInstalled;
+        var artisanLoaded = artisanToggleState.IsLoaded;
+        var artisanToggleInProgress = UpdatePendingArtisanToggle(artisanInstalled, artisanLoaded);
+        var artisanToggleBlocked = artisanInstalled && !artisanToggleState.CanToggle && !artisanToggleInProgress;
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.Text("Crafting System");
+        ImGui.SameLine();
+
+        var buttonLabel = artisanToggleInProgress
+            ? _pendingArtisanEnabledState == true
+                ? "Enabling Artisan..."
+                : "Disabling Artisan..."
+            : artisanInstalled
+                ? artisanLoaded
+                    ? "Disable Artisan"
+                    : "Enable Artisan"
+                : "Artisan Missing";
+        using (ImRaii.Disabled(!artisanInstalled || artisanToggleInProgress || artisanToggleBlocked))
+        {
+            if (ImGui.SmallButton($"{buttonLabel}##toggleArtisan"))
+                TryToggleArtisan(!artisanLoaded);
+        }
+
+    }
+
+    private bool UpdatePendingArtisanToggle(bool artisanInstalled, bool artisanLoaded)
+    {
+        if (_pendingArtisanEnabledState == null)
+            return false;
+
+        if (!artisanInstalled)
+        {
+            GatherBuddy.Log.Warning("[VulcanWindow] Artisan toggle was pending, but Artisan is no longer installed.");
+            ClearPendingArtisanToggle();
+            return false;
+        }
+
+        if (_artisanToggleTask is { IsFaulted: true })
+        {
+            var exception = _artisanToggleTask.Exception?.GetBaseException();
+            GatherBuddy.Log.Error($"[VulcanWindow] Failed to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan: {exception?.Message ?? "unknown error"}");
+            if (exception != null)
+                GatherBuddy.Log.Debug($"[VulcanWindow] Artisan toggle exception: {exception}");
+            Communicator.PrintError($"Failed to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");
+            ClearPendingArtisanToggle();
+            return false;
+        }
+
+        if (_artisanToggleTask is { IsCanceled: true })
+        {
+            GatherBuddy.Log.Warning($"[VulcanWindow] Artisan toggle was cancelled while trying to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");
+            Communicator.PrintError($"Failed to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");
+            ClearPendingArtisanToggle();
+            return false;
+        }
+
+        if (artisanLoaded == _pendingArtisanEnabledState.Value)
+        {
+            GatherBuddy.Log.Debug($"[VulcanWindow] Artisan {(artisanLoaded ? "enabled" : "disabled")} successfully.");
+            ClearPendingArtisanToggle();
+            return false;
+        }
+
+        if ((DateTime.UtcNow - _artisanToggleRequestedAt).TotalSeconds <= ArtisanToggleTimeoutSeconds)
+            return true;
+
+        GatherBuddy.Log.Warning($"[VulcanWindow] Timed out waiting for Artisan to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")}.");
+        Communicator.PrintError($"Timed out trying to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");
+        ClearPendingArtisanToggle();
+        return false;
+    }
+
+    private void TryToggleArtisan(bool enable)
+    {
+        if (!DalamudPluginToggleHelper.TrySetPluginEnabled(ArtisanPluginName, enable, out var toggleTask, out var failureReason))
+        {
+            GatherBuddy.Log.Warning($"[VulcanWindow] Failed to invoke reflected Artisan toggle for state {(enable ? "enabled" : "disabled")}: {failureReason ?? "unknown reason"}.");
+            Communicator.PrintError(failureReason ?? $"Failed to {(enable ? "enable" : "disable")} Artisan.");
+            return;
+        }
+
+        _pendingArtisanEnabledState = enable;
+        _artisanToggleRequestedAt = DateTime.UtcNow;
+        _artisanToggleTask = toggleTask;
+        GatherBuddy.Log.Debug($"[VulcanWindow] Requested to {(enable ? "enable" : "disable")} Artisan via reflected Dalamud plugin manager access.");
+    }
+
+    private void ClearPendingArtisanToggle()
+    {
+        _pendingArtisanEnabledState = null;
+        _artisanToggleRequestedAt = DateTime.MinValue;
+        _artisanToggleTask = null;
     }
 
     public void Dispose()

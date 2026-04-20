@@ -89,7 +89,7 @@ public static unsafe class RepairManager
     public static bool RepairNPCNearby(out IGameObject? npc)
     {
         npc = null;
-        if (Dalamud.ClientState.LocalPlayer != null)
+        if (Dalamud.Objects.LocalPlayer != null)
         {
             foreach (var obj in Dalamud.Objects.Where(x => x.ObjectKind == ObjectKind.EventNpc))
             {
@@ -98,7 +98,7 @@ public static unsafe class RepairManager
                 {
                     if (enpc.ENpcData.Any(x => x.RowId == 720915))
                     {
-                        var npcDistance = Vector3.Distance(obj.Position, Dalamud.ClientState.LocalPlayer.Position);
+                        var npcDistance = Vector3.Distance(obj.Position, Dalamud.Objects.LocalPlayer.Position);
                         if (npcDistance > 7)
                             continue;
 

@@ -278,7 +278,7 @@ public static class CraftingGatherBridge
         }
         
         var requiredCraftJob = (uint)(recipe.CraftType.RowId + 8);
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         
         if (currentJob != requiredCraftJob)
         {

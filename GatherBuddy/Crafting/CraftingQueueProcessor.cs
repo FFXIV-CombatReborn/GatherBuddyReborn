@@ -274,7 +274,7 @@ public class CraftingQueueProcessor
         }
 
         var requiredJob = (uint)(recipe.Value.CraftType.RowId + 8);
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
 
         if (currentJob != requiredJob)
         {
@@ -886,7 +886,7 @@ public class CraftingQueueProcessor
         if (recipe == null) return null;
 
         var requiredJob = (uint)(recipe.Value.CraftType.RowId + 8);
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         var consumableSettings = BuildConsumableSettings(recipeItem);
 
         GameStateBuilder.PlayerStats? stats;
@@ -1126,7 +1126,7 @@ public class CraftingQueueProcessor
 
         if (prioritizeNPC && preferredNPC != null)
         {
-            if (hasRepairNPC && npc != null && npc.DataId == preferredNPC.DataId)
+            if (hasRepairNPC && npc != null && npc.BaseId == preferredNPC.DataId)
             {
                 var repairPrice = RepairManager.GetNPCRepairPrice();
                 var gilCount = InventoryManager.Instance()->GetInventoryItemCount(1);
@@ -1288,7 +1288,7 @@ public class CraftingQueueProcessor
         }
 
         var qualityTargets = _executionPlan?.BuildQualityTargetsForItems(combinedItems) ?? new Dictionary<uint, IngredientQualityDemand>();
-        _retainerExecutor = new RetainerTaskExecutor(combinedItems, qualityTargets);
+        _retainerExecutor = new RetainerTaskExecutor(combinedItems, qualityTargets, RetainerPrecraftTargets.Keys.ToHashSet());
 
         QueueRetainerWithdrawalExecutionTasks();
     }
@@ -1478,7 +1478,7 @@ public class CraftingQueueProcessor
     private RepairNPCData? FindNearestRepairNPCInCurrentZone()
     {
         var currentTerritory = Dalamud.ClientState.TerritoryType;
-        var playerPos = Dalamud.ClientState.LocalPlayer?.Position;
+        var playerPos = Dalamud.Objects.LocalPlayer?.Position;
         
         if (playerPos == null)
             return null;

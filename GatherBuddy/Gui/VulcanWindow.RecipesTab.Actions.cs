@@ -22,7 +22,7 @@ public partial class VulcanWindow
 {
     private static unsafe void SwitchJobIfNeeded(uint requiredJobId)
     {
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         if (currentJob == requiredJobId)
             return;
 
@@ -56,7 +56,7 @@ public partial class VulcanWindow
     private static void StartCraftWithRaphael(Recipe recipe)
     {
         var requiredJob = (uint)(recipe.CraftType.RowId + 8);
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         
         if (currentJob != requiredJob)
         {

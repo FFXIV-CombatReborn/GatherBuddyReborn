@@ -17,12 +17,14 @@ public class ContextMenu : IDisposable
     private readonly Executor     _executor;
     private          IGatherable? _lastGatherable;
     private          uint?        _lastRecipeId;
+    private          uint?        _lastVendorBuyListItemId;
     private          GatherBuddy  _plugin;
 
     private readonly MenuItem _menuItem;
     private readonly MenuItem _menuItemAuto;
     private readonly MenuItem _menuItemCrafting;
     private readonly MenuItem _menuItemVulcanRecipe;
+    private readonly MenuItem _menuItemVendorBuyList;
 
     public ContextMenu(GatherBuddy plugin, IContextMenu menu, Executor executor)
     {
@@ -74,8 +76,39 @@ public class ContextMenu : IDisposable
             PrefixColor = 42,
         };
 
+        _menuItemVendorBuyList = new MenuItem
+        {
+            IsEnabled   = true,
+            IsReturn    = false,
+            PrefixChar  = 'V',
+            Name        = "Add to Vendor Buy List",
+            OnClicked   = OnClickVendorBuyList,
+            IsSubmenu   = true,
+            PrefixColor = 42,
+        };
+
         if (GatherBuddy.Config.AddIngameContextMenus)
             Enable();
+    }
+
+    private void OpenCreateVendorBuyListPopup(uint itemId)
+    {
+        var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
+        if (vendorBuyListWindow == null)
+        {
+            GatherBuddy.Log.Warning($"[ContextMenu] Unable to open Create Vendor List popup for item {itemId}: vendor buy list window unavailable.");
+            return;
+        }
+
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Create Vendor List popup for item {itemId}");
+        if (!vendorBuyListWindow.OpenCreateListPopup(itemId))
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to create a new vendor buy list for item {itemId}.");
+    }
+
+    private void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
+    {
+        if (!GatherBuddy.VendorBuyListManager.TryIncrementTarget(listId, itemId, 1, selectList: true, openWindow: true, announce: true))
+            GatherBuddy.Log.Debug($"[ContextMenu] Unable to add item {itemId} to vendor buy list '{listName}'.");
     }
 
     private void OnClick(IMenuItemClickedArgs args)
@@ -122,8 +155,8 @@ public class ContextMenu : IDisposable
             return;
         }
 
-        GatherBuddy.Log.Debug($"[ContextMenu] Opening Vulcan to recipe for item {recipe.Value.ItemResult.RowId}");
-        vulcanWindow.OpenToRecipe(recipe.Value.ItemResult.RowId);
+        GatherBuddy.Log.Debug($"[ContextMenu] Opening Vulcan to recipe {recipe.Value.RowId} for item {recipe.Value.ItemResult.RowId}");
+        vulcanWindow.OpenToRecipe(recipe.Value.RowId);
     }
 
     private void OnClickCrafting(IMenuItemClickedArgs args)
@@ -191,6 +224,41 @@ public class ContextMenu : IDisposable
         if (menuItems.Count > 0)
             args.OpenSubmenu(menuItems);
     }
+
+    private void OnClickVendorBuyList(IMenuItemClickedArgs args)
+    {
+        if (!_lastVendorBuyListItemId.HasValue)
+        {
+            GatherBuddy.Log.Debug("[ContextMenu] Vendor buy-list context menu clicked without a cached item id.");
+            return;
+        }
+        var itemId = _lastVendorBuyListItemId.Value;
+        var menuItems = new List<MenuItem>
+        {
+            new()
+            {
+                Name = "Create New List...",
+                PrefixChar = 'V',
+                PrefixColor = 42,
+                OnClicked = _ => OpenCreateVendorBuyListPopup(itemId),
+            },
+        };
+
+        foreach (var list in GatherBuddy.VendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        {
+            var listId = list.Id;
+            var listName = list.Name;
+            menuItems.Add(new MenuItem
+            {
+                Name = listName,
+                PrefixChar = 'V',
+                PrefixColor = 42,
+                OnClicked = _ => AddItemToVendorBuyList(itemId, listId, listName),
+            });
+        }
+
+        args.OpenSubmenu(menuItems);
+    }
     private void OpenCreateCraftingListPopup(uint recipeId)
     {
         var vulcanWindow = GatherBuddy.VulcanWindow;
@@ -234,40 +302,14 @@ public class ContextMenu : IDisposable
     private unsafe void OnContextMenuOpened(IMenuOpenedArgs args)
     {
         _lastRecipeId = null;
+        _lastVendorBuyListItemId = null;
 
-        if (args.MenuType is ContextMenuType.Inventory)
-        {
-            var target = (MenuTargetInventory)args.Target;
-            _lastGatherable = target.TargetItem.HasValue ? HandleItem(target.TargetItem.Value.ItemId) : null;
-            if (target.TargetItem.HasValue)
-            {
-                var itemId = target.TargetItem.Value.ItemId;
-                if (itemId >= 1000000u) itemId -= 1000000u;
-                else if (itemId >= 500000u) itemId -= 500000u;
-                var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId);
-                _lastRecipeId = recipe?.RowId;
-            }
-        }
-        else
-        {
-            _lastGatherable = args.AddonName switch
-            {
-                null                 => HandleSatisfactionSupply(),
-                "ContentsInfoDetail" => CheckGameObjectItem("ContentsInfo", Offsets.ContentsInfoDetailContextItemId), // Provisioning
-                "RecipeNote"         => CheckGameObjectItem("RecipeNote", Offsets.RecipeNoteContextItemId),
-                "RecipeTree"         => CheckGameObjectItem(AgentById(AgentId.RecipeItemContext), Offsets.AgentItemContextItemId),
-                "RecipeMaterialList" => CheckGameObjectItem(AgentById(AgentId.RecipeItemContext), Offsets.AgentItemContextItemId),
-                "GatheringNote"      => CheckGatheringNote(args),
-                "ItemSearch"         => HandleItem((uint)AgentContext.Instance()->UpdateCheckerParam),
-                "ChatLog"            => CheckGameObjectItem("ChatLog", Offsets.ChatLogContextItemId, ValidateChatLogContext),
-                _                    => null,
-            };
-
-            if (args.AddonName is "RecipeNote" or "RecipeTree" or "RecipeMaterialList" or "ItemSearch" or "ChatLog" or "ContentsInfoDetail")
-            {
-                _lastRecipeId = GetRecipeIdFromContext(args);
-            }
-        }
+        var contextItemId = GetContextItemId(args);
+        _lastGatherable = contextItemId.HasValue ? ResolveGatherable(contextItemId.Value) : null;
+        if (contextItemId.HasValue && SupportsRecipeActions(args))
+            _lastRecipeId = GetRecipeIdFromContext(args);
+        if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddGilShopItem(contextItemId.Value))
+            _lastVendorBuyListItemId = contextItemId.Value;
 
         if (_lastGatherable != null)
             args.AddMenuItem(_menuItem);
@@ -278,52 +320,71 @@ public class ContextMenu : IDisposable
             args.AddMenuItem(_menuItemCrafting);
             args.AddMenuItem(_menuItemVulcanRecipe);
         }
+        if (_lastVendorBuyListItemId.HasValue)
+            args.AddMenuItem(_menuItemVendorBuyList);
     }
 
     private unsafe uint? GetRecipeIdFromContext(IMenuOpenedArgs args)
     {
-        var itemId = args.AddonName switch
-        {
-            "RecipeNote" => *(uint*)(Dalamud.GameGui.FindAgentInterface("RecipeNote") + Offsets.RecipeNoteContextItemId),
-            "RecipeTree" => *(uint*)(AgentById(AgentId.RecipeItemContext) + Offsets.AgentItemContextItemId),
-            "RecipeMaterialList" => *(uint*)(AgentById(AgentId.RecipeItemContext) + Offsets.AgentItemContextItemId),
-            "ItemSearch" => (uint)AgentContext.Instance()->UpdateCheckerParam,
-            "ChatLog" => *(uint*)(Dalamud.GameGui.FindAgentInterface("ChatLog") + Offsets.ChatLogContextItemId),
-            "ContentsInfoDetail" => *(uint*)(Dalamud.GameGui.FindAgentInterface("ContentsInfo") + Offsets.ContentsInfoDetailContextItemId),
-            _ => 0u,
-        };
-
-        if (itemId == 0)
+        var itemId = GetContextItemId(args);
+        if (!itemId.HasValue)
             return null;
 
-        if (itemId >= 500000u)
-            itemId -= 500000u;
-
-        var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId);
+        var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId.Value);
         return recipe?.RowId;
     }
 
-    private static unsafe IGatherable? CheckGatheringNote(IMenuOpenedArgs args)
+    private static bool SupportsRecipeActions(IMenuOpenedArgs args)
+        => args.MenuType is ContextMenuType.Inventory
+        || args.AddonName is "RecipeNote" or "RecipeTree" or "RecipeMaterialList" or "ItemSearch" or "ChatLog" or "ContentsInfoDetail";
+
+    private unsafe uint? GetContextItemId(IMenuOpenedArgs args)
+    {
+        if (args.MenuType is ContextMenuType.Inventory)
+        {
+            var target = (MenuTargetInventory)args.Target;
+            return target.TargetItem.HasValue ? NormalizeItemId(target.TargetItem.Value.ItemId) : null;
+        }
+
+        return args.AddonName switch
+        {
+            null                 => GetSatisfactionSupplyItemId(),
+            "ContentsInfoDetail" => GetGameObjectItemId("ContentsInfo", Offsets.ContentsInfoDetailContextItemId),
+            "RecipeNote"         => GetGameObjectItemId("RecipeNote", Offsets.RecipeNoteContextItemId),
+            "RecipeTree"         => GetGameObjectItemId(AgentById(AgentId.RecipeItemContext), Offsets.AgentItemContextItemId),
+            "RecipeMaterialList" => GetGameObjectItemId(AgentById(AgentId.RecipeItemContext), Offsets.AgentItemContextItemId),
+            "GatheringNote"      => GetGatheringNoteItemId(args),
+            "ItemSearch"         => NormalizeItemId((uint)AgentContext.Instance()->UpdateCheckerParam),
+            "ChatLog"            => GetGameObjectItemId("ChatLog", Offsets.ChatLogContextItemId, ValidateChatLogContext),
+            _                    => null,
+        };
+    }
+
+    private static unsafe uint? GetGatheringNoteItemId(IMenuOpenedArgs args)
     {
         var agent = Dalamud.GameGui.FindAgentInterface("GatheringNote");
         if (agent == IntPtr.Zero)
             return null;
-
-        // This seems to be 1 when a location context is opened,
-        // and 4 when an item context is opened.
         var discriminator = *(byte*)(args.AgentPtr + Offsets.GatheringNoteContextDiscriminator);
         if (discriminator != 4)
             return null;
-
-        return HandleItem(*(uint*)(agent + Offsets.GatheringNoteContextItemId));
+        return NormalizeItemId(*(uint*)(agent + Offsets.GatheringNoteContextItemId));
     }
 
-    private static IGatherable? HandleItem(uint itemId)
+    private static uint NormalizeItemId(uint itemId)
     {
         if (itemId >= 1000000u)
             itemId -= 1000000u;
         else if (itemId >= 500000u)
             itemId -= 500000u;
+
+        return itemId;
+    }
+
+    private static IGatherable? ResolveGatherable(uint itemId)
+    {
+        if (itemId == 0)
+            return null;
 
         if (Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
             itemId = rawItemId;
@@ -334,19 +395,22 @@ public class ContextMenu : IDisposable
         return GatherBuddy.GameData.Fishes.GetValueOrDefault(itemId);
     }
 
-    private unsafe IGatherable? CheckGameObjectItem(IntPtr agent, int offset, Func<nint, bool> validate)
-        => agent != IntPtr.Zero && validate(agent) ? HandleItem(*(uint*)(agent + offset)) : null;
+    private static IGatherable? HandleItem(uint itemId)
+        => ResolveGatherable(NormalizeItemId(itemId));
 
-    private unsafe IGatherable? CheckGameObjectItem(IntPtr agent, int offset)
-        => agent != IntPtr.Zero ? HandleItem(*(uint*)(agent + offset)) : null;
+    private unsafe uint? GetGameObjectItemId(IntPtr agent, int offset, Func<nint, bool> validate)
+        => agent != IntPtr.Zero && validate(agent) ? NormalizeItemId(*(uint*)(agent + offset)) : null;
 
-    private IGatherable? CheckGameObjectItem(string name, int offset, Func<nint, bool> validate)
-        => CheckGameObjectItem(Dalamud.GameGui.FindAgentInterface(name), offset, validate);
+    private unsafe uint? GetGameObjectItemId(IntPtr agent, int offset)
+        => agent != IntPtr.Zero ? NormalizeItemId(*(uint*)(agent + offset)) : null;
 
-    private IGatherable? CheckGameObjectItem(string name, int offset)
-        => CheckGameObjectItem(Dalamud.GameGui.FindAgentInterface(name), offset);
+    private uint? GetGameObjectItemId(string name, int offset, Func<nint, bool> validate)
+        => GetGameObjectItemId(Dalamud.GameGui.FindAgentInterface(name), offset, validate);
 
-    private unsafe IGatherable? HandleSatisfactionSupply()
+    private uint? GetGameObjectItemId(string name, int offset)
+        => GetGameObjectItemId(Dalamud.GameGui.FindAgentInterface(name), offset);
+
+    private unsafe uint? GetSatisfactionSupplyItemId()
     {
         var agent = Dalamud.GameGui.FindAgentInterface("SatisfactionSupply");
         if (agent == IntPtr.Zero)
@@ -355,8 +419,8 @@ public class ContextMenu : IDisposable
         var itemIdx = *(byte*)(agent + Offsets.SatisfactionSupplyItemIdx);
         return itemIdx switch
         {
-            1 => HandleItem(*(uint*)(agent + Offsets.SatisfactionSupplyItem1Id)),
-            2 => HandleItem(*(uint*)(agent + Offsets.SatisfactionSupplyItem2Id)),
+            1 => NormalizeItemId(*(uint*)(agent + Offsets.SatisfactionSupplyItem1Id)),
+            2 => NormalizeItemId(*(uint*)(agent + Offsets.SatisfactionSupplyItem2Id)),
             _ => null,
         };
     }

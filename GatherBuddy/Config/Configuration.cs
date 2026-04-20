@@ -12,12 +12,13 @@ using GatherBuddy.Crafting;
 using Newtonsoft.Json;
 using GatherBuddy.Enums;
 using ElliLib.Classes;
+using GatherBuddy.Vulcan.Vendors;
 
 namespace GatherBuddy.Config;
 
 public partial class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 9;
+    public int Version { get; set; } = 14;
 
     // Set Names
     public string BotanistSetName { get; set; } = "Botanist";
@@ -82,6 +83,14 @@ public partial class Configuration : IPluginConfiguration
     public string UserMacros             { get; set; } = string.Empty;
     public bool   SkipMacroStepIfUnable { get; set; } = true;
     public bool   MacroFallbackEnabled  { get; set; } = true;
+    public Dictionary<string, uint> VendorNpcPreferences { get; set; } = new();
+    public Dictionary<string, string> VendorRoutePreferences { get; set; } = new();
+    [JsonProperty("VendorBuyListEntries", NullValueHandling = NullValueHandling.Ignore)]
+    public List<VendorBuyListEntry>? LegacyVendorBuyListEntries { get; set; }
+    public List<VendorBuyListDefinition> VendorBuyLists { get; set; } = new();
+    public Guid ActiveVendorBuyListId { get; set; } = Guid.Empty;
+    public bool   VendorNpcLocationsDataShareFirst { get; set; } = true;
+    public bool   EnableAutoPrepareOnCraft { get; set; } = false;
 
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;
@@ -153,6 +162,9 @@ public partial class Configuration : IPluginConfiguration
     public void Save()
         => Dalamud.PluginInterface.SavePluginConfig(this);
 
+    public bool ShouldSerializeLegacyVendorBuyListEntries()
+        => false;
+
 
     // Add missing colors to the dictionary if necessary.
     private void AddColors()
@@ -176,6 +188,16 @@ public partial class Configuration : IPluginConfiguration
                 config.Migrate6To7();
                 config.Migrate7To8();
                 config.Migrate8To9();
+                config.Migrate9To10();
+                config.Migrate10To11();
+                config.Migrate11To12();
+                config.Migrate12To13();
+                config.Migrate13To14();
+                config.VendorNpcPreferences ??= new();
+                config.VendorRoutePreferences ??= new();
+                config.VendorBuyLists ??= new();
+                if (config.EnsureVendorBuyListState())
+                    config.Save();
                 return config;
             }
         }
@@ -199,6 +221,7 @@ public partial class Configuration : IPluginConfiguration
         }
 
         var newConfig = new Configuration();
+        newConfig.EnsureVendorBuyListState();
         newConfig.Save();
         return newConfig;
     }
@@ -264,6 +287,99 @@ public partial class Configuration : IPluginConfiguration
 
         Version = 9;
         Save();
+    }
+
+    public void Migrate9To10()
+    {
+        if (Version >= 10)
+            return;
+
+        Version = 10;
+        Save();
+    }
+
+    public void Migrate10To11()
+    {
+        if (Version >= 11)
+            return;
+
+        VendorNpcPreferences ??= new();
+        LegacyVendorBuyListEntries ??= [];
+        Version = 11;
+        Save();
+    }
+
+    public void Migrate11To12()
+    {
+        if (Version >= 12)
+            return;
+
+        VendorNpcPreferences ??= new();
+        VendorRoutePreferences ??= new();
+        LegacyVendorBuyListEntries ??= [];
+        VendorBuyLists ??= new();
+        EnsureVendorBuyListState();
+        Version = 12;
+        Save();
+    }
+    public void Migrate12To13()
+    {
+        if (Version >= 13)
+            return;
+
+        EnsureVendorBuyListState();
+        Version = 13;
+        Save();
+    }
+
+    public void Migrate13To14()
+    {
+        if (Version >= 14)
+            return;
+
+        EnsureVendorBuyListState();
+        if (LegacyVendorBuyListEntries != null)
+            foreach (var entry in LegacyVendorBuyListEntries)
+                entry.Enabled = true;
+        foreach (var list in VendorBuyLists)
+            foreach (var entry in list.Entries)
+                entry.Enabled = true;
+
+        Version = 14;
+        Save();
+    }
+
+    public bool EnsureVendorBuyListState()
+    {
+        VendorNpcPreferences ??= new();
+        VendorRoutePreferences ??= new();
+        VendorBuyLists ??= new();
+        var legacyVendorBuyListEntries = LegacyVendorBuyListEntries ?? [];
+
+        var changed = false;
+        if (VendorBuyLists.Count == 0)
+        {
+            VendorBuyLists.Add(new VendorBuyListDefinition
+            {
+                Name = "Default",
+                Entries = new List<VendorBuyListEntry>(legacyVendorBuyListEntries),
+            });
+            changed = true;
+        }
+
+        if (LegacyVendorBuyListEntries != null)
+        {
+            LegacyVendorBuyListEntries = null;
+            changed = true;
+        }
+
+        if (VendorBuyLists.Count > 0 && (ActiveVendorBuyListId == Guid.Empty || VendorBuyLists.All(list => list.Id != ActiveVendorBuyListId)))
+        {
+            ActiveVendorBuyListId = VendorBuyLists[0].Id;
+            changed = true;
+        }
+
+        return changed;
     }
 }
 

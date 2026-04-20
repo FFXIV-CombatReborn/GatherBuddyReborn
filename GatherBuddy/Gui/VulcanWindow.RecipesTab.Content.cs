@@ -289,6 +289,21 @@ public partial class VulcanWindow
         var contentMaxX = ImGui.GetContentRegionMax().X;
         var itemHeight = iconSm.Y + ImGui.GetStyle().ItemSpacing.Y;
 
+        if (_pendingRecipeScrollId.HasValue)
+        {
+            var targetIndex = _filteredRecipes.FindIndex(r => r.Recipe.RowId == _pendingRecipeScrollId.Value);
+            if (targetIndex >= 0)
+            {
+                var viewportHeight = ImGui.GetContentRegionAvail().Y;
+                var targetScroll = Math.Max(0f, targetIndex * itemHeight - Math.Max(0f, (viewportHeight - itemHeight) * 0.5f));
+                ImGui.SetScrollY(targetScroll);
+            }
+            else
+            {
+                _pendingRecipeScrollId = null;
+            }
+        }
+
         ElliLib.ImGuiClip.ClippedDraw(_filteredRecipes, recipe =>
         {
             var isSelected = _selectedRecipe?.Recipe.RowId == recipe.Recipe.RowId;
@@ -316,6 +331,12 @@ public partial class VulcanWindow
             if (ImGui.Selectable(label, isSelected, ImGuiSelectableFlags.None, new Vector2(contentMaxX - ImGui.GetCursorPosX() - rightGroupWidth, 0)))
             {
                 _selectedRecipe = recipe;
+            }
+
+            if (_pendingRecipeScrollId == recipe.Recipe.RowId)
+            {
+                ImGui.SetScrollHereY(0.5f);
+                _pendingRecipeScrollId = null;
             }
 
             var isPopupOpen = GatherBuddy.ControllerSupport != null

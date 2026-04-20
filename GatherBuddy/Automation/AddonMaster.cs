@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Dalamud.Game.Text.SeStringHandling;
-using Dalamud.Memory;
+using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
@@ -57,7 +56,7 @@ public static unsafe class AddonMaster
         public SelectYesno(nint addon) : base(addon) { }
         public SelectYesno(void* addon) : base(addon) { }
 
-        public string TextLegacy => Addon->PromptText != null ? System.Text.RegularExpressions.Regex.Replace(MemoryHelper.ReadSeString(&Addon->PromptText->NodeText).TextValue, @"\s+", " ").Trim() : string.Empty;
+        public string TextLegacy => Addon->PromptText != null ? System.Text.RegularExpressions.Regex.Replace(Addon->PromptText->NodeText.ToString(), @"\s+", " ").Trim() : string.Empty;
 
         public void Yes()
         {
@@ -179,8 +178,7 @@ public static unsafe class AddonMaster
         public PurifyResult(nint addon) : base(addon) { }
         public PurifyResult(void* addon) : base(addon) { }
 
-        public SeString BannerSeString => MemoryHelper.ReadSeString(&Base->GetTextNodeById(2)->NodeText);
-        public string BannerText => BannerSeString.ToString();
+        public string BannerText => Base->GetTextNodeById(2)->NodeText.ToString();
         public AtkComponentButton* AutomaticButton => Addon->GetComponentButtonById(19);
         public AtkComponentButton* CloseButton => Addon->GetComponentButtonById(20);
 
