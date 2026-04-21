@@ -399,6 +399,56 @@ public class CraftingListManager
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 
+    public (string? Url, string? Error) ExportListToTeamCraft(int id)
+    {
+        var list = GetListByID(id);
+        if (list == null)
+            return (null, "The selected list no longer exists.");
+        if (list.Recipes.Count == 0)
+            return (null, "The selected list contains no recipes.");
+
+        const string baseUrl = "https://ffxivteamcraft.com/import/";
+        var orderedItemIds = new List<uint>();
+        var exportedItemQuantities = new Dictionary<uint, long>();
+
+        foreach (var item in list.Recipes)
+        {
+            if (item.Quantity <= 0)
+            {
+                GatherBuddy.Log.Debug($"[CraftingListManager] Skipping TeamCraft export entry for recipe {item.RecipeId} in '{list.Name}' because its quantity is {item.Quantity}.");
+                continue;
+            }
+
+            var recipe = RecipeManager.GetRecipe(item.RecipeId);
+            if (recipe == null)
+            {
+                GatherBuddy.Log.Debug($"[CraftingListManager] Skipping TeamCraft export entry for recipe {item.RecipeId} in '{list.Name}' because the recipe could not be resolved.");
+                continue;
+            }
+
+            var resultItemId = recipe.Value.ItemResult.RowId;
+            if (resultItemId == 0 || recipe.Value.AmountResult == 0)
+            {
+                GatherBuddy.Log.Debug($"[CraftingListManager] Skipping TeamCraft export entry for recipe {item.RecipeId} in '{list.Name}' because the result item or amount is invalid.");
+                continue;
+            }
+
+            var exportedQuantity = (long)item.Quantity * recipe.Value.AmountResult;
+            if (!exportedItemQuantities.TryAdd(resultItemId, exportedQuantity))
+                exportedItemQuantities[resultItemId] += exportedQuantity;
+            else
+                orderedItemIds.Add(resultItemId);
+        }
+
+        if (orderedItemIds.Count == 0)
+            return (null, "The selected list has no TeamCraft-exportable recipes.");
+
+        var payload = string.Join(";", orderedItemIds.Select(itemId => $"{itemId},null,{exportedItemQuantities[itemId]}"));
+        var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
+        GatherBuddy.Log.Information($"[CraftingListManager] Exported list '{list.Name}' to TeamCraft with {orderedItemIds.Count} item(s)");
+        return ($"{baseUrl}{base64}", null);
+    }
+
     public (CraftingListDefinition? List, string? Error) ImportList(string base64)
     {
         try

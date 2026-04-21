@@ -44,7 +44,8 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
-
+        var footerHeight = ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y * 3f + 2f;
+        ImGui.BeginChild("##teamCraftImportContent", new Vector2(0, -footerHeight), false);
         ImGui.Text("List Name:");
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##ImportListName", ref _teamCraftListName, 256);
@@ -56,7 +57,9 @@ public partial class VulcanWindow
 
         ImGui.Spacing();
         ImGui.Text("Final Items:");
-        ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, 150));
+        var finalItemsHeight = Math.Max(150f, ImGui.GetContentRegionAvail().Y);
+        ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, finalItemsHeight));
+        ImGui.EndChild();
 
         ImGui.Spacing();
         ImGui.Separator();

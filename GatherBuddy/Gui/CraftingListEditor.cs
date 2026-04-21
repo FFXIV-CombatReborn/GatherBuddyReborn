@@ -886,6 +886,37 @@ public class CraftingListEditor
                 ImGui.EndChild();
             }
         }
+
+        ImGui.Spacing();
+        var buttonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
+        if (ImGui.Button("Export List##exportList", new Vector2(buttonWidth, 0)))
+        {
+            var exported = GatherBuddy.CraftingListManager.ExportList(_list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                GatherBuddy.Log.Information($"[CraftingListEditor] Exported list '{_list.Name}' to clipboard");
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Copy GatherBuddy's list export string to the clipboard.");
+
+        ImGui.SameLine();
+        if (ImGui.Button("TeamCraft Export##teamCraftExport", new Vector2(-1, 0)))
+        {
+            var (exported, error) = GatherBuddy.CraftingListManager.ExportListToTeamCraft(_list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                GatherBuddy.Log.Information($"[CraftingListEditor] Exported list '{_list.Name}' to TeamCraft and copied the link to the clipboard");
+            }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                GatherBuddy.Log.Warning($"[CraftingListEditor] Failed to export '{_list.Name}' to TeamCraft: {error}");
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Copy a TeamCraft import link built from this list's Recipe List entries.");
     }
 
     private void DrawListConsumablesSection()

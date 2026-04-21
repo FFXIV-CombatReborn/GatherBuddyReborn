@@ -818,17 +818,21 @@ public class CraftingQueueProcessor
         var recipe = RecipeManager.GetRecipe(failure.RecipeId);
         var itemName = recipe != null ? recipe.Value.ItemResult.Value.Name.ExtractText() : $"Recipe {failure.RecipeId}";
         var priorFailures = _missingIngredientFailures.GetValueOrDefault(failure.RecipeId);
+        var failureContext = failure.Reason switch
+        {
+            CraftingGameInterop.CraftPreparationFailureReason.MissingMaterialsUnableToQuickSynth => "quick synthesis material pre-check",
+            _ => "RecipeNote ingredient assignment",
+        };
 
         if (priorFailures == 0)
         {
             _missingIngredientFailures[failure.RecipeId] = 1;
-            GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Missing ingredients caused RecipeNote assignment failure for '{itemName}' (recipe {failure.RecipeId}): {failure.Details}. Retrying once before skipping remaining instances.");
+            GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Missing materials caused {failureContext} failure for '{itemName}' (recipe {failure.RecipeId}): {failure.Details}. Retrying once before skipping remaining instances.");
             _currentState = QueueState.WaitingForJobSwitch;
             StateChanged?.Invoke(_currentState);
             return true;
         }
-
-        GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Missing ingredients caused RecipeNote assignment to fail again for '{itemName}' (recipe {failure.RecipeId}): {failure.Details}. Skipping this and remaining instances of the recipe.");
+        GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Missing materials caused {failureContext} to fail again for '{itemName}' (recipe {failure.RecipeId}): {failure.Details}. Skipping this and remaining instances of the recipe.");
         SkipRemainingRecipeInstances(failure.RecipeId);
         return true;
     }
@@ -844,7 +848,7 @@ public class CraftingQueueProcessor
 
             queueItem.Options.Skipping = true;
             skippedCount++;
-            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Marked queue index {i} for recipe {recipeId} as skipped after repeated missing-ingredient assignment failure");
+            GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Marked queue index {i} for recipe {recipeId} as skipped after repeated missing-material preparation failure");
         }
 
         _missingIngredientFailures.Remove(recipeId);

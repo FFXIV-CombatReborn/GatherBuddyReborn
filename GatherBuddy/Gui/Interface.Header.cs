@@ -114,6 +114,27 @@ public partial class Interface
         ImGui.SameLine();
         ConfigFunctions.DrawAlarmToggle();
         ImGui.SameLine();
+        var vulcanButtonWidth = Math.Max(95f * Scale, ImGui.CalcTextSize("Vulcan").X + FramePadding.X * 5f);
+        {
+            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
+            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.30f, 0.25f, 0.46f, 1f));
+            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.36f, 0.30f, 0.55f, 1f));
+            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.24f, 0.20f, 0.38f, 1f));
+            if (ImGui.Button("Vulcan", new Vector2(vulcanButtonWidth, 0f)))
+            {
+                if (GatherBuddy.VulcanWindow == null)
+                {
+                    GatherBuddy.Log.Debug("[Interface] Vulcan header button clicked, but the Vulcan window was unavailable.");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug("[Interface] Restoring Vulcan from the main header button.");
+                    GatherBuddy.VulcanWindow.RestoreWindow();
+                }
+            }
+        }
+        ImGuiUtil.HoverTooltip("Open the Vulcan crafting window.");
+        ImGui.SameLine();
         _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
         DrawLastItemAlarm();
         ImGui.SameLine();

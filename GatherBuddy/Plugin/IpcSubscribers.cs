@@ -12,7 +12,7 @@ namespace GatherBuddy.Plugin
     internal static class IPCSubscriber
     {
         public static bool IsReady(string pluginName)
-            => ReflectionHelpers.TryGetDalamudPlugin(pluginName, out _);
+            => ReflectionHelpers.IsPluginLoaded(pluginName);
     }
 
     internal static class VNavmesh

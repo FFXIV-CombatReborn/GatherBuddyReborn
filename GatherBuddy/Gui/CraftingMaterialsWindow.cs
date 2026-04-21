@@ -29,7 +29,6 @@ public class CraftingMaterialsWindow : Window
     private static readonly Vector4 AccentShop   = new(0.80f, 0.55f, 1.00f, 1f);
     private static readonly Vector4 AccentVendor = new(1.00f, 0.85f, 0.20f, 1f);
     private static readonly Vector4 AccentCraft  = new(0.35f, 0.90f, 0.90f, 1f);
-    private static readonly Vector4 PanelBg      = new(0.08f, 0.08f, 0.10f, 1.00f);
     private enum RetainerColumnMode
     {
         None,
@@ -73,6 +72,8 @@ public class CraftingMaterialsWindow : Window
             ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "No list open.");
             return;
         }
+
+        using var theme = VulcanUiStyle.PushTheme();
 
         if (!_editor.HasCachedDisplayMaterials && !_editor.IsGeneratingMaterials)
             _editor.TriggerMaterialsRegeneration();
@@ -234,7 +235,7 @@ public class CraftingMaterialsWindow : Window
             .ThenBy(e => e.Name)
             .ToList();
 
-        using (ImRaii.PushColor(ImGuiCol.ChildBg, PanelBg))
+        using (VulcanUiStyle.PushPanel())
         {
             ImGui.BeginChild(id, new Vector2(width, height), true);
             var colCount = retainerColumnMode switch

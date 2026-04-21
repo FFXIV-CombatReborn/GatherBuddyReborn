@@ -8,7 +8,7 @@ using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
-public sealed class VendorBuyListManager : IDisposable
+public sealed partial class VendorBuyListManager : IDisposable
 {
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
     public readonly record struct GilShopTargetRequest(uint ItemId, uint TargetQuantity);

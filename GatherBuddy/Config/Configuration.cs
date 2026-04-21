@@ -79,6 +79,7 @@ public partial class Configuration : IPluginConfiguration
     public string CraftingLists { get; set; } = string.Empty;
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
     public Vector2 TeamCraftImportWindowSize { get; set; } = new(520, 310);
+    public Vector2 VendorTeamCraftImportWindowSize { get; set; } = new(520, 310);
     public string RecipeBrowserSettings { get; set; } = string.Empty;
     public string UserMacros             { get; set; } = string.Empty;
     public bool   SkipMacroStepIfUnable { get; set; } = true;
