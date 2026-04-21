@@ -200,6 +200,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public override void Draw()
     {
+        using var theme = VulcanUiStyle.PushTheme();
         GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 10);
         
         // Track window focus for controller input blocking

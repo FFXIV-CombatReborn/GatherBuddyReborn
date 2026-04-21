@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using Dalamud.Plugin;
 
@@ -24,6 +25,7 @@ public static class ReflectionHelpers
 
             type = type.BaseType;
         }
+
         return null;
     }
 
@@ -34,26 +36,17 @@ public static class ReflectionHelpers
     {
         try
         {
-            if (!TryGetInstalledPluginEntry(internalName, out var plugin, false))
+            if (!TryGetInstalledPluginEntries(internalName, out var pluginEntries, false))
             {
                 instance = null;
                 return false;
             }
 
-            var type = plugin.GetType().Name == "LocalDevPlugin" ? plugin.GetType().BaseType : plugin.GetType();
-            if (type == null)
-            {
-                instance = null;
-                return false;
-            }
-
-            var pluginInstance = (IDalamudPlugin?)type.GetField("instance", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(plugin);
-            if (pluginInstance != null)
-            {
-                instance = pluginInstance;
+            if (TrySelectPluginInstance(pluginEntries, IsLoadedPluginEntry, out instance)
+             || TrySelectPluginInstance(pluginEntries, AlwaysMatchPluginEntry, out instance))
                 return true;
-            }
 
+            GatherBuddy.Log.Debug($"[ReflectionHelpers] Found {pluginEntries.Count} matching plugin entries for {internalName}, but no live plugin instance could be resolved.");
             instance = null;
             return false;
         }
@@ -65,9 +58,51 @@ public static class ReflectionHelpers
         }
     }
 
+    internal static bool IsPluginLoaded(string internalName, bool logIfMissing = false)
+    {
+        if (!TryGetInstalledPluginEntries(internalName, out var pluginEntries, logIfMissing))
+            return false;
+
+        var foundReadableLoadState = false;
+        foreach (var pluginEntry in pluginEntries)
+        {
+            if (pluginEntry.GetFoP("IsLoaded") is not bool isLoaded)
+                continue;
+
+            foundReadableLoadState = true;
+            if (isLoaded)
+                return true;
+        }
+
+        if (foundReadableLoadState)
+            return false;
+
+        GatherBuddy.Log.Debug($"[ReflectionHelpers] Matching plugin entries for {internalName} were found, but none exposed IsLoaded. Falling back to plugin instance resolution.");
+        return TryGetDalamudPlugin(internalName, out _);
+    }
+
     internal static bool TryGetInstalledPluginEntry(string internalName, out object? pluginEntry, bool logIfMissing)
     {
-        pluginEntry = null;
+        if (!TryGetInstalledPluginEntries(internalName, out var pluginEntries, logIfMissing))
+        {
+            pluginEntry = null;
+            return false;
+        }
+
+        var selected = TrySelectPluginEntry(pluginEntries, IsLoadedInstalledPluginEntry, out pluginEntry)
+                    || TrySelectPluginEntry(pluginEntries, IsLoadedPluginEntry, out pluginEntry)
+                    || TrySelectPluginEntry(pluginEntries, IsInstalledPluginEntry, out pluginEntry)
+                    || TrySelectPluginEntry(pluginEntries, AlwaysMatchPluginEntry, out pluginEntry);
+
+        if (selected && pluginEntries.Count > 1)
+            GatherBuddy.Log.Debug($"[ReflectionHelpers] Found {pluginEntries.Count} matching plugin entries for {internalName}; selected {DescribePluginEntry(pluginEntry!)}.");
+
+        return selected;
+    }
+
+    private static bool TryGetInstalledPluginEntries(string internalName, out List<object> pluginEntries, bool logIfMissing)
+    {
+        pluginEntries = [];
 
         var pluginManager = GetDalamudService("Dalamud.Plugin.Internal.PluginManager");
         if (pluginManager == null)
@@ -87,15 +122,81 @@ public static class ReflectionHelpers
         {
             var pluginInternalName = plugin.GetFoP<string>("InternalName");
             if (string.Equals(pluginInternalName, internalName, StringComparison.OrdinalIgnoreCase))
-            {
-                pluginEntry = plugin;
-                return true;
-            }
+                pluginEntries.Add(plugin);
         }
+
+        if (pluginEntries.Count > 0)
+            return true;
 
         if (logIfMissing)
             GatherBuddy.Log.Debug($"[ReflectionHelpers] Plugin entry {internalName} was not found in InstalledPlugins.");
+
         return false;
+    }
+
+    private static bool TrySelectPluginEntry(List<object> pluginEntries, Predicate<object> predicate, out object? pluginEntry)
+    {
+        foreach (var candidate in pluginEntries)
+        {
+            if (!predicate(candidate))
+                continue;
+
+            pluginEntry = candidate;
+            return true;
+        }
+
+        pluginEntry = null;
+        return false;
+    }
+
+    private static bool TrySelectPluginInstance(List<object> pluginEntries, Predicate<object> predicate, out IDalamudPlugin? pluginInstance)
+    {
+        foreach (var candidate in pluginEntries)
+        {
+            if (!predicate(candidate))
+                continue;
+
+            if (!TryGetPluginInstance(candidate, out pluginInstance))
+                continue;
+
+            return true;
+        }
+
+        pluginInstance = null;
+        return false;
+    }
+
+    private static bool TryGetPluginInstance(object pluginEntry, out IDalamudPlugin? pluginInstance)
+    {
+        pluginInstance = pluginEntry.GetFoP<IDalamudPlugin>("instance")
+                      ?? pluginEntry.GetFoP<IDalamudPlugin>("Instance")
+                      ?? pluginEntry.GetFoP<IDalamudPlugin>("pluginInstance")
+                      ?? pluginEntry.GetFoP<IDalamudPlugin>("Plugin");
+        return pluginInstance != null;
+    }
+
+    private static bool IsLoadedPluginEntry(object pluginEntry)
+        => pluginEntry.GetFoP("IsLoaded") is bool isLoaded && isLoaded;
+
+    private static bool IsInstalledPluginEntry(object pluginEntry)
+        => !IsLocalDevPlugin(pluginEntry);
+
+    private static bool IsLoadedInstalledPluginEntry(object pluginEntry)
+        => IsLoadedPluginEntry(pluginEntry) && IsInstalledPluginEntry(pluginEntry);
+
+    private static bool AlwaysMatchPluginEntry(object _)
+        => true;
+
+    private static bool IsLocalDevPlugin(object pluginEntry)
+        => string.Equals(pluginEntry.GetType().Name, "LocalDevPlugin", StringComparison.Ordinal)
+         || pluginEntry.GetType().FullName?.Contains("LocalDevPlugin", StringComparison.Ordinal) == true;
+
+    private static string DescribePluginEntry(object pluginEntry)
+    {
+        var kind = IsLocalDevPlugin(pluginEntry) ? "dev" : "installed";
+        var isLoaded = IsLoadedPluginEntry(pluginEntry);
+        var hasInstance = TryGetPluginInstance(pluginEntry, out _);
+        return $"{kind} entry {pluginEntry.GetType().FullName} loaded={isLoaded} instance={hasInstance}";
     }
 
     internal static object? GetDalamudService(string serviceName)

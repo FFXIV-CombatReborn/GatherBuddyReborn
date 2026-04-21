@@ -19,7 +19,13 @@ public static class CraftingGameInterop
     public enum CraftPreparationFailureReason
     {
         MissingIngredientsUnableToSelect,
+        MissingMaterialsUnableToQuickSynth,
     }
+
+    private static string GetItemName(uint itemId)
+        => Dalamud.GameData.GetExcelSheet<Item>()?.TryGetRow(itemId, out var item) == true
+            ? item.Name.ExtractText()
+            : $"Item {itemId}";
 
     public sealed record CraftPreparationFailure(
         uint RecipeId,
@@ -764,12 +770,16 @@ public static class CraftingGameInterop
                 GatherBuddy.Log.Warning("[Crafting] RecipeNote not visible for quick synthesis");
                 return;
             }
+            var qualityPolicy = _currentQualityPolicy;
+            var allowHQMaterials = qualityPolicy?.AllowHQMaterialsInQuickSynthesis ?? true;
+            if (!TryPrepareQuickSynthesisQuantity(quantity, allowHQMaterials, out var adjustedQuantity))
+                return;
 
-            _quickSynthTarget = quantity;
+            _quickSynthTarget = adjustedQuantity;
             _quickSynthCompleted = 0;
             _quickSynthWindowSeen = false;
             
-            GatherBuddy.Log.Debug($"[Crafting] Opening quick synthesis dialog");
+            GatherBuddy.Log.Debug($"[Crafting] Opening quick synthesis dialog for {_quickSynthTarget} item(s)");
             Callback.Fire(atkUnit, true, 9);
             
             var tm = GatherBuddy.AutoGather?.TaskManager;
@@ -777,12 +787,132 @@ public static class CraftingGameInterop
                 return;
                 
             tm.DelayNext(200);
-            tm.Enqueue(() => ConfirmQuickSynthesis(quantity), 3000, "ConfirmQuickSynthesis");
+            tm.Enqueue(() => ConfirmQuickSynthesis(_quickSynthTarget), 3000, "ConfirmQuickSynthesis");
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Error($"[Crafting] Failed to execute quick synthesis: {ex.Message}");
         }
+    }
+
+    private static unsafe bool TryPrepareQuickSynthesisQuantity(int requestedQuantity, bool allowHQMaterials, out int adjustedQuantity)
+    {
+        adjustedQuantity = Math.Clamp(requestedQuantity, 1, 99);
+
+        var (canEvaluate, maxCraftable, blockingItemId, neededPerCraft, availableNQ, availableHQ) =
+            EvaluateQuickSynthAvailability(allowHQMaterials);
+        var hasRecipeNoteCraftableCount = TryReadRecipeNoteCraftableCount(out var recipeNoteCraftableCount);
+        if (hasRecipeNoteCraftableCount)
+        {
+            GatherBuddy.Log.Debug($"[Crafting] Quick synthesis RecipeNote craftable count: {recipeNoteCraftableCount}");
+            if (!canEvaluate || recipeNoteCraftableCount < maxCraftable)
+                maxCraftable = recipeNoteCraftableCount;
+        }
+
+        if (!canEvaluate && !hasRecipeNoteCraftableCount)
+        {
+            GatherBuddy.Log.Debug("[Crafting] Quick synthesis material precheck unavailable, proceeding without clamp");
+            return true;
+        }
+
+        GatherBuddy.Log.Debug(
+            $"[Crafting] Quick synthesis material precheck: requested={requestedQuantity}, clamped={adjustedQuantity}, maxCraftable={maxCraftable}, allowHQMaterials={allowHQMaterials}");
+
+        if (maxCraftable <= 0)
+        {
+            if (blockingItemId != 0)
+            {
+                var itemName = GetItemName(blockingItemId);
+                var modeText = allowHQMaterials ? "using all available materials" : "using NQ-only materials";
+                SetPreparationFailure(
+                    CraftPreparationFailureReason.MissingMaterialsUnableToQuickSynth,
+                    blockingItemId,
+                    neededPerCraft,
+                    availableNQ,
+                    availableHQ,
+                    $"unable to quick synth '{itemName}' (item {blockingItemId}) {modeText}: needed per craft {neededPerCraft}, available NQ={availableNQ}, HQ={availableHQ}");
+                GatherBuddy.Log.Warning(
+                    $"[Crafting] Quick synthesis blocked by missing materials for '{itemName}' (item {blockingItemId})");
+            }
+            else
+            {
+                SetPreparationFailure(
+                    CraftPreparationFailureReason.MissingMaterialsUnableToQuickSynth,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "RecipeNote reports 0 craftable items from current inventory for quick synthesis");
+                GatherBuddy.Log.Warning("[Crafting] Quick synthesis blocked because RecipeNote reports 0 craftable items from current inventory");
+            }
+            return false;
+        }
+
+        if (maxCraftable < adjustedQuantity)
+        {
+            var itemName = GetItemName(blockingItemId);
+            GatherBuddy.Log.Warning(
+                $"[Crafting] Quick synthesis batch reduced from {adjustedQuantity} to {maxCraftable} because '{itemName}' (item {blockingItemId}) is the limiting ingredient");
+            adjustedQuantity = maxCraftable;
+        }
+
+        return true;
+    }
+
+    private static unsafe (bool CanEvaluate, int MaxCraftable, uint BlockingItemId, int NeededPerCraft, int AvailableNQ, int AvailableHQ) EvaluateQuickSynthAvailability(bool allowHQMaterials)
+    {
+        var recipeNote = FFXIVClientStructs.FFXIV.Client.Game.UI.RecipeNote.Instance();
+        if (recipeNote == null || recipeNote->RecipeList == null || recipeNote->RecipeList->SelectedRecipe == null)
+            return (false, 0, 0, 0, 0, 0);
+
+        var ingredients = RecipeNoteExt.GetIngredientsSpan(recipeNote->RecipeList->SelectedRecipe);
+        var maxCraftable = int.MaxValue;
+        uint blockingItemId = 0;
+        var blockingNeeded = 0;
+        var blockingAvailableNQ = 0;
+        var blockingAvailableHQ = 0;
+
+        for (var i = 0; i < ingredients.Length; i++)
+        {
+            var ingredient = ingredients[i];
+            if (ingredient.ItemId == 0)
+                break;
+
+            if (ingredient.NumTotal == 0)
+                continue;
+
+            var availableNQ = ingredient.NumAvailableNQ;
+            var availableHQ = ingredient.NumAvailableHQ;
+            var availableTotal = allowHQMaterials ? availableNQ + availableHQ : availableNQ;
+            var craftableByIngredient = availableTotal / ingredient.NumTotal;
+
+            GatherBuddy.Log.Debug(
+                $"[Crafting] Quick synthesis ingredient check: item={ingredient.ItemId}, needed={ingredient.NumTotal}, availableNQ={availableNQ}, availableHQ={availableHQ}, allowHQMaterials={allowHQMaterials}, craftable={craftableByIngredient}");
+
+            if (craftableByIngredient >= maxCraftable)
+                continue;
+
+            maxCraftable = craftableByIngredient;
+            blockingItemId = ingredient.ItemId;
+            blockingNeeded = ingredient.NumTotal;
+            blockingAvailableNQ = availableNQ;
+            blockingAvailableHQ = availableHQ;
+        }
+
+        if (maxCraftable == int.MaxValue)
+            return (false, 0, 0, 0, 0, 0);
+
+        return (true, maxCraftable, blockingItemId, blockingNeeded, blockingAvailableNQ, blockingAvailableHQ);
+    }
+
+    private static unsafe bool TryReadRecipeNoteCraftableCount(out int craftableCount)
+    {
+        craftableCount = 0;
+        var addon = (AddonRecipeNote*)Dalamud.GameGui.GetAddonByName("RecipeNote").Address;
+        if (addon == null || !addon->AtkUnitBase.IsVisible || addon->SelectedRecipeQuantityCraftableFromMaterialsInInventory == null)
+            return false;
+
+        return int.TryParse(addon->SelectedRecipeQuantityCraftableFromMaterialsInInventory->NodeText.ToString(), out craftableCount);
     }
     
     private static unsafe bool ConfirmQuickSynthesis(int quantity)
@@ -982,23 +1112,42 @@ public static class CraftingGameInterop
     }
 
     private static void SetMissingIngredientFailure(uint itemId, int needed, int availableNQ, int availableHQ, string? detailsOverride = null)
-    {
-        if (!_currentRecipeId.HasValue)
-            return;
-
-        var itemName = Dalamud.GameData.GetExcelSheet<Item>()?.TryGetRow(itemId, out var item) == true
-            ? item.Name.ExtractText()
-            : $"Item {itemId}";
-        var details = detailsOverride ?? $"unable to select '{itemName}' (item {itemId}) in RecipeNote: needed {needed}, available NQ={availableNQ}, HQ={availableHQ}";
-        _lastPreparationFailure = new CraftPreparationFailure(
-            _currentRecipeId.Value,
+        => SetPreparationFailure(
             CraftPreparationFailureReason.MissingIngredientsUnableToSelect,
             itemId,
             needed,
             availableNQ,
             availableHQ,
+            detailsOverride);
+
+    private static void SetPreparationFailure(
+        CraftPreparationFailureReason reason,
+        uint itemId,
+        int needed,
+        int availableNQ,
+        int availableHQ,
+        string? detailsOverride = null)
+    {
+        if (!_currentRecipeId.HasValue)
+            return;
+
+        var itemName = GetItemName(itemId);
+        var details = detailsOverride ?? reason switch
+        {
+            CraftPreparationFailureReason.MissingMaterialsUnableToQuickSynth =>
+                $"unable to quick synth '{itemName}' (item {itemId}): needed {needed}, available NQ={availableNQ}, HQ={availableHQ}",
+            _ =>
+                $"unable to select '{itemName}' (item {itemId}) in RecipeNote: needed {needed}, available NQ={availableNQ}, HQ={availableHQ}",
+        };
+        _lastPreparationFailure = new CraftPreparationFailure(
+            _currentRecipeId.Value,
+            reason,
+            itemId,
+            needed,
+            availableNQ,
+            availableHQ,
             details);
-        GatherBuddy.Log.Warning($"[Crafting] Recipe {_currentRecipeId.Value} ingredient assignment failed due to missing ingredients: {details}");
+        GatherBuddy.Log.Warning($"[Crafting] Recipe {_currentRecipeId.Value} preparation failed ({reason}) due to missing materials: {details}");
     }
     private static CraftState TransitionFromPreparingCraft()
     {

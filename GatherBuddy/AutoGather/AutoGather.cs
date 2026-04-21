@@ -1328,7 +1328,10 @@ namespace GatherBuddy.AutoGather
 
             if (IsFishing)
             {
-                GatherBuddy.Log.Debug($"[AutoGather] IsFishing block entered, timer will be checked. MaxFishingSpotMinutes={GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes}, Expiration={fishingSpotData.Expiration}");
+                if (GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes > 0)
+                {
+                    GatherBuddy.Log.Debug($"[AutoGather] IsFishing block entered, timer will be checked. MaxFishingSpotMinutes={GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes}, Expiration={fishingSpotData.Expiration}");
+                }
                 if (_fishWaryDetected)
                 {
                     _fishWaryDetected = false;

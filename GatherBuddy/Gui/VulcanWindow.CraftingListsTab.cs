@@ -313,6 +313,20 @@ public partial class VulcanWindow
             }
         }
 
+        if (ImGui.Selectable("Export to TeamCraft"))
+        {
+            var (exported, error) = GatherBuddy.CraftingListManager.ExportListToTeamCraft(list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to TeamCraft and copied the link to the clipboard");
+            }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                GatherBuddy.Log.Warning($"[VulcanWindow] Failed to export '{list.Name}' to TeamCraft: {error}");
+            }
+        }
+
         ImGui.Separator();
         if (ImGui.Selectable("Delete"))
         {

@@ -14,7 +14,7 @@ using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
-public sealed class VendorBuyListWindow : Window
+public sealed partial class VendorBuyListWindow : Window
 {
     private sealed record VendorListNpcOption(VendorNpc Npc, VendorNpcLocation? Location, string ZoneName);
     private readonly record struct VendorCurrencyRequirement(
@@ -25,7 +25,6 @@ public sealed class VendorBuyListWindow : Window
         ulong RequiredAmount);
     public const string WindowId = "Vendor Buy List###VendorBuyListWindow";
     private const string ListNamePopupId = "Vendor Buy List Name###VendorBuyListNamePopup";
-    private static readonly Vector4 PanelBackgroundColor = new(0.08f, 0.08f, 0.10f, 1f);
     private readonly Dictionary<uint, ushort> _currencyIconIds = new();
     private readonly Dictionary<uint, string> _currencyNames = new();
 
@@ -47,6 +46,7 @@ public sealed class VendorBuyListWindow : Window
             MinimumSize = new Vector2(640, 320),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
+        _teamCraftImportWindowSize = NormalizeTeamCraftImportWindowSize(GatherBuddy.Config.VendorTeamCraftImportWindowSize);
         ShowCloseButton = true;
         RespectCloseHotkey = true;
         IsOpen = false;
@@ -119,6 +119,8 @@ public sealed class VendorBuyListWindow : Window
         if (manager == null)
             return;
 
+        using var theme = VulcanUiStyle.PushTheme();
+
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         if (isFocused)
         {
@@ -140,7 +142,7 @@ public sealed class VendorBuyListWindow : Window
         var avail = ImGui.GetContentRegionAvail();
         var leftWidth = Math.Clamp(avail.X * 0.22f, 190f, 220f);
 
-        using (ImRaii.PushColor(ImGuiCol.ChildBg, PanelBackgroundColor))
+        using (VulcanUiStyle.PushPanel())
         {
             ImGui.BeginChild("##vendorBuyListLeftPanel", new Vector2(leftWidth, avail.Y), true);
             DrawListSidebar(manager, activeList);
@@ -149,7 +151,7 @@ public sealed class VendorBuyListWindow : Window
 
         ImGui.SameLine();
 
-        using (ImRaii.PushColor(ImGuiCol.ChildBg, PanelBackgroundColor))
+        using (VulcanUiStyle.PushPanel())
         {
             ImGui.BeginChild("##vendorBuyListRightPanel", new Vector2(0, avail.Y), true);
             DrawActiveListPanel(manager, activeList);
@@ -157,6 +159,7 @@ public sealed class VendorBuyListWindow : Window
         }
 
         DrawListNamePopup(manager);
+        DrawTeamCraftImportWindow(manager);
     }
 
     private static void DrawHeader()
@@ -182,6 +185,8 @@ public sealed class VendorBuyListWindow : Window
                 var list = manager.CreateList("Vendor List");
                 OpenListNamePopup(list.Id, list.Name);
             }
+            if (ImGui.Button("TeamCraft Import", new Vector2(-1, 0)))
+                OpenTeamCraftImportWindow(manager);
 
             var buttonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
             if (ImGui.Button("Rename", new Vector2(buttonWidth, 0)))
@@ -285,7 +290,8 @@ public sealed class VendorBuyListWindow : Window
             ImGui.Separator();
             ImGui.Spacing();
             ImGui.TextColored(ImGuiColors.DalamudGrey3, "This list is empty.");
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Add supported vendor items from the Vendors tab or Materials window to populate it.");
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Add supported vendor items from the Vendors tab, Materials window,");
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, "or TeamCraft import to populate it.");
             return;
         }
 
