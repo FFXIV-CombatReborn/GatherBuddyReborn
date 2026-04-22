@@ -91,7 +91,6 @@ public partial class Configuration : IPluginConfiguration
     public List<VendorBuyListDefinition> VendorBuyLists { get; set; } = new();
     public Guid ActiveVendorBuyListId { get; set; } = Guid.Empty;
     public bool   VendorNpcLocationsDataShareFirst { get; set; } = true;
-    public bool   EnableAutoPrepareOnCraft { get; set; } = false;
 
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;

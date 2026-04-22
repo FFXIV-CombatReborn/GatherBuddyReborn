@@ -206,6 +206,7 @@ public class VendorNavigator
             GatherBuddy.Log.Debug("[VendorNavigator] Entering the Firmament from the Foundation aetheryte.");
             _stateStartTime = DateTime.UtcNow;
             _teleportWaitStartTime = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             return true;
         }
 
@@ -452,7 +453,8 @@ public class VendorNavigator
     private const float  RepathDistanceThreshold    = 1.5f;
     private const double RepathCooldown             = 0.75;
     private const double TeleportCooldown           = 3.0;
-    private const double TeleportWaitTimeout        = 15.0;
+    private const double TeleportWaitDiagnosticsDelay = 15.0;
+    private const double TeleportWaitDiagnosticsCooldown = 5.0;
     private const double ZoneLoadWait               = 5.0;
     private const double MountRetryCooldown         = 2.0;
     private const double LandingRetryCooldown       = 1.0;
@@ -558,6 +560,7 @@ public class VendorNavigator
     private DateTime                 _lastGroundRetryTime;
     private int                      _groundRetryCount;
     private DateTime                 _forceInteractionRangeApproachUntil;
+    private DateTime                 _lastTeleportWaitDiagnosticsLogTime;
 
     public bool               IsReadyToPurchase => _state == State.ReadyToPurchase;
     public bool               IsFailed          => _state == State.Failed;
@@ -576,6 +579,7 @@ public class VendorNavigator
         _forcedHousingEntryOriginTerritoryId = 0;
         _awaitingForcedHousingOriginExit     = false;
         _teleportWaitStartTime               = DateTime.MinValue;
+        _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
 
         GatherBuddy.Log.Information($"[VendorNavigator] Starting navigation to {target.NpcName} (territory {target.TerritoryId})");
 
@@ -687,6 +691,7 @@ public class VendorNavigator
         _groundRetryCount                    = 0;
         _forceInteractionRangeApproachUntil  = DateTime.MinValue;
         _teleportWaitStartTime               = DateTime.MinValue;
+        _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
     }
 
     private static unsafe void PlaceMapFlag(VendorNpcLocation target)
@@ -769,6 +774,7 @@ public class VendorNavigator
             _pendingAethernetParentTerritoryId  = parentTerritoryId;
             _stateStartTime       = DateTime.UtcNow;
             _teleportWaitStartTime = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             _state                = State.WaitingForTeleport;
             var followUp = aethernetName != null
                 ? $", then aethernet to '{aethernetName}'"
@@ -788,14 +794,15 @@ public class VendorNavigator
 
     private void UpdateWaitingForTeleport()
     {
-        if (HasTeleportWaitTimedOut())
-        {
-            FailTeleportWait();
-            return;
-        }
         if ((_pendingAethernetName != null || _pendingFirmamentEntry) && Lifestream.Enabled && Lifestream.IsBusy()) return;
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < TeleportCooldown) return;
+        LogLongTeleportWaitIfNeeded();
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51]) return;
+        if (!GenericHelpers.IsScreenReady())
+        {
+            LogHousingEntryStatus("[VendorNavigator] Waiting for screen ready before continuing teleport/aethernet travel");
+            return;
+        }
         if (_awaitingForcedHousingOriginExit)
         {
             if (Dalamud.ClientState.TerritoryType == _forcedHousingEntryOriginTerritoryId)
@@ -827,6 +834,7 @@ public class VendorNavigator
                 _pendingAethernetParentTerritoryId = 0;
                 _stateStartTime                    = DateTime.UtcNow;
                 _teleportWaitStartTime             = _stateStartTime;
+                _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             }
             else
             {
@@ -844,6 +852,7 @@ public class VendorNavigator
             _pendingAethernetParentTerritoryId = 0;
             _forcedHousingEntryOriginTerritoryId = 0;
             _teleportWaitStartTime = DateTime.MinValue;
+            _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             _state                = State.WaitingForZoneLoad;
             _stateStartTime       = DateTime.UtcNow;
             return;
@@ -870,6 +879,11 @@ public class VendorNavigator
     private void UpdateWaitingForZoneLoad()
     {
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51]) return;
+        if (!GenericHelpers.IsScreenReady())
+        {
+            LogHousingEntryStatus("[VendorNavigator] Waiting for screen ready before starting post-teleport vendor navigation");
+            return;
+        }
         var pos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (pos == Vector3.Zero) return;
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < ZoneLoadWait) return;
@@ -974,6 +988,7 @@ public class VendorNavigator
             _lastHousingEntryActionTime          = DateTime.UtcNow;
             _stateStartTime                      = DateTime.UtcNow;
             _teleportWaitStartTime               = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
             return true;
         }
 
@@ -1034,6 +1049,7 @@ public class VendorNavigator
             _pendingAethernetParentTerritoryId   = 0;
             _stateStartTime                      = DateTime.UtcNow;
             _teleportWaitStartTime               = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
         }
         else
         {
@@ -1094,6 +1110,7 @@ public class VendorNavigator
         _pendingAethernetParentTerritoryId  = parentTerritoryId;
         _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
         _teleportWaitStartTime              = DateTime.UtcNow;
+        _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
         _state                              = State.WaitingForTeleport;
     }
 
@@ -1109,27 +1126,26 @@ public class VendorNavigator
         _pendingAethernetParentTerritoryId  = parentTerritoryId;
         _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
         _teleportWaitStartTime              = DateTime.UtcNow;
+        _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
         _state                              = State.WaitingForTeleport;
     }
-
-    private bool HasTeleportWaitTimedOut()
-        => _teleportWaitStartTime != DateTime.MinValue
-        && (DateTime.UtcNow - _teleportWaitStartTime).TotalSeconds > TeleportWaitTimeout;
-
-    private void FailTeleportWait()
+    private void LogLongTeleportWaitIfNeeded()
     {
-        var lifestreamBusy = Lifestream.Enabled && Lifestream.IsBusy();
-        GatherBuddy.Log.Debug(
-            $"[VendorNavigator] Teleport wait timed out for {_target?.NpcName ?? "vendor"}: currentTerritory={Dalamud.ClientState.TerritoryType}, targetTerritory={_target?.TerritoryId ?? 0}, pendingAethernet={_pendingAethernetName ?? "none"}, needsSourceApproach={_pendingAethernetNeedsSourceApproach}, pendingHousingEntry={_pendingHousingEntry}, pendingFirmamentEntry={_pendingFirmamentEntry}, pendingHousingShard={_pendingHousingShardTeleportName ?? "none"}, awaitingForcedHousingExit={_awaitingForcedHousingOriginExit}, lifestreamBusy={lifestreamBusy}");
-        if (lifestreamBusy)
-        {
-            GatherBuddy.Log.Debug("[VendorNavigator] Aborting busy Lifestream state after teleport timeout.");
-            Lifestream.Abort();
-        }
+        if (_teleportWaitStartTime == DateTime.MinValue)
+            return;
 
-        GatherBuddy.Log.Error("[VendorNavigator] Teleport/aethernet timeout");
-        _teleportWaitStartTime = DateTime.MinValue;
-        _state = State.Failed;
+        var waitSeconds = (DateTime.UtcNow - _teleportWaitStartTime).TotalSeconds;
+        if (waitSeconds < TeleportWaitDiagnosticsDelay)
+            return;
+        if ((DateTime.UtcNow - _lastTeleportWaitDiagnosticsLogTime).TotalSeconds < TeleportWaitDiagnosticsCooldown)
+            return;
+
+        _lastTeleportWaitDiagnosticsLogTime = DateTime.UtcNow;
+        var lifestreamBusy = Lifestream.Enabled && Lifestream.IsBusy();
+        var betweenAreas = Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51];
+        var screenReady = GenericHelpers.IsScreenReady();
+        GatherBuddy.Log.Debug(
+            $"[VendorNavigator] Teleport wait still in progress for {_target?.NpcName ?? "vendor"} after {waitSeconds:F1}s: currentTerritory={Dalamud.ClientState.TerritoryType}, targetTerritory={_target?.TerritoryId ?? 0}, pendingAethernet={_pendingAethernetName ?? "none"}, needsSourceApproach={_pendingAethernetNeedsSourceApproach}, pendingHousingEntry={_pendingHousingEntry}, pendingFirmamentEntry={_pendingFirmamentEntry}, pendingHousingShard={_pendingHousingShardTeleportName ?? "none"}, awaitingForcedHousingExit={_awaitingForcedHousingOriginExit}, betweenAreas={betweenAreas}, screenReady={screenReady}, lifestreamBusy={lifestreamBusy}");
     }
 
     private void StartVNavmesh(Vector3 destination, bool usingLiveNpc, NavigationDestinationMode destinationMode)

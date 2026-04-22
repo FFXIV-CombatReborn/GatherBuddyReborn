@@ -248,6 +248,8 @@ public partial class VulcanWindow
         {
             ID = -1,
             Name = recipe.ItemResult.Value.Name.ExtractText(),
+            SkipIfEnough = true,
+            SkipFinalIfEnough = false,
         };
 
         list.Recipes.Add(new CraftingListItem(recipe.RowId, quantity)
@@ -260,7 +262,10 @@ public partial class VulcanWindow
             },
         });
 
-        return CraftingExecutionPlan.Create(list);
+        var executionPlan = CraftingExecutionPlan.Create(list);
+        GatherBuddy.Log.Debug(
+            $"[VulcanWindow] Browser execution plan for recipe {recipe.RowId}: quantity={quantity}, nqOnly={nqOnly}, queue={executionPlan.QueueView.Count}, materials={executionPlan.MaterialsView.Count}, precrafts={executionPlan.PrecraftsView.Count}, skipIfEnough={executionPlan.SkipIfEnough}, skipFinalIfEnough={executionPlan.SkipFinalIfEnough}");
+        return executionPlan;
     }
 
 }

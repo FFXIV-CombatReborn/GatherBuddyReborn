@@ -1,5 +1,4 @@
 using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -76,8 +75,6 @@ public static class CraftingGameInterop
     private static DateTime _nextActionAllowedAt = DateTime.MinValue;
     private static CraftPreparationFailure? _lastPreparationFailure = null;
 
-    private unsafe delegate void ClickRecipeNoteButton(void* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData);
-    private static Hook<ClickRecipeNoteButton>? _recipeNoteClickHook;
 
     public static Vulcan.UserMacroLibrary UserMacroLibrary => _userMacroLibrary ??= new();
     public static event Action<CraftState>? StateChanged;
@@ -89,26 +86,13 @@ public static class CraftingGameInterop
     public static CraftState CurrentState => _currentState;
     public static Recipe? CurrentRecipe => _currentRecipe;
 
-    public static unsafe void Initialize()
+    public static void Initialize()
     {
         _currentState = CraftState.IdleNormal;
         _actionExecutor = new CraftingActionExecutor();
         _userMacroLibrary = new Vulcan.UserMacroLibrary();
         _userMacroLibrary.LoadFromConfig();
         CraftingProcessor.Setup();
-        
-        try
-        {
-            _recipeNoteClickHook = Dalamud.Interop.HookFromSignature<ClickRecipeNoteButton>(
-                "40 55 53 56 57 41 56 48 8D 6C 24 D1 48 81 EC C0 00 00 00", ClickRecipeNoteButtonDetour);
-            _recipeNoteClickHook?.Enable();
-            GatherBuddy.Log.Debug("[CraftingGameInterop] RecipeNote click hook initialized");
-        }
-        catch (Exception ex)
-        {
-            GatherBuddy.Log.Error($"[CraftingGameInterop] Failed to initialize RecipeNote click hook: {ex.Message}");
-        }
-        
         // Register UserMacro solver first (highest priority)
         CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
         GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered UserMacro solver");
@@ -125,8 +109,6 @@ public static class CraftingGameInterop
                 GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered StandardSolver");
                 break;
         }
-        
-        CraftingLogOverlay.Initialize();
     }
 
     public static void ReloadSolvers()
@@ -157,11 +139,14 @@ public static class CraftingGameInterop
     public static void ReloadSolversForCraft(RaphaelSolverMode mode, bool registerUserMacroSolver = true)
     {
         GatherBuddy.Log.Debug($"[CraftingGameInterop] ReloadSolversForCraft: {mode}");
-        
+        CraftingProcessor.Setup();
         if (registerUserMacroSolver && _userMacroLibrary != null)
         {
-            CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
-            GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered UserMacro solver");
+            if (_userMacroLibrary != null)
+            {
+                CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
+                GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered UserMacro solver");
+            }
         }
 
         switch (mode)
@@ -179,8 +164,6 @@ public static class CraftingGameInterop
 
     public static void Dispose()
     {
-        _recipeNoteClickHook?.Dispose();
-        CraftingLogOverlay.Dispose();
         _currentRecipe = null;
         _currentRecipeId = null;
         _currentState = CraftState.IdleNormal;
@@ -1507,78 +1490,5 @@ public static class CraftingGameInterop
         }
 
         return false;
-    }
-
-
-    private unsafe static void ClickRecipeNoteButtonDetour(void* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData)
-    {
-        try
-        {
-            if (eventType == AtkEventType.ButtonClick && eventParam is 14 or 15 or 16)
-            {
-                if (GatherBuddy.Config.EnableAutoPrepareOnCraft)
-                {
-                    GatherBuddy.Log.Debug($"[CraftingGameInterop] Synthesize button clicked (eventParam={eventParam})");
-                    
-                    var recipeNote = FFXIVClientStructs.FFXIV.Client.Game.UI.RecipeNote.Instance();
-                    if (recipeNote != null && recipeNote->RecipeList != null && recipeNote->RecipeList->SelectedRecipe != null)
-                    {
-                        var selectedRecipe = recipeNote->RecipeList->SelectedRecipe;
-                        var recipe = Dalamud.GameData.GetExcelSheet<Recipe>()?.GetRow(selectedRecipe->RecipeId);
-                        if (recipe != null)
-                        {
-                            var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe.Value, null);
-                            CraftingGameInterop.SetQualityPolicy(qualityPolicy);
-                            
-                            if (GatherBuddy.Config.RaphaelSolverConfig.SolverMode == RaphaelSolverMode.PureRaphael && GatherBuddy.RaphaelSolveCoordinator != null)
-                            {
-                                var requiredJob = (uint)(recipe.Value.CraftType.RowId + 8);
-                                var gearsetStats = GearsetStatsReader.ReadGearsetStatsForJob(requiredJob);
-                                if (gearsetStats != null)
-                                {
-                                    var initialQuality = qualityPolicy.CalculateGuaranteedInitialQuality(recipe.Value);
-                                    var specialist = GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions && gearsetStats.Specialist;
-                                    var raphRequest = new RaphaelSolveRequest(
-                                        RecipeId: recipe.Value.RowId,
-                                        Level: gearsetStats.Level,
-                                        Craftsmanship: gearsetStats.Craftsmanship,
-                                        Control: gearsetStats.Control,
-                                        CP: gearsetStats.CP,
-                                        Manipulation: gearsetStats.Manipulation,
-                                        Specialist: specialist,
-                                        InitialQuality: initialQuality
-                                    );
-                                    GatherBuddy.RaphaelSolveCoordinator.EnqueueSolvesFromRequests(new List<RaphaelSolveRequest> { raphRequest });
-                                    GatherBuddy.Log.Debug($"[CraftingGameInterop] Enqueued Raphael solve for recipe {recipe.Value.RowId}");
-                                }
-                            }
-                            
-                            if (GatherBuddy.Config.EnableAutoPrepareOnCraft)
-                            {
-                                var required = RecipeManager.GetResolvedIngredients(recipe.Value);
-                                GatherBuddy.Log.Debug($"[CraftingGameInterop] Crafting log click for recipe {recipe.Value.RowId}, required materials: {required.Count}");
-                                CraftingGatherBridge.StartGatherAndCraft(recipe.Value.RowId, required);
-                            }
-                            else
-                            {
-                                var useQuickSynthesis = eventParam == 15;
-                                StartCraft(recipe.Value, 1, useQuickSynthesis);
-                            }
-                            return;
-                        }
-                    }
-                }
-                _recipeNoteClickHook?.Original(thisPtr, eventType, eventParam, atkEvent, atkEventData);
-            }
-            else
-            {
-                _recipeNoteClickHook?.Original(thisPtr, eventType, eventParam, atkEvent, atkEventData);
-            }
-        }
-        catch (Exception ex)
-        {
-            GatherBuddy.Log.Error($"[CraftingGameInterop] Hook detour error: {ex.Message}");
-            _recipeNoteClickHook?.Original(thisPtr, eventType, eventParam, atkEvent, atkEventData);
-        }
     }
 }
