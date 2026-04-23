@@ -311,7 +311,6 @@ public class CraftingListManager
                 Save();
             }
             
-            GatherBuddy.Log.Debug($"[CraftingListManager] Loaded {_lists.Count} crafting lists");
         }
         catch (Exception ex)
         {

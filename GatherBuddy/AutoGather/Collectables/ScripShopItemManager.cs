@@ -23,8 +23,6 @@ public class ScripShopItemManager
         IsLoading = true;
         try
         {
-            GatherBuddy.Log.Debug("[ScripShopItemManager] Loading scrip shop items from embedded resource");
-            
             var assembly = Assembly.GetExecutingAssembly();
             var resourceName = "GatherBuddy.CustomInfo.ScripShopItems.json";
             
@@ -58,7 +56,6 @@ public class ScripShopItemManager
         finally
         {
             IsLoading = false;
-            GatherBuddy.Log.Debug($"[ScripShopItemManager] Loaded {ShopItems.Count} items");
         }
     }
 }

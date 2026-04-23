@@ -244,7 +244,6 @@ public class UserMacroLibrary
                 _macrosByRecipe[kvp.Key] = kvp.Value;
             }
 
-            GatherBuddy.Log.Information($"[UserMacroLibrary] Loaded {_macros.Count} macros from config");
         }
         catch (Exception ex)
         {

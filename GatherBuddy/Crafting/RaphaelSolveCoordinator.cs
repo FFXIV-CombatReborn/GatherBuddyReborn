@@ -75,7 +75,6 @@ public class RaphaelSolveCoordinator
                 loaded++;
             }
 
-            GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Loaded {loaded}/{solutions.Count} solutions from cache ({solutions.Count - loaded} expired/skipped)");
         }
         catch (Exception ex)
         {
