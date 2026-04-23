@@ -308,7 +308,7 @@ public class ContextMenu : IDisposable
         _lastGatherable = contextItemId.HasValue ? ResolveGatherable(contextItemId.Value) : null;
         if (contextItemId.HasValue && SupportsRecipeActions(args))
             _lastRecipeId = GetRecipeIdFromContext(args);
-        if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddGilShopItem(contextItemId.Value))
+        if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
             _lastVendorBuyListItemId = contextItemId.Value;
 
         if (_lastGatherable != null)

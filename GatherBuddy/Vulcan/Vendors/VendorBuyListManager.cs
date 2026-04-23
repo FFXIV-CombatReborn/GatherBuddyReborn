@@ -11,7 +11,7 @@ namespace GatherBuddy.Vulcan.Vendors;
 public sealed partial class VendorBuyListManager : IDisposable
 {
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
-    public readonly record struct GilShopTargetRequest(uint ItemId, uint TargetQuantity);
+    public readonly record struct VendorTargetRequest(uint ItemId, uint TargetQuantity);
     private readonly record struct PendingEntrySelection(
         VendorBuyListEntry Entry,
         VendorShopEntry LiveEntry,
@@ -133,9 +133,12 @@ public sealed partial class VendorBuyListManager : IDisposable
     public void OpenWindow()
         => GatherBuddy.VendorBuyListWindow?.Open();
 
-    public bool CanAddGilShopItem(uint itemId)
-        => VendorShopResolver.IsInitialized
-        && VendorShopResolver.GilShopEntries.Any(entry => entry.ItemId == itemId);
+    public bool CanAddSupportedItem(uint itemId)
+    {
+        EnsureVendorCachesAvailable();
+        return VendorShopResolver.IsInitialized
+            && TryResolveDefaultEntry(itemId, out _, out _);
+    }
 
     public VendorBuyListDefinition CreateList(string name = DefaultVendorBuyListName, bool setActive = true)
     {
@@ -243,10 +246,10 @@ public sealed partial class VendorBuyListManager : IDisposable
         return TryIncrementTarget(list, itemId, amount, selectList, openWindow, announce);
     }
 
-    public bool TrySetGilShopTarget(Guid listId, uint itemId, uint targetQuantity, bool selectList = false, bool openWindow = true, bool announce = false)
-        => TrySetGilShopTargets(listId, new[] { new GilShopTargetRequest(itemId, targetQuantity) }, selectList, openWindow, announce) > 0;
+    public bool TrySetTarget(Guid listId, uint itemId, uint targetQuantity, bool selectList = false, bool openWindow = true, bool announce = false)
+        => TrySetTargets(listId, new[] { new VendorTargetRequest(itemId, targetQuantity) }, selectList, openWindow, announce) > 0;
 
-    public int TrySetGilShopTargets(Guid listId, IReadOnlyList<GilShopTargetRequest> requests, bool selectList = false, bool openWindow = true,
+    public int TrySetTargets(Guid listId, IReadOnlyList<VendorTargetRequest> requests, bool selectList = false, bool openWindow = true,
         bool announce = false)
     {
         EnsureListState();
@@ -254,7 +257,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         if (list == null)
             return 0;
 
-        return TrySetGilShopTargets(list, requests, selectList, openWindow, announce);
+        return TrySetTargets(list, requests, selectList, openWindow, announce);
     }
 
     public void UpdateTargetQuantity(Guid entryId, uint targetQuantity)
@@ -679,10 +682,12 @@ public sealed partial class VendorBuyListManager : IDisposable
     {
         amount = Math.Max(1u, amount);
 
-        var existing = list.Entries
-            .FirstOrDefault(entry => entry.ItemId == itemId && entry.ShopType == VendorShopType.GilShop);
-        if (existing != null)
+        var existingEntries = list.Entries
+            .Where(entry => entry.ItemId == itemId)
+            .ToList();
+        if (existingEntries.Count == 1)
         {
+            var existing = existingEntries[0];
             existing.TargetQuantity = SaturatingAdd(Math.Max(existing.TargetQuantity, (uint)Math.Max(0, GetCurrentInventoryAndArmoryCount(itemId))), amount);
             existing.Enabled = true;
             if (selectList)
@@ -707,13 +712,13 @@ public sealed partial class VendorBuyListManager : IDisposable
         return TryAddTarget(list, liveEntry, vendor, targetQuantity, selectList, openWindow, announce);
     }
 
-    private int TrySetGilShopTargets(VendorBuyListDefinition list, IReadOnlyList<GilShopTargetRequest> requests, bool selectList, bool openWindow,
+    private int TrySetTargets(VendorBuyListDefinition list, IReadOnlyList<VendorTargetRequest> requests, bool selectList, bool openWindow,
         bool announce)
     {
         var normalizedRequests = requests
             .Where(request => request.ItemId != 0 && request.TargetQuantity > 0)
             .GroupBy(request => request.ItemId)
-            .Select(group => new GilShopTargetRequest(group.Key, group.Max(request => request.TargetQuantity)))
+            .Select(group => new VendorTargetRequest(group.Key, group.Max(request => request.TargetQuantity)))
             .ToList();
         if (normalizedRequests.Count == 0)
             return 0;
@@ -723,13 +728,13 @@ public sealed partial class VendorBuyListManager : IDisposable
         {
             if (!TryResolveDefaultEntry(request.ItemId, out var liveEntry, out var vendor))
             {
-                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not resolve a default gil-shop entry for item {request.ItemId} while setting vendor targets.");
+                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not resolve a default vendor entry for item {request.ItemId} while setting vendor targets.");
                 continue;
             }
 
             if (!TrySetResolvedTarget(list, liveEntry, vendor, request.TargetQuantity))
             {
-                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not set a gil-shop target for {liveEntry.ItemName} in '{list.Name}'.");
+                GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not set a vendor target for {liveEntry.ItemName} in '{list.Name}'.");
                 continue;
             }
 
@@ -750,7 +755,6 @@ public sealed partial class VendorBuyListManager : IDisposable
             _statusText = addedTargets.Count == 1
                 ? $"{addedTargets[0].Entry.ItemName} target set to {addedTargets[0].TargetQuantity:N0} in '{list.Name}'."
                 : $"{addedTargets.Count:N0} vendor targets updated in '{list.Name}'.";
-
         if (announce)
         {
             if (addedTargets.Count == 1)
@@ -876,9 +880,19 @@ public sealed partial class VendorBuyListManager : IDisposable
         if (!VendorShopResolver.IsInitialized)
             return false;
 
-        foreach (var candidate in VendorShopResolver.GilShopEntries.Where(candidate => candidate.ItemId == itemId).OrderBy(candidate => candidate.Cost))
+        foreach (var candidate in GetDefaultEntryCandidates(itemId))
         {
-            var preferredVendor = VendorPreferenceHelper.ResolvePreferredNpc(candidate);
+            var supportedVendors = VendorDevExclusions.GetSelectableNpcs(
+                candidate.Npcs
+                    .Where(npc => VendorPurchaseManager.IsPurchaseSupported(candidate, npc))
+                    .ToList(),
+                "resolving a default vendor buy list entry",
+                candidate.ItemName);
+            if (supportedVendors.Count == 0)
+                continue;
+
+            var preferredVendor = VendorPreferenceHelper.ResolvePreferredNpc(candidate, supportedVendors)
+                ?? supportedVendors.FirstOrDefault();
             if (preferredVendor == null)
                 continue;
 
@@ -889,6 +903,28 @@ public sealed partial class VendorBuyListManager : IDisposable
 
         return false;
     }
+
+    private static IEnumerable<VendorShopEntry> GetDefaultEntryCandidates(uint itemId)
+        => VendorShopResolver.GilShopEntries
+            .Where(entry => entry.ItemId == itemId)
+            .Concat(VendorShopResolver.GcShopEntries
+                .Where(VendorShopResolver.MatchesCurrentGrandCompany)
+                .Where(entry => entry.ItemId == itemId))
+            .Concat(VendorShopResolver.SpecialShopEntries
+                .Where(entry => entry.ItemId == itemId))
+            .OrderBy(GetDefaultEntryPriority)
+            .ThenBy(entry => entry.Cost)
+            .ThenBy(entry => entry.CurrencyItemId)
+            .ThenBy(entry => entry.ItemId);
+
+    private static int GetDefaultEntryPriority(VendorShopEntry entry)
+        => entry.ShopType switch
+        {
+            VendorShopType.GilShop           => 0,
+            VendorShopType.GrandCompanySeals => 1,
+            VendorShopType.SpecialCurrency   => 2,
+            _                                => 3,
+        };
 
     private PendingEntrySelection? GetNextPendingEntry(VendorBuyListDefinition list)
     {
