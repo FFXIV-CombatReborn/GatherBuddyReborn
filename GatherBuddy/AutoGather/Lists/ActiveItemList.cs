@@ -159,6 +159,130 @@ namespace GatherBuddy.AutoGather.Lists
             return true;
         }
 
+        private readonly record struct FishWindowPriority(bool Applicable, long EffectiveDuration, TimeStamp WindowEnd, TimeStamp WindowStart);
+
+        private sealed class FishWindowPriorityComparer : IComparer<FishWindowPriority>
+        {
+            public static readonly FishWindowPriorityComparer Instance = new();
+
+            public int Compare(FishWindowPriority lhs, FishWindowPriority rhs)
+            {
+                if (!lhs.Applicable || !rhs.Applicable)
+                    return 0;
+
+                var durationComparison = lhs.EffectiveDuration.CompareTo(rhs.EffectiveDuration);
+                if (durationComparison != 0)
+                    return durationComparison;
+
+                var endComparison = lhs.WindowEnd.CompareTo(rhs.WindowEnd);
+                if (endComparison != 0)
+                    return endComparison;
+
+                return lhs.WindowStart.CompareTo(rhs.WindowStart);
+            }
+        }
+
+        private static int GetAvailabilityPriority(GatherTarget target, TimeStamp now)
+        {
+            if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+                return 3;
+            if (target.Time == TimeInterval.Always)
+                return 1;
+            return target.Time.InRange(now) ? 0 : 2;
+        }
+
+        private static TimeStamp GetAvailabilityStart(GatherTarget target, TimeStamp now)
+        {
+            if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+                return TimeStamp.MaxValue;
+            return target.Time.InRange(now) ? TimeStamp.MinValue : target.Time.Start;
+        }
+
+        private static TimeStamp GetLegacyAvailabilityStart(GatherTarget target, TimeStamp now)
+            => target.Time.InRange(now) ? TimeStamp.MinValue : target.Time.Start;
+
+        private static FishWindowPriority GetFishWindowPriority(GatherTarget target, TimeStamp now)
+        {
+            if (target.Fish == null || target.Time == TimeInterval.Always || target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+                return default;
+
+            var effectiveStart = target.Time.Start.Max(now);
+            return new FishWindowPriority(true, target.Time.End - effectiveStart, target.Time.End, target.Time.Start);
+        }
+
+        private static string FormatFishTimingForDebug(in GatherTarget target, TimeStamp now)
+        {
+            if (target.Time == TimeInterval.Always)
+                return "always";
+            if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+                return "invalid";
+
+            var effectiveStart = target.Time.Start.Max(now);
+            var window = TimeInterval.DurationString(effectiveStart, target.Time.End, true);
+            return target.Time.InRange(now)
+                ? $"active, remaining={window}"
+                : $"future, startsIn={TimeInterval.DurationString(target.Time.Start, now, true)}, window={window}";
+        }
+
+        private void LogFishPriorityOrder(TimeStamp now)
+        {
+            var prioritizedFish = _gatherableItems
+                .Where(x => x.Fish != null && x.Time != TimeInterval.Invalid && x.Time != TimeInterval.Never)
+                .Take(5)
+                .Select(x => $"{x.Item.Name[GatherBuddy.Language]} ({FormatFishTimingForDebug(x, now)})")
+                .ToArray();
+            if (prioritizedFish.Length == 0)
+                return;
+
+            GatherBuddy.Log.Debug($"[ActiveItemList] Fish priority order: {string.Join(" | ", prioritizedFish)}");
+        }
+
+        private static int CompareLegacyTargetOrder(GatherTarget lhs, GatherTarget rhs, TimeStamp now)
+        {
+            var timeComparison = GetLegacyAvailabilityStart(lhs, now).CompareTo(GetLegacyAvailabilityStart(rhs, now));
+            if (timeComparison != 0)
+                return timeComparison;
+
+            return (lhs.Time == TimeInterval.Always).CompareTo(rhs.Time == TimeInterval.Always);
+        }
+
+        private static int CompareFishTargetOrder(GatherTarget lhs, GatherTarget rhs, TimeStamp now)
+        {
+            var availabilityComparison = GetAvailabilityPriority(lhs, now).CompareTo(GetAvailabilityPriority(rhs, now));
+            if (availabilityComparison != 0)
+                return availabilityComparison;
+
+            var windowComparison = FishWindowPriorityComparer.Instance.Compare(GetFishWindowPriority(lhs, now), GetFishWindowPriority(rhs, now));
+            if (windowComparison != 0)
+                return windowComparison;
+
+            return CompareLegacyTargetOrder(lhs, rhs, now);
+        }
+
+        private static List<GatherTarget> ApplyFishPriorityOrdering(IEnumerable<GatherTarget> targets, TimeStamp now)
+        {
+            var orderedTargets = targets.ToList();
+            var fishSlots = new List<int>(orderedTargets.Count);
+            var fishTargets = new List<GatherTarget>(orderedTargets.Count);
+            foreach (var (target, index) in orderedTargets.WithIndex())
+            {
+                if (target.Fish == null)
+                    continue;
+
+                fishSlots.Add(index);
+                fishTargets.Add(target);
+            }
+
+            if (fishTargets.Count < 2)
+                return orderedTargets;
+
+            fishTargets.Sort((lhs, rhs) => CompareFishTargetOrder(lhs, rhs, now));
+            for (var i = 0; i < fishSlots.Count; ++i)
+                orderedTargets[fishSlots[i]] = fishTargets[i];
+
+            return orderedTargets;
+        }
+
         private void OnActiveItemsChanged()
         {
             _activeItemsChanged = true;
@@ -296,12 +420,13 @@ namespace GatherBuddy.AutoGather.Lists
                     .Select(x => (Target: x, Priority: GetDiademPriority(x, ref frontDiadem, ref frontUmbral)))
                     .OrderBy(x => x.Priority)
                     .Select(x => x.Target);
-                _gatherableItems.AddRange(targetsDiadem);
+                _gatherableItems.AddRange(ApplyFishPriorityOrdering(targetsDiadem, adjustedServerTime));
             }
             else
             {
-                _gatherableItems.AddRange(targets);
+                _gatherableItems.AddRange(ApplyFishPriorityOrdering(targets, adjustedServerTime));
             }
+            LogFishPriorityOrder(adjustedServerTime);
 
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
         }

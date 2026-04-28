@@ -75,16 +75,19 @@ public sealed partial class VendorBuyListWindow : Window
     }
 
     public bool OpenCreateListPopup(IReadOnlyList<VendorBuyListManager.VendorTargetRequest> requests)
+        => OpenCreateListPopup("Vendor List", requests);
+
+    public bool OpenCreateListPopup(string listName, IReadOnlyList<VendorBuyListManager.VendorTargetRequest> requests)
     {
         var manager = GatherBuddy.VendorBuyListManager;
         if (manager == null || requests.Count == 0)
             return false;
-
-        var list = manager.CreateList("Vendor List", false);
+        var list = manager.CreateList(listName, false);
         var addedCount = manager.TrySetTargets(list.Id, requests, selectList: true, openWindow: false, announce: false);
         if (addedCount == 0)
         {
-            GatherBuddy.Log.Warning($"[VendorBuyListWindow] Failed to add {requests.Count:N0} vendor targets to newly created vendor list '{list.Name}'.");
+            GatherBuddy.Log.Warning(
+                $"[VendorBuyListWindow] Failed to add {requests.Count:N0} vendor targets to newly created vendor list '{list.Name}'.");
             return false;
         }
 

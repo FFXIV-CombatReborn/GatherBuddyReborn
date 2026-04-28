@@ -420,6 +420,8 @@ public partial class Interface
             if (_autoGatherListsCache.Selector.Selected != null)
                 DrawAutoGatherList(_autoGatherListsCache.Selector.Selected);
         });
+
+        _autoGatherListsCache.Selector.DrawBaitBuyListResultPopup();
     }
 }
 
