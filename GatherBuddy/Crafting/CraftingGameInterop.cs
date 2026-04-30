@@ -921,17 +921,17 @@ public static class CraftingGameInterop
             var values = stackalloc AtkValue[3];
             values[0] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Int,
                 Int = clampedQuantity,
             };
             values[1] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool,
                 Byte = allowHQMaterials ? (byte)1 : (byte)0,
             };
             values[2] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool,
                 Byte = synthesizeNQOnly ? (byte)1 : (byte)0
             };
             Callback.Fire(dialogUnit, true, values[0], values[1], values[2]);

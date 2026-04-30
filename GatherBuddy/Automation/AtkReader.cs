@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.Automation;
 
@@ -64,7 +64,7 @@ public unsafe class AtkReader
             return SeString.Empty;
 
         var value = addon->AtkValues[actualIndex];
-        if (value.Type == ValueType.String && value.String != null)
+        if (value.Type == ValueType.String)
         {
             var ptr = (byte*)value.String;
             return SeString.Parse(ptr);

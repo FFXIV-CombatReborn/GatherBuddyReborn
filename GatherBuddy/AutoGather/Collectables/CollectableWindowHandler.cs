@@ -5,7 +5,7 @@ using GatherBuddy.Automation;
 using Lumina.Excel.Sheets;
 using GatherBuddy.Plugin;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.AutoGather.Collectables;
 

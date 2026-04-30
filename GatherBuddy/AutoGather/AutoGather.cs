@@ -1,4 +1,5 @@
 using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Chat;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -163,13 +164,13 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private void OnMessageHandled(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+        private void OnMessageHandled(IHandleableChatMessage chatMessage)
         {
             try
             {
-                if (type is (XivChatType)2243)
+                if (chatMessage.LogKind is (XivChatType)2243)
                 {
-                    var text = message.TextValue;
+                    var text = chatMessage.Message.TextValue;
                     var id = Dalamud.GameData.GetExcelSheet<LogMessage>()
                         ?.FirstOrDefault(x => x.Text.ToString() == text).RowId;
 

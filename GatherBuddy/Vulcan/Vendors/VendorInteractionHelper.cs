@@ -14,7 +14,7 @@ using GatherBuddy.Plugin;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using DalamudObjectKind = global::Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.Vulcan.Vendors;
 

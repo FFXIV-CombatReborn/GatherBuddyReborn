@@ -50,7 +50,7 @@ public class UptimeManager : IDisposable
         for (var i = 0; i < _bestLocation.Length; ++i)
             _bestLocation[i] = (null!, 0);
 
-        SetCurrentTerritory(Dalamud.ClientState.TerritoryType);
+        SetCurrentTerritory((ushort)Dalamud.ClientState.TerritoryType);
         Dalamud.ClientState.TerritoryChanged += OnTerritoryChange;
     }
 
@@ -103,8 +103,8 @@ public class UptimeManager : IDisposable
         return closest;
     }
 
-    private void OnTerritoryChange(ushort id)
-        => SetCurrentTerritory(id);
+    private void OnTerritoryChange(uint id)
+        => SetCurrentTerritory((ushort)id);
 
     public void Dispose()
         => Dalamud.ClientState.TerritoryChanged -= OnTerritoryChange;

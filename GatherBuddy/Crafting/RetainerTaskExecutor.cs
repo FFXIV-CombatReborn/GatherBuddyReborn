@@ -560,7 +560,7 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var param in contextAgent->EventParams)
         {
-            if (param.Type == FFXIVClientStructs.FFXIV.Component.GUI.ValueType.String)
+            if (param.Type == FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String)
             {
                 var label = MemoryHelper.ReadSeStringNullTerminated(new IntPtr(param.String)).TextValue;
                 if (label == retrieveAll) idxAll = looper;
@@ -945,7 +945,7 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var obj in Dalamud.Objects)
         {
-            if (obj.ObjectKind != ObjectKind.Housing && obj.ObjectKind != ObjectKind.EventObj)
+            if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
                 continue;
 
             var name = obj.Name.TextValue;
@@ -976,7 +976,7 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var obj in Dalamud.Objects)
         {
-            if (obj.ObjectKind != ObjectKind.Housing && obj.ObjectKind != ObjectKind.EventObj)
+            if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
                 continue;
 
             var name = obj.Name.TextValue;
@@ -984,7 +984,7 @@ internal unsafe class RetainerTaskExecutor
                 !name.Equals("リテイナーベル", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            float maxDist = obj.ObjectKind == ObjectKind.Housing ? 6.5f : 4.75f;
+            float maxDist = obj.ObjectKind == ObjectKind.HousingEventObject ? 6.5f : 4.75f;
             if (Vector3.Distance(obj.Position, player.Position) > maxDist)
                 continue;
 
