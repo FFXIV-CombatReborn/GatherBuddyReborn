@@ -63,13 +63,13 @@ public partial class AlarmManager : IDisposable
         GatherBuddy.Config.Save();
     }
 
-    private static void TriggerWeatherAlarm()
+    private static unsafe void TriggerWeatherAlarm()
         => UIGlobals.PlaySoundEffect((uint)GatherBuddy.Config.WeatherAlarm);
 
-    private static void TriggerHourAlarm()
+    private static unsafe void TriggerHourAlarm()
         => UIGlobals.PlaySoundEffect((uint)GatherBuddy.Config.HourAlarm);
 
-    public static void PreviewAlarm(Sounds id)
+    public static unsafe void PreviewAlarm(Sounds id)
         => UIGlobals.PlaySoundEffect((uint)id);
 
 
@@ -198,7 +198,7 @@ public partial class AlarmManager : IDisposable
         };
     }
 
-    public void OnUpdate(IFramework _)
+    public unsafe void OnUpdate(IFramework _)
     {
         var st = GatherBuddy.Time.ServerTime;
         if (LastFishAlarm != null && LastFishAlarm.Value.Item3.End < st)

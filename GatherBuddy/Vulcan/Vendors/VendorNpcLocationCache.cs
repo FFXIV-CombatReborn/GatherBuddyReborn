@@ -692,8 +692,6 @@ public static class VendorNpcLocationCache
         if (original == overridden)
             return original;
 
-        GatherBuddy.Log.Debug(
-            $"[VendorNpcLocationCache] Applied {reason} override for {original.NpcName} [{original.NpcId}] in territory {original.TerritoryId}: map {original.MapRowId} -> {overridden.MapRowId}, position {original.Position} -> {overridden.Position}");
         return overridden;
     }
 

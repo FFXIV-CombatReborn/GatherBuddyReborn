@@ -95,14 +95,12 @@ public static class CraftingGameInterop
         CraftingProcessor.Setup();
         // Register UserMacro solver first (highest priority)
         CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
-        GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered UserMacro solver");
         
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
         switch (solverMode)
         {
             case RaphaelSolverMode.PureRaphael:
                 CraftingProcessor.RegisterSolver(new Vulcan.RaphaelSolverDefinition(GatherBuddy.RaphaelSolveCoordinator));
-                GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered Raphael solver");
                 break;
             case RaphaelSolverMode.StandardSolver:
                 CraftingProcessor.RegisterSolver(new Vulcan.StandardSolverDefinition());
@@ -119,7 +117,6 @@ public static class CraftingGameInterop
         if (_userMacroLibrary != null)
         {
             CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
-            GatherBuddy.Log.Debug($"[CraftingGameInterop] Reloaded: Registered UserMacro solver");
         }
         
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
@@ -127,7 +124,6 @@ public static class CraftingGameInterop
         {
             case RaphaelSolverMode.PureRaphael:
                 CraftingProcessor.RegisterSolver(new Vulcan.RaphaelSolverDefinition(GatherBuddy.RaphaelSolveCoordinator));
-                GatherBuddy.Log.Debug($"[CraftingGameInterop] Reloaded: Registered Raphael solver");
                 break;
             case RaphaelSolverMode.StandardSolver:
                 CraftingProcessor.RegisterSolver(new Vulcan.StandardSolverDefinition());
@@ -145,7 +141,6 @@ public static class CraftingGameInterop
             if (_userMacroLibrary != null)
             {
                 CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
-                GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered UserMacro solver");
             }
         }
 
@@ -153,7 +148,6 @@ public static class CraftingGameInterop
         {
             case RaphaelSolverMode.PureRaphael:
                 CraftingProcessor.RegisterSolver(new Vulcan.RaphaelSolverDefinition(GatherBuddy.RaphaelSolveCoordinator));
-                GatherBuddy.Log.Debug($"[CraftingGameInterop] Registered Raphael solver");
                 break;
             case RaphaelSolverMode.StandardSolver:
                 CraftingProcessor.RegisterSolver(new Vulcan.StandardSolverDefinition());
@@ -921,17 +915,17 @@ public static class CraftingGameInterop
             var values = stackalloc AtkValue[3];
             values[0] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Int,
                 Int = clampedQuantity,
             };
             values[1] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool,
                 Byte = allowHQMaterials ? (byte)1 : (byte)0,
             };
             values[2] = new()
             {
-                Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
+                Type = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool,
                 Byte = synthesizeNQOnly ? (byte)1 : (byte)0
             };
             Callback.Fire(dialogUnit, true, values[0], values[1], values[2]);

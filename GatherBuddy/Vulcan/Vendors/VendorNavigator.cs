@@ -101,8 +101,7 @@ public class VendorNavigator
     {
         if (liveNpc == null || destinationMode != NavigationDestinationMode.TargetInteractionRange)
             return 0f;
-
-        return LiveNpcInteractionDistance;
+        return VendorApproachCompletionDistance;
     }
     private enum State
     {
@@ -474,9 +473,11 @@ public class VendorNavigator
     private const float  VendorApproachCompletionDistance = 1.5f;
     private const float  VendorApproachFloorSearchHeight  = 10.0f;
     private const float  VendorApproachMeshSearchRadius   = 3.0f;
+    private const float  VendorFallbackFloorSearchRadius  = 2.0f;
     private const float  VendorApproachMaxHorizontalDrift = 2.5f;
     private const float  VendorStagingMaxHorizontalDrift  = 4.0f;
     private const float  VendorApproachMaxVerticalDrift   = 4.0f;
+    private const float  VendorInteractionMaxVerticalDistance = 2.0f;
     private const float  VendorApproachDistanceStep       = 0.5f;
     private const float  VendorApproachMinimumStandOff    = 0.35f;
     private const float  VendorCloseCombinedLandingDistanceMinimum = 4.0f;
@@ -552,6 +553,8 @@ public class VendorNavigator
     private bool                     _awaitingForcedHousingOriginExit;
     private string?                  _lastApproachDiagnosticsSummary;
     private DateTime                 _lastApproachDiagnosticsLogTime;
+    private string?                  _lastFallbackDiagnosticsSummary;
+    private DateTime                 _lastFallbackDiagnosticsLogTime;
     private DateTime                 _forceGroundApproachUntil;
     private Vector3                  _lastGroundProgressPosition;
     private float                    _lastGroundProgressDistance = float.MaxValue;
@@ -1170,9 +1173,13 @@ public class VendorNavigator
 
         var forceGroundApproach = IsGroundApproachStabilizing();
         var liveNpc = FindLiveNpcObject();
+        var allowAirborneLiveNpcInteractionRange = usingLiveNpc
+            && liveNpc != null
+            && destinationMode == NavigationDestinationMode.TargetInteractionRange
+            && (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving]);
         var allowFlightLiveNpcApproach = usingLiveNpc
             && liveNpc != null
-            && destinationMode == NavigationDestinationMode.FinalApproachPoint;
+            && (destinationMode == NavigationDestinationMode.FinalApproachPoint || allowAirborneLiveNpcInteractionRange);
         var useGroundLiveNpcApproach = usingLiveNpc && liveNpc != null && !allowFlightLiveNpcApproach;
         var canMount = !forceGroundApproach
             && !useGroundLiveNpcApproach
@@ -1198,7 +1205,7 @@ public class VendorNavigator
         }
 
         var destinationTolerance = GetPathfindTolerance(liveNpc, destinationMode);
-        var landingDistance = GetVendorLandingDistance();
+        var landingDistance = GetVendorLandingDistance(liveNpc, destination, destinationMode);
         var combinedPathTarget = destination;
         if (_pathUsesFlight
          && landingDistance > 0f
@@ -1213,7 +1220,8 @@ public class VendorNavigator
         if (!_pathUsesFlight && useGroundLiveNpcApproach && destinationTolerance > 0f)
         {
             _navigationDestinationTolerance = destinationTolerance;
-            _pathTask = VNavmesh.Nav.PathfindWithTolerance(player.Position, liveNpc.Position, false, destinationTolerance);
+            _pathCancellationTokenSource = new CancellationTokenSource();
+            _pathTask = VNavmesh.Nav.PathfindCancelable(player.Position, destination, false, _pathCancellationTokenSource.Token);
             return;
         }
 
@@ -1266,7 +1274,7 @@ public class VendorNavigator
                     {
                         _forceInteractionRangeApproachUntil = DateTime.UtcNow.AddSeconds(VendorInteractionRangeFallbackDurationSeconds);
                         GatherBuddy.Log.Debug($"[VendorNavigator] Reached live NPC staging point near {GetDisplayName(liveNpc)}, falling back to direct interaction-range navigation");
-                        StartVNavmesh(liveNpc.Position, true, NavigationDestinationMode.TargetInteractionRange);
+                        StartVNavmesh(GetLiveNpcFallbackDestination(liveNpc), true, NavigationDestinationMode.TargetInteractionRange);
                         return;
                     }
                 }
@@ -1348,7 +1356,29 @@ public class VendorNavigator
         usingLiveNpc   = ShouldUseLiveNpcDestination(liveNpc);
         destinationMode = NavigationDestinationMode.TargetInteractionRange;
         Vector3 destination;
-        if (ShouldUseCloseRangeLiveNpcApproach(liveNpc, usingLiveNpc) && liveNpc != null)
+        var isAirborne = Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving];
+        var hasStagingDestination = false;
+        Vector3 stagingDestination = default;
+        string stagingNavigationReason = string.Empty;
+        var shouldUseCloseRangeLiveNpcApproach = ShouldUseCloseRangeLiveNpcApproach(liveNpc, usingLiveNpc);
+        var useAirborneDirectLiveNpcNavigation = false;
+        Vector3 airborneDirectLiveNpcDestination = default;
+        if (!usingLiveNpc && liveNpc != null && isAirborne)
+            hasStagingDestination = TryGetVendorStagingDestination(liveNpc, out stagingDestination, out stagingNavigationReason);
+        if (isAirborne && hasStagingDestination && shouldUseCloseRangeLiveNpcApproach && liveNpc != null)
+        {
+            airborneDirectLiveNpcDestination = ResolveLiveNpcFallbackDestination(liveNpc, out var usesProjectedDestination);
+            useAirborneDirectLiveNpcNavigation = !usesProjectedDestination;
+        }
+
+        if (useAirborneDirectLiveNpcNavigation && liveNpc != null)
+        {
+            usingLiveNpc = true;
+            destinationMode = NavigationDestinationMode.TargetInteractionRange;
+            navigationReason = "live NPC aerial interaction-range navigation";
+            destination = airborneDirectLiveNpcDestination;
+        }
+        else if ((!isAirborne || !hasStagingDestination) && shouldUseCloseRangeLiveNpcApproach && liveNpc != null)
         {
             usingLiveNpc = true;
             if (TryGetVendorFinalApproachDestination(liveNpc, out destination, out navigationReason))
@@ -1367,8 +1397,10 @@ public class VendorNavigator
             navigationReason = "live NPC direct ground interaction-range navigation";
             destination = GetLiveNpcFallbackDestination(liveNpc);
         }
-        else if (!usingLiveNpc && TryGetVendorStagingDestination(liveNpc, out destination, out navigationReason))
+        else if (!usingLiveNpc && (hasStagingDestination || TryGetVendorStagingDestination(liveNpc, out stagingDestination, out stagingNavigationReason)))
         {
+            destination = stagingDestination;
+            navigationReason = stagingNavigationReason;
             destinationMode = NavigationDestinationMode.SafeStagingPoint;
         }
         else
@@ -1405,8 +1437,20 @@ public class VendorNavigator
             return false;
 
         var playerPosition = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        return playerPosition != Vector3.Zero
-            && !IsFlightVendorApproachActive(liveNpc.Position);
+        if (playerPosition == Vector3.Zero)
+            return false;
+
+        if (_usingLiveNpcDestination
+         && !_pathUsesFlight
+         && !_pathUsesCombinedApproach
+         && !_mountingUp
+         && !_waitingForMount
+         && !Dalamud.Conditions[ConditionFlag.InFlight]
+         && !Dalamud.Conditions[ConditionFlag.Diving]
+         && GetHorizontalDistance(playerPosition, liveNpc.Position) <= VendorDirectLiveNpcApproachDistance)
+            return true;
+
+        return !IsFlightVendorApproachActive(liveNpc.Position);
     }
 
     private bool IsGroundApproachStabilizing()
@@ -1446,6 +1490,10 @@ public class VendorNavigator
     private bool IsWithinArrivalDistance(Vector3 playerPosition, IGameObject? liveNpc)
         => GetTargetDistance(playerPosition, liveNpc) <= (liveNpc != null ? LiveNpcInteractionDistance : CachedInteractionDistance);
 
+    private bool IsWithinLiveNpcInteractionWindow(Vector3 playerPosition, IGameObject liveNpc)
+        => GetHorizontalDistance(playerPosition, liveNpc.Position) <= LiveNpcInteractionDistance
+        && GetVerticalDistance(playerPosition, liveNpc.Position) <= VendorInteractionMaxVerticalDistance;
+
     private bool HasReachedNavigationDestination(Vector3 playerPosition, IGameObject? liveNpc, Vector3 destination, NavigationDestinationMode destinationMode)
     {
         return destinationMode switch
@@ -1454,11 +1502,11 @@ public class VendorNavigator
                 liveNpc != null && _navigationDestinationTolerance > 0f
                     ? GetHorizontalDistance(playerPosition, liveNpc.Position) <= _navigationDestinationTolerance + VendorStagingPointArrivalDistance
                     : GetHorizontalDistance(playerPosition, destination) <= VendorStagingPointArrivalDistance,
-            NavigationDestinationMode.FinalApproachPoint =>
-                _navigationDestinationTolerance > 0f
-                    ? GetHorizontalDistance(playerPosition, liveNpc?.Position ?? _target!.Position) <= LiveNpcInteractionDistance
-                    : GetHorizontalDistance(playerPosition, liveNpc?.Position ?? _target!.Position) <= LiveNpcInteractionDistance
-                      && GetHorizontalDistance(playerPosition, destination) <= VendorApproachCompletionDistance,
+            NavigationDestinationMode.FinalApproachPoint when liveNpc != null =>
+                IsWithinLiveNpcInteractionWindow(playerPosition, liveNpc)
+                && (_navigationDestinationTolerance > 0f || GetHorizontalDistance(playerPosition, destination) <= VendorApproachCompletionDistance),
+            NavigationDestinationMode.TargetInteractionRange when liveNpc != null =>
+                IsWithinLiveNpcInteractionWindow(playerPosition, liveNpc),
             _ => IsWithinArrivalDistance(playerPosition, liveNpc),
         };
     }
@@ -1953,7 +2001,10 @@ public class VendorNavigator
     {
         if (IsGroundApproachStabilizing())
             return false;
-        if (usingLiveNpc && destinationMode != NavigationDestinationMode.FinalApproachPoint)
+        var allowAirborneLiveNpcInteractionRange = usingLiveNpc
+            && destinationMode == NavigationDestinationMode.TargetInteractionRange
+            && (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving]);
+        if (usingLiveNpc && destinationMode != NavigationDestinationMode.FinalApproachPoint && !allowAirborneLiveNpcInteractionRange)
             return false;
         var shouldFly = ShouldFly(destination);
         shouldFly &= CanMountForDestination(destination) || Dalamud.Conditions[ConditionFlag.Mounted];
@@ -2018,8 +2069,16 @@ public class VendorNavigator
         return actionManager != null && actionManager->GetActionStatus(ActionType.Mount, 0) == 0;
     }
 
-    private static float GetVendorLandingDistance()
-        => VendorLandingDistance;
+    private static float GetVendorLandingDistance(IGameObject? liveNpc, Vector3 destination, NavigationDestinationMode destinationMode)
+    {
+        if (liveNpc == null || destinationMode != NavigationDestinationMode.SafeStagingPoint)
+            return VendorLandingDistance;
+
+        var liveNpcDistance = GetHorizontalDistance(destination, liveNpc.Position);
+        return liveNpcDistance < VendorLandingCandidateDistances[0]
+            ? GetCloseRangeCombinedLandingDistance(liveNpcDistance)
+            : VendorLandingDistance;
+    }
 
     private static unsafe bool IsMountUnlocked(uint mountId)
     {
@@ -2057,15 +2116,52 @@ public class VendorNavigator
         => VNavmesh.Query.Mesh.NearestPoint(position, 3, 10000).GetValueOrDefault(position);
 
     private Vector3 GetLiveNpcFallbackDestination(IGameObject liveNpc)
-    {
-        var snapped = SnapToMesh(liveNpc.Position);
-        var verticalDrift = MathF.Abs(snapped.Y - liveNpc.Position.Y);
-        var horizontalDrift = GetHorizontalDistance(snapped, liveNpc.Position);
-        if (verticalDrift <= VendorApproachMaxVerticalDrift && horizontalDrift <= VendorStagingMaxHorizontalDrift)
-            return snapped;
+        => ResolveLiveNpcFallbackDestination(liveNpc, out _);
 
-        GatherBuddy.Log.Debug($"[VendorNavigator] Rejecting snapped live NPC fallback {snapped} for {_target?.NpcName ?? "vendor"} because it drifted {horizontalDrift:F1}m horizontally and {verticalDrift:F1}m vertically from {liveNpc.Position}, using the live NPC position instead");
+    private Vector3 ResolveLiveNpcFallbackDestination(IGameObject liveNpc, out bool usesProjectedDestination)
+    {
+        usesProjectedDestination = false;
+        var pointOnFloor = VNavmesh.Query.Mesh.PointOnFloor;
+        Vector3? snapped = pointOnFloor != null
+            ? pointOnFloor(liveNpc.Position, true, VendorFallbackFloorSearchRadius)
+            : null;
+        var snapSource = "PointOnFloor";
+        if (!snapped.HasValue)
+        {
+            snapped = VNavmesh.Query.Mesh.NearestPoint(liveNpc.Position, VendorApproachMeshSearchRadius, VendorApproachFloorSearchHeight);
+            snapSource = "NearestPoint";
+        }
+        if (!snapped.HasValue)
+        {
+            LogLiveNpcFallbackDiagnostics(
+                $"missing|{liveNpc.Position}",
+                $@"[VendorNavigator] Failed to find a live NPC fallback projection for {_target?.NpcName ?? "vendor"} at {liveNpc.Position}, using the live NPC position instead");
+            return liveNpc.Position;
+        }
+        var snappedPosition = snapped.Value;
+        var verticalDrift = MathF.Abs(snappedPosition.Y - liveNpc.Position.Y);
+        var horizontalDrift = GetHorizontalDistance(snappedPosition, liveNpc.Position);
+        if (verticalDrift <= VendorApproachMaxVerticalDrift && horizontalDrift <= VendorStagingMaxHorizontalDrift)
+        {
+            usesProjectedDestination = true;
+            return snappedPosition;
+        }
+
+        LogLiveNpcFallbackDiagnostics(
+            $"{snapSource}|{snappedPosition}|{liveNpc.Position}|{horizontalDrift:F1}|{verticalDrift:F1}",
+            $@"[VendorNavigator] Rejecting {snapSource} live NPC fallback {snappedPosition} for {_target?.NpcName ?? "vendor"} because it drifted {horizontalDrift:F1}m horizontally and {verticalDrift:F1}m vertically from {liveNpc.Position}, using the live NPC position instead");
         return liveNpc.Position;
+    }
+
+    private void LogLiveNpcFallbackDiagnostics(string summary, string message)
+    {
+        if (summary == _lastFallbackDiagnosticsSummary
+         && (DateTime.UtcNow - _lastFallbackDiagnosticsLogTime).TotalSeconds < VendorApproachDiagnosticsCooldown)
+            return;
+
+        _lastFallbackDiagnosticsSummary = summary;
+        _lastFallbackDiagnosticsLogTime = DateTime.UtcNow;
+        GatherBuddy.Log.Debug(message);
     }
 
     private bool ShouldUseCloseRangeLiveNpcApproach(IGameObject? liveNpc, bool usingLiveNpc)
@@ -2326,14 +2422,15 @@ public class VendorNavigator
 
         var now = DateTime.UtcNow;
         var stalledSeconds = (now - _lastGroundProgressTime).TotalSeconds;
-        if (liveNpc != null
-         && IsWithinArrivalDistance(playerPosition, liveNpc)
-         && stalledSeconds >= VendorGroundInteractionRangeStallTimeout)
+        if (liveNpc != null && stalledSeconds >= VendorGroundInteractionRangeStallTimeout)
         {
-            GatherBuddy.Log.Debug($"[VendorNavigator] Ground approach stalled within interaction range of {GetDisplayName(liveNpc)} at {GetTargetDistance(playerPosition, liveNpc):F1}m, stopping pathing and preparing purchase");
-            StopPathing();
-            _state = State.ReadyToPurchase;
-            return true;
+            if (IsWithinLiveNpcInteractionWindow(playerPosition, liveNpc))
+            {
+                GatherBuddy.Log.Debug($@"[VendorNavigator] Ground approach stalled within the live NPC interaction window of {GetDisplayName(liveNpc)} with npcDistance={GetTargetDistance(playerPosition, liveNpc):F1}m, destinationDistance={destinationDistance:F1}m, npcVerticalDistance={GetVerticalDistance(playerPosition, liveNpc.Position):F1}m, handing off to vendor interaction");
+                StopPathing();
+                _state = State.ReadyToPurchase;
+                return true;
+            }
         }
         if (stalledSeconds < VendorGroundInteractionRangeFallbackTimeout)
             return false;
@@ -2344,7 +2441,7 @@ public class VendorNavigator
             _forceInteractionRangeApproachUntil = now.AddSeconds(VendorInteractionRangeFallbackDurationSeconds);
             GatherBuddy.Log.Debug($"[VendorNavigator] Ground approach stalled for {GetDisplayName(liveNpc)} at {destinationDistance:F1}m from the approach point, falling back to direct interaction-range navigation for {VendorInteractionRangeFallbackDurationSeconds:F1}s");
             UpdateGroundApproachProgress(playerPosition, liveNpc.Position);
-            StartVNavmesh(liveNpc.Position, true, NavigationDestinationMode.TargetInteractionRange);
+            StartVNavmesh(GetLiveNpcFallbackDestination(liveNpc), true, NavigationDestinationMode.TargetInteractionRange);
             return true;
         }
         if (stalledSeconds < VendorGroundProgressTimeout
@@ -2412,6 +2509,9 @@ public class VendorNavigator
 
     private static float GetHorizontalDistance(Vector3 first, Vector3 second)
         => Vector2.Distance(new Vector2(first.X, first.Z), new Vector2(second.X, second.Z));
+
+    private static float GetVerticalDistance(Vector3 first, Vector3 second)
+        => MathF.Abs(first.Y - second.Y);
 
     private static float GetForwardDot(Vector3 position, Vector3 npcPosition, Vector3 forward)
     {
@@ -2522,10 +2622,8 @@ public class VendorNavigator
             return (firmamentAetheryteId, null, false, firmamentAetheryteId != 0);
         var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
         if (aetheryteSheet == null) return (0, null, false, false);
-
-        foreach (var a in aetheryteSheet)
-            if (a.IsAetheryte && a.Territory.RowId == targetTerritoryId && Teleporter.IsAttuned(a.RowId))
-                return (a.RowId, null, false, false);
+        if (TryFindNearestDirectAetheryteInTerritory(aetheryteSheet, targetTerritoryId, npcPosition, out var directAetheryteId, logRouteDiagnostics))
+            return (directAetheryteId, null, false, false);
 
         var bestDist              = float.MaxValue;
         uint bestAetheryteId      = 0;
@@ -2581,7 +2679,6 @@ public class VendorNavigator
     // Port of Lifestream DataStore.GetTinyAetheryte position logic.
     private static Vector2? GetAetheryteXZ(Aetheryte shard)
     {
-        if (shard.AethernetName.RowId == 0) return null;
 
         var mapSheet    = Dalamud.GameData.GetExcelSheet<Map>();
         var markerSheet = Dalamud.GameData.GetSubrowExcelSheet<MapMarker>();
@@ -2598,11 +2695,16 @@ public class VendorNavigator
             }
         }
 
+        var markerDataType = shard.IsAetheryte ? 3u : 4u;
+        var markerKey = shard.IsAetheryte ? shard.RowId : shard.AethernetName.RowId;
+        if (markerKey == 0)
+            return null;
+
         foreach (var markerRow in markerSheet)
         {
             foreach (var m in markerRow)
             {
-                if (m.DataType == 4 && m.DataKey.RowId == shard.AethernetName.RowId)
+                if (m.DataType == markerDataType && m.DataKey.RowId == markerKey)
                 {
                     var x = (m.X - 1024f) / (scale / 100f);
                     var z = (m.Y - 1024f) / (scale / 100f);
@@ -2611,6 +2713,58 @@ public class VendorNavigator
             }
         }
         return null;
+    }
+
+    private static bool TryFindNearestDirectAetheryteInTerritory(ExcelSheet<Aetheryte> aetheryteSheet, uint territoryId, Vector3 npcPosition, out uint aetheryteId,
+        bool logRouteDiagnostics)
+    {
+        aetheryteId = 0;
+        uint fallbackAetheryteId = 0;
+        string? fallbackName = null;
+        string? selectedName = null;
+        var selectedDistance = float.MaxValue;
+        var candidateCount = 0;
+        var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
+
+        foreach (var aetheryte in aetheryteSheet)
+        {
+            if (!aetheryte.IsAetheryte || aetheryte.Territory.RowId != territoryId || !Teleporter.IsAttuned(aetheryte.RowId))
+                continue;
+
+            candidateCount++;
+            if (fallbackAetheryteId == 0)
+            {
+                fallbackAetheryteId = aetheryte.RowId;
+                fallbackName = aetheryte.PlaceName.Value.Name.ExtractText();
+            }
+
+            var aetheryteXZ = GetAetheryteXZ(aetheryte);
+            if (!aetheryteXZ.HasValue)
+                continue;
+
+            var distanceToVendor = Vector2.Distance(npcXZ, aetheryteXZ.Value);
+            if (distanceToVendor >= selectedDistance)
+                continue;
+
+            aetheryteId = aetheryte.RowId;
+            selectedName = aetheryte.PlaceName.Value.Name.ExtractText();
+            selectedDistance = distanceToVendor;
+        }
+
+        if (aetheryteId != 0)
+        {
+            if (logRouteDiagnostics)
+                GatherBuddy.Log.Debug($@"[VendorNavigator] Using direct aetheryte '{selectedName ?? aetheryteId.ToString()}' ({aetheryteId}) for territory {territoryId}: vendorDistance={selectedDistance:F1}m, candidates={candidateCount}");
+            return true;
+        }
+
+        if (fallbackAetheryteId == 0)
+            return false;
+
+        aetheryteId = fallbackAetheryteId;
+        if (logRouteDiagnostics)
+            GatherBuddy.Log.Debug($@"[VendorNavigator] Using fallback direct aetheryte '{fallbackName ?? fallbackAetheryteId.ToString()}' ({fallbackAetheryteId}) for territory {territoryId} because no direct map position was available among {candidateCount} candidates");
+        return true;
     }
 }
 

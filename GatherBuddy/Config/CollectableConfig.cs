@@ -26,9 +26,7 @@ public class CollectableConfig
             
             if (needsInit)
             {
-                GatherBuddy.Log.Debug($"[CollectableConfig] Initializing shop - was null: {_preferredCollectableShop == null}, name empty: {string.IsNullOrEmpty(_preferredCollectableShop?.Name)}, location zero: {_preferredCollectableShop?.Location == Vector3.Zero}");
                 _preferredCollectableShop = CollectableNpcLocations.GetDefaultShop();
-                GatherBuddy.Log.Debug($"[CollectableConfig] Set to: {_preferredCollectableShop.Name} at {_preferredCollectableShop.Location}");
             }
             return _preferredCollectableShop;
         }

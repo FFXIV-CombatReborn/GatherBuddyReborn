@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using GatherBuddy.Automation;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.AutoGather.Collectables;
 

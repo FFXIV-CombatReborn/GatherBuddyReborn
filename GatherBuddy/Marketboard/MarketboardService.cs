@@ -221,7 +221,7 @@ public sealed class MarketboardService : IDisposable
             foreach (var dc in dcSheet)
             {
                 if (dc.IsCloud) continue;
-                if (dc.Region < 1 || dc.Region > 4) continue;
+                if (dc.Region.RowId < 1 || dc.Region.RowId > 4) continue;
                 var name = dc.Name.ExtractText();
                 if (!string.IsNullOrEmpty(name) && name != homeDc)
                     result.Add(name);

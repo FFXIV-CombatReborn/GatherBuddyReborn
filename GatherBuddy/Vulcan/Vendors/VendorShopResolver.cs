@@ -159,7 +159,6 @@ public static class VendorShopResolver
             _gcShopEntries      = gcEntries;
             _lastBuildHadCompleteDataShare = hasCompleteDataShare;
 
-            GatherBuddy.Log.Debug($"[VendorShopResolver] {_gilShopEntries.Count} gil, {_specialShopEntries.Count} special, {_gcShopEntries.Count} GC");
 
             _allVendorNpcIds = BuildVendorNpcIdSet(_gilShopEntries, _specialShopEntries, _gcShopEntries);
             VendorNpcLocationCache.InitializeAsync(_allVendorNpcIds);
@@ -847,8 +846,6 @@ public static class VendorShopResolver
         }
 
         var deduped = MergeEquivalentOtherEntriesIntoTomestones(DeduplicateEntries(entries));
-        if (multiCostListings > 0)
-            GatherBuddy.Log.Debug($"[VendorShopResolver] SpecialShop cost selection: {multiCostListings} listings had multiple costs, {reprioritizedListings} selected a non-first recognized currency, {skippedExchangeListings} exchange-style listings were skipped");
         deduped.Sort((a, b) =>
         {
             var cmp = a.Group.CompareTo(b.Group);

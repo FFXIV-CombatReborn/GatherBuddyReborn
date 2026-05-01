@@ -14,7 +14,7 @@ using GatherBuddy.Plugin;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using DalamudObjectKind = global::Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
@@ -22,6 +22,7 @@ public static class VendorInteractionHelper
 {
     private static readonly Type[] CustomTalkScriptTypes =
     [
+        typeof(FateShop),
         typeof(GilShop),
         typeof(SpecialShop),
         typeof(GCShop),
@@ -219,6 +220,10 @@ public static class VendorInteractionHelper
     public static unsafe bool TrySelectShopOption(uint npcId, VendorMenuShopType shopType, uint shopId, out string? error)
     {
         error = null;
+        var iconMenuVisible = GenericHelpers.TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var iconMenu) && iconMenu->AtkUnitBase.IsVisible;
+        var stringMenuVisible = GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var stringMenu) && stringMenu->AtkUnitBase.IsVisible;
+        if (!iconMenuVisible && !stringMenuVisible)
+            return false;
         if (!TryGetOrCreateShopMenuSelectionState(npcId, shopType, shopId, out var selectionState, out error))
             return false;
 
@@ -231,7 +236,7 @@ public static class VendorInteractionHelper
 
         var menuIndex = selectionState.MenuIndices[selectionState.NextStepIndex];
 
-        if (GenericHelpers.TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var iconMenu) && iconMenu->AtkUnitBase.IsVisible)
+        if (iconMenuVisible)
         {
             if (menuIndex >= iconMenu->PopupMenu.PopupMenu.EntryCount)
             {
@@ -245,7 +250,7 @@ public static class VendorInteractionHelper
             return true;
         }
 
-        if (GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var stringMenu) && stringMenu->AtkUnitBase.IsVisible)
+        if (stringMenuVisible)
         {
             var master = new AddonMaster.SelectString((nint)stringMenu);
             if (menuIndex >= master.EntryCount)
@@ -611,7 +616,7 @@ public static class VendorInteractionHelper
             if (!TryBuildShopMenuSelectionPath(npcId, menuEntries[index], shopType, shopId, out var childMenuIndices))
                 continue;
 
-            var visibleIndex = GetVisibleMenuSelectionIndex(menuEntries, index, visibleMenuRowIds);
+            var visibleIndex = GetVisibleMenuSelectionIndex(npcId, menuEntries, index, visibleMenuRowIds);
             menuIndices = new List<int>(childMenuIndices.Count + 1) { visibleIndex };
             menuIndices.AddRange(childMenuIndices);
             return true;
@@ -627,7 +632,7 @@ public static class VendorInteractionHelper
         if (menuEntry.RowId == 0)
             return false;
 
-        if (MatchesMenuTarget(menuEntry, shopType, shopId))
+        if (MatchesMenuTarget(npcId, menuEntry, shopType, shopId))
             return true;
 
         var preHandlerSheet = Dalamud.GameData.GetExcelSheet<PreHandler>();
@@ -658,18 +663,36 @@ public static class VendorInteractionHelper
         return false;
     }
 
-    private static bool MatchesMenuTarget(RowRef menuEntry, VendorMenuShopType shopType, uint shopId)
-        => menuEntry.RowId == shopId
-        && shopType switch
+    private static bool MatchesMenuTarget(uint npcId, RowRef menuEntry, VendorMenuShopType shopType, uint shopId)
+        => shopType switch
         {
-            VendorMenuShopType.GilShop               => menuEntry.Is<GilShop>(),
-            VendorMenuShopType.SpecialShop           => menuEntry.Is<SpecialShop>(),
-            VendorMenuShopType.InclusionShop         => menuEntry.Is<InclusionShop>(),
-            VendorMenuShopType.CollectablesShop      => menuEntry.Is<CollectablesShop>(),
-            VendorMenuShopType.GrandCompanyShop      => menuEntry.Is<GCShop>(),
-            VendorMenuShopType.FreeCompanyCreditShop => menuEntry.Is<FccShop>(),
+            VendorMenuShopType.GilShop               => menuEntry.RowId == shopId && menuEntry.Is<GilShop>(),
+            VendorMenuShopType.SpecialShop           => MatchesSpecialShopMenuTarget(npcId, menuEntry, shopId),
+            VendorMenuShopType.InclusionShop         => menuEntry.RowId == shopId && menuEntry.Is<InclusionShop>(),
+            VendorMenuShopType.CollectablesShop      => menuEntry.RowId == shopId && menuEntry.Is<CollectablesShop>(),
+            VendorMenuShopType.GrandCompanyShop      => menuEntry.RowId == shopId && menuEntry.Is<GCShop>(),
+            VendorMenuShopType.FreeCompanyCreditShop => menuEntry.RowId == shopId && menuEntry.Is<FccShop>(),
             _                                        => false,
         };
+
+    private static bool MatchesSpecialShopMenuTarget(uint npcId, RowRef menuEntry, uint shopId)
+    {
+        if (menuEntry.RowId == shopId && menuEntry.Is<SpecialShop>())
+            return true;
+
+        var fateShopSheet = Dalamud.GameData.GetExcelSheet<FateShop>();
+        if (menuEntry.Is<FateShop>())
+            return fateShopSheet != null
+                && fateShopSheet.TryGetRow(menuEntry.RowId, out var fateShop)
+                && fateShop.SpecialShop.Any(specialShop => specialShop.RowId == shopId);
+        if (menuEntry.RowId != npcId || fateShopSheet == null || !fateShopSheet.TryGetRow(menuEntry.RowId, out var npcFateShop))
+            return false;
+
+        var matched = npcFateShop.SpecialShop.Any(specialShop => specialShop.RowId == shopId);
+        if (matched)
+            GatherBuddy.Log.Debug($"[VendorInteractionHelper] Matched special shop {shopId} via untyped FateShop row {menuEntry.RowId} for vendor {npcId}");
+        return matched;
+    }
 
     private static string DescribeMenuShopType(VendorMenuShopType shopType)
         => shopType switch
@@ -687,7 +710,7 @@ public static class VendorInteractionHelper
     {
         visibleMenuRowIds = [];
         var candidateRowIds = menuEntries
-            .Where(IsSelectableMenuEntry)
+            .Where(entry => IsSelectableMenuEntry(npcId, entry))
             .Select(entry => entry.RowId)
             .ToHashSet();
         if (candidateRowIds.Count == 0)
@@ -714,7 +737,7 @@ public static class VendorInteractionHelper
 
         foreach (var menuEntry in menuEntries)
         {
-            if (IsSelectableMenuEntry(menuEntry) && relatedRowIds.Contains(menuEntry.RowId))
+            if (IsSelectableMenuEntry(npcId, menuEntry) && relatedRowIds.Contains(menuEntry.RowId))
                 visibleMenuRowIds.Add(menuEntry.RowId);
         }
 
@@ -732,9 +755,9 @@ public static class VendorInteractionHelper
         return false;
     }
 
-    private static int GetVisibleMenuSelectionIndex(IReadOnlyList<RowRef> menuEntries, int rawIndex, IReadOnlyList<uint>? visibleMenuRowIds)
+    private static int GetVisibleMenuSelectionIndex(uint npcId, IReadOnlyList<RowRef> menuEntries, int rawIndex, IReadOnlyList<uint>? visibleMenuRowIds)
     {
-        var visibleFallbackIndex = CountSelectableMenuEntriesBefore(menuEntries, rawIndex);
+        var visibleFallbackIndex = CountSelectableMenuEntriesBefore(npcId, menuEntries, rawIndex);
         if (visibleMenuRowIds == null || visibleMenuRowIds.Count == 0 || rawIndex < 0 || rawIndex >= menuEntries.Count)
             return visibleFallbackIndex;
 
@@ -752,21 +775,22 @@ public static class VendorInteractionHelper
         return visibleFallbackIndex;
     }
 
-    private static int CountSelectableMenuEntriesBefore(IReadOnlyList<RowRef> menuEntries, int exclusiveUpperBound)
+    private static int CountSelectableMenuEntriesBefore(uint npcId, IReadOnlyList<RowRef> menuEntries, int exclusiveUpperBound)
     {
         var count = 0;
         for (var index = 0; index < exclusiveUpperBound; index++)
         {
-            if (IsSelectableMenuEntry(menuEntries[index]))
+            if (IsSelectableMenuEntry(npcId, menuEntries[index]))
                 count++;
         }
 
         return count;
     }
 
-    private static bool IsSelectableMenuEntry(RowRef menuEntry)
+    private static bool IsSelectableMenuEntry(uint npcId, RowRef menuEntry)
         => menuEntry.RowId != 0
-        && (menuEntry.Is<GilShop>()
+        && (IsNpcScopedFateShopMenuEntry(npcId, menuEntry)
+         || menuEntry.Is<GilShop>()
          || menuEntry.Is<SpecialShop>()
          || menuEntry.Is<GCShop>()
          || menuEntry.Is<FccShop>()
@@ -777,6 +801,19 @@ public static class VendorInteractionHelper
          || menuEntry.Is<TopicSelect>()
          || menuEntry.Is<DisposalShop>()
          || menuEntry.Is<LotteryExchangeShop>());
+
+    private static bool IsNpcScopedFateShopMenuEntry(uint npcId, RowRef menuEntry)
+    {
+        if (menuEntry.RowId == 0)
+            return false;
+        if (menuEntry.Is<FateShop>())
+            return true;
+        if (menuEntry.RowId != npcId)
+            return false;
+
+        var fateShopSheet = Dalamud.GameData.GetExcelSheet<FateShop>();
+        return fateShopSheet != null && fateShopSheet.TryGetRow(menuEntry.RowId, out _);
+    }
 
     private static bool TryResolveCustomTalkScriptArg(uint scriptArg, out RowRef scriptTarget)
     {
