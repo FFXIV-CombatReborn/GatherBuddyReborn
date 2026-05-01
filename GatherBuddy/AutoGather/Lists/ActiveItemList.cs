@@ -1,5 +1,6 @@
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Utility;
+using ElliLib.Extensions;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Helpers;
