@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Plugin;
 
@@ -251,14 +252,18 @@ internal static class DalamudPluginToggleHelper
 
     private static async Task InvokePluginLoadAsync(object localPlugin, Type pluginType, string internalName)
     {
-        var loadMethod = pluginType.GetMethod("LoadAsync", AllFlags, null, [typeof(PluginLoadReason), typeof(bool)], null);
+        var loadMethod = pluginType.GetMethod("LoadAsync", AllFlags, null, [typeof(PluginLoadReason), typeof(bool), typeof(CancellationToken)], null)
+            ?? pluginType.GetMethod("LoadAsync", AllFlags, null, [typeof(PluginLoadReason), typeof(bool)], null);
         if (loadMethod == null)
         {
             GatherBuddy.Log.Debug($"[DalamudPluginToggleHelper] Could not find LoadAsync on {pluginType.FullName}.");
             throw new InvalidOperationException($"Could not load {internalName}.");
         }
+        object?[] loadArguments = loadMethod.GetParameters().Length == 3
+            ? [PluginLoadReason.Installer, false, CancellationToken.None]
+            : [PluginLoadReason.Installer, false];
 
-        if (loadMethod.Invoke(localPlugin, [PluginLoadReason.Installer, false]) is not Task operationTask)
+        if (loadMethod.Invoke(localPlugin, loadArguments) is not Task operationTask)
         {
             GatherBuddy.Log.Debug($"[DalamudPluginToggleHelper] LoadAsync for {internalName} did not return a task.");
             throw new InvalidOperationException($"Could not load {internalName}.");
