@@ -12,6 +12,7 @@ using ElliLib.Text;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
+using Lumina.Excel;
 using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Gui;
@@ -45,6 +46,25 @@ public class CraftingMaterialsWindow : Window
         string Name,
         ushort IconId,
         bool IsPrecraft);
+    private sealed record MaterialPanel(
+        string Id,
+        string Label,
+        Vector4 Accent,
+        List<MaterialEntry> Entries,
+        RetainerColumnMode RetainerColumns,
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets);
+    private bool _cachedMaterialViewValid;
+    private bool _cachedHasMaterials;
+    private bool _cachedHasVisibleEntries;
+    private int _cachedTotalMissing;
+    private int _cachedTotalReady;
+    private CraftingListEditor? _cachedMaterialViewEditor;
+    private long _cachedMaterialViewVersion = -1;
+    private bool _cachedMaterialViewShowPrecrafts;
+    private bool _cachedMaterialViewPreferVendors;
+    private bool _cachedMaterialViewKeepFulfilled;
+    private bool _cachedMaterialViewShowRetainer;
+    private List<MaterialPanel> _cachedPanels = [];
 
     public CraftingMaterialsWindow() : base("Materials###CraftingMaterials")
     {
@@ -57,7 +77,12 @@ public class CraftingMaterialsWindow : Window
         };
     }
 
-    public void SetEditor(CraftingListEditor? editor) => _editor = editor;
+    public void SetEditor(CraftingListEditor? editor)
+    {
+        if (!ReferenceEquals(_editor, editor))
+            InvalidateMaterialView();
+        _editor = editor;
+    }
 
     public override void PreDraw()
     {
@@ -83,60 +108,17 @@ public class CraftingMaterialsWindow : Window
             ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1), "Calculating materials...");
             return;
         }
+        var showRetainer = AllaganTools.Enabled;
+        if (ShouldRebuildMaterialView(showRetainer))
+            RebuildMaterialView(showRetainer);
 
-        var materials = _editor.GetDisplayMaterials();
-
-        if (materials.Count == 0)
+        if (!_cachedHasMaterials)
         {
             ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "No materials needed.");
             return;
         }
 
-        var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
-        if (itemSheet == null) return;
-
-        var showRetainer = AllaganTools.Enabled;
-        var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
-        var hideSatisfiedRows = _editor.SkipIfEnoughEnabled && !_matsKeepFulfilled;
-        var craftMaterials = _matsShowPrecrafts
-            ? _editor.GetDisplayPrecraftMaterials()
-            : null;
-        var snapshotItemIds = materials.Keys.Concat(craftMaterials != null ? craftMaterials.Keys : Enumerable.Empty<uint>());
-        var retainerSnapshot = showRetainer
-            ? _editor.GetRetainerSnapshot(snapshotItemIds)
-            : RetainerItemSnapshot.Empty;
-
-        var allEntries = new List<MaterialEntry>();
-
-        foreach (var (itemId, needed) in materials)
-        {
-            if (!itemSheet.TryGetRow(itemId, out var item)) continue;
-            var have  = _editor.GetInventoryCount(itemId);
-            var retNQ = retainerSnapshot.GetCountNQ(itemId);
-            var retHQ = retainerSnapshot.GetCountHQ(itemId);
-            var effectiveAvailable = _editor.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
-            allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, false));
-        }
-        if (craftMaterials != null)
-        {
-            foreach (var (itemId, needed) in craftMaterials)
-            {
-                if (!itemSheet.TryGetRow(itemId, out var item)) continue;
-                var have  = _editor.GetInventoryCount(itemId);
-                var retNQ = retainerSnapshot.GetCountNQ(itemId);
-                var retHQ = retainerSnapshot.GetCountHQ(itemId);
-                var effectiveAvailable = _editor.GetDisplayCraftMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed);
-                allEntries.Add(new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, true));
-            }
-        }
-
-        var totalMissing = allEntries.Count(e => e.EffectiveAvailable < e.Needed);
-        var totalReady   = allEntries.Count - totalMissing;
-        var visibleEntries = hideSatisfiedRows
-            ? allEntries.Where(e => e.EffectiveAvailable < e.Needed).ToList()
-            : allEntries;
-
-        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"{totalMissing} missing  \u00b7  {totalReady} ready");
+        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"{_cachedTotalMissing} missing  ·  {_cachedTotalReady} ready");
         ImGui.SameLine();
         ImGui.Checkbox("150%##overcap", ref _matsOvercapPercent);
         if (ImGui.IsItemHovered())
@@ -161,13 +143,15 @@ public class CraftingMaterialsWindow : Window
         {
             ImGui.SameLine();
             if (ImGui.SmallButton("Refresh Retainers"))
+            {
                 _editor.InvalidateRetainerSnapshot();
+                InvalidateMaterialView();
+            }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Refresh retainer NQ/HQ counts. Automatic refresh is disabled here to avoid UI hitching.");
         }
         ImGui.Separator();
-
-        if (visibleEntries.Count == 0)
+        if (!_cachedHasVisibleEntries)
         {
             ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.4f, 1f), "All materials ready.");
             return;
@@ -177,46 +161,209 @@ public class CraftingMaterialsWindow : Window
         var spacing = ImGui.GetStyle().ItemSpacing;
         var panelW  = (avail.X - spacing.X) / 2f;
 
-        var preferVendors = _matsPreferVendors;
-        MaterialSource Cls(uint id) => MaterialSourceClassifier.Classify(id, preferVendors);
-
-        var gatherList = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Gatherable or MaterialSource.Fish).ToList();
-        var dropList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Drop).ToList();
-        var shopList   = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Scrip or MaterialSource.SpecialCurrency).ToList();
-        var vendorList = visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.GilVendor or MaterialSource.Other).ToList();
-        var shopTargets = BuildVendorBuyListTargets(shopList);
-        var vendorTargets = BuildVendorBuyListTargets(vendorList);
-        var craftList  = _matsShowPrecrafts ? visibleEntries.Where(e => Cls(e.ItemId) is MaterialSource.Craftable).ToList() : null;
-
-        var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
-        var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
-        var panels = new List<(string Id, string Label, Vector4 Accent, IReadOnlyList<MaterialEntry> Entries, RetainerColumnMode RetainerColumns,
-            IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets)>();
-        if (gatherList.Count > 0)        panels.Add(("##gather", "Gather",          AccentGather, gatherList, nonCraftRetainerMode, null));
-        if (dropList.Count > 0)          panels.Add(("##drop",   "Drops / Bicolor", AccentDrop,   dropList,   nonCraftRetainerMode, null));
-        if (shopList.Count > 0)          panels.Add(("##shop",   "Special Currency", AccentShop,  shopList,   nonCraftRetainerMode, shopTargets));
-        if (vendorList.Count > 0)        panels.Add(("##vendor", "Vendor",          AccentVendor, vendorList, nonCraftRetainerMode, vendorTargets));
-        if (craftList is { Count: > 0 }) panels.Add(("##craft",  "Craft",           AccentCraft,  craftList,  craftRetainerMode, null));
-
-        if (panels.Count == 0) return;
-
-        var rows   = (panels.Count + 1) / 2;
+        var rows   = (_cachedPanels.Count + 1) / 2;
         var panelH = (avail.Y - spacing.Y * (rows - 1)) / rows;
-
-        for (var i = 0; i < panels.Count; i++)
+        for (var i = 0; i < _cachedPanels.Count; i++)
         {
-            var (id, label, accent, entries, retainerColumns, panelVendorTargets) = panels[i];
-            var isLast   = i == panels.Count - 1;
-            var spanFull = isLast && panels.Count % 2 == 1;
-            DrawMaterialPanel(id, label, accent, entries, retainerColumns, spanFull ? avail.X : panelW, panelH, panelVendorTargets);
+            var panel = _cachedPanels[i];
+            var isLast   = i == _cachedPanels.Count - 1;
+            var spanFull = isLast && _cachedPanels.Count % 2 == 1;
+            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
     }
 
+    private void InvalidateMaterialView()
+    {
+        _cachedMaterialViewValid = false;
+        _cachedHasMaterials = false;
+        _cachedHasVisibleEntries = false;
+        _cachedTotalMissing = 0;
+        _cachedTotalReady = 0;
+        _cachedMaterialViewEditor = null;
+        _cachedMaterialViewVersion = -1;
+        _cachedPanels = [];
+    }
+
+    private bool ShouldRebuildMaterialView(bool showRetainer)
+    {
+        if (_editor == null)
+            return false;
+
+        if (!_cachedMaterialViewValid || !ReferenceEquals(_cachedMaterialViewEditor, _editor))
+            return true;
+        if (_cachedMaterialViewVersion != _editor.MaterialCacheVersion)
+            return true;
+        if (_cachedMaterialViewShowPrecrafts != _matsShowPrecrafts
+         || _cachedMaterialViewPreferVendors != _matsPreferVendors
+         || _cachedMaterialViewKeepFulfilled != _matsKeepFulfilled
+         || _cachedMaterialViewShowRetainer != showRetainer)
+            return true;
+
+        return false;
+    }
+
+    private void RebuildMaterialView(bool showRetainer)
+    {
+        if (_editor == null)
+            return;
+
+        try
+        {
+            var materials = _editor.GetDisplayMaterials();
+            _cachedHasMaterials = materials.Count > 0;
+            _cachedPanels = [];
+            _cachedTotalMissing = 0;
+            _cachedTotalReady = 0;
+            _cachedHasVisibleEntries = false;
+
+            if (!_cachedHasMaterials)
+            {
+                UpdateMaterialViewCacheMetadata(showRetainer);
+                return;
+            }
+
+            var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
+            if (itemSheet == null)
+            {
+                UpdateMaterialViewCacheMetadata(showRetainer);
+                return;
+            }
+
+            var countRetainersTowardNeed = showRetainer && _editor.RetainerRestockEnabled;
+            var hideSatisfiedRows = _editor.SkipIfEnoughEnabled && !_matsKeepFulfilled;
+            var craftMaterials = _matsShowPrecrafts
+                ? _editor.GetDisplayPrecraftMaterials()
+                : null;
+            var snapshotItemIds = materials.Keys.Concat(craftMaterials != null ? craftMaterials.Keys : Enumerable.Empty<uint>());
+            var retainerSnapshot = showRetainer
+                ? _editor.GetRetainerSnapshot(snapshotItemIds)
+                : RetainerItemSnapshot.Empty;
+
+            var gatherList = new List<MaterialEntry>();
+            var dropList = new List<MaterialEntry>();
+            var shopList = new List<MaterialEntry>();
+            var vendorList = new List<MaterialEntry>();
+            List<MaterialEntry>? craftList = _matsShowPrecrafts ? [] : null;
+
+            void AddEntry(MaterialEntry entry)
+            {
+                if (entry.EffectiveAvailable < entry.Needed)
+                    _cachedTotalMissing++;
+                else
+                    _cachedTotalReady++;
+
+                if (hideSatisfiedRows && entry.EffectiveAvailable >= entry.Needed)
+                    return;
+
+                _cachedHasVisibleEntries = true;
+                switch (MaterialSourceClassifier.Classify(entry.ItemId, _matsPreferVendors))
+                {
+                    case MaterialSource.Gatherable:
+                    case MaterialSource.Fish:
+                        gatherList.Add(entry);
+                        break;
+                    case MaterialSource.Drop:
+                        dropList.Add(entry);
+                        break;
+                    case MaterialSource.Scrip:
+                    case MaterialSource.SpecialCurrency:
+                        shopList.Add(entry);
+                        break;
+                    case MaterialSource.Craftable when craftList != null:
+                        craftList.Add(entry);
+                        break;
+                    case MaterialSource.GilVendor:
+                    case MaterialSource.Other:
+                        vendorList.Add(entry);
+                        break;
+                }
+            }
+
+            foreach (var (itemId, needed) in materials)
+            {
+                if (TryCreateMaterialEntry(itemSheet, itemId, needed, false, retainerSnapshot, countRetainersTowardNeed, out var entry))
+                    AddEntry(entry);
+            }
+
+            if (craftMaterials != null)
+            {
+                foreach (var (itemId, needed) in craftMaterials)
+                {
+                    if (TryCreateMaterialEntry(itemSheet, itemId, needed, true, retainerSnapshot, countRetainersTowardNeed, out var entry))
+                        AddEntry(entry);
+                }
+            }
+
+            SortEntries(gatherList);
+            SortEntries(dropList);
+            SortEntries(shopList);
+            SortEntries(vendorList);
+            if (craftList != null)
+                SortEntries(craftList);
+
+            var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
+            var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
+            if (gatherList.Count > 0) _cachedPanels.Add(new MaterialPanel("##gather", "Gather", AccentGather, gatherList, nonCraftRetainerMode, null));
+            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null));
+            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList)));
+            if (vendorList.Count > 0) _cachedPanels.Add(new MaterialPanel("##vendor", "Vendor", AccentVendor, vendorList, nonCraftRetainerMode, BuildVendorBuyListTargets(vendorList)));
+            if (craftList is { Count: > 0 }) _cachedPanels.Add(new MaterialPanel("##craft", "Craft", AccentCraft, craftList, craftRetainerMode, null));
+
+            UpdateMaterialViewCacheMetadata(showRetainer);
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Error($"[CraftingMaterialsWindow] Failed to rebuild materials view for list '{_editor.ListName}': {ex.Message}");
+            InvalidateMaterialView();
+        }
+    }
+
+    private void UpdateMaterialViewCacheMetadata(bool showRetainer)
+    {
+        _cachedMaterialViewValid = true;
+        _cachedMaterialViewEditor = _editor;
+        _cachedMaterialViewVersion = _editor?.MaterialCacheVersion ?? -1;
+        _cachedMaterialViewShowPrecrafts = _matsShowPrecrafts;
+        _cachedMaterialViewPreferVendors = _matsPreferVendors;
+        _cachedMaterialViewKeepFulfilled = _matsKeepFulfilled;
+        _cachedMaterialViewShowRetainer = showRetainer;
+    }
+
+    private bool TryCreateMaterialEntry(ExcelSheet<Item> itemSheet, uint itemId, int needed, bool isPrecraft,
+        RetainerItemSnapshot retainerSnapshot, bool countRetainersTowardNeed, out MaterialEntry entry)
+    {
+        entry = default;
+        if (!itemSheet.TryGetRow(itemId, out var item))
+            return false;
+
+        var have  = _editor?.GetInventoryCount(itemId) ?? 0;
+        var retNQ = retainerSnapshot.GetCountNQ(itemId);
+        var retHQ = retainerSnapshot.GetCountHQ(itemId);
+        var effectiveAvailable = isPrecraft
+            ? _editor?.GetDisplayCraftMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0
+            : _editor?.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0;
+        entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft);
+        return true;
+    }
+
+    private static void SortEntries(List<MaterialEntry> entries)
+    {
+        entries.Sort((left, right) =>
+        {
+            var leftReady = left.EffectiveAvailable >= left.Needed;
+            var rightReady = right.EffectiveAvailable >= right.Needed;
+            var readyComparison = leftReady.CompareTo(rightReady);
+            if (readyComparison != 0)
+                return readyComparison;
+            return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
+        });
+    }
+
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
-        IEnumerable<MaterialEntry> source,
+        IReadOnlyList<MaterialEntry> entries,
         RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
     {
         static void DrawCenteredHeader(string text, string? tooltip = null)
@@ -231,10 +378,6 @@ public class CraftingMaterialsWindow : Window
             if (tooltip != null && ImGui.IsItemHovered())
                 ImGui.SetTooltip(tooltip);
         }
-        var entries = source
-            .OrderBy(e => e.EffectiveAvailable >= e.Needed)
-            .ThenBy(e => e.Name)
-            .ToList();
 
         using (VulcanUiStyle.PushPanel())
         {
@@ -308,8 +451,15 @@ public class CraftingMaterialsWindow : Window
                 }
                 else
                 {
-                    foreach (var e in entries)
-                        DrawPanelRow(e, retainerColumnMode, vendorTargets);
+                    var clipper = ImGui.ImGuiListClipper();
+                    clipper.Begin(entries.Count);
+                    while (clipper.Step())
+                    {
+                        for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets);
+                    }
+                    clipper.End();
+                    clipper.Destroy();
                 }
 
                 ImGui.EndTable();

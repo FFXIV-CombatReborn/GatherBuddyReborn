@@ -22,6 +22,7 @@ public enum MaterialSource
 public static class MaterialSourceClassifier
 {
     private static HashSet<uint>? _gilVendorItems;
+    private static HashSet<uint>? _scripItems;
     private static HashSet<uint>? _specialCurrencyItems;
     private static HashSet<uint>? _craftableItems;
     private static HashSet<uint>? _dropItems;
@@ -30,6 +31,7 @@ public static class MaterialSourceClassifier
     public static void Reset()
     {
         _gilVendorItems       = null;
+        _scripItems           = null;
         _specialCurrencyItems = null;
         _craftableItems       = null;
         _dropItems            = null;
@@ -49,7 +51,7 @@ public static class MaterialSourceClassifier
         if (GatherBuddy.GameData.Fishes.ContainsKey(itemId))
             return MaterialSource.Fish;
 
-        if (ScripShopItemManager.ShopItems.Any(s => s.ItemId == itemId))
+        if (_scripItems?.Contains(itemId) == true)
             return MaterialSource.Scrip;
 
         if (_dropItems?.Contains(itemId) == true)
@@ -72,6 +74,7 @@ public static class MaterialSourceClassifier
         if (_initialized) return;
         _initialized = true;
         BuildGilVendorSet();
+        BuildScripSet();
         BuildSpecialCurrencySet();
         BuildCraftableSet();
         BuildDropSet();
@@ -92,6 +95,24 @@ public static class MaterialSourceClassifier
         catch (Exception ex)
         {
             GatherBuddy.Log.Warning($"[MaterialSourceClassifier] Gil vendor set failed: {ex.Message}");
+        }
+    }
+
+    private static void BuildScripSet()
+    {
+        _scripItems = new HashSet<uint>();
+        try
+        {
+            foreach (var item in ScripShopItemManager.ShopItems)
+            {
+                if (item.ItemId > 0)
+                    _scripItems.Add(item.ItemId);
+            }
+            GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Scrip set: {_scripItems.Count} items");
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Warning($"[MaterialSourceClassifier] Scrip set failed: {ex.Message}");
         }
     }
 

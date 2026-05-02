@@ -29,6 +29,7 @@ public class CraftingListConsumablesPopup
     private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
     private List<(uint ItemId, string Name)> _manualItems = new();
     private List<(uint ItemId, string Name)> _squadronManualItems = new();
+    public System.Action? OnSaved { get; set; }
 
     public void OpenListDefaults(CraftingListDefinition list)
     {
@@ -514,5 +515,6 @@ public class CraftingListConsumablesPopup
         _list.DefaultFinalSolverOverride = _workingDefaultFinalSolverOverride;
         GatherBuddy.CraftingListManager.SaveList(_list);
         MacroValidator.InvalidateAll();
+        OnSaved?.Invoke();
     }
 }
