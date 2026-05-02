@@ -224,6 +224,93 @@ public partial class VulcanWindow
 
         var count = _filteredRecipes?.Count ?? 0;
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1), $"{count} recipes");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1.0f), "Bulk Add");
+        ImGui.TextWrapped("Adds every currently filtered, uncrafted recipe to the selected crafting list once.");
+
+        var hasLists = GatherBuddy.CraftingListManager.Lists.Count > 0;
+        using (ImRaii.Disabled(_filteredUncraftedRecipeCount == 0 || !hasLists))
+        {
+            if (ImGui.Button($"Add {_filteredUncraftedRecipeCount} Recipe{(_filteredUncraftedRecipeCount == 1 ? string.Empty : "s")}...", new Vector2(-1, 0)))
+            {
+                _bulkAddFilteredListSearch = string.Empty;
+                ImGui.OpenPopup("BulkAddFilteredRecipesPopup");
+            }
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            if (!hasLists)
+                ImGui.SetTooltip("Create a crafting list first.");
+            else if (_filteredUncraftedRecipeCount == 0)
+                ImGui.SetTooltip("No uncrafted recipes match the current filters.");
+            else
+                ImGui.SetTooltip("Choose which crafting list should receive every currently filtered, uncrafted recipe.");
+        }
+
+        ImGui.SetNextWindowSize(new Vector2(320f, 0f), ImGuiCond.Appearing);
+        if (ImGui.BeginPopup("BulkAddFilteredRecipesPopup"))
+        {
+            ImGui.TextWrapped($"Add {_filteredUncraftedRecipeCount} currently filtered, uncrafted recipe(s) to:");
+            ImGui.Spacing();
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##BulkAddFilteredListSearch", "Search lists...", ref _bulkAddFilteredListSearch, 128);
+
+            var filteredLists = string.IsNullOrWhiteSpace(_bulkAddFilteredListSearch)
+                ? GatherBuddy.CraftingListManager.Lists.OrderBy(list => list.Name, StringComparer.OrdinalIgnoreCase).ToList()
+                : GatherBuddy.CraftingListManager.Lists
+                    .Where(list => list.Name.Contains(_bulkAddFilteredListSearch, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(list => list.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+            var rowH = ImGui.GetTextLineHeightWithSpacing();
+            var popupHeight = filteredLists.Count > 0 ? Math.Min(filteredLists.Count * rowH, 180f) : rowH;
+            ImGui.BeginChild("##BulkAddFilteredListScroll", new Vector2(0, popupHeight), true);
+            if (filteredLists.Count == 0)
+            {
+                ImGui.TextDisabled("No matches");
+            }
+            else
+            {
+                foreach (var list in filteredLists)
+                {
+                    if (ImGui.Selectable(list.Name))
+                    {
+                        AddFilteredRecipesToList(list);
+                        ImGui.CloseCurrentPopup();
+                    }
+                }
+            }
+            ImGui.EndChild();
+            ImGui.EndPopup();
+        }
+    }
+
+    private void AddFilteredRecipesToList(CraftingListDefinition list)
+    {
+        var addedCount = 0;
+        if (_filteredRecipes != null)
+        {
+            foreach (var recipe in _filteredRecipes)
+            {
+                if (recipe.IsCrafted)
+                    continue;
+
+                list.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, 1));
+                addedCount++;
+            }
+        }
+
+        if (addedCount == 0)
+            return;
+
+        GatherBuddy.CraftingListManager.SaveList(list);
+        RefreshOpenCraftingList(list.ID);
+        GatherBuddy.Log.Information($"[VulcanWindow] Added {addedCount} filtered uncrafted recipes to list '{list.Name}'");
+        Communicator.Print($"Added {addedCount} filtered uncrafted recipe(s) to '{list.Name}'.");
     }
 
     private void DrawResultsList()
@@ -454,39 +541,6 @@ public partial class VulcanWindow
                         }
                     }
 
-                    ImGui.Spacing();
-                    ImGui.Separator();
-                    ImGui.Spacing();
-
-                    ImGui.TextColored(new Vector4(0.6f, 0.9f, 1.0f, 1.0f), "Add all uncrafted (filtered) to:");
-
-                    var bulkH = filteredLists.Count > 0 ? Math.Min(filteredLists.Count * rowH, 150f) : rowH;
-                    ImGui.BeginChild("##BulkAddScroll", new Vector2(0, bulkH), true);
-                    if (filteredLists.Count == 0)
-                        ImGui.TextDisabled("No matches");
-                    foreach (var list in filteredLists)
-                    {
-                        if (ImGui.MenuItem($"{list.Name} (bulk)##bulk_{list.ID}"))
-                        {
-                            var uncraftedCount = 0;
-                            if (_filteredRecipes != null)
-                            {
-                                foreach (var r in _filteredRecipes)
-                                {
-                                    if (!r.IsCrafted)
-                                    {
-                                        list.Recipes.Add(new CraftingListItem(r.Recipe.RowId, 1));
-                                        uncraftedCount++;
-                                    }
-                                }
-                            }
-                            GatherBuddy.CraftingListManager.SaveList(list);
-                            RefreshOpenCraftingList(list.ID);
-                            GatherBuddy.Log.Information($"Added {uncraftedCount} uncrafted recipes to list '{list.Name}'");
-                            Communicator.Print($"Added {uncraftedCount} uncrafted recipe(s) to '{list.Name}'.");
-                        }
-                    }
-                    ImGui.EndChild();
                 }
                 else
                 {

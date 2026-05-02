@@ -306,7 +306,8 @@ public class Executor
             return;
         }
 
-        var time = DateTime.UtcNow.AddSeconds(30);
+        Dalamud.ClientState.TerritoryChanged += DoWaymarkOnArrival;
+        return;
 
         void DoWaymarkOnArrival(uint t)
         {
@@ -314,8 +315,6 @@ public class Executor
                 GatherBuddy.WaymarkManager.SetWaymarks(markers);
             Dalamud.ClientState.TerritoryChanged -= DoWaymarkOnArrival;
         }
-
-        Dalamud.ClientState.TerritoryChanged += DoWaymarkOnArrival;
     }
 
     public bool DoCommand(string argument)

@@ -64,6 +64,8 @@ public partial class VulcanWindow
     private static bool   _contextMenuNewListEphemeral = false;
     private static string? _contextMenuLastAddedList  = null;
     private static DateTime _contextMenuLastAddedAt;
+    private static string _bulkAddFilteredListSearch = string.Empty;
+    private static int _filteredUncraftedRecipeCount = 0;
     private static readonly uint[] CraftTypeToClassJobId = { 8, 9, 10, 11, 12, 13, 14, 15 };
     private static readonly string[] JobNames = { "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL" };
 
@@ -115,6 +117,7 @@ public partial class VulcanWindow
         };
         
         _filteredRecipes = filtered;
+        _filteredUncraftedRecipeCount = _filteredRecipes.Count(r => !r.IsCrafted);
         _filtersDirty = false;
         GatherBuddy.Log.Debug($"[VulcanWindow] Filtered to {_filteredRecipes.Count} recipes");
     }

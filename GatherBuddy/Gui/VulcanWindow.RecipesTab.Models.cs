@@ -370,34 +370,6 @@ public partial class VulcanWindow
                             }
                         }
                         
-                        ImGui.Spacing();
-                        ImGui.Separator();
-                        ImGui.Spacing();
-                        
-                        ImGui.TextColored(new Vector4(0.6f, 0.9f, 1.0f, 1.0f), "Add all uncrafted (filtered) to:");
-                        ImGui.Separator();
-                        
-                        foreach (var list in lists)
-                        {
-                            if (ImGui.MenuItem($"{list.Name} (bulk)##bulk_{list.ID}"))
-                            {
-                                var uncraftedCount = 0;
-                                if (_recipeTable != null)
-                                {
-                                    foreach (var (recipe, _) in _recipeTable.GetFilteredItems())
-                                    {
-                                        if (!recipe.IsCrafted)
-                                        {
-                                            list.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, 1));
-                                            uncraftedCount++;
-                                        }
-                                    }
-                                }
-                                GatherBuddy.CraftingListManager.SaveList(list);
-                                GatherBuddy.VulcanWindow?.RefreshOpenCraftingList(list.ID);
-                                GatherBuddy.Log.Information($"Added {uncraftedCount} uncrafted recipes to list '{list.Name}'");
-                            }
-                        }
                     }
                     else
                     {
