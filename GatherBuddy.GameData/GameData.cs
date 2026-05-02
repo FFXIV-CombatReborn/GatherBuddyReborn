@@ -184,7 +184,7 @@ public class GameData
             OverriddenFish = Fishes.Values.Count(f => f.HasOverridenData);
 
             FishingSpots = DataManager.GetExcelSheet<FishingSpotRow>()
-                .Where(f => (f.PlaceName.RowId != 0 || f.RowId >= 10017) && (f.TerritoryType.RowId > 0 || f.RowId == 10000 || (f.RowId >= 10017 && f.RowId < 10026)))
+                .Where(f => (f.PlaceName.RowId != 0 || f.RowId >= 10017) && (f.TerritoryType.RowId > 0 || f.RowId == 10000 || f.RowId >= 10017))
                 .Select(f => new FishingSpot(this, f))
                 .Concat(
                     DataManager.GetExcelSheet<SpearfishingNotebook>()
