@@ -45,12 +45,19 @@ public class CraftingListDefinition
 
     public CraftingQualityOverrideMode GetQualityOverrideMode(Recipe recipe, bool isOriginalRecipe)
     {
-        if (!ShouldForceQuickSynth(recipe, isOriginalRecipe))
+        if (!ShouldApplyQuickSynthAllOverrides(isOriginalRecipe))
             return CraftingQualityOverrideMode.None;
+
+        if (recipe.CanQuickSynth)
+        {
+            return QuickSynthAllPreferNQ
+                ? CraftingQualityOverrideMode.RequireNQOnly
+                : CraftingQualityOverrideMode.PreferNQWithHQFallback;
+        }
 
         return QuickSynthAllPreferNQ
             ? CraftingQualityOverrideMode.RequireNQOnly
-            : CraftingQualityOverrideMode.PreferNQWithHQFallback;
+            : CraftingQualityOverrideMode.None;
     }
 
     public CraftingListPlan CreatePlan(bool useRetainerCraftableAvailability = false)

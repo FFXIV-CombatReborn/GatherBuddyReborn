@@ -1085,6 +1085,7 @@ public class CraftingListEditor
             var recipeOptions = planningList.GetRecipeOptions(queueItem.RecipeId, queueItem.IsOriginalRecipe);
             var effectiveQuickSynth = recipeOptions.NQOnly || planningList.ShouldForceQuickSynth(recipeData.Value, queueItem.IsOriginalRecipe);
             var forceQuickSynth = planningList.ShouldForceQuickSynth(recipeData.Value, queueItem.IsOriginalRecipe);
+            var forcePreferNQNoQuickSynth = !recipeData.Value.CanQuickSynth && planningList.ShouldForcePreferNQ(queueItem.IsOriginalRecipe);
             var queueItemCraftSettings = GetEffectiveCraftSettings(queueItem.RecipeId, queueItem.IsOriginalRecipe);
             var validation = WillUseQuickSynth(recipeData.Value, queueItem.RecipeId, queueItem.IsOriginalRecipe)
                 ? null
@@ -1099,7 +1100,7 @@ public class CraftingListEditor
                 IsOriginalRecipe = queueItem.IsOriginalRecipe,
                 Recipe = recipeData.Value,
                 ItemName = itemName,
-                Label = $"{(effectiveQuickSynth ? "[QS] " : string.Empty)}{i + 1}. {itemName} x{queueItem.Quantity} ({jobName})",
+                Label = $"{(effectiveQuickSynth ? "[QS] " : forcePreferNQNoQuickSynth ? "[NQ] " : string.Empty)}{i + 1}. {itemName} x{queueItem.Quantity} ({jobName})",
                 BaseTextColor = effectiveQuickSynth
                     ? new Vector4(0.3f, 0.9f, 0.9f, 1f)
                     : queueItem.IsOriginalRecipe
@@ -1285,6 +1286,7 @@ public class CraftingListEditor
             var jobName = GetCraftingJobName(recipe.Value.CraftType.RowId);
             var effectiveCraftSettings = GetEffectiveCraftSettings(item.RecipeId, true);
             var effectiveQuickSynth = IsEffectivelyQuickSynth(recipe.Value, item.RecipeId, true);
+            var forcePreferNQNoQuickSynth = !recipe.Value.CanQuickSynth && _list.ShouldForcePreferNQ(true);
             var validation = WillUseQuickSynth(recipe.Value, item.RecipeId, true)
                 ? null
                 : MacroValidator.GetOrCompute(item.RecipeId,
@@ -1296,7 +1298,7 @@ public class CraftingListEditor
                 ListIndex = i,
                 Recipe = recipe.Value,
                 ItemName = itemName,
-                Label = $"{(effectiveQuickSynth ? "[QS] " : string.Empty)}{(item.CraftSettings?.HasAnySettings() == true ? "[SET] " : string.Empty)}{(effectiveCraftSettings?.IngredientPreferences.Count > 0 ? "[HQ] " : string.Empty)}{(item.Options.Skipping ? "[SKIP] " : string.Empty)}{itemName} x{item.Quantity} ({jobName})##recipe_{i}",
+                Label = $"{(effectiveQuickSynth ? "[QS] " : forcePreferNQNoQuickSynth ? "[NQ] " : string.Empty)}{(item.CraftSettings?.HasAnySettings() == true ? "[SET] " : string.Empty)}{(effectiveCraftSettings?.IngredientPreferences.Count > 0 ? "[HQ] " : string.Empty)}{(item.Options.Skipping ? "[SKIP] " : string.Empty)}{itemName} x{item.Quantity} ({jobName})##recipe_{i}",
                 TextColor = item.Options.Skipping
                     ? new Vector4(0.7f, 0.7f, 0.7f, 1f)
                     : effectiveQuickSynth
