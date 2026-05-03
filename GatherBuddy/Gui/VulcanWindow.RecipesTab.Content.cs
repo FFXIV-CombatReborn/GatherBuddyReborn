@@ -2,18 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
-using Dalamud.Interface.Utility;
 using ElliLib;
-using ElliLib.Table;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -229,32 +225,37 @@ public partial class VulcanWindow
         ImGui.Separator();
         ImGui.Spacing();
 
-        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1.0f), "Bulk Add");
-        ImGui.TextWrapped("Adds every currently filtered, uncrafted recipe to the selected crafting list once.");
-
         var hasLists = GatherBuddy.CraftingListManager.Lists.Count > 0;
         using (ImRaii.Disabled(_filteredUncraftedRecipeCount == 0 || !hasLists))
         {
-            if (ImGui.Button($"Add {_filteredUncraftedRecipeCount} Recipe{(_filteredUncraftedRecipeCount == 1 ? string.Empty : "s")}...", new Vector2(-1, 0)))
+            if (ImGui.Button($"Bulk add {_filteredUncraftedRecipeCount} Recipe{(_filteredUncraftedRecipeCount == 1 ? string.Empty : "s")}...", new Vector2(-1, 0)))
             {
                 _bulkAddFilteredListSearch = string.Empty;
                 ImGui.OpenPopup("BulkAddFilteredRecipesPopup");
             }
         }
+
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
+            const string description = "Adds every currently filtered, uncrafted recipe to the crafting list you will select once.";
             if (!hasLists)
-                ImGui.SetTooltip("Create a crafting list first.");
+            {
+                ImGui.SetTooltip($"{description}\n\nCreate a crafting list first.");
+            }
             else if (_filteredUncraftedRecipeCount == 0)
-                ImGui.SetTooltip("No uncrafted recipes match the current filters.");
+            {
+                ImGui.SetTooltip($"{description}\n\nNo uncrafted recipes match the current filters.");
+            }
             else
-                ImGui.SetTooltip("Choose which crafting list should receive every currently filtered, uncrafted recipe.");
+            {
+                ImGui.SetTooltip($"{description}");
+            }
         }
 
         ImGui.SetNextWindowSize(new Vector2(320f, 0f), ImGuiCond.Appearing);
         if (ImGui.BeginPopup("BulkAddFilteredRecipesPopup"))
         {
-            ImGui.TextWrapped($"Add {_filteredUncraftedRecipeCount} currently filtered, uncrafted recipe(s) to:");
+            ImGui.TextWrapped($"Bulk add {_filteredUncraftedRecipeCount} currently filtered, uncrafted recipe(s) to:");
             ImGui.Spacing();
             ImGui.SetNextItemWidth(-1);
             ImGui.InputTextWithHint("##BulkAddFilteredListSearch", "Search lists...", ref _bulkAddFilteredListSearch, 128);
@@ -779,6 +780,17 @@ public partial class VulcanWindow
         ImGui.SetNextItemWidth(100);
         ImGui.InputInt("##browserQty", ref _browserCraftQuantity, 1);
         if (_browserCraftQuantity < 1) _browserCraftQuantity = 1;
+
+        ImGui.SameLine();
+        var allaganEnabled = AllaganTools.Enabled;
+        if (!allaganEnabled)
+            _browserRetainerRestock = false;
+        using (ImRaii.Disabled(!allaganEnabled))
+            ImGui.Checkbox("Restock from Retainers##browserRestock", ref _browserRetainerRestock);
+        if (ImGui.IsItemHovered(allaganEnabled ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(allaganEnabled
+                ? "Automatically withdraw missing materials from your retainers before crafting."
+                : "AllaganTools (InventoryTools) plugin is required.");
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
         var topRowButtonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;

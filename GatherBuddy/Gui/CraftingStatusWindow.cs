@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
 using GatherBuddy.Crafting;
@@ -69,6 +68,15 @@ public class CraftingStatusWindow : Window
                 var itemName = recipe.ItemResult.Value.Name.ExtractText();
                 ImGui.Text($"Current Recipe: {itemName}");
             }
+        }
+
+        if (currentState != CraftingQueueProcessor.QueueState.Idle
+            && currentState != CraftingQueueProcessor.QueueState.Complete && currentState != CraftingQueueProcessor.QueueState.WaitingForGather)
+        {
+            var remainingMs = CraftingTimeEstimator.EstimateRemainingMs(_queueProcessor.Queue, currentIndex);
+            ImGui.Text($"Estimated Time Remaining: ~{CraftingTimeEstimator.FormatDuration(remainingMs)}");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Estimate based on action count per craft (macro length when set, otherwise a default) and the configured action delay. Excludes time spent gathering, repairing, or switching jobs.");
         }
 
         ImGui.Spacing();
@@ -199,18 +207,6 @@ public class CraftingStatusWindow : Window
     {
         if (_queueProcessor == null || index < 0 || index >= _queueProcessor.QueueCount)
             return null;
-        
-        try
-        {
-            var queueField = typeof(CraftingQueueProcessor).GetField("_queue", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (queueField?.GetValue(_queueProcessor) is List<CraftingListItem> queue)
-            {
-                return queue[index];
-            }
-        }
-        catch { }
-        
-        return null;
+        return _queueProcessor.Queue[index];
     }
 }

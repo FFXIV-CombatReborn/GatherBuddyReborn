@@ -1,20 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface;
-using Dalamud.Interface.Textures;
-using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -205,7 +194,8 @@ public partial class VulcanWindow
     private static void StartBrowserQuickSynth(Recipe recipe, int quantity)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
-        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, settings, true);
+        var retainerRestock = _browserRetainerRestock && AllaganTools.Enabled;
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, settings, true, retainerRestock);
         GatherBuddy.Log.Information($"[VulcanWindow] Browser quick synth: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
         CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
     }
@@ -236,13 +226,14 @@ public partial class VulcanWindow
             };
         }
 
-        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, craftSettings, false);
+        var retainerRestock = _browserRetainerRestock && AllaganTools.Enabled;
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, craftSettings, false, retainerRestock);
 
         GatherBuddy.Log.Information($"[VulcanWindow] Browser craft: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
         CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
     }
 
-    private static CraftingExecutionPlan CreateBrowserExecutionPlan(Recipe recipe, int quantity, RecipeCraftSettings? craftSettings, bool nqOnly)
+    private static CraftingExecutionPlan CreateBrowserExecutionPlan(Recipe recipe, int quantity, RecipeCraftSettings? craftSettings, bool nqOnly, bool retainerRestock)
     {
         var list = new CraftingListDefinition
         {
@@ -250,6 +241,7 @@ public partial class VulcanWindow
             Name = recipe.ItemResult.Value.Name.ExtractText(),
             SkipIfEnough = true,
             SkipFinalIfEnough = false,
+            RetainerRestock = retainerRestock,
         };
 
         list.Recipes.Add(new CraftingListItem(recipe.RowId, quantity)
