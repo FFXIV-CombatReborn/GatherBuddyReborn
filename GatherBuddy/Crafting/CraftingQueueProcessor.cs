@@ -215,6 +215,7 @@ public class CraftingQueueProcessor
                 }
                 break;
             case QueueState.Complete:
+                
                 break;
         }
     }

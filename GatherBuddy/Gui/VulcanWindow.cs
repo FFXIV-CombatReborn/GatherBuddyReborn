@@ -35,7 +35,7 @@ public partial class VulcanWindow : Window, IDisposable
     private bool                    _openCreateListPopup = false;
     private bool                    _openCreateFolderPopup = false;
 
-    private bool _isMinimized = false;
+    private bool? _pendingCollapseState = null;
     private bool _wasFocusedLastFrame = false;
     
     // TeamCraft import state
@@ -83,19 +83,18 @@ public partial class VulcanWindow : Window, IDisposable
     
     private void MinimizeWindow()
     {
-        _isMinimized = true;
-        IsOpen = false;
+        _pendingCollapseState = true;
     }
-    
+
     public void RestoreWindow()
     {
-        _isMinimized = false;
+        _pendingCollapseState = false;
         IsOpen = true;
     }
 
     public void OpenToMarketboardItem(uint itemId)
     {
-        _isMinimized       = false;
+        _pendingCollapseState = false;
         IsOpen             = true;
         _mbRequestFocus    = true;
         _mbSelectedItemId  = itemId;
@@ -104,7 +103,7 @@ public partial class VulcanWindow : Window, IDisposable
 
     public void OpenToRecipe(uint recipeId)
     {
-        _isMinimized            = false;
+        _pendingCollapseState   = false;
         IsOpen                  = true;
         _recipesTabRequestFocus = true;
         _pendingRecipeId        = recipeId;
@@ -122,12 +121,12 @@ public partial class VulcanWindow : Window, IDisposable
         if (list == null)
         {
             GatherBuddy.Log.Warning($"[VulcanWindow] OpenToList: No list found matching '{argument}'");
-            _isMinimized = false;
+            _pendingCollapseState = false;
             IsOpen = true;
             return;
         }
 
-        _isMinimized = false;
+        _pendingCollapseState = false;
         IsOpen = true;
         OpenCraftingList(list);
     }
@@ -142,7 +141,7 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         PrepareCreateListPopup();
-        _isMinimized = false;
+        _pendingCollapseState = false;
         IsOpen = true;
         _craftingListsRequestFocus = true;
         _openCreateListPopup = true;
@@ -193,6 +192,12 @@ public partial class VulcanWindow : Window, IDisposable
     {
         if (!IsOpen)
             return;
+
+        if (_pendingCollapseState.HasValue)
+        {
+            ImGui.SetNextWindowCollapsed(_pendingCollapseState.Value, ImGuiCond.Always);
+            _pendingCollapseState = null;
+        }
 
         if (_recipesTabRequestFocus)
             ImGui.SetNextWindowFocus();

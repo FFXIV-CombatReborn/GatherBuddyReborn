@@ -679,7 +679,7 @@ public class CraftingListEditor
         }
 
         var halfW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
-        if (ImGui.Button("Gather List##gatherList", new Vector2(halfW, 22)))
+        if (ImGui.Button("Add to New Gathering List##gatherList", new Vector2(halfW, 22)))
         {
             var materials = new Dictionary<uint, int>(GetCachedMaterials());
             CraftingGatherBridge.CreatePersistentGatherList($"{_list.Name}...Auto-Generated", materials);
