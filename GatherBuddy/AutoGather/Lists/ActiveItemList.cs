@@ -142,14 +142,14 @@ namespace GatherBuddy.AutoGather.Lists
                 _consumedCloudedNode = EnhancedCurrentWeather.GetCurrentWeatherId() == x.Node.UmbralWeather.Id;
         }
 
-        private bool NeedsGathering((IGatherable item, uint quantity) value)
+        private bool NeedsGathering((IGatherable item, uint quantity, ILocation? preferredLocation) value)
         {
-            var (item, quantity) = value;
+            var (item, quantity, _) = value;
             return item.GetTotalCount() < quantity && CheckOvercap(item);
         }
 
         private bool NeedsGathering(GatherTarget target)
-            => NeedsGathering((target.Item, target.Quantity));
+            => NeedsGathering((target.Item, target.Quantity, target.Location));
 
         private static bool CheckOvercap(IGatherable item)
         {
@@ -323,16 +323,14 @@ namespace GatherBuddy.AutoGather.Lists
             var targets = _listsManager.ActiveItems
                 // Filter out items that are already gathered.
                 .Where(NeedsGathering)
-                // Fetch preferred location.
-                .Select(x => (x.Item, x.Quantity, PreferredLocation: _listsManager.GetPreferredLocation(x.Item)))
                 // Flatten node list and calculate the next uptime.
-                .SelectMany(x => x.Item.Locations.Select(Location
-                    => (x.Item, Location, Time: Location switch
+                .SelectMany(x => x.Item.Locations.Select(location
+                    => (x.Item, Location: location, Time: location switch
                     {
                         GatheringNode node => node.Times.NextUptime(adjustedServerTime),
                         FishingSpot spot => GatherBuddy.UptimeManager.NextUptime((x.Item as Fish)!, spot.Territory, adjustedServerTime),
                         _ => throw new InvalidOperationException()
-                    }, x.Quantity, x.PreferredLocation)))
+                    }, x.Quantity, PreferredLocation: GetTargetPreferredLocation(x.Item, x.PreferredLocation, location))))
                 // If treasure map, only gather if the allowance is up.
                 .Select(x => x.Item.IsTreasureMap && (nextAllowance ??= DiscipleOfLand.NextTreasureMapAllowance) > adjustedServerTime.DateTime ? x with { Time = TimeInterval.Invalid } : x)
                 // Remove nodes that require the player to be on the home world.
@@ -350,8 +348,8 @@ namespace GatherBuddy.AutoGather.Lists
                 .Select(x => x with { Time = IntersectPredatorUptime(x.Item, x.Location, x.Time, adjustedServerTime) })
                 // Remove uptime for nodes that have already been gathered.
                 .Select(x => x.Location is GatheringNode node && _visitedTimedNodes.ContainsKey(node) ? x with { Time = TimeInterval.Invalid } : x)
-                // Group by item and select the best node.
-                .GroupBy(x => x.Item, x => x, (_, g) => g
+                // Select one best node per configured entry, or one node per location when no preference should expand.
+                .GroupBy(x => (x.Item, x.Quantity, x.PreferredLocation), x => x, (_, g) => g
                     // Prioritize active nodes
                     .OrderBy(x => !x.Time.InRange(adjustedServerTime))
                     // Prioritize preferred location, then current job, then preferred job, then the rest.
@@ -430,6 +428,17 @@ namespace GatherBuddy.AutoGather.Lists
             LogFishPriorityOrder(adjustedServerTime);
 
             GatherBuddy.Log.Verbose($"Gatherable items: ({_gatherableItems.Count}): {string.Join(", ", _gatherableItems.Select(x => x.Item.Name))}.");
+        }
+
+        private static ILocation? GetTargetPreferredLocation(IGatherable item, ILocation? preferredLocation, ILocation location)
+        {
+            if (preferredLocation != null)
+                return preferredLocation;
+
+            return GatherBuddy.Config.AutoGatherConfig.SplitGatherableForAllLocationsIfNoPreferenceSelected
+             && item.Locations.Count > 1
+                ? location
+                : null;
         }
 
         private ILocation CorrectForPredatorLocation(IGatherable item, ILocation location)

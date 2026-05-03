@@ -227,8 +227,14 @@ public partial class Interface
                                 continue;
                         }
 
-                        if(!list.Add(item, quantity))
-                            list.SetQuantity(item, quantity + list.Quantities[item]);
+                        if (!list.Add(item, quantity))
+                        {
+                            var existingIdx = list.Entries
+                                .Select((entry, i) => (entry, i))
+                                .First(x => x.entry.Item == item && x.entry.PreferredLocation == null)
+                                .i;
+                            list.SetQuantity(existingIdx, quantity + list.Entries[existingIdx].Quantity);
+                        }
                     }
 
                     _plugin.AutoGatherListsManager.Save();
@@ -292,24 +298,28 @@ public partial class Interface
         if (!box)
             return;
 
-        _autoGatherListsCache.SetExcludedGatherbales(list.Items.OfType<Gatherable>());
+        _autoGatherListsCache.SetExcludedGatherbales(list.Entries
+            .Where(e => e.PreferredLocation == null)
+            .Select(e => e.Item)
+            .OfType<Gatherable>());
         var gatherables = _autoGatherListsCache.FilteredGatherables;
         var selector    = _autoGatherListsCache.GatherableSelector;
         int changeIndex = -1, changeItemIndex = -1, deleteIndex = -1;
 
-        for (var i = 0; i < list.Items.Count; ++i)
+        for (var i = 0; i < list.Entries.Count; ++i)
         {
-            var       item  = list.Items[i];
-            using var id    = ImRaii.PushId((int)item.ItemId);
+            var entry = list.Entries[i];
+            var item = entry.Item;
+            using var id    = ImRaii.PushId(i);
             using var group = ImRaii.Group();
             if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Trash.ToIconString(), IconButtonSize, "Delete this item from the list", false,
                     true))
                 deleteIndex = i;
             ImGui.SameLine();
 
-            var enabled = list.EnabledItems[item];
+            var enabled = entry.Enabled;
             if (ImGui.Checkbox($"##{item.ItemId}", ref enabled))
-                _plugin.AutoGatherListsManager.ChangeEnabled(list, item, enabled);
+                _plugin.AutoGatherListsManager.ChangeEnabled(list, i, enabled);
 
             ImGui.SameLine();
             if (selector.Draw(item.Name[GatherBuddy.Language], out var newIdx))
@@ -324,13 +334,13 @@ public partial class Interface
             ImGui.SameLine(0f, ImGui.CalcTextSize($"0000 / ").X - ImGui.CalcTextSize($"{invTotal} / ").X);
             ImGui.Text($"{invTotal} / ");
             ImGui.SameLine(0, 3f);
-            var quantity = list.Quantities.TryGetValue(item, out var q) ? (int)q : 1;
+            var quantity = (int)entry.Quantity;
             ImGui.SetNextItemWidth(100f * Scale);
             if (ImGui.InputInt("##quantity", ref quantity, 1, 10))
-                _plugin.AutoGatherListsManager.ChangeQuantity(list, item, (uint)quantity);
+                _plugin.AutoGatherListsManager.ChangeQuantity(list, i, (uint)quantity);
             ImGui.SameLine();
-            if (DrawLocationInput(item, list.PreferredLocations.GetValueOrDefault(item), out var newLoc))
-                _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
+            if (DrawLocationInput(item, entry.PreferredLocation, out var newLoc))
+                _plugin.AutoGatherListsManager.ChangePreferredLocation(list, i, newLoc);
             group.Dispose();
 
             // Custom drag-drop for moving items within and between lists
@@ -367,10 +377,10 @@ public partial class Interface
             _plugin.AutoGatherListsManager.AddItem(list, gatherables[_autoGatherListsCache.NewGatherableIdx]);
 
         ImGui.SameLine();
-        var allEnabled = list.Items.All(i => list.EnabledItems[i]);
+        var allEnabled = list.Entries.All(e => e.Enabled);
         if (ImGui.Checkbox("##AllEnabled", ref allEnabled))
         {
-            foreach (var i in list.Items)
+            for (var i = 0; i < list.Entries.Count; ++i)
                 _plugin.AutoGatherListsManager.ChangeEnabled(list, i, allEnabled);
         }
         ImGuiUtil.HoverTooltip((allEnabled ? "Disable" : "Enable" ) + " all items in the list");
@@ -424,4 +434,3 @@ public partial class Interface
         _autoGatherListsCache.Selector.DrawBaitBuyListResultPopup();
     }
 }
-

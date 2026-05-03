@@ -73,6 +73,12 @@ public partial class Interface
                 "This option has priority over going home when idle.",
                 GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode, b => GatherBuddy.Config.AutoGatherConfig.TeleportToNextNode = b);
 
+        public static void DrawSplitGatherableForAllLocationsBox()
+            => DrawCheckbox("Split Gatherable for all its location if No Preference selected",
+                "When adding an item with multiple locations and no preferred location selected, create one auto-gather entry per location instead of a single shared entry.",
+                GatherBuddy.Config.AutoGatherConfig.SplitGatherableForAllLocationsIfNoPreferenceSelected,
+                b => GatherBuddy.Config.AutoGatherConfig.SplitGatherableForAllLocationsIfNoPreferenceSelected = b);
+
         public static void DrawGoHomeBox()
         {
             DrawCheckbox("Go home when done",                       "Uses the '/li auto' command to take you home when done gathering",
@@ -1611,6 +1617,7 @@ public partial class Interface
                 }
                 ConfigFunctions.DrawCheckRetainersBox();
                 ConfigFunctions.DrawTeleportToNextNodeBox();
+                ConfigFunctions.DrawSplitGatherableForAllLocationsBox();
                 ConfigFunctions.DrawGoHomeBox();
                 ConfigFunctions.DrawUseGivingLandOnCooldown();
                 ConfigFunctions.DrawUseSkillsForFallabckBox();
