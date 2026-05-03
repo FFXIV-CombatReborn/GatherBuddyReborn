@@ -57,6 +57,7 @@ public partial class VulcanWindow
     private static bool _isInitialized = false;
     private static bool _craftedStatusDirty = false;
     private static int _browserCraftQuantity = 1;
+    private static bool _browserRetainerRestock = false;
     private static RecipeCraftSettingsPopup _craftSettingsPopup = new();
     private static string _contextMenuListSearch    = string.Empty;
     private static int    _contextMenuAddQuantity    = 1;

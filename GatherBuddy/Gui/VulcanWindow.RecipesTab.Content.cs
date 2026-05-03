@@ -2,18 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
-using Dalamud.Interface.Utility;
 using ElliLib;
-using ElliLib.Table;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -779,6 +775,17 @@ public partial class VulcanWindow
         ImGui.SetNextItemWidth(100);
         ImGui.InputInt("##browserQty", ref _browserCraftQuantity, 1);
         if (_browserCraftQuantity < 1) _browserCraftQuantity = 1;
+
+        ImGui.SameLine();
+        var allaganEnabled = AllaganTools.Enabled;
+        if (!allaganEnabled)
+            _browserRetainerRestock = false;
+        using (ImRaii.Disabled(!allaganEnabled))
+            ImGui.Checkbox("Restock from Retainers##browserRestock", ref _browserRetainerRestock);
+        if (ImGui.IsItemHovered(allaganEnabled ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(allaganEnabled
+                ? "Automatically withdraw missing materials from your retainers before crafting."
+                : "AllaganTools (InventoryTools) plugin is required.");
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 12);
         var topRowButtonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
