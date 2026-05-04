@@ -58,7 +58,7 @@ public class ContextMenu : IDisposable
         {
             IsEnabled = true,
             IsReturn = false,
-            PrefixChar = 'C',
+            PrefixChar = 'V',
             Name = "Add to Crafting List",
             OnClicked = OnClickCrafting,
             IsSubmenu = true,
@@ -310,6 +310,11 @@ public class ContextMenu : IDisposable
             _lastRecipeId = GetRecipeIdFromContext(args);
         if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
             _lastVendorBuyListItemId = contextItemId.Value;
+
+        var vEnabled = GatherBuddy.Config.VulcanContextMenuEntries;
+        _menuItemCrafting.IsEnabled      = vEnabled;
+        _menuItemVulcanRecipe.IsEnabled  = vEnabled;
+        _menuItemVendorBuyList.IsEnabled = vEnabled;
 
         if (_lastGatherable != null)
             args.AddMenuItem(_menuItem);
