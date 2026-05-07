@@ -100,7 +100,7 @@ public partial class VulcanWindow
                 ImGui.SetTooltip("Delay in milliseconds between each crafting action (0 = instant, max 1000ms)");
 
             var ctxMenuEntries = GatherBuddy.Config.VulcanContextMenuEntries;
-            if (ImGui.Checkbox("Context Menu Entries", ref ctxMenuEntries))
+            if (ImGui.Checkbox("Context Menu Entries (Vs in context menus)", ref ctxMenuEntries))
             {
                 GatherBuddy.Config.VulcanContextMenuEntries = ctxMenuEntries;
                 GatherBuddy.Config.Save();
