@@ -1,5 +1,7 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Dalamud.Interface.Textures;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
@@ -20,6 +22,9 @@ public partial class Interface
         public string                  NodeNames;
         public string                  Expansion;
         public string                  Aetherytes;
+        public bool?                   Gathered;
+
+        private bool _gatheredStatusFailureLogged;
 
         public (ILocation, TimeInterval) Uptime
             => GatherBuddy.UptimeManager.BestLocation(Data);
@@ -61,6 +66,41 @@ public partial class Interface
                 data.NodeList.Where(n => n.ClosestAetheryte != null).Select(n => n.ClosestAetheryte!.Name).Distinct());
             if (!Aetherytes.Contains('\n'))
                 Aetherytes = '\0' + Aetherytes;
+
+            UpdateGatheredStatus();
+        }
+
+        public void UpdateGatheredStatus()
+        {
+            if (Data.GatheringId == 0 || Data.GatheringId > ushort.MaxValue)
+            {
+                if (!_gatheredStatusFailureLogged)
+                {
+                    GatherBuddy.Log.Debug(
+                        $"[GatherablesTab] Unable to check gathered status for item {Data.ItemId}: invalid gathering item id {Data.GatheringId}.");
+                    _gatheredStatusFailureLogged = true;
+                }
+
+                Gathered = null;
+                return;
+            }
+
+            try
+            {
+                Gathered = QuestManager.IsGatheringItemGathered((ushort)Data.GatheringId);
+                _gatheredStatusFailureLogged = false;
+            }
+            catch (Exception ex)
+            {
+                if (!_gatheredStatusFailureLogged)
+                {
+                    GatherBuddy.Log.Debug(
+                        $"[GatherablesTab] Failed to check gathered status for item {Data.ItemId} / gathering item {Data.GatheringId}: {ex.Message}");
+                    _gatheredStatusFailureLogged = true;
+                }
+
+                Gathered = null;
+            }
         }
     }
 }
