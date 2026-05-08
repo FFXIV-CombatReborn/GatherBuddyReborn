@@ -222,6 +222,7 @@ namespace GatherBuddy.AutoGather
 
                 if (!value)
                 {
+                    ResetFishingPreCastState();
                     AutoStatus = "Idle...";
                     TaskManager.Abort();
                     YesAlready.Unlock();
