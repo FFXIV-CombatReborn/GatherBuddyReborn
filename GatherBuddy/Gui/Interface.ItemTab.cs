@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
@@ -18,6 +19,7 @@ public partial class Interface
     private sealed class ItemTable : Table<ExtendedGatherable>, IDisposable
     {
         private static float _nameColumnWidth;
+        private static float _gatheredColumnWidth;
         private static float _nextUptimeColumnWidth;
         private static float _closestAetheryteColumnWidth;
         private static float _levelColumnWidth;
@@ -36,8 +38,9 @@ public partial class Interface
         {
             if (ImGuiHelpers.GlobalScale != _globalScale)
             {
-                _globalScale     = ImGuiHelpers.GlobalScale;
-                _nameColumnWidth = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _globalScale         = ImGuiHelpers.GlobalScale;
+                _nameColumnWidth     = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _gatheredColumnWidth = TextWidth(_gatheredColumn.Label) / Scale + Table.ArrowWidth;
                 _nextUptimeColumnWidth = Math.Max(TextWidth("99:99 Minutes") / Scale,
                     TextWidth(_nextUptimeColumn.Label) / Scale + Table.ArrowWidth);
                 _closestAetheryteColumnWidth = GatherBuddy.GameData.Aetherytes.Values.Max(a => TextWidth(a.Name)) / Scale;
@@ -58,6 +61,7 @@ public partial class Interface
         }
 
         private static readonly NameColumn        _nameColumn        = new() { Label = "Item Name..." };
+        private static readonly GatheredColumn    _gatheredColumn    = new() { Label = "Log" };
         private static readonly NextUptimeColumn  _nextUptimeColumn  = new() { Label = "Next Uptime" };
         private static readonly AetheryteColumn   _aetheryteColumn   = new() { Label = "Aetheryte" };
         private static readonly LevelColumn       _levelColumn       = new() { Label = "Lvl..." };
@@ -133,6 +137,66 @@ public partial class Interface
 
                 if (selected)
                     _plugin.Executor.GatherItem(item.Data);
+            }
+        }
+
+        private sealed class GatheredColumn : ItemFilterColumn
+        {
+            public GatheredColumn()
+            {
+                Flags |= ImGuiTableColumnFlags.NoReorder;
+                SetFlags(ItemFilter.AlreadyGathered, ItemFilter.Ungathered, ItemFilter.UnknownLogState);
+                SetNames("Already Gathered", "Ungathered", "Not In Log");
+            }
+            public override float Width
+                => _gatheredColumnWidth * ImGuiHelpers.GlobalScale;
+
+            public override void DrawColumn(ExtendedGatherable item, int _)
+            {
+                item.UpdateGatheredStatus();
+
+                using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                if (item.Gathered == true)
+                {
+                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
+                    ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
+                }
+                else if (item.Gathered == false)
+                {
+                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
+                    ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
+                }
+                else
+                {
+                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFFA00000);
+                    ImGuiUtil.Center(FontAwesomeIcon.Question.ToIconString());
+                }
+            }
+            public override bool FilterFunc(ExtendedGatherable item)
+            {
+                item.UpdateGatheredStatus();
+                return item.Gathered switch
+                {
+                    true  => FilterValue.HasFlag(ItemFilter.AlreadyGathered),
+                    false => FilterValue.HasFlag(ItemFilter.Ungathered),
+                    _     => FilterValue.HasFlag(ItemFilter.UnknownLogState),
+                };
+            }
+
+            public override int Compare(ExtendedGatherable lhs, ExtendedGatherable rhs)
+            {
+                lhs.UpdateGatheredStatus();
+                rhs.UpdateGatheredStatus();
+
+                static int Rank(bool? gathered)
+                    => gathered switch
+                    {
+                        true  => 2,
+                        false => 1,
+                        _     => 0,
+                    };
+
+                return Rank(lhs.Gathered).CompareTo(Rank(rhs.Gathered));
             }
         }
 
@@ -399,7 +463,7 @@ public partial class Interface
         public ItemTable()
             : base("ItemTable",
                 GatherBuddy.GameData.Gatherables.Values.Where(g => g.GatheringType != GatheringType.Unknown)
-                    .Select(g => new ExtendedGatherable(g)).ToList(), _nameColumn, _nextUptimeColumn, _aetheryteColumn,
+                    .Select(g => new ExtendedGatherable(g)).ToList(), _nameColumn, _gatheredColumn, _nextUptimeColumn, _aetheryteColumn,
                 _levelColumn, _jobColumn, _typeColumn, _expansionColumn, _folkloreColumn, _uptimesColumn, _bestNodeColumn, _bestZoneColumn,
                 _itemIdColumn, _gatheringIdColumn)
         {
