@@ -994,7 +994,7 @@ public static class VendorInteractionHelper
         for (var index = 0; index < numEntries; index++)
         {
             if (ReadAtkUInt(addon, 1064 + index) == requestedItemId)
-                return index;
+                return (int)ReadAtkUInt(addon, 1308 + index);
         }
 
         return -1;
