@@ -80,7 +80,7 @@ public static class GameStateBuilder
             HeartAndSoulActive = false,
             HeartAndSoulAvailable = craft.Specialist,
             QuickInnoAvailable = false,
-            TrainedPerfectionAvailable = true,
+            TrainedPerfectionAvailable = craft.StatLevel >= Simulator.MinLevel(VulcanSkill.TrainedPerfection),
             TrainedPerfectionActive = false,
             MaterialMiracleActive = false,
 
