@@ -168,6 +168,7 @@ public class GatherWindow : Window
             return;
 
         var hasPredatorIssue = HasPredatorTimerIssue(item);
+        var locationVisited = IsVisitedLocation(loc);
 
         if (ImGui.TableNextColumn())
         {
@@ -181,18 +182,14 @@ public class GatherWindow : Window
             var colorId = time == TimeInterval.Always    ? ColorId.GatherWindowText :
                 time.Start > GatherBuddy.Time.ServerTime ? ColorId.GatherWindowUpcoming : ColorId.GatherWindowAvailable;
 
-            if (quantity > 0 && inventoryCount >= quantity)
+            if (quantity > 0 && inventoryCount >= quantity || locationVisited)
                 colorId = ColorId.DisabledText;
             using var color                         = ImRaii.PushColor(ImGuiCol.Text, colorId.Value());
             var quantityText = quantity > 0 ? $" ({inventoryCount}/{quantity})" : "";
-            if (ImGui.Selectable($"{item.Name[GatherBuddy.Language]}{quantityText}", false))
+            var locationText = item.Locations.Count > 1 && quantity > 0 ? $" - {loc.Name}" : string.Empty;
+            if (ImGui.Selectable($"{item.Name[GatherBuddy.Language]}{locationText}{quantityText}##{item.ItemId}-{loc.Type}-{loc.Id}", false))
             {
-                if (_plugin.Executor.LastItem != item)
-                    _plugin.Executor.GatherItem(item);
-                else if (item is Gatherable)
-                    _plugin.Executor.GatherItemByName("next");
-                else
-                    _plugin.Executor.GatherFishByName("next");
+                _plugin.Executor.GatherLocation(loc);
             }
 
             var clicked = ImGui.IsItemClicked(ImGuiMouseButton.Right);
@@ -207,11 +204,12 @@ public class GatherWindow : Window
                         if (!list.Enabled)
                             continue;
 
-                        var idx = list.Items.IndexOf(item);
+                        var idx = list.Entries.ToList().FindIndex(entry => entry.Item == item
+                            && (entry.PreferredLocation == loc || entry.PreferredLocation == null));
                         if (idx < 0)
                             continue;
 
-                        _plugin.AutoGatherListsManager.ChangeEnabled(list, item, false);
+                        _plugin.AutoGatherListsManager.ChangeEnabled(list, idx, false);
                         break;
                     }
             }
@@ -222,7 +220,8 @@ public class GatherWindow : Window
                         if (!list.Enabled)
                             continue;
 
-                        var idx = list.Items.IndexOf(item);
+                        var idx = list.Entries.ToList().FindIndex(entry => entry.Item == item
+                            && (entry.PreferredLocation == loc || entry.PreferredLocation == null));
                         if (idx < 0)
                             continue;
 
@@ -252,6 +251,14 @@ public class GatherWindow : Window
         }
 
         DrawTime(loc, time, hasPredatorIssue);
+    }
+
+    private static bool IsVisitedLocation(ILocation loc)
+    {
+        if (loc is GatheringNode node && GatherBuddy.AutoGather.DebugVisitedTimedLocations.ContainsKey(node))
+            return true;
+
+        return loc.WorldPositions.Keys.Any(k => GatherBuddy.AutoGather.VisitedNodes.Contains(k));
     }
 
     private void DeleteItem()
@@ -298,19 +305,52 @@ public class GatherWindow : Window
     {
         _data.Clear();
 
-        var list = _plugin.AutoGatherListsManager.ActiveItems
-            .Select(x => (x.Item, x.Quantity))
-            .Concat(_plugin.GatherWindowManager.ActiveItems.Select(i => (Item: i, Quantity: 0u)))
-            .GroupBy(x => x.Item)
-            .Select(g => { var (loc, time) = GatherBuddy.UptimeManager.BestLocation(g.Key); return (g.Key, loc, time, (uint)g.Sum(x => x.Quantity)); });
+        IEnumerable<(IGatherable Item, ILocation Location, TimeInterval Uptime, uint Quantity)> list = _plugin.AutoGatherListsManager.ActiveItems
+            .SelectMany(ToGatherWindowRows)
+            .Concat(_plugin.GatherWindowManager.ActiveItems.Select(i =>
+            {
+                var (loc, time) = GatherBuddy.UptimeManager.BestLocation(i);
+                return (Item: i, Location: loc, Uptime: time, Quantity: 0u);
+            }))
+            .GroupBy(x => (x.Item, x.Location))
+            .Select(g => (g.Key.Item, g.Key.Location, g.First().Uptime, (uint)g.Sum(x => x.Quantity)));
 
         if (GatherBuddy.Config.SortGatherWindowByUptime)
-            list = list.OrderBy(i => i.time, Comparer<TimeInterval>.Create((x, y) => x.Compare(y)));
+            list = list.OrderBy(i => i.Uptime, Comparer<TimeInterval>.Create((x, y) => x.Compare(y)));
 
         _data.AddRange(list);
 
         return _data.Count == 0 || GatherBuddy.Config.ShowGatherWindowOnlyAvailable && _data.All(f => f.Uptime.Start > GatherBuddy.Time.ServerTime);
     }
+
+    private static IEnumerable<(IGatherable Item, ILocation Location, TimeInterval Uptime, uint Quantity)> ToGatherWindowRows(
+        (IGatherable Item, uint Quantity, ILocation? PreferredLocation) entry)
+    {
+        if (entry.PreferredLocation != null)
+        {
+            yield return (entry.Item, entry.PreferredLocation, GetLocationUptime(entry.Item, entry.PreferredLocation), entry.Quantity);
+            yield break;
+        }
+
+        if (GatherBuddy.Config.AutoGatherConfig.SplitGatherableForAllLocationsIfNoPreferenceSelected
+         && entry.Item.Locations.Count > 1)
+        {
+            foreach (var location in entry.Item.Locations)
+                yield return (entry.Item, location, GetLocationUptime(entry.Item, location), entry.Quantity);
+            yield break;
+        }
+
+        var (loc, time) = GatherBuddy.UptimeManager.BestLocation(entry.Item);
+        yield return (entry.Item, loc, time, entry.Quantity);
+    }
+
+    private static TimeInterval GetLocationUptime(IGatherable item, ILocation location)
+        => location switch
+        {
+            GatheringNode node => node.Times.NextUptime(GatherBuddy.Time.ServerTime),
+            FishingSpot spot when item is Fish fish => GatherBuddy.UptimeManager.NextUptime(fish, spot.Territory, GatherBuddy.Time.ServerTime),
+            _ => TimeInterval.Always,
+        };
 
     public override void PreOpenCheck()
     {

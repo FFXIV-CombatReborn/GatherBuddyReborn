@@ -37,9 +37,9 @@ public partial class AutoGatherListsManager : IDisposable
     private const string FileName         = "auto_gather_lists.json";
     private const string FileNameFallback = "gather_window.json";
 
-    private readonly FileSystem<AutoGatherList>             _fileSystem;
-    private readonly List<(IGatherable Item, uint Quantity)> _activeItems   = [];
-    private readonly List<(IGatherable Item, uint Quantity)> _fallbackItems = [];
+    private readonly FileSystem<AutoGatherList> _fileSystem;
+    private readonly List<(IGatherable Item, uint Quantity, ILocation? PreferredLocation)> _activeItems   = [];
+    private readonly List<(IGatherable Item, uint Quantity, ILocation? PreferredLocation)> _fallbackItems = [];
     public static ManualOrderSortMode SortMode { get; } = new();
 
     public FileSystem<AutoGatherList> FileSystem
@@ -48,10 +48,10 @@ public partial class AutoGatherListsManager : IDisposable
     public IEnumerable<AutoGatherList> Lists
         => _fileSystem.Select(kvp => kvp.Key);
 
-    public ReadOnlyCollection<(IGatherable Item, uint Quantity)> ActiveItems
+    public ReadOnlyCollection<(IGatherable Item, uint Quantity, ILocation? PreferredLocation)> ActiveItems
         => _activeItems.AsReadOnly();
 
-    public ReadOnlyCollection<(IGatherable Item, uint Quantity)> FallbackItems
+    public ReadOnlyCollection<(IGatherable Item, uint Quantity, ILocation? PreferredLocation)> FallbackItems
         => _fallbackItems.AsReadOnly();
 
     public AutoGatherListsManager()
@@ -125,20 +125,20 @@ public partial class AutoGatherListsManager : IDisposable
             .OfType<FileSystem<AutoGatherList>.Leaf>()
             .Select(leaf => leaf.Value)
             .Where(l => l.Enabled)
-            .SelectMany(l => l.Items.Select(i => (Item: i, Quantity: l.Quantities[i], l.Fallback, ItemEnabled: l.EnabledItems[i])))
-            .Where(i => i.ItemEnabled)
-            .GroupBy(i => (i.Item, i.Fallback))
-            .Select(x => (x.Key.Item, Quantity: (uint)Math.Min(x.Sum(g => g.Quantity), uint.MaxValue), x.Key.Fallback));
+            .SelectMany(l => l.Entries.Select(e => (e.Item, e.Quantity, e.PreferredLocation, l.Fallback, e.Enabled)))
+            .Where(e => e.Enabled)
+            .GroupBy(e => (e.Item, e.PreferredLocation, e.Fallback))
+            .Select(x => (x.Key.Item, Quantity: (uint)Math.Min(x.Sum(g => g.Quantity), uint.MaxValue), x.Key.PreferredLocation, x.Key.Fallback));
 
-        foreach (var (item, quantity, fallback) in items)
+        foreach (var (item, quantity, preferredLocation, fallback) in items)
         {
             if (fallback)
             {
-                _fallbackItems.Add((item, quantity));
+                _fallbackItems.Add((item, quantity, preferredLocation));
             }
             else
             {
-                _activeItems.Add((item, quantity));
+                _activeItems.Add((item, quantity, preferredLocation));
             }
         }
 

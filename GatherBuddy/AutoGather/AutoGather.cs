@@ -2317,7 +2317,7 @@ namespace GatherBuddy.AutoGather
                     return true;
                 }
                 
-                foreach (var (item, _) in listsManager.ActiveItems)
+                foreach (var (item, _, _) in listsManager.ActiveItems)
                 {
                     if (item is not Gatherable gatherable)
                         continue;
