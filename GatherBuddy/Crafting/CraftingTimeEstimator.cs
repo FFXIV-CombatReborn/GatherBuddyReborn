@@ -6,9 +6,9 @@ namespace GatherBuddy.Crafting;
 public static class CraftingTimeEstimator
 {
     private const int ActionExecutionMs = 3000;
-    private const int QuickSynthCraftMs = 10_000;
-    private const int CraftOverheadMs   = 5_000;
-    private const int DefaultActionCount = 25;
+    private const int QuickSynthCraftMs = 1000;
+    private const int CraftOverheadMs   = 5000;
+    private const int DefaultActionCount = 15;
 
     public static long EstimateRemainingMs(IReadOnlyList<CraftingListItem> queue, int fromIndex)
     {
