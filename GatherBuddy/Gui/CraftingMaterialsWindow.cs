@@ -528,6 +528,13 @@ public class CraftingMaterialsWindow : Window
             ImGui.EndPopup();
         }
 
+        var sourceIcons = CraftingRowIcons.GetMaterialIcons(itemId, isPrecraft);
+        if (sourceIcons.Count > 0)
+        {
+            ImGui.SameLine(0, 4f);
+            CraftingRowIcons.DrawIconsRightAligned(sourceIcons);
+        }
+
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
         CenterNum(have, haveColor);

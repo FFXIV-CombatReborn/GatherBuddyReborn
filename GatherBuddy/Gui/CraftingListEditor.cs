@@ -1139,9 +1139,13 @@ public class CraftingListEditor
         if (row.Validation != null)
             DrawValidationMarker(row.Validation);
 
+        var crafterIcon     = CraftingRowIcons.GetCrafterIcon(row.Recipe);
+        var innerSpacing    = ImGui.GetStyle().ItemInnerSpacing.X;
+        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - 16f - innerSpacing);
+
         ImGui.PushStyleColor(ImGuiCol.Text, textColor);
         var isSelected = _selectedQueueIndex == row.QueueIndex;
-        if (ImGui.Selectable(row.Label, isSelected))
+        if (ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0)))
             _selectedQueueIndex = row.QueueIndex;
         ImGui.PopStyleColor();
 
@@ -1150,7 +1154,11 @@ public class CraftingListEditor
             : ImGui.BeginPopupContextItem($"queue_ctx_{row.QueueIndex}");
 
         if (!isPopupOpen)
+        {
+            ImGui.SameLine(0, innerSpacing);
+            CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon });
             return;
+        }
 
         if (ImGui.MenuItem("Craft Settings..."))
         {
@@ -1261,6 +1269,9 @@ public class CraftingListEditor
         }
 
         ImGui.EndPopup();
+
+        ImGui.SameLine(0, innerSpacing);
+        CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon });
     }
 
     private IReadOnlyList<RecipeDisplayRow> GetRecipeDisplayRows()
@@ -1333,11 +1344,13 @@ public class CraftingListEditor
 
         var isSelected = _selectedRecipeIndices.Contains(row.ListIndex);
         const float qtyTextWidth = 50f;
+        const float sourceIconSize = 16f;
         var innerSpacing = ImGui.GetStyle().ItemInnerSpacing.X;
         var frameHeight = ImGui.GetFrameHeight();
         var qtyTotalWidth = qtyTextWidth + 2 * (frameHeight + innerSpacing);
         var iconBtnSize = new Vector2(frameHeight, frameHeight);
-        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - qtyTotalWidth - 2 * frameHeight - 3 * innerSpacing);
+        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - qtyTotalWidth - 2 * frameHeight - 3 * innerSpacing - sourceIconSize - innerSpacing);
+        var crafterIcon = CraftingRowIcons.GetCrafterIcon(row.Recipe);
         ImGui.PushStyleColor(ImGuiCol.Text, row.TextColor);
         var clicked = ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0));
         ImGui.PopStyleColor();
@@ -1366,6 +1379,9 @@ public class CraftingListEditor
                 _lastClickedRecipeIndex = row.ListIndex;
             }
         }
+
+        ImGui.SameLine(0, innerSpacing);
+        CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon }, sourceIconSize);
 
         ImGui.SameLine(0, innerSpacing);
         var qty = item.Quantity;
