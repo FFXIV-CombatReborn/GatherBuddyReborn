@@ -1581,6 +1581,296 @@ public partial class Interface
         }
     }
 
+    private string _configSearch       = string.Empty;
+    private int    _selectedConfigPage  = 0;
+
+    private readonly record struct ConfigEntry(string SearchText, Action<ConfigLayout> Draw)
+    {
+        public ConfigEntry(string searchText, Action draw)
+            : this(searchText, _ => draw())
+        { }
+    }
+    private readonly record struct ConfigPage(string Category, string Name, ConfigEntry[] Entries);
+    private readonly record struct ConfigLayout(int Depth)
+    {
+        public static ConfigLayout Root { get; } = new(0);
+
+        public ConfigLayout Child => new(Depth + 1);
+
+        public void Draw(ConfigEntry entry)
+        {
+            using var indent = PushConfigIndent(Depth);
+            entry.Draw(this);
+        }
+
+        public void Draw(Action draw)
+        {
+            using var indent = PushConfigIndent(Depth);
+            draw();
+        }
+    }
+
+    private readonly struct ConfigIndentScope : IDisposable
+    {
+        private readonly float _amount;
+
+        public ConfigIndentScope(float amount)
+        {
+            _amount = amount;
+            ImGui.Indent(amount);
+        }
+
+        public void Dispose()
+        {
+            if (_amount > 0f)
+                ImGui.Unindent(_amount);
+        }
+    }
+
+    private static readonly ConfigPage[] ConfigPages = BuildConfigPages();
+
+    private static ConfigIndentScope PushConfigIndent(int depth)
+    {
+        if (depth <= 0)
+            return default;
+
+        return new ConfigIndentScope(depth * ImGui.GetStyle().IndentSpacing);
+    }
+
+    private static ConfigPage[] BuildConfigPages() =>
+    [
+        new("Auto-Gather", "General",
+        [
+            new("Select Mount",                                   AutoGatherUI.DrawMountSelector),
+            new("Mount Up Distance",                              ConfigFunctions.DrawMountUpDistance),
+            new("Landing Distance",                               ConfigFunctions.DrawLandingDistance),
+            new("Move while mounting up",                         ConfigFunctions.DrawMoveWhileMounting),
+            new("Play a sound when done gathering Playback Volume",
+                layout =>
+                {
+                    ConfigFunctions.DrawHonkModeBox();
+                    if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
+                        layout.Child.Draw(ConfigFunctions.DrawHonkVolumeSlider);
+                }),
+            new("Check Retainer Inventories",                     ConfigFunctions.DrawCheckRetainersBox),
+            new("Teleport to next timed item",                    ConfigFunctions.DrawTeleportToNextNodeBox),
+            new("Go home when done Go home when idle",            ConfigFunctions.DrawGoHomeBox),
+            new("Gather any crystals when The Giving Land is off cooldown", ConfigFunctions.DrawUseGivingLandOnCooldown),
+            new("Use skills for fallback items",                  ConfigFunctions.DrawUseSkillsForFallabckBox),
+            new("Abandon nodes without needed items",             ConfigFunctions.DrawAbandonNodesBox),
+            new("Always gather maps when available",              ConfigFunctions.DrawAlwaysMapsBox),
+        ]),
+        new("Auto-Gather", "Fishing",
+        [
+            new("Use existing AutoHook presets",                  ConfigFunctions.DrawUseExistingAutoHookPresetsBox),
+            new("Max Fishing Spot Minutes",                       ConfigFunctions.DrawFishingSpotMinutes),
+            new("Opt-in to fishing data collection",              ConfigFunctions.DrawFishCollectionBox),
+            new("Auto Collectables",                              ConfigFunctions.DrawAutoCollectablesFishingBox),
+            new("Defer repairs during fishing buffs",             ConfigFunctions.DrawDeferRepairDuringFishingBuffsBox),
+            new("Defer aetherial reduction during fishing buffs", ConfigFunctions.DrawDeferReductionDuringFishingBuffsBox),
+            new("Defer materia extraction during fishing buffs",  ConfigFunctions.DrawDeferMateriaExtractionDuringFishingBuffsBox),
+            new("Use Cordial GP Threshold",                       ConfigFunctions.DrawFishingCordialConfig),
+            new("Use Food Use Medicine",                          ConfigFunctions.DrawFishingConsumablesConfig),
+            new("Use Hook Timers in AutoHook Presets",            ConfigFunctions.DrawUseHookTimersBox),
+            new("Use Patience Patience II",                       ConfigFunctions.DrawUsePatienceBox),
+            new("Use Prize Catch GP Threshold",                   ConfigFunctions.DrawPrizeCatchConfig),
+            new("Use Chum GP Threshold",                          ConfigFunctions.DrawChumConfig),
+            new("Enable automatic Surface Slap GP Threshold",     ConfigFunctions.DrawSurfaceSlapConfig),
+            new("Enable automatic Identical Cast GP Threshold",   ConfigFunctions.DrawIdenticalCastConfig),
+            new("Enable automatic Ambitious Lure GP Threshold",   ConfigFunctions.DrawAmbitiousLureConfig),
+            new("Enable automatic Modest Lure GP Threshold",      ConfigFunctions.DrawModestLureConfig),
+            new("Manual Preset Generator",                        ConfigFunctions.DrawManualPresetGenerator),
+        ]),
+        new("Auto-Gather", "Advanced",
+        [
+            new("Repair gear when needed Repair Threshold",
+                layout =>
+                {
+                    ConfigFunctions.DrawRepairBox();
+                    if (GatherBuddy.Config.AutoGatherConfig.DoRepair)
+                        layout.Child.Draw(ConfigFunctions.DrawRepairThreshold);
+                }),
+            new("Enable materia extraction",                      ConfigFunctions.DrawMaterialExtraction),
+            new("Enable Aetherial Reduction Always Reduce All Items",
+                layout =>
+                {
+                    ConfigFunctions.DrawAetherialReduction();
+                    if (GatherBuddy.Config.AutoGatherConfig.DoReduce)
+                        layout.Child.Draw(ConfigFunctions.DrawAlwaysReduceAllItemsBox);
+                }),
+            new("Wait for AutoRetainer Multi-mode AutoRetainer Threshold Delay AutoRetainer for timed nodes",
+                layout =>
+                {
+                    ConfigFunctions.DrawAutoretainerBox();
+                    if (GatherBuddy.Config.AutoGatherConfig.AutoRetainerMultiMode)
+                    {
+                        layout.Child.Draw(ConfigFunctions.DrawAutoretainerThreshold);
+                        layout.Child.Draw(ConfigFunctions.DrawAutoretainerTimedNodeDelayBox);
+                    }
+                }),
+            new("Diadem Auto-Aethercannon",                       ConfigFunctions.DrawDiademAutoAetherCannonBox),
+            new("Diadem Windmire Jumps",                          ConfigFunctions.DrawDiademWindmireJumps),
+            new("Re-enter The Diadem to Reset Clouded Nodes",     ConfigFunctions.DrawDiademFarmCloudedNodes),
+            new("Item Sorting Method",                            ConfigFunctions.DrawSortingMethodCombo),
+            new("Lifestream Command",                             ConfigFunctions.DrawLifestreamCommandTextInput),
+            new("Anti-Stuck Cooldown",                            ConfigFunctions.DrawAntiStuckCooldown),
+            new("Stuck Threshold",                                ConfigFunctions.DrawStuckThreshold),
+            new("Timed Node Precognition",                        ConfigFunctions.DrawTimedNodePrecog),
+            new("Execution delay Milliseconds",                   ConfigFunctions.DrawExecutionDelay),
+            new("Enable Gathering Window Interaction",            ConfigFunctions.DrawAutoGatherBox),
+            new("Disable map marker navigation",                  ConfigFunctions.DrawUseFlagBox),
+            new("Use vnavmesh Navigation",                        ConfigFunctions.DrawUseNavigationBox),
+            new("Force Walking",                                  ConfigFunctions.DrawForceWalkingBox),
+            new("Disable Random Landing Positions",               ConfigFunctions.DrawDisableRandomLandingPositionsBox),
+        ]),
+        new("Auto-Gather", "Collectable",
+        [
+            new("Auto-turn in collectables Collectable Count Threshold Inventory Full Threshold",
+                layout =>
+                {
+                    ConfigFunctions.DrawCollectableAutoTurninBox();
+                    if (GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
+                        layout.Child.Draw(ConfigFunctions.DrawCollectableThreshold);
+                }),
+            new("Buy scrip shop items after each turn-in Reserve Scrips",
+                layout =>
+                {
+                    ConfigFunctions.DrawBuyAfterEachCollectBox();
+                    if (GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect)
+                        layout.Child.Draw(ConfigFunctions.DrawScripReserveAmount);
+                }),
+            new("Scrip Shop Purchase List",                       ConfigFunctions.DrawScripShopItemManager),
+        ]),
+        new("General", "Gather Command",
+        [
+            new("Preferred Job No Preference Miner Botanist",     ConfigFunctions.DrawPreferredJobSelect),
+            new("Enable Gear Change",                             ConfigFunctions.DrawGearChangeBox),
+            new("Enable Teleport",                                ConfigFunctions.DrawTeleportBox),
+            new("Open Map With Location",                         ConfigFunctions.DrawMapOpenBox),
+            new("Place Flag Marker on Map",                       ConfigFunctions.DrawPlaceMarkerBox),
+            new("Place Custom Waymarks",                          ConfigFunctions.DrawPlaceWaymarkBox),
+            new("Prefer Cheaper Aetherytes Prefer Less Travel Time", ConfigFunctions.DrawAetherytePreference),
+            new("Skip Nearby Teleports",                          ConfigFunctions.DrawSkipTeleportBox),
+            new("Add In-Game Context Menus",                      ConfigFunctions.DrawContextMenuBox),
+        ]),
+        new("General", "Set Names",
+        [
+            new("Miner Set",    () => ConfigFunctions.DrawSetInput("Miner",    GatherBuddy.Config.MinerSetName,    s => GatherBuddy.Config.MinerSetName    = s)),
+            new("Botanist Set", () => ConfigFunctions.DrawSetInput("Botanist", GatherBuddy.Config.BotanistSetName, s => GatherBuddy.Config.BotanistSetName = s)),
+            new("Fisher Set",   () => ConfigFunctions.DrawSetInput("Fisher",   GatherBuddy.Config.FisherSetName,   s => GatherBuddy.Config.FisherSetName   = s)),
+        ]),
+        new("General", "Alarms",
+        [
+            new("Enable Alarms",                                  ConfigFunctions.DrawAlarmToggle),
+            new("Enable Alarms in Duty",                          ConfigFunctions.DrawAlarmsInDutyToggle),
+            new("Enable Alarms Only In-Game",                     ConfigFunctions.DrawAlarmsOnlyWhenLoggedInToggle),
+            new("Weather Change Alarm",                           ConfigFunctions.DrawWeatherAlarmPicker),
+            new("Eorzea Hour Change Alarm",                       ConfigFunctions.DrawHourAlarmPicker),
+        ]),
+        new("General", "Messages",
+        [
+            new("Chat Type for Messages",                         ConfigFunctions.DrawPrintTypeSelector),
+            new("Chat Type for Errors",                           ConfigFunctions.DrawErrorTypeSelector),
+            new("Print Map Location",                             ConfigFunctions.DrawMapMarkerPrintBox),
+            new("Print Node Uptimes On Gather",                   ConfigFunctions.DrawPrintUptimesBox),
+            new("Print Clipboard Information",                    ConfigFunctions.DrawPrintClipboardBox),
+            new("Alarm Chat Format",                              ConfigFunctions.DrawAlarmFormatInput),
+            new("Identified Gatherable Chat Format",              ConfigFunctions.DrawIdentifiedGatherableFormatInput),
+        ]),
+        new("Interface", "Config Window",
+        [
+            new("Open Config UI On Start",                        ConfigFunctions.DrawOpenOnStartBox),
+            new("Escape Closes Main Window",                      ConfigFunctions.DrawRespectEscapeBox),
+            new("Lock Config UI Movement",                        ConfigFunctions.DrawLockPositionBox),
+            new("Lock Config UI Size",                            ConfigFunctions.DrawLockResizeBox),
+            new("Show Names in Weather Tab",                      ConfigFunctions.DrawWeatherTabNamesBox),
+            new("Show Status Line",                               ConfigFunctions.DrawShowStatusLineBox),
+            new("Hide GatherClippy Button",                       ConfigFunctions.DrawHideClippyBox),
+            new("Hotkey to Open Main Interface",                  ConfigFunctions.DrawMainInterfaceHotkeyInput),
+        ]),
+        new("Interface", "Fish Timer",
+        [
+            new("Keep Fish Records",                              ConfigFunctions.DrawKeepRecordsBox),
+            new("Use Local Time in Records",                      ConfigFunctions.DrawShowLocalTimeInRecordsBox),
+            new("Show Fish Timer",                                ConfigFunctions.DrawFishTimerBox),
+            new("Edit Fish Timer",                                ConfigFunctions.DrawFishTimerEditBox),
+            new("Enable Fish Timer Clickthrough",                 ConfigFunctions.DrawFishTimerClickthroughBox),
+            new("Hide Uncaught Fish in Fish Timer",               ConfigFunctions.DrawFishTimerHideBox),
+            new("Hide Unavailable Fish in Fish Timer",            ConfigFunctions.DrawFishTimerHideBox2),
+            new("Show Uptimes in Fish Timer",                     ConfigFunctions.DrawFishTimerUptimesBox),
+            new("Fish Timer Bite Time Scale",                     ConfigFunctions.DrawFishTimerScale),
+            new("Fish Timer Interval Separators",                 ConfigFunctions.DrawFishTimerIntervals),
+            new("Fish Timer Interval Rounding",                   ConfigFunctions.DrawFishTimerIntervalsRounding),
+            new("Hide Catch Popup",                               ConfigFunctions.DrawHideFishPopupBox),
+            new("Show Collectable Hints",                         ConfigFunctions.DrawCollectableHintPopupBox),
+            new("Show Multi Hook Hints",                          ConfigFunctions.DrawDoubleHookHintPopupBox),
+        ]),
+        new("Interface", "Fish Stats",
+        [
+            new("Enable Fish Stats",                              ConfigFunctions.DrawEnableFishStats),
+            new("Copy Time Stats when reporting",                 ConfigFunctions.DrawEnableReportTime),
+            new("Copy Sizes Stats when reporting",                ConfigFunctions.DrawEnableReportSize),
+            new("Copy Multi Hook Stats when reporting",           ConfigFunctions.DrawEnableReportMulti),
+            new("Enable Graphs",                                  ConfigFunctions.DrawEnableGraphs),
+        ]),
+        new("Interface", "Gather Window",
+        [
+            new("Show Gather Window",                             ConfigFunctions.DrawShowGatherWindowBox),
+            new("Anchor Gather Window to Bottom Left",            ConfigFunctions.DrawGatherWindowAnchorBox),
+            new("Show Gather Window Timers",                      ConfigFunctions.DrawGatherWindowTimersBox),
+            new("Show Active Alarms in Gather Window",            ConfigFunctions.DrawGatherWindowAlarmsBox),
+            new("Sort Gather Window by Uptime",                   ConfigFunctions.DrawSortGatherWindowBox),
+            new("Show Only Available Items",                      ConfigFunctions.DrawGatherWindowShowOnlyAvailableBox),
+            new("Hide Completed Items",                           ConfigFunctions.DrawHideGatherWindowCompletedItemsBox),
+            new("Hide Gather Window in Duty",                     ConfigFunctions.DrawHideGatherWindowInDutyBox),
+            new("Only Show Gather Window if Holding Key",         ConfigFunctions.DrawGatherWindowHoldKey),
+            new("Lock Gather Window Position",                    ConfigFunctions.DrawGatherWindowLockBox),
+            new("Hotkey to Open Gather Window",                   ConfigFunctions.DrawGatherWindowHotkeyInput),
+            new("Modifier to Delete Items on Right-Click",        ConfigFunctions.DrawGatherWindowDeleteModifierInput),
+        ]),
+        new("Interface", "Spearfishing",
+        [
+            new("Show Spearfishing Helper",                       ConfigFunctions.DrawSpearfishHelperBox),
+            new("Show Fish Name Overlay",                         ConfigFunctions.DrawSpearfishNamesBox),
+            new("Show Speed of Fish in Overlay",                  ConfigFunctions.DrawSpearfishSpeedBox),
+            new("Show List of Available Fish",                    ConfigFunctions.DrawAvailableSpearfishBox),
+            new("Show Speed and Size as Text",                    ConfigFunctions.DrawSpearfishIconsAsTextBox),
+            new("Show Center Line",                               ConfigFunctions.DrawSpearfishCenterLineBox),
+            new("Show Fish Names in Fixed Position",              ConfigFunctions.DrawSpearfishFishNameFixed),
+            new("Fish Name Position Percentage",                  ConfigFunctions.DrawSpearfishFishNamePercentage),
+        ]),
+        new("", "Colors",
+        [
+            new("Colors", DrawAllColors),
+        ]),
+    ];
+
+    private static void DrawAllColors()
+    {
+        foreach (var color in Enum.GetValues<ColorId>())
+        {
+            var (defaultColor, name, description) = color.Data();
+            var currentColor = GatherBuddy.Config.Colors.TryGetValue(color, out var current) ? current : defaultColor;
+            if (Widget.ColorPicker(name, description, currentColor, c => GatherBuddy.Config.Colors[color] = c, defaultColor))
+                GatherBuddy.Config.Save();
+        }
+
+        ImGui.NewLine();
+
+        if (Widget.PaletteColorPicker("Names in Chat",         Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorNames,
+                Configuration.DefaultSeColorNames,    Configuration.ForegroundColors, out var idx))
+            GatherBuddy.Config.SeColorNames = idx;
+        if (Widget.PaletteColorPicker("Commands in Chat",      Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorCommands,
+                Configuration.DefaultSeColorCommands, Configuration.ForegroundColors, out idx))
+            GatherBuddy.Config.SeColorCommands = idx;
+        if (Widget.PaletteColorPicker("Arguments in Chat",     Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorArguments,
+                Configuration.DefaultSeColorArguments, Configuration.ForegroundColors, out idx))
+            GatherBuddy.Config.SeColorArguments = idx;
+        if (Widget.PaletteColorPicker("Alarm Message in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorAlarm,
+                Configuration.DefaultSeColorAlarm,    Configuration.ForegroundColors, out idx))
+            GatherBuddy.Config.SeColorAlarm = idx;
+    }
+
 
     private void DrawConfigTab()
     {
@@ -1592,269 +1882,123 @@ public partial class Interface
         if (!tab)
             return;
 
-        using var child = ImRaii.Child("ConfigTab");
-        if (!child)
-            return;
+        ConfigFunctions._base = this;
 
-        if (ImGui.CollapsingHeader("Auto-Gather"))
+        var leftPanelWidth = 175f * Scale;
+
         {
-            if (ImGui.TreeNodeEx("General##autoGeneral"))
+            using var leftChild = ImRaii.Child("##ConfigLeft", new Vector2(leftPanelWidth, 0), true);
+            if (leftChild)
             {
-                AutoGatherUI.DrawMountSelector();
-                ConfigFunctions.DrawMountUpDistance();
-                ConfigFunctions.DrawLandingDistance();
-                ConfigFunctions.DrawMoveWhileMounting();
-                ConfigFunctions.DrawHonkModeBox();
-                if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
-                {
-                    ConfigFunctions.DrawHonkVolumeSlider();
-                }
-                ConfigFunctions.DrawCheckRetainersBox();
-                ConfigFunctions.DrawTeleportToNextNodeBox();
-                ConfigFunctions.DrawGoHomeBox();
-                ConfigFunctions.DrawUseGivingLandOnCooldown();
-                ConfigFunctions.DrawUseSkillsForFallabckBox();
-                ConfigFunctions.DrawAbandonNodesBox();
-                ConfigFunctions.DrawAlwaysMapsBox();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Fishing"))
-            {
-                ConfigFunctions.DrawUseExistingAutoHookPresetsBox();
-                ConfigFunctions.DrawFishingSpotMinutes();
-                ConfigFunctions.DrawFishCollectionBox();
-                ConfigFunctions.DrawAutoCollectablesFishingBox();
-                ConfigFunctions.DrawDeferRepairDuringFishingBuffsBox();
-                ConfigFunctions.DrawDeferReductionDuringFishingBuffsBox();
-                ConfigFunctions.DrawDeferMateriaExtractionDuringFishingBuffsBox();
-                ConfigFunctions.DrawFishingCordialConfig();
-                ConfigFunctions.DrawFishingConsumablesConfig();
-                ConfigFunctions.DrawUseHookTimersBox();
-                ConfigFunctions.DrawUsePatienceBox();
-                ConfigFunctions.DrawPrizeCatchConfig();
-                ConfigFunctions.DrawChumConfig();
-                ConfigFunctions.DrawSurfaceSlapConfig();
-                ConfigFunctions.DrawIdenticalCastConfig();
-                ConfigFunctions.DrawAmbitiousLureConfig();
-                ConfigFunctions.DrawModestLureConfig();
-                ConfigFunctions.DrawManualPresetGenerator();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Advanced"))
-            {
-                ConfigFunctions.DrawRepairBox();
-                if (GatherBuddy.Config.AutoGatherConfig.DoRepair)
-                {
-                    ConfigFunctions.DrawRepairThreshold();
-                }
-                ConfigFunctions.DrawMaterialExtraction();
-                ConfigFunctions.DrawAetherialReduction();
-                ConfigFunctions.DrawAlwaysReduceAllItemsBox();
-                ConfigFunctions.DrawAutoretainerBox();
-                if (GatherBuddy.Config.AutoGatherConfig.AutoRetainerMultiMode)
-                {
-                    ConfigFunctions.DrawAutoretainerThreshold();
-                    ConfigFunctions.DrawAutoretainerTimedNodeDelayBox();
-                }
-                ConfigFunctions.DrawDiademAutoAetherCannonBox();
-                ConfigFunctions.DrawDiademWindmireJumps();
-                ConfigFunctions.DrawDiademFarmCloudedNodes();
-                ConfigFunctions.DrawSortingMethodCombo();
-                ConfigFunctions.DrawLifestreamCommandTextInput();
-                ConfigFunctions.DrawAntiStuckCooldown();
-                ConfigFunctions.DrawStuckThreshold();
-                ConfigFunctions.DrawTimedNodePrecog();
-                ConfigFunctions.DrawExecutionDelay();
-                ConfigFunctions.DrawAutoGatherBox();
-                ConfigFunctions.DrawUseFlagBox();
-                ConfigFunctions.DrawUseNavigationBox();
-                ConfigFunctions.DrawForceWalkingBox();
-                ConfigFunctions.DrawDisableRandomLandingPositionsBox();
-                ImGui.TreePop();
-            }
-            
-            if (ImGui.TreeNodeEx("Collectable"))
-            {
-                ConfigFunctions.DrawCollectableAutoTurninBox();
-                if (GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
-                {
-                    ConfigFunctions.DrawCollectableThreshold();
-                }
-                ConfigFunctions.DrawBuyAfterEachCollectBox();
-                if (GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect)
-                {
-                    ConfigFunctions.DrawScripReserveAmount();
-                }
-                
-                ImGui.Spacing();
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##ConfigSearch", "Search settings...", ref _configSearch, 256);
                 ImGui.Separator();
-                ImGui.Spacing();
-                
-                if (ImGui.CollapsingHeader("Scrip Shop Purchase List"))
+                DrawConfigPageSelector();
+            }
+        }
+
+        ImGui.SameLine();
+
+        using var rightChild = ImRaii.Child("##ConfigRight", Vector2.Zero, false);
+        if (!rightChild)
+            return;
+        var padding = ImGui.GetStyle().WindowPadding;
+        ImGui.SetCursorPosY(padding.Y);
+
+        if (!string.IsNullOrWhiteSpace(_configSearch))
+            DrawConfigSearchResults();
+        else
+            DrawConfigPage(ConfigPages[_selectedConfigPage]);
+    }
+
+    private void DrawConfigPageSelector()
+    {
+        var lastCategory = string.Empty;
+        for (var i = 0; i < ConfigPages.Length; i++)
+        {
+            var page = ConfigPages[i];
+            if (page.Category != lastCategory)
+            {
+                if (lastCategory.Length > 0)
+                    ImGui.Spacing();
+                if (page.Category.Length > 0)
                 {
-                    ConfigFunctions.DrawScripShopItemManager();
+                    ImGui.TextDisabled(page.Category.ToUpperInvariant());
+                    ImGui.Separator();
                 }
-                
-                ImGui.TreePop();
+                lastCategory = page.Category;
+            }
+
+            var isSelected = _selectedConfigPage == i;
+            if (ImGui.Selectable(page.Name, isSelected) && !isSelected)
+            {
+                _selectedConfigPage = i;
+                _configSearch       = string.Empty;
             }
         }
+    }
 
-        if (ImGui.CollapsingHeader("General"))
+    private void DrawConfigSearchResults()
+    {
+        var query = _configSearch.Trim();
+        var any   = false;
+        var layout = ConfigLayout.Root;
+
+        foreach (var page in ConfigPages)
         {
-            if (ImGui.TreeNodeEx("Gather Command"))
+            var hasMatch = false;
+            foreach (var entry in page.Entries)
             {
-                ConfigFunctions.DrawPreferredJobSelect();
-                ConfigFunctions.DrawGearChangeBox();
-                ConfigFunctions.DrawTeleportBox();
-                ConfigFunctions.DrawMapOpenBox();
-                ConfigFunctions.DrawPlaceMarkerBox();
-                ConfigFunctions.DrawPlaceWaymarkBox();
-                ConfigFunctions.DrawAetherytePreference();
-                ConfigFunctions.DrawSkipTeleportBox();
-                ConfigFunctions.DrawContextMenuBox();
-                ImGui.TreePop();
+                if (entry.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase))
+                {
+                    hasMatch = true;
+                    break;
+                }
             }
 
-            if (ImGui.TreeNodeEx("Set Names"))
-            {
-                ConfigFunctions.DrawSetInput("Miner",    GatherBuddy.Config.MinerSetName,    s => GatherBuddy.Config.MinerSetName    = s);
-                ConfigFunctions.DrawSetInput("Botanist", GatherBuddy.Config.BotanistSetName, s => GatherBuddy.Config.BotanistSetName = s);
-                ConfigFunctions.DrawSetInput("Fisher",   GatherBuddy.Config.FisherSetName,   s => GatherBuddy.Config.FisherSetName   = s);
-                ImGui.TreePop();
-            }
+            if (!hasMatch) continue;
 
-            if (ImGui.TreeNodeEx("Alarms"))
-            {
-                ConfigFunctions.DrawAlarmToggle();
-                ConfigFunctions.DrawAlarmsInDutyToggle();
-                ConfigFunctions.DrawAlarmsOnlyWhenLoggedInToggle();
-                ConfigFunctions.DrawWeatherAlarmPicker();
-                ConfigFunctions.DrawHourAlarmPicker();
-                ImGui.TreePop();
-            }
+            if (any)
+                ImGui.Spacing();
+            any = true;
 
-            if (ImGui.TreeNodeEx("Messages"))
-            {
-                ConfigFunctions.DrawPrintTypeSelector();
-                ConfigFunctions.DrawErrorTypeSelector();
-                ConfigFunctions.DrawMapMarkerPrintBox();
-                ConfigFunctions.DrawPrintUptimesBox();
-                ConfigFunctions.DrawPrintClipboardBox();
-                ConfigFunctions.DrawAlarmFormatInput();
-                ConfigFunctions.DrawIdentifiedGatherableFormatInput();
-                ImGui.TreePop();
-            }
+            var header = page.Category.Length > 0 ? $"{page.Category}: {page.Name}" : page.Name;
+            DrawConfigSearchHeader(header);
 
-            ImGui.NewLine();
+            foreach (var entry in page.Entries)
+                if (entry.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    layout.Draw(entry);
         }
 
-        if (ImGui.CollapsingHeader("Interface"))
+        if (!any)
         {
-            if (ImGui.TreeNodeEx("Config Window"))
-            {
-                ConfigFunctions._base = this;
-                ConfigFunctions.DrawOpenOnStartBox();
-                ConfigFunctions.DrawRespectEscapeBox();
-                ConfigFunctions.DrawLockPositionBox();
-                ConfigFunctions.DrawLockResizeBox();
-                ConfigFunctions.DrawWeatherTabNamesBox();
-                ConfigFunctions.DrawShowStatusLineBox();
-                ConfigFunctions.DrawHideClippyBox();
-                ConfigFunctions.DrawMainInterfaceHotkeyInput();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Fish Timer"))
-            {
-                ConfigFunctions.DrawKeepRecordsBox();
-                ConfigFunctions.DrawShowLocalTimeInRecordsBox();
-                ConfigFunctions.DrawFishTimerBox();
-                ConfigFunctions.DrawFishTimerEditBox();
-                ConfigFunctions.DrawFishTimerClickthroughBox();
-                ConfigFunctions.DrawFishTimerHideBox();
-                ConfigFunctions.DrawFishTimerHideBox2();
-                ConfigFunctions.DrawFishTimerUptimesBox();
-                ConfigFunctions.DrawFishTimerScale();
-                ConfigFunctions.DrawFishTimerIntervals();
-                ConfigFunctions.DrawFishTimerIntervalsRounding();
-                ConfigFunctions.DrawHideFishPopupBox();
-                ConfigFunctions.DrawCollectableHintPopupBox();
-                ConfigFunctions.DrawDoubleHookHintPopupBox();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Fish Stats [Testing]"))
-            {
-                ConfigFunctions.DrawEnableFishStats();
-                ConfigFunctions.DrawEnableReportTime();
-                ConfigFunctions.DrawEnableReportSize();
-                ConfigFunctions.DrawEnableReportMulti();
-                ConfigFunctions.DrawEnableGraphs();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Gather Window"))
-            {
-                ConfigFunctions.DrawShowGatherWindowBox();
-                ConfigFunctions.DrawGatherWindowAnchorBox();
-                ConfigFunctions.DrawGatherWindowTimersBox();
-                ConfigFunctions.DrawGatherWindowAlarmsBox();
-                ConfigFunctions.DrawSortGatherWindowBox();
-                ConfigFunctions.DrawGatherWindowShowOnlyAvailableBox();
-                ConfigFunctions.DrawHideGatherWindowCompletedItemsBox();
-                ConfigFunctions.DrawHideGatherWindowInDutyBox();
-                ConfigFunctions.DrawGatherWindowHoldKey();
-                ConfigFunctions.DrawGatherWindowLockBox();
-                ConfigFunctions.DrawGatherWindowHotkeyInput();
-                ConfigFunctions.DrawGatherWindowDeleteModifierInput();
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNodeEx("Spearfishing Helper"))
-            {
-                ConfigFunctions.DrawSpearfishHelperBox();
-                ConfigFunctions.DrawSpearfishNamesBox();
-                ConfigFunctions.DrawSpearfishSpeedBox();
-                ConfigFunctions.DrawAvailableSpearfishBox();
-                ConfigFunctions.DrawSpearfishIconsAsTextBox();
-                ConfigFunctions.DrawSpearfishCenterLineBox();
-                ConfigFunctions.DrawSpearfishFishNameFixed();
-                ConfigFunctions.DrawSpearfishFishNamePercentage();
-                ImGui.TreePop();
-            }
-
-            ImGui.NewLine();
+            var startY = ImGui.GetCursorPosY();
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextDisabled("No settings matched your search.");
+            var targetY = startY + ImGui.GetFrameHeightWithSpacing();
+            if (ImGui.GetCursorPosY() < targetY)
+                ImGui.SetCursorPosY(targetY);
         }
+    }
 
-        if (ImGui.CollapsingHeader("Colors"))
-        {
-            foreach (var color in Enum.GetValues<ColorId>())
-            {
-                var (defaultColor, name, description) = color.Data();
-                var currentColor = GatherBuddy.Config.Colors.TryGetValue(color, out var current) ? current : defaultColor;
-                if (Widget.ColorPicker(name, description, currentColor, c => GatherBuddy.Config.Colors[color] = c, defaultColor))
-                    GatherBuddy.Config.Save();
-            }
+    private static void DrawConfigSearchHeader(string header)
+    {
+        var startY = ImGui.GetCursorPosY();
+        var startX = ImGui.GetCursorPosX();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled(header.ToUpperInvariant());
+        var targetY = startY + ImGui.GetFrameHeightWithSpacing();
+        if (ImGui.GetCursorPosY() < targetY)
+            ImGui.SetCursorPosY(targetY);
+        ImGui.Separator();
+        ImGui.SetCursorPosX(startX);
+    }
 
-            ImGui.NewLine();
-
-            if (Widget.PaletteColorPicker("Names in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorNames,
-                    Configuration.DefaultSeColorNames, Configuration.ForegroundColors, out var idx))
-                GatherBuddy.Config.SeColorNames = idx;
-            if (Widget.PaletteColorPicker("Commands in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorCommands,
-                    Configuration.DefaultSeColorCommands, Configuration.ForegroundColors, out idx))
-                GatherBuddy.Config.SeColorCommands = idx;
-            if (Widget.PaletteColorPicker("Arguments in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorArguments,
-                    Configuration.DefaultSeColorArguments, Configuration.ForegroundColors, out idx))
-                GatherBuddy.Config.SeColorArguments = idx;
-            if (Widget.PaletteColorPicker("Alarm Message in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorAlarm,
-                    Configuration.DefaultSeColorAlarm, Configuration.ForegroundColors, out idx))
-                GatherBuddy.Config.SeColorAlarm = idx;
-
-            ImGui.NewLine();
-        }
+    private static void DrawConfigPage(ConfigPage page)
+    {
+        var layout = ConfigLayout.Root;
+        foreach (var entry in page.Entries)
+            layout.Draw(entry);
     }
 }
 
