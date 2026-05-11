@@ -1289,6 +1289,13 @@ public class CraftingQueueProcessor
         var combinedItems = new Dictionary<uint, int>(MaterialTargets);
         foreach (var (k, v) in RetainerPrecraftTargets)
         {
+            if (_executionPlan != null)
+            {
+                var isOriginalRecipe = _executionPlan.OriginalRecipes.Any(x => x.RecipeId == k);
+                if (_executionPlan.IsStockKeeping && isOriginalRecipe)
+                    continue; //Skip withdrawal of Original Recipe Items for StockKeeping Lists
+            }
+
             if (combinedItems.ContainsKey(k)) combinedItems[k] += v;
             else combinedItems[k] = v;
         }

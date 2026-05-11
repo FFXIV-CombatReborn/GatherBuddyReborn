@@ -9,13 +9,14 @@ public sealed class CraftingExecutionPlan
     private readonly CraftingListDefinition _planningSnapshot;
     private readonly bool _useRetainerCraftableAvailability;
 
-    public int ListId { get; }
-    public string ListName { get; }
-    public int Version { get; private set; }
-    public bool SkipIfEnough { get; }
-    public bool SkipFinalIfEnough { get; }
-    public bool RetainerRestock { get; }
-    public CraftingListPlan ResolvedPlan { get; private set; }
+    public int              ListId            { get; }
+    public string           ListName          { get; }
+    public int              Version           { get; private set; }
+    public bool             SkipIfEnough      { get; }
+    public bool             SkipFinalIfEnough { get; }
+    public bool             RetainerRestock   { get; }
+    public bool             IsStockKeeping    { get; }
+    public CraftingListPlan ResolvedPlan      { get; private set; }
 
     internal List<CraftingListItem> Queue { get; private set; } = [];
     internal List<CraftingListItem> OriginalRecipes { get; private set; } = [];
@@ -37,13 +38,14 @@ public sealed class CraftingExecutionPlan
         bool useRetainerCraftableAvailability,
         CraftingListPlan resolvedPlan)
     {
-        _planningSnapshot = planningSnapshot;
+        _planningSnapshot                 = planningSnapshot;
         _useRetainerCraftableAvailability = useRetainerCraftableAvailability;
-        ListId = planningSnapshot.ID;
-        ListName = planningSnapshot.Name;
-        SkipIfEnough = planningSnapshot.SkipIfEnough;
-        SkipFinalIfEnough = planningSnapshot.SkipFinalIfEnough;
-        RetainerRestock = planningSnapshot.RetainerRestock;
+        ListId                            = planningSnapshot.ID;
+        ListName                          = planningSnapshot.Name;
+        SkipIfEnough                      = planningSnapshot.SkipIfEnough;
+        SkipFinalIfEnough                 = planningSnapshot.SkipFinalIfEnough;
+        RetainerRestock                   = planningSnapshot.RetainerRestock;
+        IsStockKeeping                    = planningSnapshot.StockKeeping;
         ApplyResolvedPlan(resolvedPlan);
     }
 
