@@ -90,7 +90,7 @@ public sealed class VendorPurchaseManager : IDisposable
         && VendorPreferenceHelper.MatchesVendor(_request.Vendor, npc);
 
     private static bool IsDirectSpecialShopPurchaseSupported(VendorShopEntry entry, VendorNpc vendor)
-        => entry.Group is VendorCurrencyGroup.Tomestones or VendorCurrencyGroup.BicolorGemstones
+        => entry.Group is VendorCurrencyGroup.Tomestones or VendorCurrencyGroup.BicolorGemstones or VendorCurrencyGroup.Scrips
         && vendor.MenuShopType == VendorMenuShopType.SpecialShop
         && vendor.ShopItemIndex >= 0
         && vendor.SourceShopId != 0;

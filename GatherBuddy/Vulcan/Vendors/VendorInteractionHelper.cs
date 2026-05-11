@@ -9,6 +9,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GatherBuddy.Automation;
 using GatherBuddy.Plugin;
 using Lumina.Excel;
@@ -990,6 +991,25 @@ public static class VendorInteractionHelper
 
     private static unsafe int FindShopExchangeCurrencyItemIndex(AtkUnitBase* addon, uint requestedItemId)
     {
+        var agentShopItemIndex = FindAgentShopItemIndex(requestedItemId);
+        if (agentShopItemIndex >= 0)
+        {
+            var atkValueItemIndex = FindShopExchangeCurrencyItemIndexFromAtkValues(addon, requestedItemId);
+            if (atkValueItemIndex >= 0 && atkValueItemIndex != agentShopItemIndex)
+                GatherBuddy.Log.Debug($@"[VendorInteractionHelper] AgentShop remapped ShopExchangeCurrency row for requested item {requestedItemId} from AtkValues index {atkValueItemIndex} to live agent index {agentShopItemIndex}");
+            return agentShopItemIndex;
+        }
+
+        var fallbackItemIndex = FindShopExchangeCurrencyItemIndexFromAtkValues(addon, requestedItemId);
+        if (fallbackItemIndex >= 0)
+            return fallbackItemIndex;
+
+        GatherBuddy.Log.Debug($@"[VendorInteractionHelper] Could not find requested item {requestedItemId} in ShopExchangeCurrency. AgentShop rows: {DescribeAgentShopReceiveItems()}");
+        return -1;
+    }
+
+    private static unsafe int FindShopExchangeCurrencyItemIndexFromAtkValues(AtkUnitBase* addon, uint requestedItemId)
+    {
         var numEntries = (int)ReadAtkUInt(addon, 4);
         for (var index = 0; index < numEntries; index++)
         {
@@ -998,6 +1018,55 @@ public static class VendorInteractionHelper
         }
 
         return -1;
+    }
+
+    private static unsafe int FindAgentShopItemIndex(uint requestedItemId)
+    {
+        if (!TryGetAgentShop(out var agentShop))
+            return -1;
+
+        var receiveItems = agentShop->ItemReceiveSpan;
+        for (var index = 0; index < receiveItems.Length; index++)
+        {
+            if (receiveItems[index].ItemId == requestedItemId)
+                return index;
+        }
+
+        return -1;
+    }
+
+    private static unsafe bool TryGetAgentShop(out AgentShop* agentShop)
+    {
+        agentShop = null;
+        var agentModule = AgentModule.Instance();
+        if (agentModule == null)
+            return false;
+
+        agentShop = (AgentShop*)agentModule->GetAgentByInternalId(AgentId.Shop);
+        return agentShop != null && agentShop->ItemReceive != null && agentShop->ItemReceiveCount > 0;
+    }
+
+    private static unsafe string DescribeAgentShopReceiveItems(int maxItems = 12)
+    {
+        if (!TryGetAgentShop(out var agentShop))
+            return "unavailable";
+
+        var receiveItems = agentShop->ItemReceiveSpan;
+        if (receiveItems.Length == 0)
+            return "empty";
+
+        var count = Math.Min(maxItems, receiveItems.Length);
+        var descriptions = new List<string>(count);
+        for (var index = 0; index < count; index++)
+        {
+            var item = receiveItems[index];
+            descriptions.Add($@"{index}:{item.ItemId}:{item.ItemName}");
+        }
+
+        if (receiveItems.Length > count)
+            descriptions.Add($@"+{receiveItems.Length - count} more");
+
+        return string.Join(", ", descriptions);
     }
 
     private static unsafe int FindInclusionShopItemIndex(AtkUnitBase* addon, uint requestedItemId)

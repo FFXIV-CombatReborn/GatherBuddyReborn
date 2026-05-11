@@ -313,6 +313,12 @@ namespace GatherBuddy.Gui
             var     selector = _configPresetsSelector;
             ref var state    = ref _configPresetsUIState;
 
+            if (preset.ItemType.Fish && preset.ChooseBestActionsAutomatically)
+            {
+                preset.ChooseBestActionsAutomatically = false;
+                selector.Save();
+            }
+
             if (!isDefault)
             {
                 if (ImGuiUtil.DrawEditButtonText(0, CheckUnnamed(preset.Name), out var name, ref state.EditingName, IconButtonSize,
@@ -451,16 +457,23 @@ namespace GatherBuddy.Gui
                 if (ImGuiUtil.Checkbox("Gatherables", "", preset.ItemType.Other, x => preset.ItemType.Other = x))
                     selector.Save();
                 ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Fish", "", preset.ItemType.Fish, x => preset.ItemType.Fish = x))
+                if (ImGuiUtil.Checkbox("Fish", "", preset.ItemType.Fish, x =>
+                    {
+                        preset.ItemType.Fish = x;
+                        if (x)
+                            preset.ChooseBestActionsAutomatically = false;
+                    }))
                     selector.Save();
             }
 
             using var child = ImRaii.Child("ConfigPresetSettings", new Vector2(-1.5f * ItemSpacing.X, -ItemSpacing.Y));
 
             using var width = ImRaii.ItemWidth(SetInputWidth);
+            var showGeneralSettings = !preset.ItemType.Fish || preset.ItemType.Crystals || preset.ItemType.Other || preset.ItemType.Collectables;
 
-            using (var node = ImRaii.TreeNode("General Settings", ImGuiTreeNodeFlags.Framed))
+            if (showGeneralSettings)
             {
+                using var node = ImRaii.TreeNode("General Settings", ImGuiTreeNodeFlags.Framed);
                 if (node)
                 {
                     if (preset.ItemType.Crystals || preset.ItemType.Other)
@@ -519,16 +532,19 @@ namespace GatherBuddy.Gui
                         }
                     }
 
-                    if (ImGuiUtil.Checkbox("Automatically decide what actions to use",
-                            "This setting works differently depending on item or node type.\n"
-                          + "For collectables: the usual collectable rotation is used with all actions enabled.\n"
-                          + "For unspoiled and legendary nodes: actions are chosen to maximise the yield.\n"
-                          + "For regular nodes: actions are chosen to maximise the yield per GP spent.\n",
-                            preset.ChooseBestActionsAutomatically,
-                            x => preset.ChooseBestActionsAutomatically = x))
-                        selector.Save();
+                    if (!preset.ItemType.Fish)
+                    {
+                        if (ImGuiUtil.Checkbox("Automatically decide what actions to use",
+                                "This setting works differently depending on item or node type.\n"
+                              + "For collectables: the usual collectable rotation is used with all actions enabled.\n"
+                              + "For unspoiled and legendary nodes: actions are chosen to maximise the yield.\n"
+                              + "For regular nodes: actions are chosen to maximise the yield per GP spent.\n",
+                                preset.ChooseBestActionsAutomatically,
+                                x => preset.ChooseBestActionsAutomatically = x))
+                            selector.Save();
+                    }
 
-                    if (preset.ChooseBestActionsAutomatically && preset.NodeType.Regular)
+                    if (!preset.ItemType.Fish && preset.ChooseBestActionsAutomatically && preset.NodeType.Regular)
                     {
                         if (ImGuiUtil.Checkbox("Hold off spending GP until a node with the best bonuses",
                                 "This setting is for regular nodes only. When enabled, GP would be kept for nodes with bonuses\n"
@@ -577,6 +593,20 @@ namespace GatherBuddy.Gui
                     DrawActionConfig(ConcatNames(Actions.SolidAge),     preset.CollectableActions.SolidAge,   selector.Save);
                 }
             }
+            if (preset.ItemType.Fish)
+            {
+                using var node = ImRaii.TreeNode("Fishing Actions", ImGuiTreeNodeFlags.Framed);
+                if (node)
+                {
+                    DrawToggleConfig("Patience / Patience II", preset.FishingActions.Patience, selector.Save);
+                    DrawFishingActionConfig(Actions.PrizeCatch.Name,    preset.FishingActions.PrizeCatch,    selector.Save);
+                    DrawFishingActionConfig(Actions.Chum.Name,          preset.FishingActions.Chum,          selector.Save);
+                    DrawFishingActionConfig(Actions.SurfaceSlap.Name,   preset.FishingActions.SurfaceSlap,   selector.Save);
+                    DrawFishingActionConfig(Actions.IdenticalCast.Name, preset.FishingActions.IdenticalCast, selector.Save);
+                    DrawFishingActionConfig(Actions.AmbitiousLure.Name, preset.FishingActions.AmbitiousLure, selector.Save);
+                    DrawFishingActionConfig(Actions.ModestLure.Name,    preset.FishingActions.ModestLure,    selector.Save);
+                }
+            }
 
             {
                 using var node = ImRaii.TreeNode("Consumables", ImGuiTreeNodeFlags.Framed);
@@ -584,7 +614,7 @@ namespace GatherBuddy.Gui
                 {
                     DrawActionConfig("Cordial",         preset.Consumables.Cordial,        selector.Save, PossibleCordials);
                     DrawActionConfig("Food",            preset.Consumables.Food,           selector.Save, PossibleFoods,           true);
-                    DrawActionConfig("Potion",          preset.Consumables.Potion,         selector.Save, PossiblePotions,         true);
+                    DrawActionConfig("Medicine",        preset.Consumables.Potion,         selector.Save, PossiblePotions,         true);
                     DrawActionConfig("Manual",          preset.Consumables.Manual,         selector.Save, PossibleManuals,         true);
                     DrawActionConfig("Squadron Manual", preset.Consumables.SquadronManual, selector.Save, PossibleSquadronManuals, true);
                     DrawActionConfig("Squadron Pass",   preset.Consumables.SquadronPass,   selector.Save, PossibleSquadronPasses,  true);
@@ -774,6 +804,49 @@ namespace GatherBuddy.Gui
                     }
                 }
             }
+        }
+
+        private static void DrawToggleConfig(string name, ConfigPreset.ToggleConfig action, System.Action save)
+        {
+            using var node = ImRaii.TreeNode(name);
+            if (!node)
+                return;
+
+            if (ImGuiUtil.Checkbox("Enabled", "", action.Enabled, x => action.Enabled = x))
+                save();
+        }
+
+        private void DrawFishingActionConfig(string name, ConfigPreset.FishingActionConfig action, System.Action save)
+        {
+            using var node = ImRaii.TreeNode(name);
+            if (!node)
+                return;
+
+            if (ImGuiUtil.Checkbox("Enabled", "", action.Enabled, x => action.Enabled = x))
+                save();
+            if (!action.Enabled)
+                return;
+
+            var thresholdAbove = action.GpThresholdAbove;
+            if (ImGui.RadioButton("Use when GP is Above", thresholdAbove))
+            {
+                action.GpThresholdAbove = true;
+                save();
+            }
+
+            ImGui.SameLine();
+            if (ImGui.RadioButton("Below", !thresholdAbove))
+            {
+                action.GpThresholdAbove = false;
+                save();
+            }
+
+            var threshold = action.GpThreshold;
+            ImGui.SetNextItemWidth(SetInputWidth / 2);
+            if (ImGui.DragInt("GP Threshold", ref threshold, 1, 0, ConfigPreset.MaxGP))
+                action.GpThreshold = threshold;
+            if (ImGui.IsItemDeactivatedAfterEdit())
+                save();
         }
     }
 }

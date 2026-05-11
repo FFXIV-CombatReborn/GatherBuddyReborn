@@ -23,6 +23,7 @@ public static class VendorShopResolver
     private static readonly HashSet<uint> TomestoneIds   = new() { 28, 48, 49 };                 // Poetics, Mathematics, Mnemonics
     private static readonly HashSet<uint> HuntSealIds    = new() { AlliedSealCurrencyItemId, CenturioSealCurrencyItemId, SackOfNutsCurrencyItemId };
     private static readonly HashSet<uint> ScripIds       = new() { 33913, 33914, 41784, 41785 }; // Purple/Orange Crafter/Gatherer
+    private static readonly HashSet<uint> CurrencyTypeMapPreferredShopIds = new() { 1770637, 1770638 };
 
     // Sourced from AllaganLib SpecialShopListing.currencies
     private static readonly Dictionary<uint, uint> CurrencyTypeMap = new()
@@ -299,7 +300,8 @@ public static class VendorShopResolver
     // Mirrors AllaganLib SpecialShopListing.ConvertCurrencyId
     private static uint ConvertCurrencyId(uint shopId, uint rawId, ushort useCurrencyType, Dictionary<uint, uint> tomes)
     {
-        if (shopId == 1770637)
+        var prefersCurrencyTypeMap = CurrencyTypeMapPreferredShopIds.Contains(shopId);
+        if (prefersCurrencyTypeMap)
         {
             if (CurrencyTypeMap.TryGetValue(rawId, out var v)) return v;
         }
@@ -309,8 +311,8 @@ public static class VendorShopResolver
         }
         if (useCurrencyType == 16 && rawId != 25 && CurrencyTypeMap.TryGetValue(rawId, out var r16)) rawId = r16;
         if (useCurrencyType == 2  && rawId < 10  && tomes.TryGetValue(rawId, out var r2))             rawId = r2;
-        if (shopId == 1770637 && rawId < 10 && CurrencyTypeMap.TryGetValue(rawId, out var r637))      rawId = r637;
-        if ((useCurrencyType == 16 || useCurrencyType == 4) && rawId < 10 && shopId != 1770637)
+        if (prefersCurrencyTypeMap && rawId < 10 && CurrencyTypeMap.TryGetValue(rawId, out var preferredCurrency)) rawId = preferredCurrency;
+        if ((useCurrencyType == 16 || useCurrencyType == 4) && rawId < 10 && !prefersCurrencyTypeMap)
             if (tomes.TryGetValue(rawId, out var v) || CurrencyTypeMap.TryGetValue(rawId, out v)) rawId = v;
         return rawId;
     }

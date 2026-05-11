@@ -258,6 +258,7 @@ public partial class GatherBuddy : IDalamudPlugin
 
     private unsafe void Update(IFramework framework)
     {
+        Config.SaveIfDirty();
         var prev = LastObjectsLength;
         LastObjectsLength = Dalamud.Objects.Length;
         //Scan objects every 5 secons or when the number of objects change
@@ -318,6 +319,7 @@ public partial class GatherBuddy : IDalamudPlugin
 
     void IDisposable.Dispose()
     {
+        Config?.SaveIfDirty(force: true);
         MarketboardService?.Dispose();
         RaphaelSolveCoordinator?.Save();
         if (Dalamud.Framework != null)
