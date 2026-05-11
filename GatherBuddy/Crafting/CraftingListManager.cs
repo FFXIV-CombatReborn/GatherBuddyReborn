@@ -23,7 +23,7 @@ public class CraftingListManager
     {
         return !_lists.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (!excludeId.HasValue || x.ID != excludeId.Value));
     }
-    public CraftingListDefinition CreateNewList(string name, bool ephemeral = false, string? folderPath = null)
+    public CraftingListDefinition CreateNewList(string name, bool ephemeral = false, bool stockkeeping = false, string? folderPath = null)
     {
         if (!IsNameUnique(name))
         {
@@ -52,7 +52,8 @@ public class CraftingListManager
             ID = proposedId,
             Name = name,
             FolderPath = normalizedFolderPath,
-            Ephemeral = ephemeral
+            Ephemeral = ephemeral,
+            StockKeeping = stockkeeping
         };
         
         _lists.Add(list);

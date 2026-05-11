@@ -7,32 +7,32 @@ namespace GatherBuddy.Crafting;
 
 public class CraftingListDefinition
 {
-    public int ID { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public string FolderPath { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<CraftingListItem> Recipes { get; set; } = new();
-    public List<uint> ExpandedList { get; set; } = new();
-    public CraftingListConsumableSettings Consumables { get; set; } = new();
-    public Dictionary<uint, ListItemOptions> PrecraftOptions { get; set; } = new();
-    public Dictionary<uint, RecipeCraftSettings> PrecraftCraftSettings { get; set; } = new();
-    public string? DefaultPrecraftMacroId { get; set; }
-    public string? DefaultFinalMacroId { get; set; }
-    public SolverOverrideMode DefaultPrecraftSolverOverride { get; set; } = SolverOverrideMode.Default;
-    public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
-    
-    public Dictionary<uint, uint> PrecraftRecipeOverrides { get; set; } = new();
-    public bool SkipIfEnough { get; set; } = false;
-    public bool SkipFinalIfEnough { get; set; } = false;
-    public bool QuickSynthAll { get; set; } = false;
-    public bool QuickSynthAllPreferNQ { get; set; } = false;
-    public bool QuickSynthAllPrecraftsOnly { get; set; } = false;
-    public bool Materia { get; set; } = false;
-    public bool Repair { get; set; } = false;
-    public int RepairPercent { get; set; } = 50;
-    public bool RetainerRestock { get; set; } = false;
-    public bool Ephemeral { get; set; } = false;
+    public int                                   ID                            { get; set; }
+    public string                                Name                          { get; set; } = string.Empty;
+    public string                                Description                   { get; set; } = string.Empty;
+    public string                                FolderPath                    { get; set; } = string.Empty;
+    public DateTime                              CreatedAt                     { get; set; } = DateTime.UtcNow;
+    public List<CraftingListItem>                Recipes                       { get; set; } = new();
+    public List<uint>                            ExpandedList                  { get; set; } = new();
+    public CraftingListConsumableSettings        Consumables                   { get; set; } = new();
+    public Dictionary<uint, ListItemOptions>     PrecraftOptions               { get; set; } = new();
+    public Dictionary<uint, RecipeCraftSettings> PrecraftCraftSettings         { get; set; } = new();
+    public string?                               DefaultPrecraftMacroId        { get; set; }
+    public string?                               DefaultFinalMacroId           { get; set; }
+    public SolverOverrideMode                    DefaultPrecraftSolverOverride { get; set; } = SolverOverrideMode.Default;
+    public SolverOverrideMode                    DefaultFinalSolverOverride    { get; set; } = SolverOverrideMode.Default;
+    public Dictionary<uint, uint>                PrecraftRecipeOverrides       { get; set; } = new();
+    public bool                                  SkipIfEnough                  { get; set; } = false;
+    public bool                                  SkipFinalIfEnough             { get; set; } = false;
+    public bool                                  QuickSynthAll                 { get; set; } = false;
+    public bool                                  QuickSynthAllPreferNQ         { get; set; } = false;
+    public bool                                  QuickSynthAllPrecraftsOnly    { get; set; } = false;
+    public bool                                  Materia                       { get; set; } = false;
+    public bool                                  Repair                        { get; set; } = false;
+    public int                                   RepairPercent                 { get; set; } = 50;
+    public bool                                  RetainerRestock               { get; set; } = false;
+    public bool                                  Ephemeral                     { get; set; } = false;
+    public bool                                  StockKeeping                  { get; set; } = false;
 
     public bool ShouldApplyQuickSynthAllOverrides(bool isOriginalRecipe)
         => QuickSynthAll && (!QuickSynthAllPrecraftsOnly || !isOriginalRecipe);

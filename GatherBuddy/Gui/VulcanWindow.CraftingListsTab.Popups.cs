@@ -12,6 +12,7 @@ public partial class VulcanWindow
 {
     private string  _newListName         = string.Empty;
     private bool    _newListEphemeral    = false;
+    private bool    _newListStockKeeping = false;
     private string  _newListFolderPath   = string.Empty;
     private uint?   _newListRecipeId     = null;
     private string  _newListRecipeName   = string.Empty;
@@ -23,11 +24,12 @@ public partial class VulcanWindow
 
     private void ResetCreateListPopupState()
     {
-        _newListName = string.Empty;
-        _newListEphemeral = false;
-        _newListFolderPath = string.Empty;
-        _newListRecipeId = null;
-        _newListRecipeName = string.Empty;
+        _newListName         = string.Empty;
+        _newListEphemeral    = false;
+        _newListStockKeeping = false;
+        _newListFolderPath   = string.Empty;
+        _newListRecipeId     = null;
+        _newListRecipeName   = string.Empty;
         _openCreateListPopup = false;
     }
 
@@ -137,10 +139,19 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
+        
+        //TODO: Need an OptionBox instead of two Checkboxes
+        ImGui.Checkbox("Ephemeral##newListStockKeeping", ref _newListStockKeeping);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("This list will check if you have enough of the specified materials in your Retainer without withdrawing any. \nFor when you always want to have X of all Lumber and easily recraft what you used up.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
         if (ImGui.Button("Create", new Vector2(100, 0)) && !string.IsNullOrWhiteSpace(_newListName))
         {
-            var newList = GatherBuddy.CraftingListManager.CreateNewList(_newListName, _newListEphemeral, _newListFolderPath);
+            var newList = GatherBuddy.CraftingListManager.CreateNewList(_newListName, _newListEphemeral, _newListStockKeeping, _newListFolderPath);
             if (_newListRecipeId.HasValue)
             {
                 newList.AddRecipe(_newListRecipeId.Value, 1);
