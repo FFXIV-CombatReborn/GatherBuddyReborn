@@ -111,7 +111,7 @@ public partial class VulcanWindow
                         }
                         else if (_editingList.StockKeeping)
                         {
-                            using (ImRaii.Enabled())
+                            using (ImRaii.Disabled(_editingList.StockKeeping))
                             {
                                 var tmpBool = true;
                                 ImGui.Checkbox("StockKeeping##listHeaderStockKeeping",
