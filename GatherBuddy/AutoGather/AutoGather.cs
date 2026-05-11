@@ -707,7 +707,7 @@ namespace GatherBuddy.AutoGather
              && !isPathing
              && !Dalamud.Conditions[ConditionFlag.Mounted])
             {
-                if (TryUseFoodAndMedicine())
+                if (Player.Job == 18 /* FSH */ && TryUseFishingConsumables(GetFishingConsumablesPreset()))
                     return;
 
                 if (SpiritbondMax > 0)
@@ -1217,7 +1217,9 @@ namespace GatherBuddy.AutoGather
 
             var targetGatheringType = next.Location.GatheringType.ToGroup();
             
-            var config = MatchConfigPreset(next.Gatherable);
+            var config = next.Fish != null
+                ? MatchConfigPreset(next.Fish)
+                : MatchConfigPreset(next.Gatherable);
 
             if (DoUseConsumablesWithoutCastTime(config))
                 return;

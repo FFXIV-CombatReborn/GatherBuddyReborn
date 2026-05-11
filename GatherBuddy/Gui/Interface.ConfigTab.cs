@@ -1561,7 +1561,7 @@ public partial class Interface
             if (string.IsNullOrWhiteSpace(presetName))
                 presetName = fish.ItemId.ToString();
             
-            var success = AutoHookIntegration.AutoHookService.ExportPresetToAutoHook(presetName, [fish]);
+            var success = AutoHookIntegration.AutoHookService.ExportPresetToAutoHook(presetName, [fish], _base.MatchConfigPreset(fish));
             
             if (success)
             {
@@ -1669,16 +1669,7 @@ public partial class Interface
             new("Defer repairs during fishing buffs",             ConfigFunctions.DrawDeferRepairDuringFishingBuffsBox),
             new("Defer aetherial reduction during fishing buffs", ConfigFunctions.DrawDeferReductionDuringFishingBuffsBox),
             new("Defer materia extraction during fishing buffs",  ConfigFunctions.DrawDeferMateriaExtractionDuringFishingBuffsBox),
-            new("Use Cordial GP Threshold",                       ConfigFunctions.DrawFishingCordialConfig),
-            new("Use Food Use Medicine",                          ConfigFunctions.DrawFishingConsumablesConfig),
             new("Use Hook Timers in AutoHook Presets",            ConfigFunctions.DrawUseHookTimersBox),
-            new("Use Patience Patience II",                       ConfigFunctions.DrawUsePatienceBox),
-            new("Use Prize Catch GP Threshold",                   ConfigFunctions.DrawPrizeCatchConfig),
-            new("Use Chum GP Threshold",                          ConfigFunctions.DrawChumConfig),
-            new("Enable automatic Surface Slap GP Threshold",     ConfigFunctions.DrawSurfaceSlapConfig),
-            new("Enable automatic Identical Cast GP Threshold",   ConfigFunctions.DrawIdenticalCastConfig),
-            new("Enable automatic Ambitious Lure GP Threshold",   ConfigFunctions.DrawAmbitiousLureConfig),
-            new("Enable automatic Modest Lure GP Threshold",      ConfigFunctions.DrawModestLureConfig),
             new("Manual Preset Generator",                        ConfigFunctions.DrawManualPresetGenerator),
         ]),
         new("Auto-Gather", "Advanced",
