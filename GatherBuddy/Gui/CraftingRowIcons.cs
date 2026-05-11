@@ -25,7 +25,7 @@ internal static class CraftingRowIcons
     private const uint BotanistClassJobId = 17;
     private const uint FisherClassJobId   = 18;
 
-    private static bool IsElementalCrystal(uint itemId)
+    public static bool IsElementalCrystal(uint itemId)
         => itemId is >= 2 and <= 19;
 
     private static IReadOnlyList<RowIcon> GetCrystalIcons()
