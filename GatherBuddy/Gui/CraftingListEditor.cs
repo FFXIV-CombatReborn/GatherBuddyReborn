@@ -529,23 +529,13 @@ public class CraftingListEditor
 
         ImGui.Checkbox("Show Precrafts##sp", ref _showPrecrafts);
 
-        if (_list.StockKeeping)
+        using (ImRaii.Disabled(_list.StockKeeping))
         {
-            ImGui.BeginDisabled();
-            try
-            {
-                _list.SkipIfEnough      = true;
-                _list.SkipFinalIfEnough = true;
-                DrawSkipIfEnoughCheckBox();
-            }
-            finally
-            {
-                ImGui.EndDisabled();
-            }
-        }
-        else
+            _list.SkipIfEnough      = _list.StockKeeping || _list.SkipIfEnough;
+            _list.SkipFinalIfEnough = _list.StockKeeping || _list.SkipFinalIfEnough;
+            
             DrawSkipIfEnoughCheckBox();
-
+        }
         var quickSynthAll = _list.QuickSynthAll;
         if (ImGui.Checkbox("Quick Synth All##qsa", ref quickSynthAll))
         {
@@ -596,7 +586,7 @@ public class CraftingListEditor
         }
 
         var allaganEnabled = AllaganTools.Enabled;
-        using (ImRaii.Disabled(!allaganEnabled))
+        using (ImRaii.Disabled(!allaganEnabled || _list.StockKeeping))
         {
             var retainerRestock = _list.RetainerRestock || _list.StockKeeping;
             if (ImGui.Checkbox("Restock from Retainers##rrr", ref retainerRestock))

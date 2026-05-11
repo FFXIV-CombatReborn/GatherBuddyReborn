@@ -142,7 +142,7 @@ public partial class VulcanWindow
         ImGui.Spacing();
         
         //TODO: Need an OptionBox instead of two Checkboxes
-        ImGui.Checkbox("Ephemeral##newListStockKeeping", ref _newListStockKeeping);
+        ImGui.Checkbox("StockKeeping##newListStockKeeping", ref _newListStockKeeping);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("This list will check if you have enough of the specified materials in your Retainer without withdrawing any. \nFor when you always want to have X of all Lumber and easily recraft what you used up.");
 
