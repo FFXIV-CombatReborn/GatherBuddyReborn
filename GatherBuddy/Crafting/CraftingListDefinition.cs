@@ -95,6 +95,7 @@ public class CraftingListDefinition
             RepairPercent = RepairPercent,
             RetainerRestock = RetainerRestock,
             Ephemeral = Ephemeral,
+            StockKeeping = StockKeeping
         };
 
         foreach (var recipe in Recipes)

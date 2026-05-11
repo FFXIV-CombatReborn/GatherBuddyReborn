@@ -529,34 +529,22 @@ public class CraftingListEditor
 
         ImGui.Checkbox("Show Precrafts##sp", ref _showPrecrafts);
 
-        var skipIfEnough = _list.SkipIfEnough;
-        if (ImGui.Checkbox("Skip if Already Have Enough##sie", ref skipIfEnough))
+        if (_list.StockKeeping)
         {
-            _list.SkipIfEnough    = skipIfEnough;
-            _cachedQueueValid     = false;
-            InvalidateMaterialCaches();
-            InvalidatePresentationCaches();
-            GatherBuddy.CraftingListManager.SaveList(_list);
-            TriggerQueueRegeneration();
-            RefreshInventoryCounts();
-        }
-
-        if (_list.SkipIfEnough)
-        {
-            ImGui.Indent();
-            var skipFinalIfEnough = _list.SkipFinalIfEnough;
-            if (ImGui.Checkbox("Include Final Crafts##sife", ref skipFinalIfEnough))
+            ImGui.BeginDisabled();
+            try
             {
-                _list.SkipFinalIfEnough = skipFinalIfEnough;
-                _cachedQueueValid       = false;
-                InvalidatePresentationCaches();
-                GatherBuddy.CraftingListManager.SaveList(_list);
-                TriggerQueueRegeneration();
+                _list.SkipIfEnough      = true;
+                _list.SkipFinalIfEnough = true;
+                DrawSkipIfEnoughCheckBox();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Also reduce final crafts based on how many you already have. Useful for resuming an interrupted list.");
-            ImGui.Unindent();
+            finally
+            {
+                ImGui.EndDisabled();
+            }
         }
+        else
+            DrawSkipIfEnoughCheckBox();
 
         var quickSynthAll = _list.QuickSynthAll;
         if (ImGui.Checkbox("Quick Synth All##qsa", ref quickSynthAll))
@@ -610,7 +598,7 @@ public class CraftingListEditor
         var allaganEnabled = AllaganTools.Enabled;
         using (ImRaii.Disabled(!allaganEnabled))
         {
-            var retainerRestock = _list.RetainerRestock;
+            var retainerRestock = _list.RetainerRestock || _list.StockKeeping;
             if (ImGui.Checkbox("Restock from Retainers##rrr", ref retainerRestock))
             {
                 _list.RetainerRestock = retainerRestock;
@@ -690,7 +678,39 @@ public class CraftingListEditor
 
         ImGui.EndChild();
     }
-    
+
+    private void DrawSkipIfEnoughCheckBox()
+    {
+        var skipIfEnough = _list.SkipIfEnough;
+        if (ImGui.Checkbox("Skip if Already Have Enough##sie", ref skipIfEnough))
+        {
+            _list.SkipIfEnough = skipIfEnough;
+            _cachedQueueValid  = false;
+            InvalidateMaterialCaches();
+            InvalidatePresentationCaches();
+            GatherBuddy.CraftingListManager.SaveList(_list);
+            TriggerQueueRegeneration();
+            RefreshInventoryCounts();
+        }
+
+        if (_list.SkipIfEnough)
+        {
+            ImGui.Indent();
+            var skipFinalIfEnough = _list.SkipFinalIfEnough;
+            if (ImGui.Checkbox("Include Final Crafts##sife", ref skipFinalIfEnough))
+            {
+                _list.SkipFinalIfEnough = skipFinalIfEnough;
+                _cachedQueueValid       = false;
+                InvalidatePresentationCaches();
+                GatherBuddy.CraftingListManager.SaveList(_list);
+                TriggerQueueRegeneration();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Also reduce final crafts based on how many you already have. Useful for resuming an interrupted list.");
+            ImGui.Unindent();
+        }
+    }
+
     private void DrawDetailsPane()
     {
         ImGui.TextColored(ImGuiColors.DalamudYellow, "List Info");
