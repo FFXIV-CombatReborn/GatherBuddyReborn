@@ -109,6 +109,23 @@ public partial class VulcanWindow
                             if (ImGui.IsItemHovered())
                                 ImGui.SetTooltip("Automatically delete this list after crafting completes. Has no effect if stopped manually.");
                         }
+                        else if (_editingList.StockKeeping)
+                        {
+                            ImGui.BeginDisabled();
+                            try
+                            {
+                                var tmpBool = true;
+                                ImGui.Checkbox("StockKeeping##listHeaderStockKeeping", ref tmpBool); //Not planned in the first place to disable the StockKeeping Option
+                                
+                                if (ImGui.IsItemHovered())
+                                    ImGui.SetTooltip(
+                                        "This list will check if you have enough of the specified materials in your Retainer without withdrawing any. \nFor when you always want to have X of all Lumber and easily recraft what you used up.");
+                            }
+                            finally
+                            {
+                                ImGui.EndDisabled();
+                            }
+                        }
                         else
                         {
                             ImGui.TextColored(ImGuiColors.DalamudGrey3, "Crafting List");

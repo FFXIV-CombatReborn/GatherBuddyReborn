@@ -70,6 +70,7 @@ public partial class VulcanWindow
         {
             if (ImGui.Button("Import", new Vector2(120, 0)))
             {
+                //TODO: Special Import Logic for StockKeeping Lists needed?
                 var (imported, error) = GatherBuddy.CraftingListManager.ImportList(_importListText);
                 if (imported != null)
                 {
