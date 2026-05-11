@@ -76,6 +76,7 @@ public partial class VulcanWindow
                 _listEditor.OnStartCrafting = l => { StartCraftingList(l); MinimizeWindow(); };
                 _listEditor.RefreshInventoryCounts();
                 GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+                GatherBuddy.CraftingTreeWindow?.SetEditor(_listEditor);
                 _deferEditorDraw = true;
 
                 _teamCraftListName   = string.Empty;

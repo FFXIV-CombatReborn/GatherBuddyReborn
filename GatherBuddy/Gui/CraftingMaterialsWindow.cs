@@ -52,7 +52,10 @@ public class CraftingMaterialsWindow : Window
         Vector4 Accent,
         List<MaterialEntry> Entries,
         RetainerColumnMode RetainerColumns,
-        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets);
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets,
+        IReadOnlyList<CurrencyTotal>? CurrencyTotals = null);
+
+    private readonly record struct CurrencyTotal(uint CurrencyItemId, long Amount, string Name, ushort IconId);
     private bool _cachedMaterialViewValid;
     private bool _cachedHasMaterials;
     private bool _cachedHasVisibleEntries;
@@ -168,7 +171,7 @@ public class CraftingMaterialsWindow : Window
             var panel = _cachedPanels[i];
             var isLast   = i == _cachedPanels.Count - 1;
             var spanFull = isLast && _cachedPanels.Count % 2 == 1;
-            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets);
+            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets, panel.CurrencyTotals);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
@@ -306,8 +309,8 @@ public class CraftingMaterialsWindow : Window
             var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
             var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
             if (gatherList.Count > 0) _cachedPanels.Add(new MaterialPanel("##gather", "Gather", AccentGather, gatherList, nonCraftRetainerMode, null));
-            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null));
-            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList)));
+            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null, ComputeCurrencyTotals(dropList, bicolorOnly: true, ignoreOwned: _matsKeepFulfilled)));
+            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList), ComputeCurrencyTotals(shopList, bicolorOnly: false, ignoreOwned: _matsKeepFulfilled)));
             if (vendorList.Count > 0) _cachedPanels.Add(new MaterialPanel("##vendor", "Vendor", AccentVendor, vendorList, nonCraftRetainerMode, BuildVendorBuyListTargets(vendorList)));
             if (craftList is { Count: > 0 }) _cachedPanels.Add(new MaterialPanel("##craft", "Craft", AccentCraft, craftList, craftRetainerMode, null));
 
@@ -364,7 +367,8 @@ public class CraftingMaterialsWindow : Window
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
         IReadOnlyList<MaterialEntry> entries,
-        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets,
+        IReadOnlyList<CurrencyTotal>? currencyTotals = null)
     {
         static void DrawCenteredHeader(string text, string? tooltip = null)
         {
@@ -382,6 +386,11 @@ public class CraftingMaterialsWindow : Window
         using (VulcanUiStyle.PushPanel())
         {
             ImGui.BeginChild(id, new Vector2(width, height), true);
+            if (currencyTotals is { Count: > 0 })
+            {
+                DrawCurrencyTotalsRow(currencyTotals, accent);
+                ImGui.Separator();
+            }
             var colCount = retainerColumnMode switch
             {
                 RetainerColumnMode.None  => 4,
@@ -451,12 +460,19 @@ public class CraftingMaterialsWindow : Window
                 }
                 else
                 {
+                    var maxNameWidth = 0f;
+                    for (var i = 0; i < entries.Count; i++)
+                    {
+                        var w = ImGui.CalcTextSize(entries[i].Name).X;
+                        if (w > maxNameWidth)
+                            maxNameWidth = w;
+                    }
                     var clipper = ImGui.ImGuiListClipper();
                     clipper.Begin(entries.Count);
                     while (clipper.Step())
                     {
                         for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets);
+                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets, maxNameWidth);
                     }
                     clipper.End();
                     clipper.Destroy();
@@ -470,7 +486,7 @@ public class CraftingMaterialsWindow : Window
     }
 
     private void DrawPanelRow(MaterialEntry entry, RetainerColumnMode retainerColumnMode,
-        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets, float maxNameWidth)
     {
         var itemId            = entry.ItemId;
         var have              = entry.Have;
@@ -513,6 +529,7 @@ public class CraftingMaterialsWindow : Window
         else
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
+        var nameTextStartX = ImGui.GetCursorScreenPos().X;
         ImUtf8.CopyOnClickSelectable(name.AsSpan());
         if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
         {
@@ -531,7 +548,20 @@ public class CraftingMaterialsWindow : Window
         var sourceIcons = CraftingRowIcons.GetMaterialIcons(itemId, isPrecraft);
         if (sourceIcons.Count > 0)
         {
-            ImGui.SameLine(0, 4f);
+            var iconColumnTargetX = nameTextStartX + maxNameWidth + 8f;
+            ImGui.SameLine(0, 0);
+            var currentX = ImGui.GetCursorScreenPos().X;
+            var gap      = iconColumnTargetX - currentX;
+            if (gap > 0f)
+            {
+                ImGui.Dummy(new Vector2(gap, 0));
+                ImGui.SameLine(0, 0);
+            }
+            else
+            {
+                ImGui.Dummy(new Vector2(4f, 0));
+                ImGui.SameLine(0, 0);
+            }
             CraftingRowIcons.DrawIconsRightAligned(sourceIcons);
         }
 
@@ -690,6 +720,89 @@ public class CraftingMaterialsWindow : Window
         var currentCount = (uint)Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
         target = new VendorBuyListManager.VendorTargetRequest(entry.ItemId, currentCount + (uint)missingQuantity);
         return true;
+    }
+
+    private static List<CurrencyTotal> ComputeCurrencyTotals(IReadOnlyList<MaterialEntry> entries, bool bicolorOnly, bool ignoreOwned)
+    {
+        var totals = new Dictionary<uint, (long Amount, string Name, ushort IconId)>();
+        foreach (var entry in entries)
+        {
+            var quantity = ignoreOwned
+                ? entry.Needed
+                : entry.Needed - entry.EffectiveAvailable;
+            if (quantity <= 0)
+                continue;
+            if (!TryResolveCheapestCurrency(entry.ItemId, bicolorOnly, out var costPer, out var currencyId, out var currencyName))
+                continue;
+            var totalCost = (long)costPer * quantity;
+            if (totals.TryGetValue(currencyId, out var existing))
+                totals[currencyId] = (existing.Amount + totalCost, existing.Name, existing.IconId);
+            else
+                totals[currencyId] = (totalCost, currencyName, ResolveCurrencyIconId(currencyId));
+        }
+        return totals
+            .Select(kvp => new CurrencyTotal(kvp.Key, kvp.Value.Amount, kvp.Value.Name, kvp.Value.IconId))
+            .OrderByDescending(t => t.Amount)
+            .ToList();
+    }
+
+    private static bool TryResolveCheapestCurrency(uint itemId, bool bicolorOnly, out uint costPer, out uint currencyId, out string currencyName)
+    {
+        costPer       = 0;
+        currencyId    = 0;
+        currencyName  = string.Empty;
+        var bestCost  = uint.MaxValue;
+        foreach (var entry in VendorShopResolver.SpecialShopEntries)
+        {
+            if (entry.ItemId != itemId || entry.Cost == 0)
+                continue;
+            if (bicolorOnly && entry.Group != VendorCurrencyGroup.BicolorGemstones)
+                continue;
+            if (entry.Cost >= bestCost)
+                continue;
+            bestCost     = entry.Cost;
+            currencyId   = entry.CurrencyItemId;
+            currencyName = entry.CurrencyName;
+        }
+        if (currencyId == 0)
+            return false;
+        costPer = bestCost;
+        return true;
+    }
+
+    private static ushort ResolveCurrencyIconId(uint currencyItemId)
+    {
+        var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Item>();
+        if (sheet != null && sheet.TryGetRow(currencyItemId, out var item))
+            return (ushort)item.Icon;
+        return 0;
+    }
+
+    private static void DrawCurrencyTotalsRow(IReadOnlyList<CurrencyTotal> totals, Vector4 accent)
+    {
+        var lineH    = ImGui.GetTextLineHeight();
+        var iconSize = new Vector2(lineH, lineH);
+
+        using (ImRaii.PushColor(ImGuiCol.Text, accent))
+            ImGui.TextUnformatted("Totals:");
+
+        for (var i = 0; i < totals.Count; i++)
+        {
+            var t = totals[i];
+            ImGui.SameLine(0, i == 0 ? 8f : 12f);
+            if (t.IconId != 0)
+            {
+                var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(t.IconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                    ImGui.Image(wrap.Handle, iconSize);
+                else
+                    ImGui.Dummy(iconSize);
+                ImGui.SameLine(0, 4);
+            }
+            ImGui.TextUnformatted($"{t.Amount:N0}");
+            if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(t.Name))
+                ImGui.SetTooltip(t.Name);
+        }
     }
 
 }

@@ -154,6 +154,7 @@ public partial class VulcanWindow : Window, IDisposable
         _listEditor?.Dispose();
         _listEditor = null;
         GatherBuddy.CraftingMaterialsWindow?.SetEditor(null);
+        GatherBuddy.CraftingTreeWindow?.SetEditor(null);
     }
 
     private void OpenCraftingList(CraftingListDefinition list)
@@ -163,6 +164,7 @@ public partial class VulcanWindow : Window, IDisposable
         _listEditor = new CraftingListEditor(list);
         _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
         GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
+        GatherBuddy.CraftingTreeWindow?.SetEditor(_listEditor);
         _deferEditorDraw = true;
     }
 

@@ -128,6 +128,7 @@ public class CraftingListEditor
     internal string ListName            => GetPlanningList().Name;
     internal bool SkipIfEnoughEnabled   => GetPlanningList().SkipIfEnough;
     internal bool RetainerRestockEnabled => GetPlanningList().RetainerRestock;
+    internal CraftingListDefinition PlanningList => GetPlanningList();
     internal long MaterialCacheVersion  => Interlocked.Read(ref _materialCacheVersion);
     
     public Action<CraftingListDefinition>? OnStartCrafting { get; set; }
@@ -677,16 +678,24 @@ public class CraftingListEditor
             }
         }
 
-        var halfW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
-        if (ImGui.Button("Generate New Gather List##gatherList", new Vector2(halfW, 22)))
+        var hSpacing = ImGui.GetStyle().ItemSpacing.X;
+        var thirdW = (ImGui.GetContentRegionAvail().X - hSpacing * 2f) / 3f;
+        if (ImGui.Button("Generate Gather List##gatherList", new Vector2(thirdW, 22)))
         {
             var materials = new Dictionary<uint, int>(GetCachedMaterials());
             CraftingGatherBridge.CreatePersistentGatherList($"{_list.Name}...Auto-Generated", materials);
         }
         ImGui.SameLine();
         var matsBtnLabel = GatherBuddy.CraftingMaterialsWindow?.IsOpen == true ? "Hide Materials" : "View Materials";
-        if (ImGui.Button($"{matsBtnLabel}##viewMats", new Vector2(-1, 22)) && GatherBuddy.CraftingMaterialsWindow != null)
+        if (ImGui.Button($"{matsBtnLabel}##viewMats", new Vector2(thirdW, 22)) && GatherBuddy.CraftingMaterialsWindow != null)
             GatherBuddy.CraftingMaterialsWindow.IsOpen = !GatherBuddy.CraftingMaterialsWindow.IsOpen;
+        ImGui.SameLine();
+        var treeBtnLabel = GatherBuddy.CraftingTreeWindow?.IsOpen == true ? "Hide Tree" : "View Tree";
+        if (ImGui.Button($"{treeBtnLabel}##viewTree", new Vector2(-1, 22)) && GatherBuddy.CraftingTreeWindow != null)
+        {
+            GatherBuddy.CraftingTreeWindow.SetEditor(this);
+            GatherBuddy.CraftingTreeWindow.IsOpen = !GatherBuddy.CraftingTreeWindow.IsOpen;
+        }
 
         ImGui.EndChild();
     }

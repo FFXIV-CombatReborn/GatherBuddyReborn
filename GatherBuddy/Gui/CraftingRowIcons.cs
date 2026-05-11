@@ -25,8 +25,27 @@ internal static class CraftingRowIcons
     private const uint BotanistClassJobId = 17;
     private const uint FisherClassJobId   = 18;
 
+    private static bool IsElementalCrystal(uint itemId)
+        => itemId is >= 2 and <= 19;
+
+    private static IReadOnlyList<RowIcon> GetCrystalIcons()
+    {
+        var preferredJobId = GatherBuddy.Config.PreferredGatheringType.ToGroup() switch
+        {
+            GatheringType.Miner    => MinerClassJobId,
+            GatheringType.Botanist => BotanistClassJobId,
+            _                      => 0u,
+        };
+        if (preferredJobId == 0)
+            return new List<RowIcon>(0);
+        return new List<RowIcon>(1) { new(GetClassJobIconId(preferredJobId), GetClassJobName(preferredJobId)) };
+    }
+
     public static IReadOnlyList<RowIcon> GetMaterialIcons(uint itemId, bool isPrecraft)
     {
+        if (IsElementalCrystal(itemId))
+            return GetCrystalIcons();
+
         var key = (itemId, isPrecraft);
         if (_materialIconCache.TryGetValue(key, out var cached))
             return cached;
