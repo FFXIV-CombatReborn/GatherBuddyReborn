@@ -307,6 +307,7 @@ public static class VendorShopResolver
         {
             if (tomes.TryGetValue(rawId, out var v) || CurrencyTypeMap.TryGetValue(rawId, out v)) return v;
         }
+        if (useCurrencyType == 4 && rawId < 10 && CurrencyTypeMap.TryGetValue(rawId, out var r4)) return r4;
         if (useCurrencyType == 16 && rawId != 25 && CurrencyTypeMap.TryGetValue(rawId, out var r16)) rawId = r16;
         if (useCurrencyType == 2  && rawId < 10  && tomes.TryGetValue(rawId, out var r2))             rawId = r2;
         if (shopId == 1770637 && rawId < 10 && CurrencyTypeMap.TryGetValue(rawId, out var r637))      rawId = r637;

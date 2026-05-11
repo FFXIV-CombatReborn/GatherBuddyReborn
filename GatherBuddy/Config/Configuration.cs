@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Numerics;
 using Dalamud.Configuration;
 using Dalamud.Game.ClientState.Keys;
@@ -161,8 +162,25 @@ public partial class Configuration : IPluginConfiguration
     public ModifierHotkey   GatherWindowDeleteModifier     { get; set; } = VirtualKey.CONTROL;
     public VirtualKey       GatherWindowHoldKey            { get; set; } = VirtualKey.MENU;
 
+    [JsonIgnore] private bool _savePending  = false;
+    [JsonIgnore] private long _lastMarkTick = 0;
+
     public void Save()
-        => Dalamud.PluginInterface.SavePluginConfig(this);
+    {
+        _savePending  = true;
+        _lastMarkTick = Environment.TickCount64;
+    }
+
+    public void SaveIfDirty(bool force = false)
+    {
+        if (!_savePending) return;
+        if (!force && Environment.TickCount64 - _lastMarkTick < 250) return;
+        _savePending = false;
+        if (force)
+            Dalamud.PluginInterface.SavePluginConfig(this);
+        else
+            Task.Run(() => Dalamud.PluginInterface.SavePluginConfig(this));
+    }
 
     public bool ShouldSerializeLegacyVendorBuyListEntries()
         => false;

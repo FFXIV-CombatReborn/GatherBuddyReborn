@@ -879,8 +879,8 @@ public sealed partial class VendorBuyListManager : IDisposable
 
         if (!VendorShopResolver.IsInitialized)
             return false;
-
-        foreach (var candidate in GetDefaultEntryCandidates(itemId))
+        var candidates = GetDefaultEntryCandidates(itemId).ToList();
+        foreach (var candidate in candidates)
         {
             var supportedVendors = VendorDevExclusions.GetSelectableNpcs(
                 candidate.Npcs
@@ -900,6 +900,9 @@ public sealed partial class VendorBuyListManager : IDisposable
             vendor = preferredVendor;
             return true;
         }
+        if (candidates.Count > 0)
+            GatherBuddy.Log.Debug(
+                $"[VendorBuyListManager] Could not resolve a supported default vendor entry for item {itemId}; found {candidates.Count:N0} candidate vendor entries but none had an automation-supported route.");
 
         return false;
     }

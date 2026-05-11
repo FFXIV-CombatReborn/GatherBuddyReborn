@@ -21,6 +21,57 @@ public class AutoHookPresetBuilder
     {
         return InventoryManager.Instance()->GetInventoryItemCount(itemRowId < 100000 ? itemRowId : itemRowId - 100000, itemRowId >= 100000);
     }
+
+    private static bool GetFishingToggleConfig(ConfigPreset? gbrPreset, Func<ConfigPreset.FishingActionsRec, ConfigPreset.ToggleConfig> selector,
+        bool fallbackEnabled)
+        => gbrPreset == null ? fallbackEnabled : selector(gbrPreset.FishingActions).Enabled;
+
+    private static (bool Enabled, int Threshold, bool ThresholdAbove) GetFishingActionConfig(ConfigPreset? gbrPreset,
+        Func<ConfigPreset.FishingActionsRec, ConfigPreset.FishingActionConfig> selector, bool fallbackEnabled, int fallbackThreshold,
+        bool fallbackThresholdAbove)
+    {
+        if (gbrPreset == null)
+            return (fallbackEnabled, fallbackThreshold, fallbackThresholdAbove);
+
+        var config = selector(gbrPreset.FishingActions);
+        return (config.Enabled, config.GpThreshold, config.GpThresholdAbove);
+    }
+
+    private static (int Threshold, bool ThresholdAbove) GetFishingActionThreshold(ConfigPreset? gbrPreset,
+        Func<ConfigPreset.FishingActionsRec, ConfigPreset.FishingActionConfig> selector, int fallbackThreshold,
+        bool fallbackThresholdAbove)
+    {
+        if (gbrPreset == null)
+            return (fallbackThreshold, fallbackThresholdAbove);
+
+        var config = selector(gbrPreset.FishingActions);
+        return (config.GpThreshold, config.GpThresholdAbove);
+    }
+
+    private static (bool Enabled, int Threshold, bool ThresholdAbove) GetFishingCordialConfig(ConfigPreset? gbrPreset)
+    {
+        if (gbrPreset == null)
+        {
+            var legacy = GatherBuddy.Config.AutoGatherConfig;
+            return (legacy.UseCordialForFishing, legacy.CordialForFishingGPThreshold, false);
+        }
+
+        var cordial = gbrPreset.Consumables.Cordial;
+        if (!cordial.Enabled || cordial.ItemId == 0)
+            return (false, 0, false);
+
+        if (cordial.MinGP > 0 && cordial.MaxGP < ConfigPreset.MaxGP)
+        {
+            GatherBuddy.Log.Debug(
+                $"[AutoHook] Preset '{gbrPreset.Name}' uses a cordial GP range ({cordial.MinGP}-{cordial.MaxGP}); AutoHook only supports one threshold, using the upper bound.");
+            return (true, cordial.MaxGP, false);
+        }
+
+        if (cordial.MinGP > 0)
+            return (true, cordial.MinGP, true);
+
+        return (true, cordial.MaxGP, false);
+    }
     private static HashSet<Fish> CollectAllFishInMoochChains(Fish[] fishList)
     {
         var allFish = new HashSet<Fish>();
@@ -217,7 +268,7 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset);
             }
             
             preset.ListOfBaits.Add(hookConfig);
@@ -231,7 +282,7 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish, configureLures: false);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset, configureLures: false);
             }
             
             preset.ListOfMooch.Add(hookConfig);
@@ -251,7 +302,7 @@ public class AutoHookPresetBuilder
         
         foreach (var fish in predators)
         {
-            AddFishConfig(preset, fish, finalPredatorFish.ToArray(), predators);
+            AddFishConfig(preset, fish, finalPredatorFish.ToArray(), predators, gbrPreset);
         }
 
         ConfigureExtraCfg(preset, actualBaitId);
@@ -270,7 +321,8 @@ public class AutoHookPresetBuilder
         
         var allFishWithMooches = CollectFishInMoochChainsOnly(targetFish);
         
-        if (GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
+        if (GetFishingActionConfig(gbrPreset, x => x.SurfaceSlap, GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap,
+                GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold, GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove).Enabled)
         {
             var additionalFish = CollectFishFromSameFishingSpots(targetFish, allFishWithMooches);
             foreach (var fish in additionalFish)
@@ -305,9 +357,8 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset);
             }
-            
             preset.ListOfBaits.Add(hookConfig);
         }
         
@@ -319,15 +370,14 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish, configureLures: false);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset, configureLures: false);
             }
-            
             preset.ListOfMooch.Add(hookConfig);
         }
         
         foreach (var fish in allFishWithMooches)
         {
-            AddFishConfig(preset, fish, targetFish, allFishWithMooches);
+            AddFishConfig(preset, fish, targetFish, allFishWithMooches, gbrPreset);
         }
 
         ConfigureExtraCfg(preset, actualBaitId);
@@ -346,7 +396,8 @@ public class AutoHookPresetBuilder
         
         var allFishWithMooches = CollectAllFishInMoochChains(fishArray);
         
-        if (GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
+        if (GetFishingActionConfig(gbrPreset, x => x.SurfaceSlap, GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap,
+                GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold, GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove).Enabled)
         {
             var additionalFish = CollectFishFromSameFishingSpots(fishArray, allFishWithMooches);
             foreach (var fish in additionalFish)
@@ -382,7 +433,7 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset);
             }
             
             preset.ListOfBaits.Add(hookConfig);
@@ -396,7 +447,7 @@ public class AutoHookPresetBuilder
             
             foreach (var fish in group)
             {
-                ConfigureHookForFish(hookConfig, fish, configureLures: false);
+                ConfigureHookForFish(hookConfig, fish, gbrPreset, configureLures: false);
             }
             
             preset.ListOfMooch.Add(hookConfig);
@@ -405,7 +456,7 @@ public class AutoHookPresetBuilder
         // Add all fish configs
         foreach (var fish in allFishWithMooches)
         {
-            AddFishConfig(preset, fish, fishArray, allFishWithMooches);
+            AddFishConfig(preset, fish, fishArray, allFishWithMooches, gbrPreset);
         }
 
         ConfigureExtraCfg(preset, actualBaitId);
@@ -438,7 +489,7 @@ public class AutoHookPresetBuilder
         return preset;
     }
 
-    private static void ConfigureHookForFish(AHHookConfig hookConfig, Fish fish, bool configureLures = true)
+    private static void ConfigureHookForFish(AHHookConfig hookConfig, Fish fish, ConfigPreset? gbrPreset, bool configureLures = true)
     {
         var ahBiteType = ConvertBiteType(fish.BiteType);
         var ahHookType = ConvertHookSet(fish.HookSet);
@@ -456,7 +507,7 @@ public class AutoHookPresetBuilder
         var requiredLure = fish.Lure != Lure.None ? fish.Lure : (Lure?)null;
         if (configureLures)
         {
-            ConfigureLures(hookConfig.NormalHook, fish.HookSet, requiredLure);
+            ConfigureLures(hookConfig.NormalHook, fish.HookSet, gbrPreset, requiredLure);
         }
         SetHookConfiguration(hookConfig.NormalHook, ahBiteType, ahHookType, minTime, maxTime);
 
@@ -465,7 +516,7 @@ public class AutoHookPresetBuilder
             hookConfig.IntuitionHook.UseCustomStatusHook = true;
             if (configureLures)
             {
-                ConfigureLures(hookConfig.IntuitionHook, fish.HookSet, requiredLure);
+                ConfigureLures(hookConfig.IntuitionHook, fish.HookSet, gbrPreset, requiredLure);
             }
             SetHookConfiguration(hookConfig.IntuitionHook, ahBiteType, ahHookType, minTime, maxTime);
         }
@@ -562,8 +613,12 @@ public class AutoHookPresetBuilder
         };
     }
 
-    private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet, Lure? requiredLure = null)
+    private static void ConfigureLures(AHBaseHookset hookset, HookSet hookSet, ConfigPreset? gbrPreset, Lure? requiredLure = null)
     {
+        var ambitiousConfig = GetFishingActionConfig(gbrPreset, x => x.AmbitiousLure, GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure,
+            GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold, GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove);
+        var modestConfig = GetFishingActionConfig(gbrPreset, x => x.ModestLure, GatherBuddy.Config.AutoGatherConfig.EnableModestLure,
+            GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold, GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove);
         uint lureId = 0;
         int gpThreshold = 0;
         bool gpThresholdAbove = true;
@@ -572,28 +627,28 @@ public class AutoHookPresetBuilder
         if (requiredLure == Lure.Ambitious)
         {
             lureId = AmbitiousLureId;
-            gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
-            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+            gpThreshold = ambitiousConfig.Threshold;
+            gpThresholdAbove = ambitiousConfig.ThresholdAbove;
             isRequiredLure = true;
         }
         else if (requiredLure == Lure.Modest)
         {
             lureId = ModestLureId;
-            gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
-            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+            gpThreshold = modestConfig.Threshold;
+            gpThresholdAbove = modestConfig.ThresholdAbove;
             isRequiredLure = true;
         }
-        else if (hookSet == HookSet.Powerful && GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
+        else if (hookSet == HookSet.Powerful && ambitiousConfig.Enabled)
         {
             lureId = AmbitiousLureId;
-            gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
-            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
+            gpThreshold = ambitiousConfig.Threshold;
+            gpThresholdAbove = ambitiousConfig.ThresholdAbove;
         }
-        else if (hookSet == HookSet.Precise && GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
+        else if (hookSet == HookSet.Precise && modestConfig.Enabled)
         {
             lureId = ModestLureId;
-            gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
-            gpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
+            gpThreshold = modestConfig.Threshold;
+            gpThresholdAbove = modestConfig.ThresholdAbove;
         }
         
         if (lureId == 0)
@@ -616,7 +671,7 @@ public class AutoHookPresetBuilder
         };
     }
 
-    private static void AddFishConfig(AHCustomPresetConfig preset, Fish fish, Fish[] targetFishList, HashSet<Fish> allFish)
+    private static void AddFishConfig(AHCustomPresetConfig preset, Fish fish, Fish[] targetFishList, HashSet<Fish> allFish, ConfigPreset? gbrPreset)
     {
         bool isTargetFish = targetFishList.Any(f => f.ItemId == fish.ItemId);
         if (isTargetFish)
@@ -663,8 +718,8 @@ public class AutoHookPresetBuilder
             mooch = new AHAutoMooch(fish.ItemId);
         }
         
-        var surfaceSlap = DetermineSurfaceSlap(fish, targetFishList, allFish);
-        var identicalCast = DetermineIdenticalCast(fish, targetFishList);
+        var surfaceSlap = DetermineSurfaceSlap(fish, targetFishList, allFish, gbrPreset);
+        var identicalCast = DetermineIdenticalCast(fish, targetFishList, gbrPreset);
         
         var fishConfig = new AHFishConfig((int)fish.ItemId)
         {
@@ -678,12 +733,14 @@ public class AutoHookPresetBuilder
         preset.ListOfFish.Add(fishConfig);
     }
     
-    private static AHAutoSurfaceSlap DetermineSurfaceSlap(Fish fish, Fish[] targetFishList, HashSet<Fish> allFish)
+    private static AHAutoSurfaceSlap DetermineSurfaceSlap(Fish fish, Fish[] targetFishList, HashSet<Fish> allFish, ConfigPreset? gbrPreset)
     {
         if (fish.SurfaceSlap != null)
             return new AHAutoSurfaceSlap(true);
-        
-        if (!GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
+
+        var surfaceSlapConfig = GetFishingActionConfig(gbrPreset, x => x.SurfaceSlap, GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap,
+            GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold, GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove);
+        if (!surfaceSlapConfig.Enabled)
             return new AHAutoSurfaceSlap(false);
         
         bool isTargetFish = targetFishList.Any(f => f.ItemId == fish.ItemId);
@@ -720,21 +777,22 @@ public class AutoHookPresetBuilder
         
         if (sharesBiteType)
         {
-            var gpThreshold = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold;
-            var gpAbove = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove;
             return new AHAutoSurfaceSlap(
                 enabled: true,
-                gpThreshold: gpThreshold,
-                gpThresholdAbove: gpAbove
+                gpThreshold: surfaceSlapConfig.Threshold,
+                gpThresholdAbove: surfaceSlapConfig.ThresholdAbove
             );
         }
         
         return new AHAutoSurfaceSlap(false);
     }
     
-    private static AHAutoIdenticalCast DetermineIdenticalCast(Fish fish, Fish[] targetFishList)
+    private static AHAutoIdenticalCast DetermineIdenticalCast(Fish fish, Fish[] targetFishList, ConfigPreset? gbrPreset)
     {
-        if (!GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast)
+        var identicalCastConfig = GetFishingActionConfig(gbrPreset, x => x.IdenticalCast,
+            GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast, GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPThreshold,
+            GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove);
+        if (!identicalCastConfig.Enabled)
         {
             return new AHAutoIdenticalCast(false);
         }
@@ -745,12 +803,10 @@ public class AutoHookPresetBuilder
             return new AHAutoIdenticalCast(false);
         }
         
-        var gpThreshold = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPThreshold;
-        var gpAbove = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove;
         return new AHAutoIdenticalCast(
             enabled: true,
-            gpThreshold: gpThreshold,
-            gpThresholdAbove: gpAbove
+            gpThreshold: identicalCastConfig.Threshold,
+            gpThresholdAbove: identicalCastConfig.ThresholdAbove
         );
     }
 
@@ -782,15 +838,17 @@ public class AutoHookPresetBuilder
             GatherBuddy.Log.Debug($"[AutoHook]   Fish: {fish.Name[GatherBuddy.Language]} (ID:{fish.ItemId}), IsCollectable={fish.ItemData.IsCollectable}");
         }
         var shouldUsePatience = hasMooches || needsCollect || canBeReduced;
-        var needsPatience = shouldUsePatience && GatherBuddy.Config.AutoGatherConfig.UsePatience;
-        
-        var useCordials = GatherBuddy.Config.AutoGatherConfig.UseCordialForFishing;
-        var cordialGpThreshold = GatherBuddy.Config.AutoGatherConfig.CordialForFishingGPThreshold;
-        
+        var needsPatience = shouldUsePatience
+            && GetFishingToggleConfig(gbrPreset, x => x.Patience, GatherBuddy.Config.AutoGatherConfig.UsePatience);
+        var cordialConfig = GetFishingCordialConfig(gbrPreset);
         var hasSurfaceSlap = fishList.Any(f => f.SurfaceSlap != null);
         var shouldUsePrizeCatch = hasSurfaceSlap || hasMooches;
-        var usePrizeCatch = shouldUsePrizeCatch && GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch;
-        var useChum = GatherBuddy.Config.AutoGatherConfig.UseChum;
+        var prizeCatchConfig = GetFishingActionConfig(gbrPreset, x => x.PrizeCatch, GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch,
+            GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold, GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove);
+        var chumConfig = GetFishingActionConfig(gbrPreset, x => x.Chum, GatherBuddy.Config.AutoGatherConfig.UseChum,
+            GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold, GatherBuddy.Config.AutoGatherConfig.ChumGPAbove);
+        var usePrizeCatch = shouldUsePrizeCatch && prizeCatchConfig.Enabled;
+        var useChum = chumConfig.Enabled;
         
         var fisherLevel = DiscipleOfLand.FisherLevel;
         const uint patienceId = 4102;
@@ -828,11 +886,11 @@ public class AutoHookPresetBuilder
             {
                 Enabled = true
             } : null,
-            CastCordial = useCordials ? new AHAutoCordial
+            CastCordial = cordialConfig.Enabled ? new AHAutoCordial
             {
                 Enabled = true,
-                GpThreshold = cordialGpThreshold,
-                GpThresholdAbove = false
+                GpThreshold = cordialConfig.Threshold,
+                GpThresholdAbove = cordialConfig.ThresholdAbove
             } : null,
             CastPrizeCatch = usePrizeCatch ? new AHAutoPrizeCatch
             {
@@ -840,21 +898,21 @@ public class AutoHookPresetBuilder
                 UseWhenMoochIIOnCD = false,
                 UseOnlyWithIdenticalCast = false,
                 UseOnlyWithActiveSlap = hasSurfaceSlap,
-                GpThreshold = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold,
-                GpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove
+                GpThreshold = prizeCatchConfig.Threshold,
+                GpThresholdAbove = prizeCatchConfig.ThresholdAbove
             } : null,
             CastChum = useChum ? new AHAutoChum
             {
                 Enabled = true,
-                GpThreshold = GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold,
-                GpThresholdAbove = GatherBuddy.Config.AutoGatherConfig.ChumGPAbove
+                GpThreshold = chumConfig.Threshold,
+                GpThresholdAbove = chumConfig.ThresholdAbove
             } : null,
             CastThaliaksFavor = new AHAutoThaliaksFavor
             {
                 Enabled = true,
                 ThaliaksFavorStacks = 3,
                 ThaliaksFavorRecover = 150,
-                UseWhenCordialCD = useCordials
+                UseWhenCordialCD = cordialConfig.Enabled
             }
         };
         

@@ -103,7 +103,8 @@ public class UserMacroSolver : Solver
 
         while (_currentActionIndex < _macro.Actions.Count)
         {
-            var skill = ConvertActionIdToSkill(_macro.Actions[_currentActionIndex++]);
+            var importedSkill = ConvertActionIdToSkill(_macro.Actions[_currentActionIndex++]);
+            var skill = ResolveImportedAction(importedSkill, craft, step);
 
             if (GatherBuddy.Config.SkipMacroStepIfUnable && !Simulator.CanUseAction(craft, step, skill))
             {
@@ -127,6 +128,14 @@ public class UserMacroSolver : Solver
 
     private static VulcanSkill ConvertActionIdToSkill(uint actionId)
         => (VulcanSkill)actionId;
+
+    private static VulcanSkill ResolveImportedAction(VulcanSkill importedSkill, CraftState craft, StepState step)
+        => importedSkill switch
+        {
+            VulcanSkill.TouchCombo => Simulator.NextTouchCombo(step, craft),
+            VulcanSkill.TouchComboRefined => Simulator.NextTouchComboRefined(step, craft),
+            _ => importedSkill,
+        };
 
     public override Solver Clone()
     {

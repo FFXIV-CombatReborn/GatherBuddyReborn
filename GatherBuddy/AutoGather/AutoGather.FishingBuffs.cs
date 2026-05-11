@@ -1,4 +1,5 @@
 using System.Linq;
+using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
 
 namespace GatherBuddy.AutoGather;
@@ -47,47 +48,63 @@ public partial class AutoGather
         return player.StatusList.Any(status => status.StatusId == 49);
     }
 
-    private bool TryUseFoodAndMedicine()
+    private ConfigPreset GetFishingConsumablesPreset()
+    {
+        if (_currentGatherTarget?.Fish != null)
+            return MatchConfigPreset(_currentGatherTarget.Value.Fish);
+
+        var next = _activeItemList.GetNextOrDefault();
+        if (next.Fish != null)
+            return MatchConfigPreset(next.Fish);
+
+        return MatchConfigPreset((Fish?)null);
+    }
+
+    private bool TryUseFishingConsumables(ConfigPreset config)
     {
         if (Player.Job != 18)
             return false;
 
-        var config = GatherBuddy.Config.AutoGatherConfig;
-        var needFood = config.UseFood && config.FoodItemId > 0 && !HasFoodBuff() && GetInventoryItemCount(config.FoodItemId) > 0;
-        var needMed  = config.UseMedicine && config.MedicineItemId > 0 && !HasMedicineBuff() && GetInventoryItemCount(config.MedicineItemId) > 0;
+        var needFood = config.Consumables.Food.Enabled
+            && config.Consumables.Food.ItemId > 0
+            && !HasFoodBuff()
+            && GetInventoryItemCount(config.Consumables.Food.ItemId) > 0;
+        var needMed = config.Consumables.Potion.Enabled
+            && config.Consumables.Potion.ItemId > 0
+            && !HasMedicineBuff()
+            && GetInventoryItemCount(config.Consumables.Potion.ItemId) > 0;
+        var manualItemId = GetConsumablesWithCastTime(config);
 
-        if (!needFood && !needMed)
+        if (!needFood && !needMed && manualItemId == 0)
             return false;
-
         if (HasActiveFishingBuff())
             return false;
 
         if (IsFishing || IsGathering)
         {
-            GatherBuddy.Log.Debug("[Consumables] Quitting fishing to use food/medicine");
+            GatherBuddy.Log.Debug("[Consumables] Quitting fishing to use configured fishing consumables");
             QueueQuitFishingTasks();
             return true;
         }
-        
+
         if (needFood)
         {
-            var itemCount = GetInventoryItemCount(config.FoodItemId);
-            if (itemCount > 0)
-            {
-                GatherBuddy.Log.Information($"[Consumables] Using food item {config.FoodItemId}");
-                EnqueueActionWithDelay(() => UseItem(config.FoodItemId));
-                return true;
-            }
-            else
-            {
-                GatherBuddy.Log.Warning($"[Consumables] Configured food item {config.FoodItemId} not found in inventory");
-            }
+            GatherBuddy.Log.Information($"[Consumables] Using food item {config.Consumables.Food.ItemId}");
+            EnqueueActionWithDelay(() => UseItem(config.Consumables.Food.ItemId));
+            return true;
         }
 
         if (needMed)
         {
-            GatherBuddy.Log.Information($"[Consumables] Using medicine item {config.MedicineItemId}");
-            EnqueueActionWithDelay(() => UseItem(config.MedicineItemId));
+            GatherBuddy.Log.Information($"[Consumables] Using medicine item {config.Consumables.Potion.ItemId}");
+            EnqueueActionWithDelay(() => UseItem(config.Consumables.Potion.ItemId));
+            return true;
+        }
+
+        if (manualItemId > 0)
+        {
+            GatherBuddy.Log.Information($"[Consumables] Using manual item {manualItemId}");
+            EnqueueActionWithDelay(() => UseItem(manualItemId));
             return true;
         }
 
