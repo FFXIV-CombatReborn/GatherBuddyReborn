@@ -313,12 +313,6 @@ namespace GatherBuddy.Gui
             var     selector = _configPresetsSelector;
             ref var state    = ref _configPresetsUIState;
 
-            if (preset.ItemType.Fish && preset.ChooseBestActionsAutomatically)
-            {
-                preset.ChooseBestActionsAutomatically = false;
-                selector.Save();
-            }
-
             if (!isDefault)
             {
                 if (ImGuiUtil.DrawEditButtonText(0, CheckUnnamed(preset.Name), out var name, ref state.EditingName, IconButtonSize,
@@ -532,7 +526,8 @@ namespace GatherBuddy.Gui
                         }
                     }
 
-                    if (!preset.ItemType.Fish)
+                    var isFishExclusive = preset.ItemType.Fish && !preset.ItemType.Crystals && !preset.ItemType.Other && !preset.ItemType.Collectables;
+                    if (!isFishExclusive)
                     {
                         if (ImGuiUtil.Checkbox("Automatically decide what actions to use",
                                 "This setting works differently depending on item or node type.\n"
