@@ -10,7 +10,16 @@ using LuminaSupplemental.Excel.Services;
 
 namespace GatherBuddy.Crafting;
 
-public readonly record struct MobDropInfo(string MobName, string LocationLabel);
+public readonly record struct MobDropInfo(
+    string MobName,
+    string LocationLabel,
+    uint TerritoryTypeId,
+    uint MapRowId,
+    float MapX,
+    float MapY)
+{
+    public bool HasCoordinates => MapRowId != 0 && TerritoryTypeId != 0 && MapX > 0f && MapY > 0f;
+}
 
 public static class MobDropInfoCache
 {
@@ -119,7 +128,7 @@ public static class MobDropInfoCache
 
             if (!spawnsByName.TryGetValue(drop.BNpcNameId, out var spawns) || spawns.Count == 0)
             {
-                AddDrop(drop.ItemId, drop.BNpcNameId, 0u, new MobDropInfo(mobName, string.Empty));
+                AddDrop(drop.ItemId, drop.BNpcNameId, 0u, new MobDropInfo(mobName, string.Empty, 0u, 0u, 0f, 0f));
                 continue;
             }
 
@@ -140,15 +149,22 @@ public static class MobDropInfoCache
                     .Aggregate(System.Numerics.Vector3.Zero, (a, b) => a + b) / territoryGroup.Count();
 
                 var label = territoryName;
+                var coordX = 0f;
+                var coordY = 0f;
                 if (mapRow.HasValue)
                 {
                     var mapX = ConvertWorldCoordToMapCoord(avgPos.X, mapRow.Value.SizeFactor, mapRow.Value.OffsetX);
                     var mapY = ConvertWorldCoordToMapCoord(avgPos.Z, mapRow.Value.SizeFactor, mapRow.Value.OffsetY);
                     if (mapX is > 0f and < 50f && mapY is > 0f and < 50f)
+                    {
+                        coordX = mapX;
+                        coordY = mapY;
                         label = $"{territoryName} ({mapX.ToString("F1", CultureInfo.InvariantCulture)}, {mapY.ToString("F1", CultureInfo.InvariantCulture)})";
+                    }
                 }
 
-                AddDrop(drop.ItemId, drop.BNpcNameId, territoryGroup.Key, new MobDropInfo(mobName, label));
+                AddDrop(drop.ItemId, drop.BNpcNameId, territoryGroup.Key,
+                    new MobDropInfo(mobName, label, territoryGroup.Key, mapRow?.RowId ?? 0u, coordX, coordY));
             }
         }
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using ElliLib;
@@ -927,29 +928,104 @@ public class CraftingMaterialsWindow : Window
         const uint MobDropIconId = 60041u;
         var lineH = ImGui.GetTextLineHeight();
         var iconSize = new Vector2(lineH, lineH);
+        var popupId = $"##mobdrops_{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}";
 
         ImGui.SameLine(0, 6f);
+
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
+        var clicked = false;
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(MobDropIconId));
         if (icon.TryGetWrap(out var wrap, out _))
-            ImGui.Image(wrap.Handle, iconSize);
+            clicked = ImGui.ImageButton(wrap.Handle, iconSize);
         else
             ImGui.Dummy(iconSize);
+        ImGui.PopStyleColor(3);
+        ImGui.PopStyleVar();
 
-        if (!ImGui.IsItemHovered())
+        if (ImGui.IsItemHovered() && !ImGui.IsPopupOpen(popupId))
+        {
+            const int MaxDropsShown = 8;
+            var lines = new List<string>(MaxDropsShown + 3) { "Drops from:" };
+            for (var i = 0; i < entry.MobDrops.Count && i < MaxDropsShown; i++)
+            {
+                var drop = entry.MobDrops[i];
+                var line = string.IsNullOrEmpty(drop.LocationLabel)
+                    ? drop.MobName
+                    : $"{drop.MobName} — {drop.LocationLabel}";
+                if (!drop.HasCoordinates)
+                    line += " (no coords)";
+                lines.Add(line);
+            }
+            if (entry.MobDrops.Count > MaxDropsShown)
+                lines.Add($"...and {entry.MobDrops.Count - MaxDropsShown} more");
+            lines.Add("Click for map flags.");
+            ImGui.SetTooltip(string.Join('\n', lines));
+        }
+
+        if (clicked)
+            ImGui.OpenPopup(popupId);
+
+        DrawMobDropPopup(entry, popupId);
+    }
+
+    private static void DrawMobDropPopup(MaterialEntry entry, string popupId)
+    {
+        if (!ImGui.BeginPopup(popupId))
             return;
 
-        const int MaxDropsShown = 8;
-        var lines = new List<string>(MaxDropsShown + 2) { "Drops from:" };
-        for (var i = 0; i < entry.MobDrops.Count && i < MaxDropsShown; i++)
+        ImGui.TextUnformatted($"Drops for {entry.Name}");
+        ImGui.Separator();
+
+        var lineH = ImGui.GetTextLineHeight();
+        var rowCount = Math.Min(entry.MobDrops.Count, 16);
+        var childHeight = (lineH + ImGui.GetStyle().ItemSpacing.Y) * rowCount + ImGui.GetStyle().FramePadding.Y * 2;
+        ImGui.BeginChild($"{popupId}_scroll", new Vector2(420f, childHeight), false);
+
+        for (var i = 0; i < entry.MobDrops.Count; i++)
         {
             var drop = entry.MobDrops[i];
-            lines.Add(string.IsNullOrEmpty(drop.LocationLabel)
+            ImGui.PushID(i);
+
+            if (drop.HasCoordinates)
+            {
+                if (ImGui.SmallButton("Flag"))
+                {
+                    try
+                    {
+                        var payload = new MapLinkPayload(drop.TerritoryTypeId, drop.MapRowId, drop.MapX, drop.MapY);
+                        Dalamud.GameGui.OpenMapWithMapLink(payload);
+                    }
+                    catch (Exception ex)
+                    {
+                        GatherBuddy.Log.Warning($"[CraftingMaterialsWindow] Failed to place map flag for {drop.MobName}: {ex.Message}");
+                    }
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Place a flag on the map at this location.");
+            }
+            else
+            {
+                ImGui.BeginDisabled();
+                ImGui.SmallButton("—");
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("No spawn coordinates available for this drop.");
+            }
+
+            ImGui.SameLine();
+            var label = string.IsNullOrEmpty(drop.LocationLabel)
                 ? drop.MobName
-                : $"{drop.MobName} — {drop.LocationLabel}");
+                : $"{drop.MobName} — {drop.LocationLabel}";
+            ImGui.TextUnformatted(label);
+
+            ImGui.PopID();
         }
-        if (entry.MobDrops.Count > MaxDropsShown)
-            lines.Add($"...and {entry.MobDrops.Count - MaxDropsShown} more");
-        ImGui.SetTooltip(string.Join('\n', lines));
+
+        ImGui.EndChild();
+        ImGui.EndPopup();
     }
 
 }
