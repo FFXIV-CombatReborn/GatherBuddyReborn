@@ -74,7 +74,6 @@ public partial class GatherBuddy : IDalamudPlugin
     public static AutoGather.AutoGather AutoGather      { get; private set; } = null!;
     public static AutoHookIntegration.BiteTimerService BiteTimerService { get; private set; } = null!;
     public static AutoGather.Collectables.CollectableManager CollectableManager { get; private set; } = null!;
-    public static AutoGather.Collectables.ScripShopItemManager ScripShopItemManager { get; private set; } = null!;
     public static Crafting.CraftingListManager CraftingListManager { get; private set; } = null!;
     public static Crafting.RaphaelSolveCoordinator RaphaelSolveCoordinator { get; private set; } = null!;
     public static Crafting.RecipeBrowserSettings RecipeBrowserSettings { get; private set; } = null!;
@@ -82,6 +81,7 @@ public partial class GatherBuddy : IDalamudPlugin
     public static Gui.VulcanWindow? VulcanWindow { get; private set; }
     public static Gui.CraftingMaterialsWindow? CraftingMaterialsWindow { get; private set; }
     public static Gui.VendorBuyListWindow? VendorBuyListWindow { get; private set; }
+    public static Gui.CollectablesWindow? CollectablesWindow { get; private set; }
     public static ControllerSupportManager?      ControllerSupport      { get; private set; }
     public static MarketboardService?             MarketboardService     { get; private set; }
     public static Vulcan.Vendors.VendorNavigator  VendorNavigator        { get; private set; } = null!;
@@ -103,6 +103,7 @@ public partial class GatherBuddy : IDalamudPlugin
     internal Gui.CraftingStatusWindow?               _craftingStatusWindow;
     internal Gui.CraftingMaterialsWindow?            _craftingMaterialsWindow;
     internal Gui.VendorBuyListWindow?                _vendorBuyListWindow;
+    internal Gui.CollectablesWindow?                 _collectablesWindow;
 
     internal readonly GatherBuddyIpc Ipc;
     //    internal readonly WotsitIpc Wotsit;
@@ -173,8 +174,9 @@ public partial class GatherBuddy : IDalamudPlugin
             FishRecorder.Enable();
             BiteTimerService = new AutoHookIntegration.BiteTimerService(pluginInterface.ConfigDirectory.FullName);
             AutoGather   = new AutoGather.AutoGather(this);
-            ScripShopItemManager = new AutoGather.Collectables.ScripShopItemManager();
             CollectableManager = new AutoGather.Collectables.CollectableManager(Dalamud.Framework, Dalamud.Conditions, Config);
+            global::GatherBuddy.AutoGather.Collectables.CollectableInventoryHelper.InitializeAsync();
+            CraftingGatherBridge.BindCollectableManager(CollectableManager);
             WindowSystem = new WindowSystem(Name);
             Interface    = new Interface(this);
             _vulcanWindow = new VulcanWindow();
@@ -185,6 +187,8 @@ public partial class GatherBuddy : IDalamudPlugin
             CraftingMaterialsWindow = _craftingMaterialsWindow;
             _vendorBuyListWindow = new Gui.VendorBuyListWindow();
             VendorBuyListWindow = _vendorBuyListWindow;
+            _collectablesWindow = new Gui.CollectablesWindow();
+            CollectablesWindow = _collectablesWindow;
             WindowSystem.AddWindow(Interface);
             WindowSystem.AddWindow(new GatherWindow(this));
             WindowSystem.AddWindow(new FishTimerWindow(FishRecorder));
@@ -193,6 +197,7 @@ public partial class GatherBuddy : IDalamudPlugin
             WindowSystem.AddWindow(_craftingStatusWindow);
             WindowSystem.AddWindow(_craftingMaterialsWindow);
             WindowSystem.AddWindow(_vendorBuyListWindow);
+            WindowSystem.AddWindow(_collectablesWindow);
             Dalamud.PluginInterface.UiBuilder.Draw         += WindowSystem.Draw;
             Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.Toggle;
             Dalamud.PluginInterface.UiBuilder.OpenMainUi   += Interface.Toggle;
@@ -212,6 +217,7 @@ public partial class GatherBuddy : IDalamudPlugin
                 ControllerSupport.RegisterBlockingWindow("Vulcan - Crafting###VulcanWindow");
                 ControllerSupport.RegisterBlockingWindow("Crafting Status###GatherBuddyCraftingStatus");
                 ControllerSupport.RegisterBlockingWindow(Gui.VendorBuyListWindow.WindowId);
+                ControllerSupport.RegisterBlockingWindow(Gui.CollectablesWindow.WindowId);
                 
                 // Start in normal mode (blocks everything when windows are focused)
                 ControllerSupport.SetBlockingMode(true, true, true);

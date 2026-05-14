@@ -70,8 +70,5 @@
 	  <EmbeddedResource Include="CustomInfo\fish_records.json" />
 	</ItemGroup>
 
-	<ItemGroup>
-	  <EmbeddedResource Include="CustomInfo\ScripShopItems.json" />
-	</ItemGroup>
 
 </Project>

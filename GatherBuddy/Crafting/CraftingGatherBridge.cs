@@ -1,10 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.Automation;
 using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.AutoGather.Collectables;
+using GatherBuddy.Helpers;
 using Lumina.Excel.Sheets;
 using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan.Vendors;
 
 namespace GatherBuddy.Crafting;
 
@@ -21,12 +27,28 @@ public static class CraftingGatherBridge
     private static bool _isQueueMode = false;
     private static List<AutoGatherList> _disabledGatherLists = new();
     private static int? _ephemeralListId = null;
+    private static bool _waitingForCollectables = false;
+    private static bool _collectablesStartPending = false;
+    private static DateTime _nextCollectablesRetry = DateTime.MinValue;
+    private static DateTime _lastCollectablesWaitLog = DateTime.MinValue;
+    private static DateTime _lastCollectablesExitAttempt = DateTime.MinValue;
+    private static DateTime _lastCollectablesHardFailLog = DateTime.MinValue;
+    private static bool _waitingForCollectablesHomeReturn = false;
+    private static bool _collectablesHomeReturnStarted = false;
     
     public static bool PreserveListOnDisable { get; set; } = false;
 
     public static void Initialize(global::GatherBuddy.GatherBuddy plugin)
     {
         _plugin = plugin;
+    }
+
+    public static void BindCollectableManager(CollectableManager manager)
+    {
+        manager.OnFinishCollecting -= OnCollectablesFinished;
+        manager.OnError -= OnCollectablesError;
+        manager.OnFinishCollecting += OnCollectablesFinished;
+        manager.OnError += OnCollectablesError;
     }
     
     public static uint RecipeToCraft => _recipeIdToCraft;
@@ -65,7 +87,7 @@ public static class CraftingGatherBridge
             GatherBuddy.Log.Warning("[CraftingGatherBridge] Cannot create gather list: plugin not initialized");
             return;
         }
-        
+
         try
         {
             var gatherList = new AutoGatherList()
@@ -114,6 +136,8 @@ public static class CraftingGatherBridge
     {
         if (_isQueueMode && _queueProcessor != null)
         {
+            UpdateCollectablesHomeReturnBeforeResume();
+            TryStartCollectablesInterruption();
             _queueProcessor.Update();
             
             if (_queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete && !_queueProcessor.HasPendingTasks())
@@ -168,6 +192,8 @@ public static class CraftingGatherBridge
         _isQueueMode = true;
         _ephemeralListId = ephemeralListId;
         _activeExecutionPlan = executionPlan;
+        ResetCollectablesInterruptionState();
+        _lastCollectablesHardFailLog = DateTime.MinValue;
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.QueueCompleted += OnQueueCompleted;
         _waitingForGatherComplete = true;
@@ -401,12 +427,274 @@ public static class CraftingGatherBridge
     {
         GatherBuddy.Log.Information("[CraftingGatherBridge] Queue completed, will clean up after tasks finish");
     }
+
+    private static void TryStartCollectablesInterruption()
+    {
+        if (_queueProcessor == null
+         || _queueProcessor.CurrentState is CraftingQueueProcessor.QueueState.Idle or CraftingQueueProcessor.QueueState.Complete
+         || GatherBuddy.CollectableManager == null
+         || GatherBuddy.CollectableManager.IsRunning
+         || _waitingForCollectablesHomeReturn
+         || DateTime.UtcNow < _nextCollectablesRetry)
+            return;
+
+        if (_waitingForCollectables)
+            return;
+
+        var collectableConfig = GatherBuddy.Config.CollectableConfig;
+        if (!collectableConfig.AutoTurnInCollectables)
+        {
+            if (_collectablesStartPending)
+            {
+                GatherBuddy.Log.Information("[CraftingGatherBridge] Collectables interruption was pending when auto turn-ins were forced off, resuming the queue without starting collectables");
+                ResetCollectablesInterruptionState();
+                _queueProcessor.Resume();
+            }
+            LogCollectablesHardFailState(collectableConfig.AutoTurnInHardFailReason);
+            return;
+        }
+
+        if (!_collectablesStartPending)
+        {
+            if (_queueProcessor.Paused)
+                return;
+
+            var thresholdState = CollectableInventoryHelper.GetThresholdState(GatherBuddy.Config.CollectableConfig);
+            if (!thresholdState.ThresholdReached)
+                return;
+            _queueProcessor.Pause();
+            _collectablesStartPending = true;
+            _lastCollectablesWaitLog = DateTime.MinValue;
+            _lastCollectablesExitAttempt = DateTime.MinValue;
+        }
+
+        TryExitCraftingUiForCollectables();
+        if (!IsReadyToStartCollectables(out var waitReason))
+        {
+            LogCollectablesWaitReason(waitReason);
+            return;
+        }
+
+        if (IsWaitingForCollectablesRouteData(out waitReason))
+        {
+            LogCollectablesWaitReason(waitReason);
+            return;
+        }
+
+        if (GatherBuddy.CollectableManager.Start(CollectableRunSource.VulcanQueue, returnHomeAfterCompletion: true))
+        {
+            _collectablesStartPending = false;
+            _waitingForCollectables = true;
+            _lastCollectablesWaitLog = DateTime.MinValue;
+            _lastCollectablesExitAttempt = DateTime.MinValue;
+            return;
+        }
+
+        if (IsWaitingForCollectablesRouteData(out waitReason))
+        {
+            LogCollectablesWaitReason(waitReason);
+            return;
+        }
+
+        GatherBuddy.Log.Warning($"[CraftingGatherBridge] Failed to start collectables interruption: {GatherBuddy.CollectableManager.StatusText}");
+        ResetCollectablesInterruptionState();
+        _nextCollectablesRetry = DateTime.UtcNow.AddSeconds(5);
+        _queueProcessor.Resume();
+    }
+
+    private static void TryExitCraftingUiForCollectables()
+    {
+        if (CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleBetween)
+            return;
+
+        if (_lastCollectablesExitAttempt != DateTime.MinValue
+         && (DateTime.UtcNow - _lastCollectablesExitAttempt) < TimeSpan.FromMilliseconds(500))
+            return;
+
+        _lastCollectablesExitAttempt = DateTime.UtcNow;
+        CraftingTasks.TaskExitCraft();
+    }
+
+    private static bool IsReadyToStartCollectables(out string waitReason)
+    {
+        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
+            waitReason = "area transition is still active";
+            return false;
+        }
+
+        if (Lifestream.Enabled && Lifestream.IsBusy())
+        {
+            waitReason = "Lifestream is still busy";
+            return false;
+        }
+
+        if (!GenericHelpers.IsScreenReady())
+        {
+            waitReason = "the screen is not ready";
+            return false;
+        }
+
+        if (Dalamud.Conditions[ConditionFlag.ExecutingCraftingAction])
+        {
+            waitReason = "a crafting action is still executing";
+            return false;
+        }
+
+        if (Dalamud.Conditions[ConditionFlag.PreparingToCraft])
+        {
+            waitReason = "craft preparation is still active";
+            return false;
+        }
+
+        if (Dalamud.Conditions[ConditionFlag.Crafting])
+        {
+            waitReason = $"crafting state is still {CraftingGameInterop.CurrentState}";
+            return false;
+        }
+
+        if (CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleNormal)
+        {
+            waitReason = $"crafting has not returned to IdleNormal yet ({CraftingGameInterop.CurrentState})";
+            return false;
+        }
+
+        if (IsCraftingAddonVisible("RecipeNote") || IsCraftingAddonVisible("Synthesis") || IsCraftingAddonVisible("SynthesisSimple") || IsCraftingAddonVisible("WKSRecipeNotebook"))
+        {
+            waitReason = "crafting windows are still visible";
+            return false;
+        }
+
+        waitReason = string.Empty;
+        return true;
+    }
+
+    private static unsafe bool IsCraftingAddonVisible(string addonName)
+    {
+        var addon = (AtkUnitBase*)(nint)Dalamud.GameGui.GetAddonByName(addonName);
+        return addon != null && addon->IsVisible;
+    }
+
+    private static bool IsWaitingForCollectablesRouteData(out string waitReason)
+    {
+        if (!CollectableTurnInRouteResolver.HasLookupData)
+        {
+            waitReason = string.Empty;
+            return false;
+        }
+
+        var collectableNpcIds = CollectableTurnInRouteResolver.GetCollectableNpcIds();
+        if (collectableNpcIds.Count == 0)
+        {
+            waitReason = string.Empty;
+            return false;
+        }
+
+        VendorNpcLocationCache.InitializeAsync(collectableNpcIds);
+        if (VendorNpcLocationCache.IsInitialized)
+        {
+            waitReason = string.Empty;
+            return false;
+        }
+
+        waitReason = VendorNpcLocationCache.IsInitializing
+            ? $"collectables route locations are still loading ({VendorNpcLocationCache.ResolvedNpcCount}/{VendorNpcLocationCache.RequestedNpcCount} NPCs resolved)"
+            : "collectables route locations are still loading";
+        return true;
+    }
+
+    private static void LogCollectablesWaitReason(string waitReason)
+    {
+        if (_lastCollectablesWaitLog != DateTime.MinValue && (DateTime.UtcNow - _lastCollectablesWaitLog) < TimeSpan.FromSeconds(10))
+            return;
+
+        GatherBuddy.Log.Debug($"[CraftingGatherBridge] Waiting to start collectables interruption: {waitReason}");
+        _lastCollectablesWaitLog = DateTime.UtcNow;
+    }
+
+    private static void OnCollectablesFinished()
+    {
+        if (!_waitingForCollectables && !_collectablesStartPending)
+            return;
+        ResetCollectablesInterruptionState();
+        _queueProcessor?.Resume();
+    }
+
+    private static void OnCollectablesError(string error)
+    {
+        if (!_waitingForCollectables && !_collectablesStartPending)
+            return;
+
+        GatherBuddy.Log.Error($"[CraftingGatherBridge] Collectables interruption failed: {error}");
+        var hardFailReason = GatherBuddy.Config.CollectableConfig.AutoTurnInHardFailReason;
+        if (!GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables && !string.IsNullOrWhiteSpace(hardFailReason))
+        {
+            LogCollectablesHardFailState(hardFailReason);
+            StartCollectablesHomeReturnBeforeResume(hardFailReason);
+            return;
+        }
+
+        ResetCollectablesInterruptionState();
+        _nextCollectablesRetry = DateTime.UtcNow.AddSeconds(5);
+        _lastCollectablesWaitLog = DateTime.MinValue;
+        _lastCollectablesExitAttempt = DateTime.MinValue;
+        _lastCollectablesHardFailLog = DateTime.MinValue;
+        _queueProcessor?.Resume();
+    }
+
+    private static void StartCollectablesHomeReturnBeforeResume(string hardFailReason)
+    {
+        _collectablesStartPending = false;
+        _waitingForCollectables = false;
+        _waitingForCollectablesHomeReturn = true;
+        _collectablesHomeReturnStarted = false;
+        _nextCollectablesRetry = DateTime.MinValue;
+        _lastCollectablesWaitLog = DateTime.MinValue;
+        _lastCollectablesExitAttempt = DateTime.MinValue;
+        GatherBuddy.Log.Warning("[CraftingGatherBridge] Returning home before resuming the queue after collectables hard fail");
+    }
+
+    private static void UpdateCollectablesHomeReturnBeforeResume()
+    {
+        if (!_waitingForCollectablesHomeReturn)
+            return;
+
+        if (!_collectablesHomeReturnStarted)
+        {
+            if (Lifestream.Enabled && Lifestream.IsBusy())
+                return;
+
+            if (!HomeNavigationHelper.TryStartReturnHome(out var error))
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                    return;
+
+                GatherBuddy.Log.Warning($"[CraftingGatherBridge] {error}");
+                GatherBuddy.Log.Warning("[CraftingGatherBridge] Resuming the queue without a home return after collectables hard fail");
+                ResetCollectablesInterruptionState();
+                _queueProcessor?.Resume();
+                return;
+            }
+
+            _collectablesHomeReturnStarted = true;
+            return;
+        }
+
+        if (!HomeNavigationHelper.IsReturnComplete())
+            return;
+
+        GatherBuddy.Log.Information("[CraftingGatherBridge] Home return complete, resuming the queue after collectables hard fail");
+        ResetCollectablesInterruptionState();
+        _queueProcessor?.Resume();
+    }
     
     public static void StopQueue()
     {
         if (_queueProcessor != null)
         {
             GatherBuddy.Log.Information("[CraftingGatherBridge] Stopping queue processor");
+            ResetCollectablesInterruptionState();
+            _lastCollectablesHardFailLog = DateTime.MinValue;
             _ephemeralListId = null;
             GatherBuddy.AutoGather.Enabled = false;
             DeleteTemporaryGatherList();
@@ -421,5 +709,28 @@ public static class CraftingGatherBridge
         {
             GatherBuddy.Log.Information("[CraftingGatherBridge] No queue processor running");
         }
+    }
+
+    private static void LogCollectablesHardFailState(string hardFailReason)
+    {
+        if (string.IsNullOrWhiteSpace(hardFailReason))
+            return;
+
+        if (_lastCollectablesHardFailLog != DateTime.MinValue && (DateTime.UtcNow - _lastCollectablesHardFailLog) < TimeSpan.FromSeconds(30))
+            return;
+
+        GatherBuddy.Log.Warning($"[CraftingGatherBridge] Skipping collectables interruption because auto turn-ins were forced off: {hardFailReason}");
+        _lastCollectablesHardFailLog = DateTime.UtcNow;
+    }
+
+    private static void ResetCollectablesInterruptionState()
+    {
+        _collectablesStartPending = false;
+        _waitingForCollectables = false;
+        _waitingForCollectablesHomeReturn = false;
+        _collectablesHomeReturnStarted = false;
+        _nextCollectablesRetry = DateTime.MinValue;
+        _lastCollectablesWaitLog = DateTime.MinValue;
+        _lastCollectablesExitAttempt = DateTime.MinValue;
     }
 }

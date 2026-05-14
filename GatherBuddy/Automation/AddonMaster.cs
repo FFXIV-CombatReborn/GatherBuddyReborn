@@ -1,12 +1,10 @@
 using System;
-using System.Collections.Generic;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Memory;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
-using GatherBuddy.AutoGather.Collectables;
 
 namespace GatherBuddy.Automation;
 
@@ -201,36 +199,6 @@ public static unsafe class AddonMaster
             {
                 Callback.Fire(Base, true, 0);
             }
-        }
-    }
-
-    public class InclusionShop : AddonMasterBase<AtkUnitBase>
-    {
-        public InclusionShop(nint addon) : base(addon) { }
-        public InclusionShop(void* addon) : base(addon) { }
-        public InclusionShop(AtkUnitBase* addon) : base((nint)addon) { }
-
-        public ShopItem[] ShopItems
-        {
-            get
-            {
-                if (Base == null || !Base->IsReady)
-                    return Array.Empty<ShopItem>();
-
-                var result = new List<ShopItem>();
-                foreach (var item in ScripShopItemManager.ShopItems)
-                {
-                    result.Add(new ShopItem { ItemId = item.ItemId, Index = item.Index });
-                }
-                
-                return result.ToArray();
-            }
-        }
-
-        public struct ShopItem
-        {
-            public uint ItemId;
-            public int Index;
         }
     }
 }

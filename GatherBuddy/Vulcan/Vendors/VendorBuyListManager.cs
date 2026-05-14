@@ -10,6 +10,18 @@ namespace GatherBuddy.Vulcan.Vendors;
 
 public sealed partial class VendorBuyListManager : IDisposable
 {
+    public enum StartResult
+    {
+        Started,
+        AlreadyRunning,
+        WaitingForPreviousInteraction,
+        NoList,
+        Empty,
+        NoPendingEntries,
+        VendorDataLoading,
+        LocationDataLoading,
+        AnotherPurchaseRunning,
+    }
     private readonly record struct VendorExecutionGroup(uint NpcId, VendorMenuShopType MenuShopType, uint ShopId);
     public readonly record struct VendorTargetRequest(uint ItemId, uint TargetQuantity);
     private readonly record struct PendingEntrySelection(
@@ -51,6 +63,8 @@ public sealed partial class VendorBuyListManager : IDisposable
     private VendorExecutionGroup? _currentExecutionVendor;
     private readonly HashSet<Guid> _skippedEntryIds = new();
     private readonly HashSet<Guid> _partiallyFulfilledEntryIds = new();
+    private VendorPurchaseConstraints? _purchaseConstraints;
+    private bool _runHitScripReserveLimit;
     private string   _statusText = string.Empty;
 
     public VendorBuyListManager()
@@ -86,6 +100,8 @@ public sealed partial class VendorBuyListManager : IDisposable
 
     public string StatusText
         => _statusText;
+
+    public bool LastRunHitScripReserveLimit { get; private set; }
 
     public void Dispose()
     {
@@ -123,6 +139,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         if ((DateTime.UtcNow - _shopCloseStartTime) <= ShopCloseTimeout)
             return;
 
+        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
         ResetShopCloseWaitState();
         ResetExecutionState();
         _statusText    = "Timed out leaving the previous vendor interaction.";
@@ -372,19 +389,23 @@ public sealed partial class VendorBuyListManager : IDisposable
         _statusText = $"Cleared vendor list '{list.Name}'.";
     }
 
-    public void Start()
+    public StartResult Start(Guid? listId = null, VendorPurchaseConstraints? purchaseConstraints = null)
     {
         EnsureListState();
         if (_isRunning)
-            return;
+            return StartResult.AlreadyRunning;
         _skippedEntryIds.Clear();
         _partiallyFulfilledEntryIds.Clear();
-
-        var activeList = ActiveList;
+        _purchaseConstraints = purchaseConstraints;
+        _runHitScripReserveLimit = false;
+        LastRunHitScripReserveLimit = false;
+        var activeList = listId.HasValue
+            ? GetList(listId.Value)
+            : ActiveList;
         if (activeList == null)
         {
             _statusText = "No vendor list is available.";
-            return;
+            return StartResult.NoList;
         }
 
         if (_waitingForShopClose)
@@ -392,26 +413,26 @@ public sealed partial class VendorBuyListManager : IDisposable
             _isRunning = true;
             _runningListId = activeList.Id;
             _statusText = $"Leaving the previous vendor interaction for '{activeList.Name}'.";
-            return;
+            return StartResult.WaitingForPreviousInteraction;
         }
 
         if (activeList.Entries.Count == 0)
         {
             _statusText = $"Vendor list '{activeList.Name}' is empty.";
-            return;
+            return StartResult.Empty;
         }
 
         if (GetPendingEntryCount(activeList) == 0)
         {
             _statusText = $"Vendor list '{activeList.Name}' has no enabled pending entries.";
-            return;
+            return StartResult.NoPendingEntries;
         }
 
         if (!VendorShopResolver.IsInitialized)
         {
             EnsureVendorCachesAvailable();
             _statusText = "Vendor data is still loading.";
-            return;
+            return StartResult.VendorDataLoading;
         }
 
         if (!VendorNpcLocationCache.IsInitialized)
@@ -420,13 +441,13 @@ public sealed partial class VendorBuyListManager : IDisposable
             _statusText = VendorNpcLocationCache.IsInitializing
                 ? "Vendor location data is still loading."
                 : "Vendor location data is not ready yet.";
-            return;
+            return StartResult.LocationDataLoading;
         }
 
         if (GatherBuddy.VendorPurchaseManager.IsRunning)
         {
             _statusText = "Another vendor purchase is already running.";
-            return;
+            return StartResult.AnotherPurchaseRunning;
         }
         _currentExecutionVendor = null;
 
@@ -435,6 +456,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         _waitingForCancelledPurchase = false;
         _statusText = $"Starting vendor list '{activeList.Name}'...";
         TryStartNextEntry();
+        return StartResult.Started;
     }
 
     public void Stop()
@@ -530,6 +552,8 @@ public sealed partial class VendorBuyListManager : IDisposable
         _currentExecutionVendor = null;
         _skippedEntryIds.Clear();
         _partiallyFulfilledEntryIds.Clear();
+        _purchaseConstraints = null;
+        _runHitScripReserveLimit = false;
     }
 
     private bool IsDeferredForCurrentRun(VendorBuyListEntry entry)
@@ -555,6 +579,7 @@ public sealed partial class VendorBuyListManager : IDisposable
 
     private void FailCurrentRun(string message)
     {
+        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
         ResetExecutionState();
         _statusText = message;
     }
@@ -563,6 +588,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     {
         var skippedCount = _skippedEntryIds.Count;
         var partiallyFulfilledCount = _partiallyFulfilledEntryIds.Count;
+        LastRunHitScripReserveLimit = _runHitScripReserveLimit;
         ResetExecutionState();
         if (skippedCount == 0 && partiallyFulfilledCount == 0)
         {
@@ -1049,7 +1075,8 @@ public sealed partial class VendorBuyListManager : IDisposable
         _currentExecutionVendor = new VendorExecutionGroup(vendor.NpcId, vendor.MenuShopType, vendor.ShopId);
         _activeEntryId = entry.Id;
         _statusText = $"Buying {remainingQuantity:N0}x {entry.ItemName} from {vendor.Name} in '{list.Name}'.";
-        GatherBuddy.VendorPurchaseManager.StartPurchase(liveEntry, vendor, location, remainingQuantity, continueCurrentVendorInteraction);
+        GatherBuddy.VendorPurchaseManager.StartPurchase(liveEntry, vendor, location, remainingQuantity, continueCurrentVendorInteraction,
+            _purchaseConstraints);
         if (GatherBuddy.VendorPurchaseManager.IsRunning)
             return true;
 
@@ -1204,6 +1231,9 @@ public sealed partial class VendorBuyListManager : IDisposable
         if (!_isRunning)
             return;
 
+        if (result.WasLimitedByScripReserve)
+            _runHitScripReserveLimit = true;
+
         switch (result.State)
         {
             case VendorPurchaseManager.CompletionState.Completed:
@@ -1238,6 +1268,25 @@ public sealed partial class VendorBuyListManager : IDisposable
                 }
 
                 BeginShopCloseTransition($"Continuing the vendor list after partially purchasing {result.ItemName}.");
+                break;
+            case VendorPurchaseManager.CompletionState.Skipped:
+                if (_activeEntryId is { } skippedEntryId && TryFindEntry(skippedEntryId, out _, out var skippedEntry) && skippedEntry != null)
+                    SkipEntryForCurrentRun(skippedEntry, result.Message, false);
+                _activeEntryId = null;
+
+                if (!VendorInteractionHelper.IsReadyToLeaveVendor())
+                {
+                    switch (TryContinueWithCurrentVendor(new VendorExecutionGroup(result.Vendor.NpcId, result.Vendor.MenuShopType, result.Vendor.ShopId)))
+                    {
+                        case SameVendorContinuationResult.Started:
+                            return;
+                        case SameVendorContinuationResult.Failed:
+                            BeginShopCloseTransition(_statusText);
+                            return;
+                    }
+                }
+
+                BeginShopCloseTransition($"Skipping {result.ItemName} and continuing the vendor list.");
                 break;
             case VendorPurchaseManager.CompletionState.Cancelled:
                 ResetExecutionState();

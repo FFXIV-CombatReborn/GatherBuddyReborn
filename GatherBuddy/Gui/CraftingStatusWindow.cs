@@ -60,6 +60,13 @@ public class CraftingStatusWindow : Window
         ImGui.Text($"State: {GetStateDisplayName(currentState)}");
         ImGui.Text($"Progress: {Math.Min(currentIndex + 1, totalCount)} / {totalCount}");
 
+        if (_queueProcessor.Paused && !string.IsNullOrWhiteSpace(_queueProcessor.PauseReason))
+        {
+            ImGui.PushTextWrapPos();
+            ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.82f, 0.24f, 1.0f), _queueProcessor.PauseReason);
+            ImGui.PopTextWrapPos();
+        }
+
         if (currentItem != null)
         {
             var recipeSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Recipe>();
@@ -95,7 +102,7 @@ public class CraftingStatusWindow : Window
         }
         else
         {
-            ImGui.TextDisabled("Queue is processing...");
+            ImGui.TextDisabled(_queueProcessor.Paused ? "Queue is paused." : "Queue is processing...");
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();

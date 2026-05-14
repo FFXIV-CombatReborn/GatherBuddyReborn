@@ -299,12 +299,6 @@ public partial class Configuration : IPluginConfiguration
     {
         if (Version >= 9)
             return;
-        
-        if (CollectableConfig.PreferredCollectableShop == null || 
-            string.IsNullOrEmpty(CollectableConfig.PreferredCollectableShop.Name))
-        {
-            CollectableConfig.PreferredCollectableShop = AutoGather.Collectables.CollectableNpcLocations.GetDefaultShop();
-        }
 
         Version = 9;
         Save();

@@ -163,6 +163,7 @@ public static class VendorShopResolver
 
             _allVendorNpcIds = BuildVendorNpcIdSet(_gilShopEntries, _specialShopEntries, _gcShopEntries);
             VendorNpcLocationCache.InitializeAsync(_allVendorNpcIds);
+            global::GatherBuddy.Crafting.MaterialSourceClassifier.Reset();
             success = true;
         }
         catch (Exception ex)

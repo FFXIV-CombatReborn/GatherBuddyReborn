@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using GatherBuddy.AutoGather.Collectables;
 using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
@@ -103,11 +104,10 @@ public static class MaterialSourceClassifier
         _scripItems = new HashSet<uint>();
         try
         {
-            foreach (var item in ScripShopItemManager.ShopItems)
-            {
-                if (item.ItemId > 0)
-                    _scripItems.Add(item.ItemId);
-            }
+            VendorShopResolver.InitializeAsync();
+            foreach (var entry in VendorShopResolver.SpecialShopEntries.Where(entry => entry.Group == VendorCurrencyGroup.Scrips))
+                if (entry.ItemId > 0)
+                    _scripItems.Add(entry.ItemId);
             GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Scrip set: {_scripItems.Count} items");
         }
         catch (Exception ex)
