@@ -43,6 +43,11 @@ public static class CraftingGatherBridge
         _plugin = plugin;
     }
 
+    private static int RoundUpToBatchSize(int quantity, int batchSize)
+        => batchSize <= 1
+            ? quantity
+            : (int)Math.Ceiling((double)quantity / batchSize) * batchSize;
+
     public static void BindCollectableManager(CollectableManager manager)
     {
         manager.OnFinishCollecting -= OnCollectablesFinished;
@@ -98,14 +103,9 @@ public static class CraftingGatherBridge
 
             foreach (var (itemId, quantity) in materials)
             {
-                var gatherItemId = itemId;
-                var gatherQuantity = quantity;
-
-                if (AutoGather.Helpers.Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
-                {
-                    gatherItemId = rawItemId;
-                    GatherBuddy.Log.Debug($"[CraftingGatherBridge] Converted approved item {itemId} to raw item {rawItemId}");
-                }
+                var gatherQuantity = GetCraftingGatherTargetQuantity(itemId, quantity, out var gatherItemId);
+                if (gatherQuantity <= 0)
+                    continue;
 
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
                     gatherList.Add(gatherable, (uint)gatherQuantity);
@@ -130,6 +130,25 @@ public static class CraftingGatherBridge
         {
             GatherBuddy.Log.Error($"[CraftingGatherBridge] Failed to create gather list '{listName}': {ex.Message}");
         }
+    }
+
+    private static int GetCraftingGatherTargetQuantity(uint itemId, int quantity, out uint gatherItemId)
+    {
+        gatherItemId = itemId;
+        if (quantity <= 0)
+            return 0;
+
+        if (!AutoGather.Helpers.Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
+            return quantity;
+        var approvedDeficit = Math.Max(0, quantity - GetInventoryCount(itemId));
+        if (approvedDeficit <= 0)
+            return 0;
+
+        gatherItemId = rawItemId;
+        var batchSize = AutoGather.Helpers.Diadem.ApprovedInspectionBatchSizes.TryGetValue(itemId, out var configuredBatchSize) && configuredBatchSize > 0
+            ? (int)configuredBatchSize
+            : 1;
+        return RoundUpToBatchSize(approvedDeficit, batchSize);
     }
     
     public static void Update()
@@ -235,14 +254,9 @@ public static class CraftingGatherBridge
 
             foreach (var (itemId, quantity) in missing)
             {
-                var gatherItemId = itemId;
-                var gatherQuantity = quantity;
-                
-                if (AutoGather.Helpers.Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
-                {
-                    gatherItemId = rawItemId;
-                    GatherBuddy.Log.Debug($"[CraftingGatherBridge] Converted approved item {itemId} to raw item {rawItemId}, quantity unchanged: {gatherQuantity}");
-                }
+                var gatherQuantity = GetCraftingGatherTargetQuantity(itemId, quantity, out var gatherItemId);
+                if (gatherQuantity <= 0)
+                    continue;
                 
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
                     _gatherList.Add(gatherable, (uint)gatherQuantity);
