@@ -9,6 +9,12 @@ using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
+public sealed record VendorPurchaseConstraints(uint ReservedScripAmount = 0)
+{
+    public bool HasReservedScripAmount
+        => ReservedScripAmount > 0;
+}
+
 public sealed class VendorPurchaseManager : IDisposable
 {
     private enum State
@@ -25,6 +31,7 @@ public sealed class VendorPurchaseManager : IDisposable
     {
         Completed,
         PartiallyCompleted,
+        Skipped,
         Failed,
         Cancelled,
     }
@@ -49,7 +56,8 @@ public sealed class VendorPurchaseManager : IDisposable
         uint            RequestedQuantity,
         uint            CompletedQuantity,
         VendorNpc       Vendor,
-        string          Message
+        string          Message,
+        bool            WasLimitedByScripReserve
     );
 
     private static readonly TimeSpan ActionThrottle       = TimeSpan.FromMilliseconds(400);
@@ -74,6 +82,7 @@ public sealed class VendorPurchaseManager : IDisposable
     private bool                   _gcRankSelected;
     private bool                   _gcCategorySelected;
     private bool                   _grandCompanyQuantityPrepared;
+    private VendorPurchaseConstraints? _purchaseConstraints;
 
     public event Action<PurchaseResult>? PurchaseFinished;
 
@@ -114,7 +123,8 @@ public sealed class VendorPurchaseManager : IDisposable
             _ => false,
         };
 
-    public void StartPurchase(VendorShopEntry entry, VendorNpc vendor, VendorNpcLocation location, uint quantity, bool continueCurrentVendorInteraction = false)
+    public void StartPurchase(VendorShopEntry entry, VendorNpc vendor, VendorNpcLocation location, uint quantity, bool continueCurrentVendorInteraction = false,
+        VendorPurchaseConstraints? purchaseConstraints = null)
     {
         if (VendorDevExclusions.IsExcluded(vendor))
         {
@@ -142,6 +152,7 @@ public sealed class VendorPurchaseManager : IDisposable
         _gcRankSelected = false;
         _gcCategorySelected = false;
         _grandCompanyQuantityPrepared = false;
+        _purchaseConstraints = purchaseConstraints;
         _lastActionTime = DateTime.MinValue;
         _stateStartTime = DateTime.UtcNow;
         _statusText = continueCurrentVendorInteraction
@@ -196,11 +207,11 @@ public sealed class VendorPurchaseManager : IDisposable
             _request.Quantity,
             _completedQuantity,
             _request.Vendor,
-            $"Cancelled purchase of {_request.ItemName} from {_request.Vendor.Name}.");
+            $"Cancelled purchase of {_request.ItemName} from {_request.Vendor.Name}.",
+            false);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }
-
     public void Dispose()
         => Stop();
 
@@ -238,39 +249,64 @@ public sealed class VendorPurchaseManager : IDisposable
         }
 
         var availability = VendorCurrencyAvailabilityResolver.Resolve(_request.CurrencyGroup, _request.CurrencyItemId, _request.CurrencyName);
-        var affordableBatchQuantity = Math.Min(desiredBatchQuantity, availability.AvailableAmount / _request.Cost);
+        var reserveAmount = GetReservedScripAmount();
+        var spendableAmount = GetSpendableCurrencyAmount(availability.AvailableAmount, reserveAmount);
+        var maxByAvailableCurrency = availability.AvailableAmount / _request.Cost;
+        var maxBySpendableCurrency = spendableAmount / _request.Cost;
+        var wasLimitedByScripReserve = maxBySpendableCurrency < maxByAvailableCurrency;
+        var affordableBatchQuantity = Math.Min(desiredBatchQuantity, maxBySpendableCurrency);
         if (affordableBatchQuantity == 0)
         {
-            HandleCurrencyExhaustion(availability);
+            HandleCurrencyExhaustion(availability, spendableAmount, reserveAmount, wasLimitedByScripReserve);
             return false;
         }
 
-        if (affordableBatchQuantity < desiredBatchQuantity)
-            GatherBuddy.Log.Warning(
-                $"[VendorPurchaseManager] Only {availability.AvailableAmount:N0} {availability.CurrencyName} are available for {_request.ItemName}; capping the current batch from {desiredBatchQuantity:N0} to {affordableBatchQuantity:N0} (cost {_request.Cost:N0} each, source={availability.Source}).");
 
         _currentBatchQuantity = affordableBatchQuantity;
         return true;
     }
 
-    private void HandleCurrencyExhaustion(VendorCurrencyAvailability availability)
+    private void HandleCurrencyExhaustion(VendorCurrencyAvailability availability, uint spendableAmount, uint reserveAmount,
+        bool wasLimitedByScripReserve)
     {
         if (_request == null)
             return;
 
         var remainingQuantity = GetRemainingQuantity();
-        var message = _completedQuantity > 0
-            ? $"Purchased {_completedQuantity:N0}/{_request.Quantity:N0}x {_request.ItemName} from {_request.Vendor.Name}. Could not afford the remaining {remainingQuantity:N0}x with {availability.AvailableAmount:N0} {availability.CurrencyName} remaining (cost {_request.Cost:N0} each)."
-            : $"Not enough {availability.CurrencyName} to buy {_request.ItemName} from {_request.Vendor.Name}. Need {_request.Cost:N0} for 1x and only {availability.AvailableAmount:N0} are available.";
+        var message = wasLimitedByScripReserve
+            ? _completedQuantity > 0
+                ? $"Purchased {_completedQuantity:N0}/{_request.Quantity:N0}x {_request.ItemName} from {_request.Vendor.Name}. Stopped to keep {reserveAmount:N0} {availability.CurrencyName} in reserve with {availability.AvailableAmount:N0} remaining and {spendableAmount:N0} spendable (cost {_request.Cost:N0} each)."
+                : $"Skipping {_request.ItemName} from {_request.Vendor.Name}. Keeping {reserveAmount:N0} {availability.CurrencyName} in reserve leaves {spendableAmount:N0} spendable, but {_request.Cost:N0} are needed for 1x."
+            : _completedQuantity > 0
+                ? $"Purchased {_completedQuantity:N0}/{_request.Quantity:N0}x {_request.ItemName} from {_request.Vendor.Name}. Could not afford the remaining {remainingQuantity:N0}x with {availability.AvailableAmount:N0} {availability.CurrencyName} remaining (cost {_request.Cost:N0} each)."
+                : $"Not enough {availability.CurrencyName} to buy {_request.ItemName} from {_request.Vendor.Name}. Need {_request.Cost:N0} for 1x and only {availability.AvailableAmount:N0} are available.";
 
         if (_completedQuantity > 0)
         {
-            CompletePartially(message);
+            CompletePartially(message, wasLimitedByScripReserve);
+            return;
+        }
+
+        if (wasLimitedByScripReserve)
+        {
+            Skip(message, true);
             return;
         }
 
         Fail(message);
     }
+
+    private uint GetReservedScripAmount()
+        => _request?.CurrencyGroup == VendorCurrencyGroup.Scrips && _purchaseConstraints is { HasReservedScripAmount: true }
+            ? _purchaseConstraints.ReservedScripAmount
+            : 0u;
+
+    private static uint GetSpendableCurrencyAmount(uint availableAmount, uint reserveAmount)
+        => reserveAmount == 0
+            ? availableAmount
+            : availableAmount > reserveAmount
+                ? availableAmount - reserveAmount
+                : 0u;
 
     private void BeginNextBatch()
     {
@@ -817,18 +853,26 @@ public sealed class VendorPurchaseManager : IDisposable
             _request.Quantity,
             _completedQuantity,
             _request.Vendor,
-            message);
+            message,
+            false);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }
 
-    private void CompletePartially(string message)
+    private void CompletePartially(string message, bool wasLimitedByScripReserve = false)
     {
         if (_request == null)
             return;
 
-        GatherBuddy.Log.Error($"[VendorPurchaseManager] {message}");
-        Communicator.PrintError($"[GatherBuddyReborn] {message}");
+        if (wasLimitedByScripReserve)
+        {
+            GatherBuddy.Log.Warning($"[VendorPurchaseManager] {message}");
+        }
+        else
+        {
+            GatherBuddy.Log.Error($"[VendorPurchaseManager] {message}");
+            Communicator.PrintError($"[GatherBuddyReborn] {message}");
+        }
         var result = new PurchaseResult(
             CompletionState.PartiallyCompleted,
             _request.ItemId,
@@ -836,7 +880,27 @@ public sealed class VendorPurchaseManager : IDisposable
             _request.Quantity,
             _completedQuantity,
             _request.Vendor,
-            message);
+            message,
+            wasLimitedByScripReserve);
+        ResetState();
+        PurchaseFinished?.Invoke(result);
+    }
+
+    private void Skip(string message, bool wasLimitedByScripReserve = false)
+    {
+        if (_request == null)
+            return;
+
+        GatherBuddy.Log.Warning($"[VendorPurchaseManager] {message}");
+        var result = new PurchaseResult(
+            CompletionState.Skipped,
+            _request.ItemId,
+            _request.ItemName,
+            _request.Quantity,
+            _completedQuantity,
+            _request.Vendor,
+            message,
+            wasLimitedByScripReserve);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }
@@ -855,7 +919,8 @@ public sealed class VendorPurchaseManager : IDisposable
             _request.Quantity,
             _completedQuantity,
             _request.Vendor,
-            message);
+            message,
+            false);
         ResetState();
         PurchaseFinished?.Invoke(result);
     }
@@ -880,6 +945,7 @@ public sealed class VendorPurchaseManager : IDisposable
         _gcRankSelected = false;
         _gcCategorySelected = false;
         _grandCompanyQuantityPrepared = false;
+        _purchaseConstraints = null;
         _statusText = string.Empty;
     }
 

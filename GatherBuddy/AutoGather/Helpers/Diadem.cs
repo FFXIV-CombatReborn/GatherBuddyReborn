@@ -44,6 +44,8 @@ namespace GatherBuddy.AutoGather.Helpers
         public static FrozenSet<Gatherable> OddlyDelicateItems { get; }
         public static FrozenDictionary<uint, uint> RawToApprovedItemIds { get; }
         public static FrozenDictionary<uint, uint> ApprovedToRawItemIds { get; }
+        public static FrozenDictionary<uint, uint> RawInspectionBatchSizes { get; }
+        public static FrozenDictionary<uint, uint> ApprovedInspectionBatchSizes { get; }
         public static ImmutableArray<(Vector3 From, Vector3 To)> Windmires { get; } = [
             (Vector3.Create(-724.649f,270.846f,-27.428f),Vector3.Create(-540.327f,317.677f,323.471f)),
             (Vector3.Create(-558.688f,318.068f,308.976f),Vector3.Create(-723.915f,271.008f,-49.867f)),
@@ -98,13 +100,23 @@ namespace GatherBuddy.AutoGather.Helpers
 
             OddlyDelicateItems = [GatherBuddy.GameData.Gatherables[31767], GatherBuddy.GameData.Gatherables[31769]];
 
-            RawToApprovedItemIds = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.HWDGathererInspection>()
+            var inspectionData = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.HWDGathererInspection>()
                 .SelectMany(x => x.HWDGathererInspectionData)
                 .Where(x => x.RequiredItem.IsValid && x.RequiredItem.RowId != 0 && x.ItemReceived.IsValid && x.ItemReceived.RowId != 0)
                 .Where(x => x.RequiredItem.Value.Item.Is<Lumina.Excel.Sheets.Item>() && x.RequiredItem.Value.Item.RowId != 0)
-                .ToFrozenDictionary(x => x.RequiredItem.Value.Item.RowId, x => x.ItemReceived.RowId);
+                .Select(x => new
+                {
+                    RawItemId = x.RequiredItem.Value.Item.RowId,
+                    ApprovedItemId = x.ItemReceived.RowId,
+                    BatchSize = x.AmountRequired == 0 ? 1u : (uint)x.AmountRequired,
+                })
+                .ToArray();
+
+            RawToApprovedItemIds = inspectionData.ToFrozenDictionary(x => x.RawItemId, x => x.ApprovedItemId);
+            RawInspectionBatchSizes = inspectionData.ToFrozenDictionary(x => x.RawItemId, x => x.BatchSize);
 
             ApprovedToRawItemIds = RawToApprovedItemIds.ToFrozenDictionary(x => x.Value, x => x.Key);
+            ApprovedInspectionBatchSizes = inspectionData.ToFrozenDictionary(x => x.ApprovedItemId, x => x.BatchSize);
         }
         public Diadem()
         {

@@ -115,6 +115,7 @@ public partial class Interface
         ConfigFunctions.DrawAlarmToggle();
         ImGui.SameLine();
         var vulcanButtonWidth = Math.Max(95f * Scale, ImGui.CalcTextSize("Vulcan").X + FramePadding.X * 5f);
+        var collectablesButtonWidth = Math.Max(125f * Scale, ImGui.CalcTextSize("Collectables").X + FramePadding.X * 5f);
         {
             using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
             using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.30f, 0.25f, 0.46f, 1f));
@@ -134,6 +135,26 @@ public partial class Interface
             }
         }
         ImGuiUtil.HoverTooltip("Open the Vulcan crafting window.");
+        ImGui.SameLine();
+        {
+            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
+            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.23f, 0.37f, 0.52f, 1f));
+            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.28f, 0.45f, 0.63f, 1f));
+            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.19f, 0.31f, 0.43f, 1f));
+            if (ImGui.Button("Collectables", new Vector2(collectablesButtonWidth, 0f)))
+            {
+                if (GatherBuddy.CollectablesWindow == null)
+                {
+                    GatherBuddy.Log.Debug("[Interface] Collectables header button clicked, but the collectables window was unavailable.");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug("[Interface] Opening collectables from the main header button.");
+                    GatherBuddy.CollectablesWindow.Open();
+                }
+            }
+        }
+        ImGuiUtil.HoverTooltip("Open the collectables window.");
         ImGui.SameLine();
         _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
         DrawLastItemAlarm();

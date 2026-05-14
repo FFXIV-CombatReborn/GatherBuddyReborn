@@ -526,7 +526,7 @@ namespace GatherBuddy.AutoGather
                     if (IsGathering)
                         CloseGatheringAddons();
                     else
-                        GatherBuddy.CollectableManager?.Start();
+                        GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                 }
                 else
                 {
@@ -795,7 +795,7 @@ namespace GatherBuddy.AutoGather
                 if (HasCollectables())
                 {
                     AutoStatus = "Turning in collectables...";
-                    GatherBuddy.CollectableManager?.Start();
+                    GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                     return;
                 }
 
@@ -892,7 +892,7 @@ namespace GatherBuddy.AutoGather
             if (HasCollectables())
             {
                 AutoStatus = "Turning in collectables...";
-                GatherBuddy.CollectableManager?.Start();
+                GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                 return;
             }
 

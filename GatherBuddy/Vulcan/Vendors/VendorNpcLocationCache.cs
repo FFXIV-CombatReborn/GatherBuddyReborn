@@ -17,12 +17,18 @@ public static class VendorNpcLocationCache
 {
     private const string DataShareLocationsTag = "AllaganLib.Data.NpcLevelCache.Locations.1";
     private const uint EulmoreTerritoryId = 820u;
+    private const uint LimsaLowerDecksTerritoryId = 129u;
+    private const uint OldGridaniaTerritoryId = 133u;
     private const float EulmoreUpperLevelMinY = 60f;
-    private readonly record struct VendorNpcLocationOverride(uint? MapRowId = null, Vector3? Position = null);
+    private readonly record struct VendorNpcLocationOverride(uint? TerritoryId = null, uint? MapRowId = null, Vector3? Position = null);
     private static readonly object SupplementalNpcPlacesLock = new();
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(2);
     private static readonly Dictionary<uint, uint> HighestMapIndexMapRowIdsByTerritoryTypeId = new();
-    private static readonly Dictionary<uint, VendorNpcLocationOverride> KnownNpcLocationOverrides = new();
+    private static readonly Dictionary<uint, VendorNpcLocationOverride> KnownNpcLocationOverrides = new()
+    {
+        [1003076] = new VendorNpcLocationOverride(OldGridaniaTerritoryId, 3u, new Vector3(143f, 13.6f, -107f)),
+        [1003632] = new VendorNpcLocationOverride(LimsaLowerDecksTerritoryId, 12u, new Vector3(-257f, 16f, 38f)),
+    };
     private static readonly Dictionary<uint, Dictionary<uint, uint>> MapRowIdsByTerritoryAndLayerIndex = new();
     private static volatile bool _initialized;
     private static volatile bool _initializing;
@@ -46,14 +52,28 @@ public static class VendorNpcLocationCache
             return;
 
         var previousNpcIds = _lastVendorNpcIds;
-        var requestedChanged = !ReferenceEquals(previousNpcIds, vendorNpcIds)
-            && (previousNpcIds.Count != vendorNpcIds.Count || !previousNpcIds.SetEquals(vendorNpcIds));
-        if (requestedChanged)
-            _lastVendorNpcIds = vendorNpcIds as HashSet<uint> ?? vendorNpcIds.ToHashSet();
-        else if (!ReferenceEquals(previousNpcIds, vendorNpcIds) && vendorNpcIds is HashSet<uint> requestedNpcIdSet)
-            _lastVendorNpcIds = requestedNpcIdSet;
+        HashSet<uint> requestedNpcIds;
+        bool requestedChanged;
+        if (previousNpcIds.Count == 0)
+        {
+            requestedNpcIds = vendorNpcIds as HashSet<uint> ?? vendorNpcIds.ToHashSet();
+            requestedChanged = requestedNpcIds.Count > 0;
+        }
+        else if (previousNpcIds.IsSupersetOf(vendorNpcIds))
+        {
+            requestedNpcIds = previousNpcIds;
+            requestedChanged = false;
+        }
+        else
+        {
+            requestedNpcIds = new HashSet<uint>(previousNpcIds);
+            var previousCount = requestedNpcIds.Count;
+            requestedNpcIds.UnionWith(vendorNpcIds);
+            requestedChanged = requestedNpcIds.Count != previousCount;
+        }
 
-        var requestedNpcIds = _lastVendorNpcIds;
+        if (!ReferenceEquals(_lastVendorNpcIds, requestedNpcIds))
+            _lastVendorNpcIds = requestedNpcIds;
         var shouldRefreshForDataShare = _initialized
             && !requestedChanged
             && _locations.Count < requestedNpcIds.Count
@@ -99,6 +119,11 @@ public static class VendorNpcLocationCache
 
     public static VendorNpcLocation? TryGetFirstLocation(uint npcId)
         => _locations.TryGetValue(npcId, out var list) && list.Count > 0 ? list[0] : null;
+
+    public static IReadOnlyList<VendorNpcLocation> GetLocations(uint npcId)
+        => _locations.TryGetValue(npcId, out var list)
+            ? list
+            : Array.Empty<VendorNpcLocation>();
 
 
     private static void StartBuild(IReadOnlySet<uint> vendorNpcIds)
@@ -159,6 +184,7 @@ public static class VendorNpcLocationCache
                 ResolveFromSupplementalNpcPlaces(result, vendorNpcIds, npcNames, mapSheet);
                 hadDataShareLocations = ResolveFromDataShare(result, vendorNpcIds, npcNames, mapSheet);
             }
+            ResolveFromKnownNpcOverrides(result, vendorNpcIds, npcNames, mapSheet);
 
             _locations = result;
             _lastBuildHadDataShareLocations = hadDataShareLocations;
@@ -204,8 +230,8 @@ public static class VendorNpcLocationCache
         var pendingNpcIds = GetPendingNpcIds(result, vendorNpcIds, npcNames, mapSheet);
         if (pendingNpcIds.Count == 0)
             return true;
-
         var before = CountResolvedNpcIds(result, vendorNpcIds, mapSheet);
+
         foreach (var npcId in pendingNpcIds)
         {
             if (!dataShare.TryGetValue(npcId, out var locations))
@@ -479,6 +505,26 @@ public static class VendorNpcLocationCache
         GatherBuddy.Log.Debug($"[VendorNpcLocationCache] LGB pass resolved {CountResolvedNpcIds(result, vendorNpcIds, mapSheet) - before} NPCs");
     }
 
+    private static void ResolveFromKnownNpcOverrides(
+        Dictionary<uint, List<VendorNpcLocation>> result,
+        IReadOnlySet<uint> vendorNpcIds,
+        IReadOnlyDictionary<uint, string> npcNames,
+        ExcelSheet<Map> mapSheet)
+    {
+        var pendingNpcIds = GetPendingNpcIds(result, vendorNpcIds, npcNames, mapSheet);
+        if (pendingNpcIds.Count == 0)
+            return;
+
+        foreach (var npcId in pendingNpcIds)
+        {
+            var vendorLocation = TryCreateKnownOverrideLocation(npcId, npcNames, mapSheet);
+            if (vendorLocation == null)
+                continue;
+
+            AddLocation(result, vendorLocation, mapSheet);
+        }
+    }
+
     private static HashSet<uint> GetPendingNpcIds(
         IReadOnlyDictionary<uint, List<VendorNpcLocation>> result,
         IReadOnlySet<uint> vendorNpcIds,
@@ -649,6 +695,30 @@ public static class VendorNpcLocationCache
     private static VendorNpcLocation ApplyKnownLocationOverrides(VendorNpcLocation location, ExcelSheet<Map> mapSheet)
         => ApplyKnownTerritoryLocationOverrides(ApplyKnownNpcLocationOverrides(location), mapSheet);
 
+    private static VendorNpcLocation? TryCreateKnownOverrideLocation(
+        uint npcId,
+        IReadOnlyDictionary<uint, string> npcNames,
+        ExcelSheet<Map> mapSheet)
+    {
+        if (!KnownNpcLocationOverrides.TryGetValue(npcId, out var locationOverride))
+            return null;
+        if (!npcNames.TryGetValue(npcId, out var name))
+            return null;
+
+        var territoryId = locationOverride.TerritoryId ?? 0;
+        if (territoryId == 0 || locationOverride.Position == null)
+            return null;
+
+        var mapRowId = locationOverride.MapRowId ?? GetMapRowIdByTerritoryTypeAndMapIndex(territoryId, (sbyte)0, mapSheet);
+        return new VendorNpcLocation(
+            npcId,
+            name,
+            territoryId,
+            mapRowId,
+            locationOverride.Position.Value,
+            VendorNpcLocationSource.Override);
+    }
+
     private static VendorNpcLocation ApplyKnownNpcLocationOverrides(VendorNpcLocation location)
     {
         if (!KnownNpcLocationOverrides.TryGetValue(location.NpcId, out var locationOverride))
@@ -656,11 +726,12 @@ public static class VendorNpcLocationCache
 
         var overriddenLocation = location with
         {
+            TerritoryId = locationOverride.TerritoryId ?? location.TerritoryId,
             MapRowId = locationOverride.MapRowId ?? location.MapRowId,
             Position = locationOverride.Position ?? location.Position,
             Source = VendorNpcLocationSource.Override,
         };
-        return LogAppliedLocationOverride(location, overriddenLocation, "NPC");
+        return overriddenLocation;
     }
 
     private static VendorNpcLocation ApplyKnownTerritoryLocationOverrides(VendorNpcLocation location, ExcelSheet<Map> mapSheet)
@@ -684,15 +755,7 @@ public static class VendorNpcLocationCache
             MapRowId = upperMapRowId,
             Source = VendorNpcLocationSource.Override,
         };
-        return LogAppliedLocationOverride(location, overriddenLocation, "Eulmore upper-layer");
-    }
-
-    private static VendorNpcLocation LogAppliedLocationOverride(VendorNpcLocation original, VendorNpcLocation overridden, string reason)
-    {
-        if (original == overridden)
-            return original;
-
-        return overridden;
+        return overriddenLocation;
     }
 
     private static uint GetHighestMapIndexMapRowId(uint territoryTypeId, ExcelSheet<Map> mapSheet)

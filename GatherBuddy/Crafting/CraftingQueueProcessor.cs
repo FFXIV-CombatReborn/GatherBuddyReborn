@@ -53,6 +53,7 @@ public class CraftingQueueProcessor
     private Dictionary<string, RaphaelSolveRequest> _enqueuedRaphaelRequests = new();
     private uint _jobSwitchRequestedFor = 0u;
     private Dictionary<uint, int> _missingIngredientFailures = new();
+    private string _pauseReason = string.Empty;
 
     private List<CraftingListItem> QueueItems => _executionPlan?.Queue ?? EmptyQueue;
     private Dictionary<uint, int> MaterialTargets => _executionPlan?.Materials ?? EmptyCounts;
@@ -66,6 +67,7 @@ public class CraftingQueueProcessor
     public IReadOnlyList<CraftingListItem> Queue => QueueItems;
     public CraftingListItem? CurrentRecipeItem => _currentQueueIndex < QueueItems.Count ? QueueItems[_currentQueueIndex] : null;
     public bool Paused => _paused;
+    public string PauseReason => _pauseReason;
     public uint CurrentProcessedRecipeId => _currentProcessedRecipeId;
     public int CurrentProcessedRecipeCount => _currentProcessedRecipeCount;
     public int CurrentProcessedRecipeTotal => _currentProcessedRecipeTotal;
@@ -94,6 +96,7 @@ public class CraftingQueueProcessor
         _enqueuedRaphaelRequests.Clear();
         _jobSwitchRequestedFor = 0u;
         _missingIngredientFailures.Clear();
+        _pauseReason = string.Empty;
         _retainerRestock = executionPlan.RetainerRestock;
         _retainerExecutor = null;
         _retainerBellNavigator = null;
@@ -203,6 +206,12 @@ public class CraftingQueueProcessor
                     }
                     else if ((DateTime.Now - _craftHangSince).TotalSeconds > 3.0)
                     {
+                        if (IsInventoryFull())
+                        {
+                            _craftHangSince = DateTime.MinValue;
+                            PauseForInventoryFull("Queue paused because crafting cannot continue with a full inventory.");
+                            break;
+                        }
                         GatherBuddy.Log.Warning("[CraftingQueueProcessor] Craft hang detected: game idle but craft never started, auto-recovering to WaitingForJobSwitch");
                         _craftHangSince = DateTime.MinValue;
                         _currentState = QueueState.WaitingForJobSwitch;
@@ -506,6 +515,12 @@ public class CraftingQueueProcessor
             CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleBetween)
             return;
 
+        if (IsInventoryFull())
+        {
+            PauseForInventoryFull("Queue paused because crafting cannot start with a full inventory.");
+            return;
+        }
+
         var recipeItem = QueueItems[_currentQueueIndex];
 
         if (recipeItem.Options.Skipping)
@@ -774,6 +789,11 @@ public class CraftingQueueProcessor
 
         if (cancelled)
         {
+            if (IsInventoryFull())
+            {
+                PauseForInventoryFull("Queue paused because the inventory filled during crafting.");
+                return;
+            }
             GatherBuddy.Log.Warning($"[CraftingQueueProcessor] Craft cancelled at index {_currentQueueIndex}");
             CompleteQueue();
             return;
@@ -1507,13 +1527,14 @@ public class CraftingQueueProcessor
         return nearest;
     }
 
-    public void Pause()
+    public void Pause(string? reason = null)
     {
         if (_paused || _currentState == QueueState.Complete || _currentState == QueueState.Idle)
             return;
 
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Pausing queue");
         _paused = true;
+        _pauseReason = reason ?? string.Empty;
         if (_currentState == QueueState.NavigatingToRetainerBell)
         {
             GatherBuddy.Log.Debug("[CraftingQueueProcessor] Pausing retainer bell navigation");
@@ -1544,6 +1565,7 @@ public class CraftingQueueProcessor
 
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Resuming queue");
         _paused = false;
+        _pauseReason = string.Empty;
         YesAlready.Lock();
 
         if (_currentState == QueueState.NavigatingToRetainerBell)
@@ -1591,6 +1613,7 @@ public class CraftingQueueProcessor
     {
         GatherBuddy.Log.Information("[CraftingQueueProcessor] Stopping queue");
         _paused = false;
+        _pauseReason = string.Empty;
         _tasks.Clear();
         _retainerBellNavigator?.Stop();
         _retainerBellNavigator = null;
@@ -1626,6 +1649,7 @@ public class CraftingQueueProcessor
         _executionPlan = null;
         _currentQueueIndex = 0;
         _currentState = QueueState.Idle;
+        _pauseReason = string.Empty;
         _tasks.Clear();
         _currentProcessedRecipeId = 0;
         _currentProcessedRecipeCount = 0;
@@ -1647,5 +1671,18 @@ public class CraftingQueueProcessor
         _currentState = QueueState.Repairing;
         StateChanged?.Invoke(_currentState);
         QueueRepairTasks();
+    }
+
+    private unsafe bool IsInventoryFull()
+    {
+        var inventoryManager = InventoryManager.Instance();
+        return inventoryManager != null && inventoryManager->GetEmptySlotsInBag() == 0;
+    }
+
+    private void PauseForInventoryFull(string message)
+    {
+        var pauseReason = $"{message} Clear inventory, then press Resume to continue the current queue.";
+        GatherBuddy.Log.Warning($"[CraftingQueueProcessor] {pauseReason}");
+        Pause(pauseReason);
     }
 }
