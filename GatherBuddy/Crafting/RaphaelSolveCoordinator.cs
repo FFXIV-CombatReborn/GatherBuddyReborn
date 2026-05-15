@@ -389,6 +389,17 @@ public class RaphaelSolveCoordinator
         Save();
     }
 
+    public bool RemoveCachedSolution(RaphaelSolveRequest request)
+    {
+        var key = request.GetKey();
+        if (_cachedSolutions.TryRemove(key, out _))
+        {
+            Save();
+            return true;
+        }
+        return false;
+    }
+
     private List<RaphaelSolveRequest> ExtractUniqueCrafts(
         IEnumerable<CraftingListItem> queue,
         int playerCraftsmanship,
