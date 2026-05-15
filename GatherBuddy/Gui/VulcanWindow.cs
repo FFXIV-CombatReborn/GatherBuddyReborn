@@ -276,6 +276,22 @@ public partial class VulcanWindow : Window, IDisposable
                 TryToggleArtisan(!artisanLoaded);
         }
 
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Collectables##openCollectables"))
+        {
+            if (GatherBuddy.CollectablesWindow == null)
+            {
+                GatherBuddy.Log.Debug("[VulcanWindow] Collectables header button clicked, but the collectables window was unavailable.");
+            }
+            else
+            {
+                GatherBuddy.Log.Debug("[VulcanWindow] Opening collectables from the Vulcan header.");
+                GatherBuddy.CollectablesWindow.Open();
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open the shared collectables turn-in and purchase automation window.");
+
     }
 
     private bool UpdatePendingArtisanToggle(bool artisanInstalled, bool artisanLoaded)

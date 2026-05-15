@@ -2,6 +2,7 @@ using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.AtkReaders;
+using GatherBuddy.AutoGather.Collectables;
 using GatherBuddy.Classes;
 using System;
 using System.Collections.Generic;
@@ -22,74 +23,15 @@ namespace GatherBuddy.AutoGather
 
             if (GatherBuddy.CollectableManager == null)
                 return false;
-
-            var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
-            if (threshold <= 0)
+            var thresholdState = CollectableInventoryHelper.GetThresholdState(GatherBuddy.Config.CollectableConfig);
+            if (!thresholdState.ThresholdReached)
                 return false;
+            if (thresholdState.InventoryFullMode)
+                GatherBuddy.Log.Debug($"[HasCollectables] Inventory threshold reached ({thresholdState.UsedSlots}/{thresholdState.TotalSlots}) with {thresholdState.CollectableCount} collectables - triggering turn-in");
+            else
+                GatherBuddy.Log.Debug($"[HasCollectables] Collectable threshold reached ({thresholdState.CollectableCount}) - triggering turn-in");
 
-            var shopSubSheet = Dalamud.GameData.GetSubrowExcelSheet<Lumina.Excel.Sheets.CollectablesShopItem>();
-            var shopItemIds = shopSubSheet == null
-                ? new HashSet<uint>()
-                : shopSubSheet.SelectMany(s => s).Select(r => r.Item.RowId).ToHashSet();
-
-            if (shopItemIds.Count == 0)
-                return false;
-
-            var manager = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-            if (manager == null)
-                return false;
-
-            var collectableCount = 0;
-            var totalSlots = 0;
-            var usedSlots = 0;
-            var useInventoryFull = GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold;
-
-            foreach (var invType in InventoryTypes)
-            {
-                var container = manager->GetInventoryContainer(invType);
-                if (container == null || !container->IsLoaded)
-                    continue;
-
-                totalSlots += (int)container->Size;
-
-                for (int i = 0; i < container->Size; i++)
-                {
-                    var slot = container->GetInventorySlot(i);
-                    if (slot != null && slot->ItemId != 0)
-                    {
-                        usedSlots++;
-                        
-                        var isCollectable = (slot->Flags & FFXIVClientStructs.FFXIV.Client.Game.InventoryItem.ItemFlags.Collectable) != 0;
-                        if (isCollectable && shopItemIds.Contains(slot->ItemId))
-                        {
-                            collectableCount++;
-                            
-                            if (!useInventoryFull && collectableCount >= threshold)
-                                return true;
-                        }
-                    }
-                }
-            }
-
-            // Use inventory full threshold if that mode is selected
-            if (useInventoryFull)
-            {
-                var fullThreshold = GatherBuddy.Config.CollectableConfig.InventoryFullThreshold;
-                if (usedSlots >= fullThreshold && collectableCount > 0)
-                {
-                    GatherBuddy.Log.Debug($"[HasCollectables] Inventory at threshold ({usedSlots}/{fullThreshold}) with {collectableCount} collectables - triggering turn-in");
-                    return true;
-                }
-            }
-            
-            // Emergency fallback: trigger if inventory is actually full (all slots) regardless of mode
-            if (usedSlots >= totalSlots && collectableCount > 0)
-            {
-                GatherBuddy.Log.Debug($"[HasCollectables] Inventory completely full ({usedSlots}/{totalSlots}) with {collectableCount} collectables - emergency turn-in");
-                return true;
-            }
-
-            return false;
+            return true;
         }
 
         private unsafe partial class CollectableRotation

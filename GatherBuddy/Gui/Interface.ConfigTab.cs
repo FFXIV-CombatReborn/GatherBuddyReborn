@@ -8,8 +8,6 @@ using Dalamud.Interface.Utility;
 using FFXIVClientStructs.STD;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather;
-using GatherBuddy.AutoGather.Collectables;
-using GatherBuddy.AutoGather.Collectables.Data;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
@@ -33,7 +31,6 @@ public partial class Interface
         private static string _fishFilterText = "";
         private static Fish? _selectedFish = null;
         private static string _presetName = "";
-        private static string _scripShopFilterText = "";
 
         public static void DrawSetInput(string jobName, string oldName, Action<string> setName)
         {
@@ -1310,195 +1307,6 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes = b);
 
-        public static void DrawCollectableAutoTurninBox()
-            => DrawCheckbox("Auto-turn in collectables",
-                "Automatically turn in collectables when inventory threshold is reached during gathering",
-                GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables,
-                b => GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables = b);
-        
-        public static void DrawCollectableThreshold()
-        {
-            var useInventoryFull = GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold;
-            
-            if (ImGui.RadioButton("Collectable Count Threshold", !useInventoryFull))
-            {
-                GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold = false;
-                GatherBuddy.Config.Save();
-            }
-            ImGuiUtil.HoverTooltip("Turn in collectables when you have a certain number of collectables.");
-            
-            if (!useInventoryFull)
-            {
-                ImGui.Indent();
-                var threshold = GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold;
-                ImGui.SetNextItemWidth(150);
-                if (ImGui.DragInt("Collectable Count", ref threshold, 1, 1, 999))
-                {
-                    GatherBuddy.Config.CollectableConfig.CollectableInventoryThreshold = Math.Max(1, threshold);
-                    GatherBuddy.Config.Save();
-                }
-                ImGuiUtil.HoverTooltip("Turn in when you have this many collectables.");
-                ImGui.Unindent();
-            }
-            
-            if (ImGui.RadioButton("Inventory Full Threshold", useInventoryFull))
-            {
-                GatherBuddy.Config.CollectableConfig.UseInventoryFullThreshold = true;
-                GatherBuddy.Config.Save();
-            }
-            ImGuiUtil.HoverTooltip("Turn in collectables when your inventory reaches a certain number of occupied slots.");
-            
-            if (useInventoryFull)
-            {
-                ImGui.Indent();
-                var fullThreshold = GatherBuddy.Config.CollectableConfig.InventoryFullThreshold;
-                ImGui.SetNextItemWidth(150);
-                if (ImGui.DragInt("Inventory Slots Used", ref fullThreshold, 1, 1, 140))
-                {
-                    GatherBuddy.Config.CollectableConfig.InventoryFullThreshold = Math.Max(1, Math.Min(140, fullThreshold));
-                    GatherBuddy.Config.Save();
-                }
-                ImGuiUtil.HoverTooltip("Turn in when your inventory has this many occupied slots (max 140).");
-                ImGui.Unindent();
-            }
-        }
-        
-        
-        public static void DrawBuyAfterEachCollectBox()
-            => DrawCheckbox("Buy scrip shop items after each turn-in",
-                "Automatically purchase scrip shop items after turning in collectables",
-                GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect,
-                b => GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect = b);
-        
-        public static void DrawScripReserveAmount()
-        {
-            var reserveAmount = GatherBuddy.Config.CollectableConfig.ReserveScripAmount;
-            ImGui.SetNextItemWidth(150);
-            if (ImGui.DragInt("Reserve Scrips", ref reserveAmount, 10, 0, 4000))
-            {
-                GatherBuddy.Config.CollectableConfig.ReserveScripAmount = Math.Max(0, Math.Min(4000, reserveAmount));
-                GatherBuddy.Config.Save();
-            }
-            ImGuiUtil.HoverTooltip("Minimum amount of scrips to keep when purchasing items from the scrip shop.\nPurchases will stop if buying would bring your scrips below this amount.");
-        }
-        
-        public static void DrawScripShopItemManager()
-        {
-            var shopItems = ScripShopItemManager.ShopItems;
-            var purchaseList = GatherBuddy.Config.CollectableConfig.ScripShopItems;
-            
-            ImGui.TextUnformatted("Items in purchase queue:");
-            ImGui.Spacing();
-            
-            if (purchaseList.Count == 0)
-            {
-                ImGui.TextDisabled("No items in queue. Add items below.");
-            }
-            else
-            {
-                ItemToPurchase? toRemove = null;
-                
-                foreach (var purchaseItem in purchaseList)
-                {
-                    using var id = ImRaii.PushId($"{purchaseItem.Name}");
-                    
-                    if (purchaseItem.Item != null && purchaseItem.Item.IconTexture.TryGetWrap(out var wrap, out _))
-                    {
-                        ImGui.Image(wrap.Handle, new Vector2(24, 24));
-                        ImGui.SameLine();
-                    }
-                    
-                    ImGui.AlignTextToFramePadding();
-                    ImGui.Text($"{purchaseItem.Name}");
-                    ImGui.SameLine(300);
-                    
-                    unsafe
-                    {
-                        var inventory = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
-                        var currentInventory = purchaseItem.Item != null ? inventory->GetInventoryItemCount(purchaseItem.Item.ItemId) : 0;
-                        ImGui.Text($"{currentInventory}");
-                    }
-                    
-                    ImGui.SameLine();
-                    ImGui.Text("/");
-                    ImGui.SameLine();
-                    
-                    var quantity = purchaseItem.Quantity;
-                    ImGui.SetNextItemWidth(80);
-                    if (ImGui.InputInt($"##{purchaseItem.Name}_Quantity", ref quantity, 1, 10))
-                    {
-                        purchaseItem.Quantity = Math.Max(0, quantity);
-                        GatherBuddy.Config.Save();
-                    }
-                    
-                    ImGui.SameLine();
-                    if (ImGui.Button($"Remove##{purchaseItem.Name}"))
-                    {
-                        toRemove = purchaseItem;
-                    }
-                }
-                
-                if (toRemove != null)
-                {
-                    purchaseList.Remove(toRemove);
-                    GatherBuddy.Config.Save();
-                }
-            }
-            
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Add Item:");
-            
-            if (shopItems.Count() == 0)
-            {
-                ImGui.TextDisabled("No scrip shop items available. Data may not be loaded.");
-            }
-            else
-            {
-                if (ImGui.BeginCombo("###AddScripShopItem", "Select item..."))
-                {
-                    ImGui.SetNextItemWidth(SetInputWidth - 20);
-                    ImGui.InputTextWithHint("###ScripShopFilter", "Search...", ref _scripShopFilterText, 100);
-                    ImGui.Separator();
-                    
-                    foreach (var item in shopItems)
-                    {
-                        if (item.Page < 3)
-                            continue;
-                        
-                        if (_scripShopFilterText.Length > 0 && !item.Name.Contains(_scripShopFilterText, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        
-                        using var id = ImRaii.PushId($"AddItem_{item.Name}");
-                        
-                        var alreadyAdded = purchaseList.Any(p => p.Name == item.Name);
-                        if (alreadyAdded)
-                        {
-                            ImGui.PushStyleVar(ImGuiStyleVar.Alpha, 0.5f);
-                        }
-                        
-                        if (ImGui.Selectable(item.Name, false, alreadyAdded ? ImGuiSelectableFlags.Disabled : ImGuiSelectableFlags.None))
-                        {
-                            if (!alreadyAdded)
-                            {
-                                purchaseList.Add(new ItemToPurchase { Item = item, Quantity = 1 });
-                                GatherBuddy.Config.Save();
-                                _scripShopFilterText = "";
-                            }
-                        }
-                        
-                        if (alreadyAdded)
-                        {
-                            ImGui.PopStyleVar();
-                        }
-                    }
-                    
-                    ImGui.EndCombo();
-                }
-            }
-        }
-        
         public static void DrawManualPresetGenerator()
         {
             ImGui.Separator();
@@ -1713,24 +1521,6 @@ public partial class Interface
             new("Use vnavmesh Navigation",                        ConfigFunctions.DrawUseNavigationBox),
             new("Force Walking",                                  ConfigFunctions.DrawForceWalkingBox),
             new("Disable Random Landing Positions",               ConfigFunctions.DrawDisableRandomLandingPositionsBox),
-        ]),
-        new("Auto-Gather", "Collectable",
-        [
-            new("Auto-turn in collectables Collectable Count Threshold Inventory Full Threshold",
-                layout =>
-                {
-                    ConfigFunctions.DrawCollectableAutoTurninBox();
-                    if (GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
-                        layout.Child.Draw(ConfigFunctions.DrawCollectableThreshold);
-                }),
-            new("Buy scrip shop items after each turn-in Reserve Scrips",
-                layout =>
-                {
-                    ConfigFunctions.DrawBuyAfterEachCollectBox();
-                    if (GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect)
-                        layout.Child.Draw(ConfigFunctions.DrawScripReserveAmount);
-                }),
-            new("Scrip Shop Purchase List",                       ConfigFunctions.DrawScripShopItemManager),
         ]),
         new("General", "Gather Command",
         [

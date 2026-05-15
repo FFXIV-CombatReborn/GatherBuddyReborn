@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 

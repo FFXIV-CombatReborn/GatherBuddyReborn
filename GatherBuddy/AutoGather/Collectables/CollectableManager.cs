@@ -1,18 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using GatherBuddy.Automation;
-using GatherBuddy.Helpers;
-using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using GatherBuddy.AutoGather.Collectables.Data;
 using GatherBuddy.Config;
+using GatherBuddy.Helpers;
 using GatherBuddy.Plugin;
-using GatherBuddy.SeFunctions;
-using Lumina.Excel.Sheets;
+using GatherBuddy.Vulcan.Vendors;
 
 namespace GatherBuddy.AutoGather.Collectables;
 
@@ -20,192 +16,204 @@ enum CollectableState
 {
     Idle,
     CheckingInventory,
-    MovingToShop,
-    WaitingForArrival,
-    WaitingForShopWindow,
+    NavigatingToTurnInNpc,
+    OpeningTurnInWindow,
     SelectingJob,
     SelectingItem,
     SubmittingItem,
     CheckingOvercapDialog,
     WaitingForSubmit,
     CheckingForMore,
-    MovingToScripShop,
-    WaitingForScripShopArrival,
-    WaitingForScripShopWindow,
-    SelectingScripShopPage,
-    SelectingScripShopSubPage,
-    SelectingScripShopItem,
-    PurchasingScripShopItem,
-    WaitingForPurchaseComplete,
-    CheckingForMorePurchases,
+    ClosingTurnInWindow,
+    StartingPurchaseList,
+    WaitingForPurchaseList,
+    ReturningHome,
     Completed,
-    Error
+    Error,
 }
 
-public class CollectableManager : IDisposable
+public enum CollectableRunSource
+{
+    Manual,
+    AutoGather,
+    VulcanQueue,
+}
+
+public unsafe class CollectableManager : IDisposable
 {
     private readonly Configuration _config;
     private readonly IFramework _framework;
     private readonly ICondition _condition;
     private readonly CollectableWindowHandler _windowHandler;
-    private readonly ScripShopWindowHandler _scripShopWindowHandler;
-    private readonly TaskManager _taskManager;
-    
-    public event System.Action? OnFinishCollecting;
-    public event System.Action<string>? OnError;
-    
+
+    public event Action? OnFinishCollecting;
+    public event Action<string>? OnError;
+
     public bool IsRunning { get; private set; }
-    
+    public string StatusText { get; private set; } = "Idle";
+    public CollectableRunSource CurrentRunSource { get; private set; } = CollectableRunSource.Manual;
+
     private CollectableState _state = CollectableState.Idle;
-    private Queue<(uint itemId, string name, int count, int jobId)> _turnInQueue = new();
-    private uint _currentItemId = 0;
-    private string? _currentItemName;
+    private Queue<CollectableTurnInItem> _turnInQueue = new();
+    private readonly Queue<Guid> _pendingPurchaseListIds = new();
+    private VendorNpc? _turnInVendor;
+    private VendorNpcLocation? _turnInLocation;
+    private Guid? _activePurchaseListId;
+    private uint _currentItemId;
     private int _currentJobId = -1;
     private DateTime _lastAction = DateTime.MinValue;
-    private TimeSpan _actionDelay = TimeSpan.FromMilliseconds(500);
-    private int _phaseCounter = 0;
-    private DateTime _movementStartTime = DateTime.MinValue;
-    private bool _teleportAttempted = false;
-    private bool _lifestreamAttempted = false;
-    private Queue<(uint itemId, string name, int remaining, int cost, int page, int subPage)> _purchaseQueue = new();
-    private int _currentPurchaseAmount = 0;
-    private bool _overcapInterrupted = false;
-    private DateTime _overcapCheckStartTime = DateTime.MinValue;
-    
+    private DateTime _stateStartTime = DateTime.MinValue;
+    private readonly TimeSpan _actionDelay = TimeSpan.FromMilliseconds(400);
+    private bool _overcapInterrupted;
+    private bool _purchaseAttemptedForOvercap;
+    private bool _lastOvercapPurchaseHitScripReserveLimit;
+    private bool _returnHomeAfterCompletion;
+    private bool _homeReturnStarted;
+    private bool _runContainsGatheringCollectables;
+    private bool _runContainsCraftingCollectables;
+    private string? _lastErrorText;
+    private string? _completionMessage;
+    private CollectableState _nextStateAfterWindowClose = CollectableState.Idle;
+    private string? _statusAfterWindowClose;
+
     public CollectableManager(IFramework framework, ICondition condition, Configuration config)
     {
         _config = config;
         _framework = framework;
         _condition = condition;
         _windowHandler = new CollectableWindowHandler();
-        _scripShopWindowHandler = new ScripShopWindowHandler();
-        _taskManager = new TaskManager(framework);
-        _taskManager.ShowDebug = false;
     }
-    
-    public void Start()
+
+    public bool Start(CollectableRunSource source = CollectableRunSource.Manual, bool returnHomeAfterCompletion = false)
     {
         if (IsRunning)
         {
-            GatherBuddy.Log.Debug("[CollectableManager] Already running");
-            return;
+            GatherBuddy.Log.Debug("[CollectableManager] Collectables run already active");
+            return false;
         }
-        
-        if (!HasCollectables())
+
+        CollectableInventoryHelper.InitializeAsync();
+        if (!CollectableInventoryHelper.IsTurnInItemMetadataReady)
         {
-            GatherBuddy.Log.Debug("[CollectableManager] No collectables found in inventory");
-            return;
+            StatusText = CollectableInventoryHelper.IsTurnInItemMetadataLoading
+                ? "Collectables item data is still loading."
+                : "Collectables item data is unavailable.";
+            return false;
         }
-        
-        GatherBuddy.Log.Information("[CollectableManager] Starting collectable turn-in");
+
+        var availableItems = CollectableInventoryHelper.GetTurnInItems();
+        if (availableItems.Count == 0)
+        {
+            StatusText = "No collectables are ready for turn-in.";
+            return false;
+        }
+
+        var route = CollectableTurnInRouteResolver.ResolvePreferredRoute(_config.CollectableConfig.PreferredTurnInRoute);
+        if (route == null)
+        {
+            StatusText = CollectableTurnInRouteResolver.HasLookupData
+                ? "Collectables route locations are still loading."
+                : "Collectables route data is unavailable.";
+            return false;
+        }
+
+        _turnInVendor = route.Vendor;
+        _turnInLocation = route.Location;
+        _config.CollectableConfig.PreferredTurnInRoute = CollectableTurnInRouteResolver.ToPreference(route);
+        _config.Save();
+
+        _turnInQueue = new Queue<CollectableTurnInItem>(availableItems);
+        UpdateRunCollectableTypes(availableItems);
+        _pendingPurchaseListIds.Clear();
+        _activePurchaseListId = null;
+        _currentItemId = 0;
+        _currentJobId = -1;
+        _lastAction = DateTime.MinValue;
+        _stateStartTime = DateTime.UtcNow;
+        _overcapInterrupted = false;
+        _purchaseAttemptedForOvercap = false;
+        _lastOvercapPurchaseHitScripReserveLimit = false;
+        _returnHomeAfterCompletion = returnHomeAfterCompletion;
+        _homeReturnStarted = false;
+        _lastErrorText = null;
+        _completionMessage = null;
+        CurrentRunSource = source;
         IsRunning = true;
         _state = CollectableState.CheckingInventory;
+        StatusText = $"Starting collectables run via {DescribeSource(source)} at {route.DisplayName}.";
+
+        GatherBuddy.Log.Information($"[CollectableManager] Starting collectables run via {DescribeSource(source)} using {route.DisplayName}");
         _framework.Update += OnUpdate;
+        return true;
     }
-    
+
     public void Stop()
     {
-        if (!IsRunning) return;
-        
-        GatherBuddy.Log.Information("[CollectableManager] Stopping collectable turn-in");
-        _framework.Update -= OnUpdate;
-        _taskManager.Abort();
-        IsRunning = false;
-        _state = CollectableState.Idle;
-        _turnInQueue.Clear();
-        _purchaseQueue.Clear();
-        _windowHandler.CloseWindow();
-        _scripShopWindowHandler.CloseShop();
+        if (!IsRunning && _state == CollectableState.Idle)
+            return;
+
+        GatherBuddy.Log.Information("[CollectableManager] Stopping collectables run");
+        CleanupCurrentRun(stopActivePurchaseList: true);
+        StatusText = "Collectables run stopped.";
     }
-    
+
+    public void ClearStatus()
+    {
+        if (!IsRunning)
+            StatusText = "Idle";
+    }
+
     private void OnUpdate(IFramework framework)
     {
         try
         {
-            if (!IsRunning) return;
-            
+            if (!IsRunning)
+                return;
+
             switch (_state)
             {
                 case CollectableState.CheckingInventory:
                     CheckInventory();
                     break;
-                    
-                case CollectableState.MovingToShop:
-                    MoveToShop();
+                case CollectableState.NavigatingToTurnInNpc:
+                    UpdateTurnInNavigation();
                     break;
-                    
-                case CollectableState.WaitingForArrival:
-                    WaitForArrival();
+                case CollectableState.OpeningTurnInWindow:
+                    OpenTurnInWindow();
                     break;
-                    
-                case CollectableState.WaitingForShopWindow:
-                    WaitForShopWindow();
-                    break;
-                    
                 case CollectableState.SelectingJob:
                     SelectJob();
                     break;
-                    
                 case CollectableState.SelectingItem:
                     SelectItem();
                     break;
-                    
                 case CollectableState.SubmittingItem:
                     SubmitItem();
                     break;
-                    
                 case CollectableState.CheckingOvercapDialog:
                     CheckOvercapDialog();
                     break;
-                    
                 case CollectableState.WaitingForSubmit:
                     WaitForSubmit();
                     break;
-                    
                 case CollectableState.CheckingForMore:
                     CheckForMore();
                     break;
-                    
-                case CollectableState.MovingToScripShop:
-                    MoveToScripShop();
+                case CollectableState.ClosingTurnInWindow:
+                    CloseTurnInWindow();
                     break;
-                    
-                case CollectableState.WaitingForScripShopArrival:
-                    WaitForScripShopArrival();
+                case CollectableState.StartingPurchaseList:
+                    StartPurchaseList();
                     break;
-                    
-                case CollectableState.WaitingForScripShopWindow:
-                    WaitForScripShopWindow();
+                case CollectableState.WaitingForPurchaseList:
+                    WaitForPurchaseList();
                     break;
-                    
-                case CollectableState.SelectingScripShopPage:
-                    SelectScripShopPage();
+                case CollectableState.ReturningHome:
+                    ReturnHome();
                     break;
-                    
-                case CollectableState.SelectingScripShopSubPage:
-                    SelectScripShopSubPage();
-                    break;
-                    
-                case CollectableState.SelectingScripShopItem:
-                    SelectScripShopItem();
-                    break;
-                    
-                case CollectableState.PurchasingScripShopItem:
-                    PurchaseScripShopItem();
-                    break;
-                    
-                case CollectableState.WaitingForPurchaseComplete:
-                    WaitForPurchaseComplete();
-                    break;
-                    
-                case CollectableState.CheckingForMorePurchases:
-                    CheckForMorePurchases();
-                    break;
-                    
                 case CollectableState.Completed:
                     Complete();
                     break;
-                    
                 case CollectableState.Error:
                     HandleError();
                     break;
@@ -213,713 +221,655 @@ public class CollectableManager : IDisposable
         }
         catch (Exception ex)
         {
-            GatherBuddy.Log.Error($"[CollectableManager] Error in state machine: {ex}");
-            _state = CollectableState.Error;
+            GatherBuddy.Log.Error($"[CollectableManager] Error in collectables run: {ex}");
+            Fail("An unexpected error occurred during collectables automation.");
         }
     }
-    
+
     private void CheckInventory()
     {
-        var shopSubSheet = Dalamud.GameData.GetSubrowExcelSheet<CollectablesShopItem>();
-        var shopItemIds = shopSubSheet == null
-            ? new HashSet<uint>()
-            : shopSubSheet.SelectMany(s => s).Select(r => r.Item.RowId).ToHashSet();
-
-        var fishSheet = Dalamud.GameData.GetExcelSheet<FishParameter>();
-        var fishItemIds = fishSheet == null
-            ? new HashSet<uint>()
-            : fishSheet.Select(f => f.Item.RowId).ToHashSet();
-
-        var collectables = ItemHelper.GetCurrentInventoryItems()
-            .Where(i => i.IsCollectable && shopItemIds.Contains(i.BaseItemId))
-            .GroupBy(i => i.BaseItemId)
-            .ToList();
-        
-        _turnInQueue.Clear();
-        
-        foreach (var group in collectables)
+        CollectableInventoryHelper.InitializeAsync();
+        if (!CollectableInventoryHelper.IsTurnInItemMetadataReady)
         {
-            var itemId = group.Key;
-            var count = group.Count();
-            
-            var item = Dalamud.GameData.GetExcelSheet<Item>().GetRow(itemId);
-            if (item.RowId == 0)
-                continue;
-
-            var isFish = fishItemIds.Contains(itemId);
-            if (isFish && item.AetherialReduce > 0)
-                continue;
-                
-            var itemName = item.Name.ToString();
-            var jobId = ItemJobResolver.GetJobIdForItem(itemName, Dalamud.GameData);
-            
-            if (jobId != -1)
-            {
-                _turnInQueue.Enqueue((itemId, itemName, count, jobId));
-            }
+            StatusText = CollectableInventoryHelper.IsTurnInItemMetadataLoading
+                ? "Collectables item data is still loading."
+                : "Collectables item data is unavailable.";
+            return;
         }
-        
+        var route = CollectableTurnInRouteResolver.ResolvePreferredRoute(_config.CollectableConfig.PreferredTurnInRoute);
+        if (route == null)
+        {
+            StatusText = CollectableTurnInRouteResolver.HasLookupData
+                ? "Collectables route locations are still loading."
+                : "Collectables route data is unavailable.";
+            return;
+        }
+
+        _turnInVendor = route.Vendor;
+        _turnInLocation = route.Location;
+        _config.CollectableConfig.PreferredTurnInRoute = CollectableTurnInRouteResolver.ToPreference(route);
+        _config.Save();
+
+        var items = CollectableInventoryHelper.GetTurnInItems();
+        _turnInQueue = new Queue<CollectableTurnInItem>(items);
+        UpdateRunCollectableTypes(items);
+        _currentItemId = 0;
+        _currentJobId = -1;
+
         if (_turnInQueue.Count == 0)
         {
-            GatherBuddy.Log.Information("[CollectableManager] No valid collectables to turn in");
+            _completionMessage = "No collectables were available for turn-in.";
             _state = CollectableState.Completed;
             return;
         }
-        
-        GatherBuddy.Log.Information($"[CollectableManager] Found {_turnInQueue.Count} unique collectable types to turn in");
-        _teleportAttempted = false;
-        _lifestreamAttempted = false;
-        _state = CollectableState.MovingToShop;
+
+        VendorInteractionHelper.ResetShopSelectionState(_turnInVendor);
+        GatherBuddy.VendorNavigator.StartNavigation(_turnInLocation);
+        _stateStartTime = DateTime.UtcNow;
+        StatusText = $"Navigating to {_turnInVendor.Name} for collectables turn-ins.";
+        _state = CollectableState.NavigatingToTurnInNpc;
     }
-    
-    private void MoveToShop()
+
+    private void UpdateTurnInNavigation()
     {
-        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        if (_turnInVendor == null || _turnInLocation == null)
         {
+            Fail("No collectables turn-in route is configured.");
             return;
         }
-        
-        var shop = _config.CollectableConfig.PreferredCollectableShop;
-        var playerPos = Player.Position;
-        
-        if (playerPos == Vector3.Zero || shop.Location == Vector3.Zero)
+
+        if (GatherBuddy.VendorNavigator.IsFailed)
         {
+            Fail($"Failed to navigate to {_turnInVendor.Name} for collectables turn-ins.");
             return;
         }
-        
-        var distance = Vector3.Distance(playerPos, shop.Location);
-        
-        if (distance <= 2f && Dalamud.ClientState.TerritoryType == shop.TerritoryId)
-        {
-            _state = CollectableState.WaitingForShopWindow;
+
+        if (!GatherBuddy.VendorNavigator.IsReadyToPurchase)
             return;
-        }
-        
-        if (Dalamud.ClientState.TerritoryType != shop.TerritoryId && !_teleportAttempted)
-        {
-            GatherBuddy.Log.Information($"[CollectableManager] Teleporting to {shop.Name} (Aetheryte {shop.AetheryteId})");
-            if (Teleporter.Teleport(shop.AetheryteId))
-            {
-                _teleportAttempted = true;
-                _lastAction = DateTime.UtcNow;
-            }
-            else
-            {
-                GatherBuddy.Log.Error($"[CollectableManager] Failed to teleport to {shop.Name}");
-                _state = CollectableState.Error;
-            }
-            return;
-        }
-        
-        if (_teleportAttempted && Lifestream.Enabled && Lifestream.IsBusy())
-        {
-            return;
-        }
-        
-        if (_teleportAttempted && (DateTime.UtcNow - _lastAction) < TimeSpan.FromSeconds(3))
-        {
-            return;
-        }
-        
-        if (shop.IsLifestreamRequired && !_lifestreamAttempted && Lifestream.Enabled)
-        {
-            if (distance > 40f)
-            {
-                GatherBuddy.Log.Information($"[CollectableManager] Using Lifestream: {shop.LifestreamCommand}");
-                Lifestream.ExecuteCommand(shop.LifestreamCommand);
-                _lifestreamAttempted = true;
-                _lastAction = DateTime.UtcNow;
-                return;
-            }
-        }
-        
-        if (_lifestreamAttempted && Lifestream.IsBusy())
-        {
-            return;
-        }
-        
-        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
-        {
-            return;
-        }
-        
-        if (playerPos == Vector3.Zero)
-        {
-            return;
-        }
-        
-        if (Lifestream.Enabled && Lifestream.IsBusy())
-        {
-            GatherBuddy.Log.Debug($"[CollectableManager] Lifestream is busy, waiting...");
-            return;
-        }
-        
-        if (Dalamud.ClientState.TerritoryType == shop.TerritoryId)
-        {
-            var timeSinceLastAction = (DateTime.UtcNow - _lastAction).TotalSeconds;
-            if (timeSinceLastAction <= 5)
-            {
-                GatherBuddy.Log.Debug($"[CollectableManager] Waiting {5 - timeSinceLastAction:F1}s before pathing...");
-                return;
-            }
-            
-            GatherBuddy.Log.Information($"[CollectableManager] Starting navigation to {shop.Name}");
-            try
-            {
-                VNavmesh.SimpleMove.PathfindAndMoveTo(shop.Location, false);
-                _movementStartTime = DateTime.UtcNow;
-                _state = CollectableState.WaitingForArrival;
-            }
-            catch (Exception ex)
-            {
-                GatherBuddy.Log.Error($"[CollectableManager] Navigation error: {ex.Message}");
-            }
-        }
-    }
-    
-    private void WaitForArrival()
-    {
-        var shop = _config.CollectableConfig.PreferredCollectableShop;
-        var playerPos = Player.Position;
-        
-        if (Dalamud.ClientState.TerritoryType != shop.TerritoryId)
-        {
-            _state = CollectableState.MovingToShop;
-            return;
-        }
-        
-        if (playerPos == Vector3.Zero)
-        {
-            return;
-        }
-        
-        var distance = Vector3.Distance(playerPos, shop.Location);
-        
-        if (distance <= 2f)
-        {
-            VNavmesh.Path.Stop();
-            _state = CollectableState.WaitingForShopWindow;
-            return;
-        }
-        
-        if ((DateTime.UtcNow - _movementStartTime) > TimeSpan.FromSeconds(60))
-        {
-            GatherBuddy.Log.Error($"[CollectableManager] Navigation timeout, still {distance:F1}m away");
-            VNavmesh.Path.Stop();
-            _state = CollectableState.Error;
-            return;
-        }
-        
-        if ((DateTime.UtcNow - _lastAction) > TimeSpan.FromMilliseconds(500))
-        {
-            try
-            {
-                if (!VNavmesh.Path.IsRunning())
-                {
-                    VNavmesh.SimpleMove.PathfindAndMoveTo(shop.Location, false);
-                }
-            }
-            catch (Exception ex)
-            {
-                GatherBuddy.Log.Error($"[CollectableManager] Navigation error: {ex.Message}");
-            }
-            _lastAction = DateTime.UtcNow;
-        }
-    }
-    
-    private unsafe void WaitForShopWindow()
-    {
-        if (!_windowHandler.IsReady)
-        {
-            if (_taskManager.IsBusy)
-                return;
-                
-            var shop = _config.CollectableConfig.PreferredCollectableShop;
-            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.BaseId == shop.NpcId);
-            
-            if (gameObj == null)
-            {
-                return;
-            }
-            
-            EnqueueNpcInteraction(gameObj);
-            return;
-        }
-        _state = CollectableState.SelectingJob;
+
+        _stateStartTime = DateTime.UtcNow;
         _lastAction = DateTime.MinValue;
+        StatusText = $"Opening {_turnInVendor.Name}'s collectables menu.";
+        _state = CollectableState.OpeningTurnInWindow;
     }
-    
-    private unsafe void EnqueueNpcInteraction(global::Dalamud.Game.ClientState.Objects.Types.IGameObject gameObject)
+
+    private void OpenTurnInWindow()
     {
-        var targetSystem = TargetSystem.Instance();
-        if (targetSystem == null)
+        if (_turnInVendor == null || _turnInLocation == null)
+        {
+            Fail("No collectables turn-in route is configured.");
             return;
-            
-        _taskManager.Enqueue(() =>
+        }
+
+        if (_windowHandler.IsReady)
         {
-            targetSystem->OpenObjectInteraction((GameObject*)gameObject.Address);
-        });
-        _taskManager.Enqueue(() => _condition[ConditionFlag.OccupiedInQuestEvent] || _windowHandler.IsReady, 500);
-        
-        _taskManager.Enqueue(() =>
+            _stateStartTime = DateTime.UtcNow;
+            _lastAction = DateTime.MinValue;
+            StatusText = "Selecting collectables turn-in job.";
+            _state = CollectableState.SelectingJob;
+            return;
+        }
+
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
+        if (VendorInteractionHelper.TryClickTalk())
         {
-            if (!_condition[ConditionFlag.OccupiedInQuestEvent] && !_windowHandler.IsReady)
-            {
-                targetSystem->OpenObjectInteraction((GameObject*)gameObject.Address);
-            }
-        });
-        _taskManager.Enqueue(() => _condition[ConditionFlag.OccupiedInQuestEvent] || _windowHandler.IsReady, 500);
+            _lastAction = DateTime.UtcNow;
+            return;
+        }
+
+        if (VendorInteractionHelper.TrySelectShopOption(_turnInVendor, out var selectionError))
+        {
+            _lastAction = DateTime.UtcNow;
+            return;
+        }
+
+        if (selectionError != null)
+        {
+            Fail(selectionError);
+            return;
+        }
+
+        if (VendorInteractionHelper.TryInteractWithTarget(_turnInLocation))
+        {
+            _lastAction = DateTime.UtcNow;
+            return;
+        }
+
+        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromSeconds(15))
+            Fail($"Timed out opening {_turnInVendor.Name}'s collectables menu.");
     }
-    
+
     private void SelectJob()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
         if (_turnInQueue.Count == 0)
         {
-            _state = CollectableState.Completed;
+            BeginCompletionFlow();
             return;
         }
-        
+
         var next = _turnInQueue.Peek();
-        
-        if (_currentJobId != next.jobId)
+        if (_currentJobId != next.JobId)
         {
-            _windowHandler.SelectJob((uint)next.jobId);
-            _currentJobId = next.jobId;
+            _windowHandler.SelectJob((uint)next.JobId);
+            _currentJobId = next.JobId;
+            _currentItemId = 0;
             _lastAction = DateTime.UtcNow;
-            _phaseCounter = 0;
+            return;
         }
-        
+
         _state = CollectableState.SelectingItem;
     }
-    
+
     private void SelectItem()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
         var next = _turnInQueue.Peek();
-        
-        if (_currentItemId != next.itemId)
+        if (_currentItemId != next.ItemId)
         {
-            _windowHandler.SelectItemById(next.itemId);
-            _currentItemId = next.itemId;
-            _currentItemName = next.name;
+            _windowHandler.SelectItemById(next.ItemId);
+            _currentItemId = next.ItemId;
             _lastAction = DateTime.UtcNow;
+            StatusText = $"Selecting {next.ItemName} for turn-in.";
             return;
         }
-        
+
         _state = CollectableState.SubmittingItem;
     }
-    
+
     private void SubmitItem()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
+        var next = _turnInQueue.Peek();
+        StatusText = $"Turning in {next.ItemName}.";
         _windowHandler.SubmitItem();
         _lastAction = DateTime.UtcNow;
-        _overcapCheckStartTime = DateTime.UtcNow;
+        _stateStartTime = DateTime.UtcNow;
         _state = CollectableState.CheckingOvercapDialog;
     }
-    
-    private unsafe void CheckOvercapDialog()
+
+    private void CheckOvercapDialog()
     {
-        if (Automation.GenericHelpers.TryGetAddonByName<FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno>("SelectYesno", out var addon) &&
-            Automation.GenericHelpers.IsAddonReady((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon))
+        if (GenericHelpers.TryGetAddonByName<FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno>("SelectYesno", out var addon)
+         && GenericHelpers.IsAddonReady((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon))
         {
-            GatherBuddy.Log.Information("[CollectableManager] Scrip overcap detected, declining turn-in and moving to scrip shop");
-            Automation.Callback.Fire((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon, true, 1);
+            Callback.Fire((FFXIVClientStructs.FFXIV.Component.GUI.AtkUnitBase*)addon, true, 1);
             _lastAction = DateTime.UtcNow;
+            _currentItemId = 0;
             _overcapInterrupted = true;
-            
-            _windowHandler.CloseWindow();
-            
-            if (_config.CollectableConfig.BuyAfterEachCollect && _config.CollectableConfig.ScripShopItems.Count > 0)
+            GatherBuddy.Log.Warning("[CollectableManager] Scrip cap detected during collectables turn-in");
+
+            if (_purchaseAttemptedForOvercap)
             {
-                GatherBuddy.Log.Information("[CollectableManager] Moving to scrip shop to spend scrips");
-                PreparePurchaseQueue();
-                
-                if (_purchaseQueue.Count == 0)
-                {
-                    GatherBuddy.Log.Error("[CollectableManager] Scrip overcap detected but no items to purchase. Disabling auto-turnin.");
-                    _config.CollectableConfig.AutoTurnInCollectables = false;
-                    Communicator.PrintError("Scrip overcap detected but no scrip shop items need purchasing. Auto-turnin has been disabled. Please configure scrip shop items or spend scrips manually.");
-                    _state = CollectableState.Completed;
-                    return;
-                }
-                
-                _state = CollectableState.MovingToScripShop;
+                DisableAutoTurnInAndFail(_lastOvercapPurchaseHitScripReserveLimit
+                    ? "Collectables are still blocked by the scrip cap after running the purchase list. The configured scrip reserve prevented spending enough scrips to continue."
+                    : "Collectables are still blocked by the scrip cap after running the purchase list.");
+                return;
             }
-            else
+
+            if (!HasConfiguredPurchaseList())
             {
-                GatherBuddy.Log.Error("[CollectableManager] Scrip overcap but no scrip shop configuration. Disabling auto-turnin.");
-                _config.CollectableConfig.AutoTurnInCollectables = false;
-                Communicator.PrintError("Scrip overcap detected but scrip shopping is not configured. Auto-turnin has been disabled. Please enable scrip shopping and configure items to purchase.");
-                _state = CollectableState.Completed;
+                DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but no collectables purchase list is configured.");
+                return;
             }
+
+            TransitionAfterClosingTurnInWindow(CollectableState.StartingPurchaseList, "Scrip cap reached, running the collectables purchase list.");
             return;
         }
-        
-        if ((DateTime.UtcNow - _overcapCheckStartTime) > TimeSpan.FromMilliseconds(500))
-        {
+
+        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromMilliseconds(500))
             _state = CollectableState.WaitingForSubmit;
-        }
     }
-    
+
     private void WaitForSubmit()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        var current = _turnInQueue.Peek();
-        var newCount = current.count - 1;
-        
-        _turnInQueue.Dequeue();
-        
-        if (newCount > 0)
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
+        if (_turnInQueue.Count == 0)
         {
-            _turnInQueue = new Queue<(uint itemId, string name, int count, int jobId)>(
-                new[] { (current.itemId, current.name, newCount, current.jobId) }.Concat(_turnInQueue)
-            );
+            BeginCompletionFlow();
+            return;
         }
-        else
-        {
-            _currentItemId = 0;
-            _currentItemName = null;
-        }
-        
-        _state = CollectableState.CheckingForMore;
+
+        var current = _turnInQueue.Dequeue();
+        var remainingCount = current.Count - 1;
+        if (remainingCount > 0)
+            _turnInQueue = new Queue<CollectableTurnInItem>(new[] { current with { Count = remainingCount } }.Concat(_turnInQueue));
+
+        _purchaseAttemptedForOvercap = false;
+        _lastOvercapPurchaseHitScripReserveLimit = false;
+        _currentItemId = 0;
         _lastAction = DateTime.UtcNow;
+        StatusText = $"Turned in {current.ItemName}.";
+        _state = CollectableState.CheckingForMore;
     }
-    
+
     private void CheckForMore()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
+        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+            return;
+
         if (_turnInQueue.Count > 0)
         {
             _state = CollectableState.SelectingJob;
+            return;
         }
-        else
+
+        if (ShouldRunPurchaseList())
         {
-            if (_config.CollectableConfig.BuyAfterEachCollect && _config.CollectableConfig.ScripShopItems.Count > 0)
+            TransitionAfterClosingTurnInWindow(CollectableState.StartingPurchaseList, "Running the collectables purchase list.");
+            return;
+        }
+
+        BeginCompletionFlow();
+    }
+
+    private VendorPurchaseConstraints? GetPurchaseConstraints()
+    {
+        var reserveScripAmount = Math.Clamp(_config.CollectableConfig.ReserveScripAmount, 0, 4000);
+        return reserveScripAmount > 0
+            ? new VendorPurchaseConstraints((uint)reserveScripAmount)
+            : null;
+    }
+
+    private void CloseTurnInWindow()
+    {
+        if (!_windowHandler.IsReady)
+        {
+            var nextState = _nextStateAfterWindowClose;
+            var nextStatus = _statusAfterWindowClose;
+            _nextStateAfterWindowClose = CollectableState.Idle;
+            _statusAfterWindowClose = null;
+            _stateStartTime = DateTime.UtcNow;
+            _lastAction = DateTime.MinValue;
+            if (!string.IsNullOrWhiteSpace(nextStatus))
+                StatusText = nextStatus;
+            _state = nextState;
+            return;
+        }
+
+        if ((DateTime.UtcNow - _lastAction) >= _actionDelay)
+        {
+            _windowHandler.CloseWindow();
+            _lastAction = DateTime.UtcNow;
+        }
+
+        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromSeconds(10))
+            Fail("Timed out closing the collectables turn-in window.");
+    }
+
+    private void StartPurchaseList()
+    {
+        if (_activePurchaseListId == null)
+        {
+            QueuePendingPurchaseLists();
+            if (_pendingPurchaseListIds.Count == 0)
             {
-                GatherBuddy.Log.Information("[CollectableManager] Turn-ins complete, moving to scrip shop purchases");
-                _windowHandler.CloseWindow();
-                PreparePurchaseQueue();
-                _state = CollectableState.MovingToScripShop;
+                if (_overcapInterrupted)
+                    DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but no collectables purchase list is configured.");
+                else
+                    BeginCompletionFlow();
+                return;
             }
+
+            _activePurchaseListId = _pendingPurchaseListIds.Dequeue();
+        }
+
+        var purchaseListId = _activePurchaseListId.Value;
+        if (purchaseListId == Guid.Empty)
+        {
+            if (_overcapInterrupted)
+                DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but no collectables purchase list is configured.");
             else
-            {
-                _state = CollectableState.Completed;
-            }
+                BeginCompletionFlow();
+            return;
+        }
+
+        var startResult = GatherBuddy.VendorBuyListManager.Start(purchaseListId, GetPurchaseConstraints());
+        if (!string.IsNullOrWhiteSpace(GatherBuddy.VendorBuyListManager.StatusText))
+            StatusText = GatherBuddy.VendorBuyListManager.StatusText;
+
+        switch (startResult)
+        {
+            case VendorBuyListManager.StartResult.Started:
+            case VendorBuyListManager.StartResult.AlreadyRunning:
+            case VendorBuyListManager.StartResult.WaitingForPreviousInteraction:
+                if (_overcapInterrupted)
+                    _purchaseAttemptedForOvercap = true;
+
+                if (GatherBuddy.VendorBuyListManager.IsBusy)
+                {
+                    _stateStartTime = DateTime.UtcNow;
+                    _state = CollectableState.WaitingForPurchaseList;
+                    return;
+                }
+
+                HandlePurchaseListCompletion();
+                return;
+            case VendorBuyListManager.StartResult.VendorDataLoading:
+            case VendorBuyListManager.StartResult.LocationDataLoading:
+            case VendorBuyListManager.StartResult.AnotherPurchaseRunning:
+                return;
+            case VendorBuyListManager.StartResult.Empty:
+            case VendorBuyListManager.StartResult.NoPendingEntries:
+                if (_overcapInterrupted)
+                {
+                    DisableAutoTurnInAndFail($"Scrip cap reached while turning in collectables, but purchase list '{GetPurchaseListName(purchaseListId)}' has no pending items.");
+                    return;
+                }
+                _activePurchaseListId = null;
+                AdvancePurchaseListsOrComplete();
+                return;
+            case VendorBuyListManager.StartResult.NoList:
+                if (_overcapInterrupted)
+                    DisableAutoTurnInAndFail("The configured collectables purchase list is unavailable.");
+                else
+                {
+                    _activePurchaseListId = null;
+                    AdvancePurchaseListsOrComplete();
+                }
+                return;
         }
     }
-    
+
+    private void WaitForPurchaseList()
+    {
+        if (!string.IsNullOrWhiteSpace(GatherBuddy.VendorBuyListManager.StatusText))
+            StatusText = GatherBuddy.VendorBuyListManager.StatusText;
+
+        if (GatherBuddy.VendorBuyListManager.IsBusy)
+            return;
+
+        HandlePurchaseListCompletion();
+    }
+
+    private void HandlePurchaseListCompletion()
+    {
+        _activePurchaseListId = null;
+        if (_overcapInterrupted)
+        {
+            _lastOvercapPurchaseHitScripReserveLimit = GatherBuddy.VendorBuyListManager.LastRunHitScripReserveLimit;
+            _overcapInterrupted = false;
+            _currentItemId = 0;
+            _currentJobId = -1;
+            _pendingPurchaseListIds.Clear();
+            StatusText = "Resuming collectables turn-ins after the purchase list.";
+            _state = CollectableState.CheckingInventory;
+            return;
+        }
+        AdvancePurchaseListsOrComplete();
+    }
+
+    private void ReturnHome()
+    {
+        if (!_homeReturnStarted)
+        {
+            if (Lifestream.Enabled && Lifestream.IsBusy())
+                return;
+
+            if (!HomeNavigationHelper.TryStartReturnHome(out var error))
+            {
+                if (!string.IsNullOrWhiteSpace(error))
+                    GatherBuddy.Log.Warning($"[CollectableManager] {error}");
+
+                _completionMessage = string.IsNullOrWhiteSpace(error)
+                    ? "Collectables turn-in complete."
+                    : $"Collectables turn-in complete without home return: {error}";
+                _state = CollectableState.Completed;
+                return;
+            }
+
+            _homeReturnStarted = true;
+            _lastAction = DateTime.UtcNow;
+            StatusText = "Returning home after collectables turn-ins.";
+            return;
+        }
+
+        if (!HomeNavigationHelper.IsReturnComplete())
+            return;
+
+        _completionMessage = "Collectables turn-in complete.";
+        _state = CollectableState.Completed;
+    }
+
+    private void BeginCompletionFlow()
+    {
+        if (_returnHomeAfterCompletion && HomeNavigationHelper.ShouldReturnHomeAfterCollectables())
+        {
+            _homeReturnStarted = false;
+            TransitionAfterClosingTurnInWindow(CollectableState.ReturningHome, "Returning home after collectables turn-ins.");
+            return;
+        }
+
+        _completionMessage = "Collectables turn-in complete.";
+        TransitionAfterClosingTurnInWindow(CollectableState.Completed, _completionMessage);
+    }
+
     private void Complete()
     {
-        GatherBuddy.Log.Information("[CollectableManager] Completed all turn-ins");
-        _windowHandler.CloseWindow();
-        _framework.Update -= OnUpdate;
-        IsRunning = false;
-        _state = CollectableState.Idle;
+        _completionMessage ??= "Collectables turn-in complete.";
+        GatherBuddy.Log.Information($"[CollectableManager] {_completionMessage}");
+        CleanupCurrentRun(stopActivePurchaseList: false);
+        StatusText = _completionMessage;
         OnFinishCollecting?.Invoke();
     }
-    
+
     private void HandleError()
     {
-        GatherBuddy.Log.Error("[CollectableManager] Error state reached");
-        OnError?.Invoke("An error occurred during collectable turn-in");
-        Stop();
+        var errorMessage = _lastErrorText ?? "An error occurred during collectables automation.";
+        GatherBuddy.Log.Error($"[CollectableManager] {errorMessage}");
+        CleanupCurrentRun(stopActivePurchaseList: true);
+        StatusText = errorMessage;
+        OnError?.Invoke(errorMessage);
     }
-    
-    private bool HasCollectables()
+
+    private void Fail(string message)
     {
-        var items = ItemHelper.GetCurrentInventoryItems();
-        return items.Any(i => i.IsCollectable);
+        _lastErrorText = message;
+        StatusText = message;
+        _state = CollectableState.Error;
     }
-    
-    private void PreparePurchaseQueue()
+
+    private void DisableAutoTurnInAndFail(string message)
     {
-        _purchaseQueue.Clear();
-        
-        var inventoryItems = ItemHelper.GetCurrentInventoryItems();
-        
-        foreach (var item in _config.CollectableConfig.ScripShopItems)
+        var hardFailMessage = $"{message} Auto turn-in collectables has been disabled to prevent repeated failures. Adjust the collectables reserve or purchase list, then re-enable auto turn-ins.";
+        var shouldSave = false;
+        if (_config.CollectableConfig.AutoTurnInCollectables)
         {
-            if (item.Item == null) continue;
-            
-            if (item.Item.Page < 3)
-            {
-                GatherBuddy.Log.Warning($"[CollectableManager] Skipping crafter scrip item: {item.Name} (Page={item.Item.Page})");
-                continue;
-            }
-            
-            var currentCount = inventoryItems
-                .Where(x => x.BaseItemId == item.Item.ItemId)
-                .Sum(x => (int)x.Quantity);
-            
-            var remaining = item.Quantity - currentCount;
-            
-            if (remaining > 0)
-            {
-                GatherBuddy.Log.Debug($"[CollectableManager] {item.Name}: Target={item.Quantity}, Current={currentCount}, Remaining={remaining}");
-                _purchaseQueue.Enqueue((item.Item.ItemId, item.Name, remaining, (int)item.Item.ItemCost, item.Item.Page, item.Item.SubPage));
-            }
+            _config.CollectableConfig.AutoTurnInCollectables = false;
+            shouldSave = true;
         }
+
+        if (!string.Equals(_config.CollectableConfig.AutoTurnInHardFailReason, hardFailMessage, StringComparison.Ordinal))
+        {
+            _config.CollectableConfig.AutoTurnInHardFailReason = hardFailMessage;
+            shouldSave = true;
+        }
+
+        if (shouldSave)
+            _config.Save();
+
+        Communicator.PrintError($"[GatherBuddyReborn] {hardFailMessage}");
+        Fail(hardFailMessage);
     }
-    
-    private void MoveToScripShop()
+
+    private void TransitionAfterClosingTurnInWindow(CollectableState nextState, string nextStatus)
     {
-        if (_purchaseQueue.Count == 0)
+        if (!_windowHandler.IsReady)
         {
-            _state = CollectableState.Completed;
+            _stateStartTime = DateTime.UtcNow;
+            _lastAction = DateTime.MinValue;
+            StatusText = nextStatus;
+            _state = nextState;
             return;
         }
-        
-        var shop = _config.CollectableConfig.PreferredCollectableShop;
-        var playerPos = Player.Position;
-        
-        if (playerPos == Vector3.Zero || shop.ScripShopLocation == Vector3.Zero)
-        {
-            return;
-        }
-        
-        var distance = Vector3.Distance(playerPos, shop.ScripShopLocation);
-        
-        if (distance <= 0.4f)
-        {
-            VNavmesh.Path.Stop();
-            _state = CollectableState.WaitingForScripShopWindow;
-            return;
-        }
-        
-        if ((DateTime.UtcNow - _lastAction) > TimeSpan.FromMilliseconds(200))
-        {
-            try
-            {
-                if (!VNavmesh.Path.IsRunning())
-                {
-                    VNavmesh.SimpleMove.PathfindAndMoveTo(shop.ScripShopLocation, false);
-                    _movementStartTime = DateTime.UtcNow;
-                }
-            }
-            catch (Exception ex)
-            {
-                GatherBuddy.Log.Error($"[CollectableManager] Navigation error: {ex.Message}");
-            }
-            
-            _lastAction = DateTime.UtcNow;
-            _state = CollectableState.WaitingForScripShopArrival;
-        }
-    }
-    
-    private void WaitForScripShopArrival()
-    {
-        var shop = _config.CollectableConfig.PreferredCollectableShop;
-        var playerPos = Player.Position;
-        
-        if (playerPos == Vector3.Zero)
-        {
-            return;
-        }
-        
-        var distance = Vector3.Distance(playerPos, shop.ScripShopLocation);
-        
-        if (distance <= 0.4f)
-        {
-            VNavmesh.Path.Stop();
-            _state = CollectableState.WaitingForScripShopWindow;
-            return;
-        }
-        
-        if ((DateTime.UtcNow - _movementStartTime) > TimeSpan.FromSeconds(30))
-        {
-            GatherBuddy.Log.Error($"[CollectableManager] Scrip shop navigation timeout");
-            _state = CollectableState.Error;
-            return;
-        }
-        
-        if ((DateTime.UtcNow - _lastAction) > TimeSpan.FromMilliseconds(200))
-        {
-            try
-            {
-                if (!VNavmesh.Path.IsRunning())
-                {
-                    VNavmesh.SimpleMove.PathfindAndMoveTo(shop.ScripShopLocation, false);
-                }
-            }
-            catch (Exception ex)
-            {
-                GatherBuddy.Log.Error($"[CollectableManager] Navigation error: {ex.Message}");
-            }
-            _lastAction = DateTime.UtcNow;
-        }
-    }
-    
-    private unsafe void WaitForScripShopWindow()
-    {
-        if (!_scripShopWindowHandler.IsReady)
-        {
-            if (_taskManager.IsBusy)
-                return;
-            
-            var shop = _config.CollectableConfig.PreferredCollectableShop;
-            var gameObj = Dalamud.Objects.FirstOrDefault(a => a.BaseId == shop.ScripShopNpcId);
-            
-            if (gameObj == null)
-            {
-                GatherBuddy.Log.Debug($"[CollectableManager] Scrip NPC {shop.ScripShopNpcId} not found in object table");
-                return;
-            }
-            
-            GatherBuddy.Log.Debug($"[CollectableManager] Found scrip NPC: {gameObj.Name.TextValue} at {gameObj.Position}");
-            EnqueueScripShopNpcInteraction(gameObj);
-            return;
-        }
-        _state = CollectableState.SelectingScripShopPage;
+
+        _nextStateAfterWindowClose = nextState;
+        _statusAfterWindowClose = nextStatus;
+        _stateStartTime = DateTime.UtcNow;
         _lastAction = DateTime.MinValue;
+        StatusText = "Closing the collectables turn-in window.";
+        _state = CollectableState.ClosingTurnInWindow;
     }
-    
-    private unsafe void EnqueueScripShopNpcInteraction(global::Dalamud.Game.ClientState.Objects.Types.IGameObject gameObject)
+
+    private void CleanupCurrentRun(bool stopActivePurchaseList)
     {
-        var targetSystem = TargetSystem.Instance();
-        if (targetSystem == null)
-            return;
-            
-        _taskManager.Enqueue(() =>
+        _framework.Update -= OnUpdate;
+        if (_turnInVendor != null)
+            VendorInteractionHelper.ResetShopSelectionState(_turnInVendor);
+
+        if (_windowHandler.IsReady)
+            _windowHandler.CloseWindow();
+
+        if (stopActivePurchaseList
+         && _activePurchaseListId.HasValue
+         && GatherBuddy.VendorBuyListManager.IsBusy
+         && GatherBuddy.VendorBuyListManager.RunningListId == _activePurchaseListId.Value)
         {
-            VNavmesh.Path.Stop();
-            targetSystem->Target = (GameObject*)gameObject.Address;
-            targetSystem->OpenObjectInteraction((GameObject*)gameObject.Address);
-        });
-        _taskManager.DelayNext(1000);
-        _taskManager.Enqueue(() =>
-        {
-            _scripShopWindowHandler.OpenShop();
-        });
-        _taskManager.DelayNext(2000);
-        _taskManager.Enqueue(() => _scripShopWindowHandler.IsReady, 10000);
-    }
-    
-    private void SelectScripShopPage()
-    {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        if (_purchaseQueue.Count == 0)
-        {
-            _state = CollectableState.Completed;
-            return;
+            GatherBuddy.VendorBuyListManager.Stop();
         }
-        
-        var next = _purchaseQueue.Peek();
-        _scripShopWindowHandler.SelectPage(next.page);
-        _lastAction = DateTime.UtcNow;
-        _state = CollectableState.SelectingScripShopSubPage;
-    }
-    
-    private void SelectScripShopSubPage()
-    {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        var next = _purchaseQueue.Peek();
-        _scripShopWindowHandler.SelectSubPage(next.subPage);
-        _lastAction = DateTime.UtcNow;
-        _state = CollectableState.SelectingScripShopItem;
-    }
-    
-    private void SelectScripShopItem()
-    {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        var next = _purchaseQueue.Peek();
-        var scrips = _scripShopWindowHandler.GetScripCount();
-        var reserveAmount = _config.CollectableConfig.ReserveScripAmount;
-        var availableScrips = Math.Max(0, scrips - reserveAmount);
-        var maxByScrip = next.cost > 0 ? (availableScrips / next.cost) : next.remaining;
-        var amount = Math.Min(next.remaining, Math.Min(maxByScrip, 99));
-        
-        if (amount <= 0)
+        else if (_activePurchaseListId == null && (GatherBuddy.VendorNavigator.IsActive || GatherBuddy.VendorNavigator.IsReadyToPurchase))
         {
-            if (reserveAmount > 0 && scrips < reserveAmount + next.cost)
-            {
-                GatherBuddy.Log.Information($"[CollectableManager] Skipping purchase of {next.name} - would exceed scrip reserve (Current: {scrips}, Reserve: {reserveAmount}, Cost: {next.cost})");
-            }
-            _purchaseQueue.Dequeue();
-            _state = CollectableState.CheckingForMorePurchases;
-            return;
+            GatherBuddy.VendorNavigator.Stop();
         }
-        if (!_scripShopWindowHandler.SelectItem(next.itemId, amount))
-        {
-            GatherBuddy.Log.Error($"[CollectableManager] Failed to select item {next.name}");
-            _purchaseQueue.Dequeue();
-            _state = CollectableState.CheckingForMorePurchases;
-            return;
-        }
-        
-        _currentPurchaseAmount = amount;
-        _lastAction = DateTime.UtcNow;
-        _state = CollectableState.PurchasingScripShopItem;
+
+        IsRunning = false;
+        _state = CollectableState.Idle;
+        _turnInQueue.Clear();
+        _pendingPurchaseListIds.Clear();
+        _turnInVendor = null;
+        _turnInLocation = null;
+        _activePurchaseListId = null;
+        _currentItemId = 0;
+        _currentJobId = -1;
+        _lastAction = DateTime.MinValue;
+        _stateStartTime = DateTime.MinValue;
+        _overcapInterrupted = false;
+        _purchaseAttemptedForOvercap = false;
+        _lastOvercapPurchaseHitScripReserveLimit = false;
+        _returnHomeAfterCompletion = false;
+        _homeReturnStarted = false;
+        _runContainsGatheringCollectables = false;
+        _runContainsCraftingCollectables = false;
+        _completionMessage = null;
+        _lastErrorText = null;
+        _nextStateAfterWindowClose = CollectableState.Idle;
+        _statusAfterWindowClose = null;
     }
-    
-    private void PurchaseScripShopItem()
+
+    private bool HasConfiguredPurchaseList()
+        => GetConfiguredPurchaseListIds(_overcapInterrupted).Count > 0;
+
+    private bool ShouldRunPurchaseList()
+        => _config.CollectableConfig.BuyAfterEachCollect && HasConfiguredPurchaseList();
+
+    private void UpdateRunCollectableTypes(IReadOnlyCollection<CollectableTurnInItem> items)
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        _scripShopWindowHandler.PurchaseItem();
-        _lastAction = DateTime.UtcNow;
-        _state = CollectableState.WaitingForPurchaseComplete;
-    }
-    
-    private void WaitForPurchaseComplete()
-    {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        var next = _purchaseQueue.Dequeue();
-        var newRemaining = next.remaining - _currentPurchaseAmount;
-        
-        GatherBuddy.Log.Debug($"[CollectableManager] Purchased {_currentPurchaseAmount}x {next.name}, remaining: {newRemaining}");
-        
-        if (newRemaining > 0)
+        _runContainsGatheringCollectables = false;
+        _runContainsCraftingCollectables = false;
+
+        foreach (var item in items)
         {
-            _purchaseQueue.Enqueue((next.itemId, next.name, newRemaining, next.cost, next.page, next.subPage));
-        }
-        
-        _currentPurchaseAmount = 0;
-        _lastAction = DateTime.UtcNow;
-        _state = CollectableState.CheckingForMorePurchases;
-    }
-    
-    private void CheckForMorePurchases()
-    {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay) return;
-        
-        if (_purchaseQueue.Count > 0)
-        {
-            _state = CollectableState.SelectingScripShopPage;
-        }
-        else
-        {
-            GatherBuddy.Log.Information("[CollectableManager] Completed all purchases");
-            _scripShopWindowHandler.CloseShop();
-            
-            if (_overcapInterrupted && HasCollectables())
-            {
-                GatherBuddy.Log.Information("[CollectableManager] Collectables still exist after scrip purchases, resuming turn-ins");
-                _overcapInterrupted = false;
-                _teleportAttempted = false;
-                _lifestreamAttempted = false;
-                _lastAction = DateTime.UtcNow + TimeSpan.FromSeconds(1);
-                _state = CollectableState.CheckingInventory;
-            }
+            if (IsGatheringCollectable(item))
+                _runContainsGatheringCollectables = true;
             else
-            {
-                _state = CollectableState.Completed;
-            }
+                _runContainsCraftingCollectables = true;
         }
     }
-    
-    public void Dispose()
+
+    private void QueuePendingPurchaseLists()
     {
-        Stop();
+        _pendingPurchaseListIds.Clear();
+        foreach (var purchaseListId in GetConfiguredPurchaseListIds(_overcapInterrupted))
+            _pendingPurchaseListIds.Enqueue(purchaseListId);
     }
+
+    private List<Guid> GetConfiguredPurchaseListIds(bool prioritizeCurrentTurnInType)
+    {
+        var purchaseListIds = new List<Guid>();
+
+        switch (CurrentRunSource)
+        {
+            case CollectableRunSource.AutoGather:
+                AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.GatheringPurchaseListId);
+                break;
+            case CollectableRunSource.VulcanQueue:
+                AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.CraftingPurchaseListId);
+                break;
+            default:
+                if (prioritizeCurrentTurnInType && TryGetCurrentTurnInPurchaseListId(out var currentPurchaseListId))
+                {
+                    AddPurchaseListIdIfConfigured(purchaseListIds, currentPurchaseListId);
+                    break;
+                }
+
+                if (_runContainsGatheringCollectables)
+                    AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.GatheringPurchaseListId);
+
+                if (_runContainsCraftingCollectables)
+                    AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.CraftingPurchaseListId);
+                break;
+        }
+
+        return purchaseListIds;
+    }
+
+    private void AdvancePurchaseListsOrComplete()
+    {
+        if (_pendingPurchaseListIds.Count > 0)
+        {
+            var nextPurchaseListId = _pendingPurchaseListIds.Peek();
+            StatusText = $"Running collectables purchase list '{GetPurchaseListName(nextPurchaseListId)}'.";
+            _stateStartTime = DateTime.UtcNow;
+            _state = CollectableState.StartingPurchaseList;
+            return;
+        }
+
+        BeginCompletionFlow();
+    }
+
+    private bool TryGetCurrentTurnInPurchaseListId(out Guid purchaseListId)
+    {
+        purchaseListId = Guid.Empty;
+        if (_turnInQueue.Count == 0)
+            return false;
+
+        var currentTurnInItem = _turnInQueue.Peek();
+        purchaseListId = IsGatheringCollectable(currentTurnInItem)
+            ? _config.CollectableConfig.GatheringPurchaseListId
+            : _config.CollectableConfig.CraftingPurchaseListId;
+        return purchaseListId != Guid.Empty;
+    }
+
+    private static void AddPurchaseListIdIfConfigured(ICollection<Guid> purchaseListIds, Guid purchaseListId)
+    {
+        if (purchaseListId != Guid.Empty && !purchaseListIds.Contains(purchaseListId))
+            purchaseListIds.Add(purchaseListId);
+    }
+
+    private static bool IsGatheringCollectable(CollectableTurnInItem item)
+        => item.JobId >= 8;
+
+    private string GetPurchaseListName(Guid purchaseListId)
+        => GatherBuddy.VendorBuyListManager.Lists.FirstOrDefault(list => list.Id == purchaseListId)?.Name ?? purchaseListId.ToString();
+
+    private static string DescribeSource(CollectableRunSource source)
+        => source switch
+        {
+            CollectableRunSource.AutoGather => "Auto-Gather",
+            CollectableRunSource.VulcanQueue => "Vulcan queue",
+            _ => "manual mode",
+        };
+
+    public void Dispose()
+        => Stop();
 }
