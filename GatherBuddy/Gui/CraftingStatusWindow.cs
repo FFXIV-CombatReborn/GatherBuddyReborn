@@ -83,7 +83,7 @@ public class CraftingStatusWindow : Window
             var remainingMs = CraftingTimeEstimator.EstimateRemainingMs(_queueProcessor.Queue, currentIndex);
             ImGui.Text($"Estimated Time Remaining: ~{CraftingTimeEstimator.FormatDuration(remainingMs)}");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Estimate based on action count per craft (macro length when set, otherwise a default) and the configured action delay. Excludes time spent gathering, repairing, or switching jobs.");
+                ImGui.SetTooltip("Estimate based on action count per craft (macro length when set, otherwise the Raphael solver's action count once available) and the configured action delay. Excludes time spent gathering, repairing, or switching jobs.");
         }
 
         ImGui.Spacing();

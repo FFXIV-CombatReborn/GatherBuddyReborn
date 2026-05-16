@@ -80,6 +80,7 @@ public partial class GatherBuddy : IDalamudPlugin
     public static Gui.CraftingStatusWindow? CraftingStatusWindow { get; private set; }
     public static Gui.VulcanWindow? VulcanWindow { get; private set; }
     public static Gui.CraftingMaterialsWindow? CraftingMaterialsWindow { get; private set; }
+    public static Gui.CraftingTreeWindow? CraftingTreeWindow { get; private set; }
     public static Gui.VendorBuyListWindow? VendorBuyListWindow { get; private set; }
     public static Gui.CollectablesWindow? CollectablesWindow { get; private set; }
     public static ControllerSupportManager?      ControllerSupport      { get; private set; }
@@ -102,6 +103,7 @@ public partial class GatherBuddy : IDalamudPlugin
     internal VulcanWindow?                           _vulcanWindow;
     internal Gui.CraftingStatusWindow?               _craftingStatusWindow;
     internal Gui.CraftingMaterialsWindow?            _craftingMaterialsWindow;
+    internal Gui.CraftingTreeWindow?                 _craftingTreeWindow;
     internal Gui.VendorBuyListWindow?                _vendorBuyListWindow;
     internal Gui.CollectablesWindow?                 _collectablesWindow;
 
@@ -185,6 +187,8 @@ public partial class GatherBuddy : IDalamudPlugin
             CraftingStatusWindow = _craftingStatusWindow;
             _craftingMaterialsWindow = new Gui.CraftingMaterialsWindow();
             CraftingMaterialsWindow = _craftingMaterialsWindow;
+            _craftingTreeWindow = new Gui.CraftingTreeWindow();
+            CraftingTreeWindow = _craftingTreeWindow;
             _vendorBuyListWindow = new Gui.VendorBuyListWindow();
             VendorBuyListWindow = _vendorBuyListWindow;
             _collectablesWindow = new Gui.CollectablesWindow();
@@ -196,6 +200,7 @@ public partial class GatherBuddy : IDalamudPlugin
             WindowSystem.AddWindow(_vulcanWindow);
             WindowSystem.AddWindow(_craftingStatusWindow);
             WindowSystem.AddWindow(_craftingMaterialsWindow);
+            WindowSystem.AddWindow(_craftingTreeWindow);
             WindowSystem.AddWindow(_vendorBuyListWindow);
             WindowSystem.AddWindow(_collectablesWindow);
             Dalamud.PluginInterface.UiBuilder.Draw         += WindowSystem.Draw;

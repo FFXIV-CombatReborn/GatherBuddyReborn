@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using ElliLib;
@@ -45,14 +46,23 @@ public class CraftingMaterialsWindow : Window
         int EffectiveAvailable,
         string Name,
         ushort IconId,
-        bool IsPrecraft);
+        bool IsPrecraft,
+        IReadOnlyList<CurrencyOption> CurrencyOptions,
+        IReadOnlyList<MobDropInfo> MobDrops);
     private sealed record MaterialPanel(
         string Id,
         string Label,
         Vector4 Accent,
         List<MaterialEntry> Entries,
         RetainerColumnMode RetainerColumns,
-        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets);
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets,
+        bool ShowCurrencyTotals = false,
+        bool PreferBicolorDefault = false);
+
+    private readonly record struct CurrencyOption(uint CurrencyItemId, uint CostPerItem, string Name, ushort IconId, VendorCurrencyGroup Group);
+    private readonly record struct CurrencyTotal(uint CurrencyItemId, long Amount, string Name, ushort IconId);
+
+    private readonly Dictionary<uint, uint> _userSelectedCurrencyByItem = new();
     private bool _cachedMaterialViewValid;
     private bool _cachedHasMaterials;
     private bool _cachedHasVisibleEntries;
@@ -64,6 +74,7 @@ public class CraftingMaterialsWindow : Window
     private bool _cachedMaterialViewPreferVendors;
     private bool _cachedMaterialViewKeepFulfilled;
     private bool _cachedMaterialViewShowRetainer;
+    private bool _cachedMobDropInfoInitialized;
     private List<MaterialPanel> _cachedPanels = [];
 
     public CraftingMaterialsWindow() : base("Materials###CraftingMaterials")
@@ -102,6 +113,8 @@ public class CraftingMaterialsWindow : Window
 
         if (!_editor.HasCachedDisplayMaterials && !_editor.IsGeneratingMaterials)
             _editor.TriggerMaterialsRegeneration();
+
+        MobDropInfoCache.EnsureInitializeStarted();
 
         if (_editor.IsGeneratingMaterials)
         {
@@ -168,7 +181,7 @@ public class CraftingMaterialsWindow : Window
             var panel = _cachedPanels[i];
             var isLast   = i == _cachedPanels.Count - 1;
             var spanFull = isLast && _cachedPanels.Count % 2 == 1;
-            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets);
+            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets, panel.ShowCurrencyTotals, panel.PreferBicolorDefault);
             if (!spanFull && i % 2 == 0)
                 ImGui.SameLine();
         }
@@ -199,6 +212,8 @@ public class CraftingMaterialsWindow : Window
          || _cachedMaterialViewPreferVendors != _matsPreferVendors
          || _cachedMaterialViewKeepFulfilled != _matsKeepFulfilled
          || _cachedMaterialViewShowRetainer != showRetainer)
+            return true;
+        if (_cachedMobDropInfoInitialized != MobDropInfoCache.IsInitialized)
             return true;
 
         return false;
@@ -306,8 +321,8 @@ public class CraftingMaterialsWindow : Window
             var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
             var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
             if (gatherList.Count > 0) _cachedPanels.Add(new MaterialPanel("##gather", "Gather", AccentGather, gatherList, nonCraftRetainerMode, null));
-            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null));
-            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList)));
+            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null, ShowCurrencyTotals: true, PreferBicolorDefault: true));
+            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList), ShowCurrencyTotals: true));
             if (vendorList.Count > 0) _cachedPanels.Add(new MaterialPanel("##vendor", "Vendor", AccentVendor, vendorList, nonCraftRetainerMode, BuildVendorBuyListTargets(vendorList)));
             if (craftList is { Count: > 0 }) _cachedPanels.Add(new MaterialPanel("##craft", "Craft", AccentCraft, craftList, craftRetainerMode, null));
 
@@ -329,6 +344,7 @@ public class CraftingMaterialsWindow : Window
         _cachedMaterialViewPreferVendors = _matsPreferVendors;
         _cachedMaterialViewKeepFulfilled = _matsKeepFulfilled;
         _cachedMaterialViewShowRetainer = showRetainer;
+        _cachedMobDropInfoInitialized = MobDropInfoCache.IsInitialized;
     }
 
     private bool TryCreateMaterialEntry(ExcelSheet<Item> itemSheet, uint itemId, int needed, bool isPrecraft,
@@ -344,8 +360,53 @@ public class CraftingMaterialsWindow : Window
         var effectiveAvailable = isPrecraft
             ? _editor?.GetDisplayCraftMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0
             : _editor?.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0;
-        entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft);
+        var skipExtras = CraftingRowIcons.IsElementalCrystal(itemId);
+        var currencyOptions = skipExtras ? Array.Empty<CurrencyOption>() : ResolveCurrencyOptions(itemId);
+        var mobDrops = skipExtras ? Array.Empty<MobDropInfo>() : MobDropInfoCache.GetDropsForItem(itemId);
+        entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft, currencyOptions, mobDrops);
         return true;
+    }
+
+    private static IReadOnlyList<CurrencyOption> ResolveCurrencyOptions(uint itemId)
+    {
+        Dictionary<uint, CurrencyOption>? options = null;
+        foreach (var entry in VendorShopResolver.SpecialShopEntries)
+        {
+            if (entry.ItemId != itemId || entry.Cost == 0 || entry.CurrencyItemId == 0)
+                continue;
+            options ??= new Dictionary<uint, CurrencyOption>();
+            if (!options.TryGetValue(entry.CurrencyItemId, out var existing) || entry.Cost < existing.CostPerItem)
+            {
+                options[entry.CurrencyItemId] = new CurrencyOption(
+                    entry.CurrencyItemId,
+                    entry.Cost,
+                    entry.CurrencyName,
+                    ResolveCurrencyIconId(entry.CurrencyItemId),
+                    entry.Group);
+            }
+        }
+        if (options == null)
+            return Array.Empty<CurrencyOption>();
+        return options.Values
+            .OrderBy(option => option.CostPerItem)
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private uint GetSelectedCurrencyItemId(MaterialEntry entry, bool preferBicolor)
+    {
+        if (entry.CurrencyOptions.Count == 0)
+            return 0;
+        if (_userSelectedCurrencyByItem.TryGetValue(entry.ItemId, out var selected)
+         && entry.CurrencyOptions.Any(option => option.CurrencyItemId == selected))
+            return selected;
+        if (preferBicolor)
+        {
+            var bicolor = entry.CurrencyOptions.FirstOrDefault(option => option.Group == VendorCurrencyGroup.BicolorGemstones);
+            if (bicolor.CurrencyItemId != 0)
+                return bicolor.CurrencyItemId;
+        }
+        return entry.CurrencyOptions[0].CurrencyItemId;
     }
 
     private static void SortEntries(List<MaterialEntry> entries)
@@ -364,7 +425,8 @@ public class CraftingMaterialsWindow : Window
     private void DrawMaterialPanel(
         string id, string label, Vector4 accent,
         IReadOnlyList<MaterialEntry> entries,
-        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets,
+        bool showCurrencyTotals, bool preferBicolorDefault)
     {
         static void DrawCenteredHeader(string text, string? tooltip = null)
         {
@@ -382,6 +444,15 @@ public class CraftingMaterialsWindow : Window
         using (VulcanUiStyle.PushPanel())
         {
             ImGui.BeginChild(id, new Vector2(width, height), true);
+            if (showCurrencyTotals)
+            {
+                var currencyTotals = ComputeCurrencyTotals(entries, preferBicolorDefault, ignoreOwned: _matsKeepFulfilled);
+                if (currencyTotals.Count > 0)
+                {
+                    DrawCurrencyTotalsRow(currencyTotals, accent);
+                    ImGui.Separator();
+                }
+            }
             var colCount = retainerColumnMode switch
             {
                 RetainerColumnMode.None  => 4,
@@ -451,12 +522,19 @@ public class CraftingMaterialsWindow : Window
                 }
                 else
                 {
+                    var maxNameWidth = 0f;
+                    for (var i = 0; i < entries.Count; i++)
+                    {
+                        var w = ImGui.CalcTextSize(entries[i].Name).X;
+                        if (w > maxNameWidth)
+                            maxNameWidth = w;
+                    }
                     var clipper = ImGui.ImGuiListClipper();
                     clipper.Begin(entries.Count);
                     while (clipper.Step())
                     {
                         for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets);
+                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets, maxNameWidth, preferBicolorDefault);
                     }
                     clipper.End();
                     clipper.Destroy();
@@ -470,7 +548,7 @@ public class CraftingMaterialsWindow : Window
     }
 
     private void DrawPanelRow(MaterialEntry entry, RetainerColumnMode retainerColumnMode,
-        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets, float maxNameWidth, bool preferBicolorDefault)
     {
         var itemId            = entry.ItemId;
         var have              = entry.Have;
@@ -513,7 +591,13 @@ public class CraftingMaterialsWindow : Window
         else
             ImGui.Dummy(iconSize);
         ImGui.SameLine(0, 4);
-        ImUtf8.CopyOnClickSelectable(name.AsSpan());
+        var nameTextStartX = ImGui.GetCursorScreenPos().X;
+        if (ImGui.Selectable(name, false, ImGuiSelectableFlags.AllowItemOverlap))
+        {
+            try { ImGui.SetClipboardText(name); } catch { /* ignored */ }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Click to copy to clipboard.");
         if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
         {
             if (ImGui.Selectable("Create Link"))
@@ -527,6 +611,42 @@ public class CraftingMaterialsWindow : Window
             DrawVendorBuyListPopup(entry, vendorTargets);
             ImGui.EndPopup();
         }
+
+        var sourceIcons = CraftingRowIcons.GetMaterialIcons(itemId, isPrecraft);
+        if (entry.CurrencyOptions.Count > 0 && sourceIcons.Count > 0)
+        {
+            var currencyIconIds = new HashSet<uint>();
+            foreach (var option in entry.CurrencyOptions)
+                currencyIconIds.Add(option.IconId);
+            var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
+            foreach (var sourceIcon in sourceIcons)
+                if (!currencyIconIds.Contains(sourceIcon.IconId))
+                    filtered.Add(sourceIcon);
+            sourceIcons = filtered;
+        }
+        var hasTrailingIcons = sourceIcons.Count > 0 || entry.CurrencyOptions.Count > 0 || entry.MobDrops.Count > 0;
+        if (hasTrailingIcons)
+        {
+            var iconColumnTargetX = nameTextStartX + maxNameWidth + 8f;
+            ImGui.SameLine(0, 0);
+            var currentX = ImGui.GetCursorScreenPos().X;
+            var gap      = iconColumnTargetX - currentX;
+            if (gap > 0f)
+            {
+                ImGui.Dummy(new Vector2(gap, 0));
+                ImGui.SameLine(0, 0);
+            }
+            else
+            {
+                ImGui.Dummy(new Vector2(4f, 0));
+                ImGui.SameLine(0, 0);
+            }
+            if (sourceIcons.Count > 0)
+                CraftingRowIcons.DrawIconsRightAligned(sourceIcons);
+        }
+
+        DrawCurrencyPicker(entry, preferBicolorDefault);
+        DrawMobDropIcon(entry);
 
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
@@ -683,6 +803,231 @@ public class CraftingMaterialsWindow : Window
         var currentCount = (uint)Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
         target = new VendorBuyListManager.VendorTargetRequest(entry.ItemId, currentCount + (uint)missingQuantity);
         return true;
+    }
+
+    private List<CurrencyTotal> ComputeCurrencyTotals(IReadOnlyList<MaterialEntry> entries, bool preferBicolorDefault, bool ignoreOwned)
+    {
+        var totals = new Dictionary<uint, (long Amount, string Name, ushort IconId)>();
+        foreach (var entry in entries)
+        {
+            var quantity = ignoreOwned
+                ? entry.Needed
+                : entry.Needed - entry.EffectiveAvailable;
+            if (quantity <= 0)
+                continue;
+            var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
+            if (selectedCurrencyId == 0)
+                continue;
+            var option = entry.CurrencyOptions.First(o => o.CurrencyItemId == selectedCurrencyId);
+            var totalCost = (long)option.CostPerItem * quantity;
+            if (totals.TryGetValue(option.CurrencyItemId, out var existing))
+                totals[option.CurrencyItemId] = (existing.Amount + totalCost, existing.Name, existing.IconId);
+            else
+                totals[option.CurrencyItemId] = (totalCost, option.Name, option.IconId);
+        }
+        return totals
+            .Select(kvp => new CurrencyTotal(kvp.Key, kvp.Value.Amount, kvp.Value.Name, kvp.Value.IconId))
+            .OrderByDescending(t => t.Amount)
+            .ToList();
+    }
+
+    private static ushort ResolveCurrencyIconId(uint currencyItemId)
+    {
+        var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Item>();
+        if (sheet != null && sheet.TryGetRow(currencyItemId, out var item))
+            return (ushort)item.Icon;
+        return 0;
+    }
+
+    private static void DrawCurrencyTotalsRow(IReadOnlyList<CurrencyTotal> totals, Vector4 accent)
+    {
+        var lineH    = ImGui.GetTextLineHeight();
+        var iconSize = new Vector2(lineH, lineH);
+
+        using (ImRaii.PushColor(ImGuiCol.Text, accent))
+            ImGui.TextUnformatted("Totals:");
+
+        for (var i = 0; i < totals.Count; i++)
+        {
+            var t = totals[i];
+            ImGui.SameLine(0, i == 0 ? 8f : 12f);
+            if (t.IconId != 0)
+            {
+                var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(t.IconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                    ImGui.Image(wrap.Handle, iconSize);
+                else
+                    ImGui.Dummy(iconSize);
+                ImGui.SameLine(0, 4);
+            }
+            ImGui.TextUnformatted($"{t.Amount:N0}");
+            if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(t.Name))
+                ImGui.SetTooltip(t.Name);
+        }
+    }
+
+    private void DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
+    {
+        if (entry.CurrencyOptions.Count == 0)
+            return;
+
+        var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
+        var lineH = ImGui.GetTextLineHeight();
+        var iconSize = new Vector2(lineH, lineH);
+        var drawList = ImGui.GetWindowDrawList();
+
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
+
+        for (var i = 0; i < entry.CurrencyOptions.Count; i++)
+        {
+            ImGui.SameLine(0, 3f);
+            var option = entry.CurrencyOptions[i];
+            var isSelected = option.CurrencyItemId == selectedCurrencyId;
+
+            ImGui.PushID($"##matcur_{entry.ItemId}_{option.CurrencyItemId}");
+            var clicked = false;
+            var cursorPosBefore = ImGui.GetCursorScreenPos();
+            if (option.IconId != 0)
+            {
+                var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(option.IconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                    clicked = ImGui.ImageButton(wrap.Handle, iconSize);
+                else
+                    ImGui.Dummy(iconSize);
+            }
+            else
+            {
+                ImGui.Dummy(iconSize);
+            }
+
+            if (!isSelected)
+                drawList.AddRectFilled(cursorPosBefore, cursorPosBefore + iconSize,
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.55f)));
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"{option.Name}: {option.CostPerItem:N0} per item\nClick to use for totals.");
+
+            if (clicked)
+                _userSelectedCurrencyByItem[entry.ItemId] = option.CurrencyItemId;
+
+            ImGui.PopID();
+        }
+
+        ImGui.PopStyleColor(3);
+        ImGui.PopStyleVar();
+    }
+
+    private static void DrawMobDropIcon(MaterialEntry entry)
+    {
+        if (entry.MobDrops.Count == 0)
+            return;
+
+        const uint MobDropIconId = 60041u;
+        var lineH = ImGui.GetTextLineHeight();
+        var iconSize = new Vector2(lineH, lineH);
+        var popupId = $"##mobdrops_{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}";
+
+        ImGui.SameLine(0, 6f);
+
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
+        var clicked = false;
+        ImGui.PushID(popupId);
+        var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(MobDropIconId));
+        if (icon.TryGetWrap(out var wrap, out _))
+            clicked = ImGui.ImageButton(wrap.Handle, iconSize);
+        else
+            ImGui.Dummy(iconSize);
+        ImGui.PopID();
+        ImGui.PopStyleColor(3);
+        ImGui.PopStyleVar();
+
+        if (ImGui.IsItemHovered() && !ImGui.IsPopupOpen(popupId))
+        {
+            const int MaxDropsShown = 8;
+            var lines = new List<string>(MaxDropsShown + 3) { "Drops from:" };
+            for (var i = 0; i < entry.MobDrops.Count && i < MaxDropsShown; i++)
+            {
+                var drop = entry.MobDrops[i];
+                var line = string.IsNullOrEmpty(drop.LocationLabel)
+                    ? drop.MobName
+                    : $"{drop.MobName} — {drop.LocationLabel}";
+                if (!drop.HasCoordinates)
+                    line += " (no coords)";
+                lines.Add(line);
+            }
+            if (entry.MobDrops.Count > MaxDropsShown)
+                lines.Add($"...and {entry.MobDrops.Count - MaxDropsShown} more");
+            lines.Add("Click for map flags.");
+            ImGui.SetTooltip(string.Join('\n', lines));
+        }
+
+        if (clicked)
+            ImGui.OpenPopup(popupId);
+
+        DrawMobDropPopup(entry, popupId);
+    }
+
+    private static void DrawMobDropPopup(MaterialEntry entry, string popupId)
+    {
+        if (!ImGui.BeginPopup(popupId))
+            return;
+
+        ImGui.TextUnformatted($"Drops for {entry.Name}");
+        ImGui.Separator();
+
+        var lineH = ImGui.GetTextLineHeight();
+        var rowCount = Math.Min(entry.MobDrops.Count, 16);
+        var childHeight = (lineH + ImGui.GetStyle().ItemSpacing.Y) * rowCount + ImGui.GetStyle().FramePadding.Y * 2;
+        ImGui.BeginChild($"{popupId}_scroll", new Vector2(420f, childHeight), false);
+
+        for (var i = 0; i < entry.MobDrops.Count; i++)
+        {
+            var drop = entry.MobDrops[i];
+            ImGui.PushID(i);
+
+            if (drop.HasCoordinates)
+            {
+                if (ImGui.SmallButton("Flag"))
+                {
+                    try
+                    {
+                        var payload = new MapLinkPayload(drop.TerritoryTypeId, drop.MapRowId, drop.MapX, drop.MapY);
+                        Dalamud.GameGui.OpenMapWithMapLink(payload);
+                    }
+                    catch (Exception ex)
+                    {
+                        GatherBuddy.Log.Warning($"[CraftingMaterialsWindow] Failed to place map flag for {drop.MobName}: {ex.Message}");
+                    }
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Place a flag on the map at this location.");
+            }
+            else
+            {
+                ImGui.BeginDisabled();
+                ImGui.SmallButton("—");
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("No spawn coordinates available for this drop.");
+            }
+
+            ImGui.SameLine();
+            var label = string.IsNullOrEmpty(drop.LocationLabel)
+                ? drop.MobName
+                : $"{drop.MobName} — {drop.LocationLabel}";
+            ImGui.TextUnformatted(label);
+
+            ImGui.PopID();
+        }
+
+        ImGui.EndChild();
+        ImGui.EndPopup();
     }
 
 }

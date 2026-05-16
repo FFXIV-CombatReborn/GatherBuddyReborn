@@ -128,6 +128,7 @@ public class CraftingListEditor
     internal string ListName            => GetPlanningList().Name;
     internal bool SkipIfEnoughEnabled   => GetPlanningList().SkipIfEnough;
     internal bool RetainerRestockEnabled => GetPlanningList().RetainerRestock;
+    internal CraftingListDefinition PlanningList => GetPlanningList();
     internal long MaterialCacheVersion  => Interlocked.Read(ref _materialCacheVersion);
     
     public Action<CraftingListDefinition>? OnStartCrafting { get; set; }
@@ -677,16 +678,24 @@ public class CraftingListEditor
             }
         }
 
-        var halfW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
-        if (ImGui.Button("Generate New Gather List##gatherList", new Vector2(halfW, 22)))
+        var hSpacing = ImGui.GetStyle().ItemSpacing.X;
+        var thirdW = (ImGui.GetContentRegionAvail().X - hSpacing * 2f) / 3f;
+        if (ImGui.Button("Generate Gather List##gatherList", new Vector2(thirdW, 22)))
         {
             var materials = new Dictionary<uint, int>(GetCachedMaterials());
             CraftingGatherBridge.CreatePersistentGatherList($"{_list.Name}...Auto-Generated", materials);
         }
         ImGui.SameLine();
         var matsBtnLabel = GatherBuddy.CraftingMaterialsWindow?.IsOpen == true ? "Hide Materials" : "View Materials";
-        if (ImGui.Button($"{matsBtnLabel}##viewMats", new Vector2(-1, 22)) && GatherBuddy.CraftingMaterialsWindow != null)
+        if (ImGui.Button($"{matsBtnLabel}##viewMats", new Vector2(thirdW, 22)) && GatherBuddy.CraftingMaterialsWindow != null)
             GatherBuddy.CraftingMaterialsWindow.IsOpen = !GatherBuddy.CraftingMaterialsWindow.IsOpen;
+        ImGui.SameLine();
+        var treeBtnLabel = GatherBuddy.CraftingTreeWindow?.IsOpen == true ? "Hide Tree" : "View Tree";
+        if (ImGui.Button($"{treeBtnLabel}##viewTree", new Vector2(-1, 22)) && GatherBuddy.CraftingTreeWindow != null)
+        {
+            GatherBuddy.CraftingTreeWindow.SetEditor(this);
+            GatherBuddy.CraftingTreeWindow.IsOpen = !GatherBuddy.CraftingTreeWindow.IsOpen;
+        }
 
         ImGui.EndChild();
     }
@@ -1139,9 +1148,13 @@ public class CraftingListEditor
         if (row.Validation != null)
             DrawValidationMarker(row.Validation);
 
+        var crafterIcon     = CraftingRowIcons.GetCrafterIcon(row.Recipe);
+        var innerSpacing    = ImGui.GetStyle().ItemInnerSpacing.X;
+        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - 16f - innerSpacing);
+
         ImGui.PushStyleColor(ImGuiCol.Text, textColor);
         var isSelected = _selectedQueueIndex == row.QueueIndex;
-        if (ImGui.Selectable(row.Label, isSelected))
+        if (ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0)))
             _selectedQueueIndex = row.QueueIndex;
         ImGui.PopStyleColor();
 
@@ -1150,7 +1163,11 @@ public class CraftingListEditor
             : ImGui.BeginPopupContextItem($"queue_ctx_{row.QueueIndex}");
 
         if (!isPopupOpen)
+        {
+            ImGui.SameLine(0, innerSpacing);
+            CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon });
             return;
+        }
 
         if (ImGui.MenuItem("Craft Settings..."))
         {
@@ -1261,6 +1278,9 @@ public class CraftingListEditor
         }
 
         ImGui.EndPopup();
+
+        ImGui.SameLine(0, innerSpacing);
+        CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon });
     }
 
     private IReadOnlyList<RecipeDisplayRow> GetRecipeDisplayRows()
@@ -1329,17 +1349,24 @@ public class CraftingListEditor
 
         var item = _list.Recipes[row.ListIndex];
         if (row.Validation != null)
+        {
+            ImGui.AlignTextToFramePadding();
             DrawValidationMarker(row.Validation);
+        }
 
         var isSelected = _selectedRecipeIndices.Contains(row.ListIndex);
         const float qtyTextWidth = 50f;
+        const float sourceIconSize = 16f;
         var innerSpacing = ImGui.GetStyle().ItemInnerSpacing.X;
         var frameHeight = ImGui.GetFrameHeight();
+        var rowStartY = ImGui.GetCursorPosY();
         var qtyTotalWidth = qtyTextWidth + 2 * (frameHeight + innerSpacing);
         var iconBtnSize = new Vector2(frameHeight, frameHeight);
-        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - qtyTotalWidth - 2 * frameHeight - 3 * innerSpacing);
+        var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - qtyTotalWidth - 2 * frameHeight - 3 * innerSpacing - sourceIconSize - innerSpacing);
+        var crafterIcon = CraftingRowIcons.GetCrafterIcon(row.Recipe);
         ImGui.PushStyleColor(ImGuiCol.Text, row.TextColor);
-        var clicked = ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0));
+        using var selectableAlign = ImRaii.PushStyle(ImGuiStyleVar.SelectableTextAlign, new Vector2(0f, 0.5f));
+        var clicked = ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, frameHeight));
         ImGui.PopStyleColor();
 
         if (clicked)
@@ -1368,6 +1395,11 @@ public class CraftingListEditor
         }
 
         ImGui.SameLine(0, innerSpacing);
+        ImGui.SetCursorPosY(rowStartY + Math.Max(0f, (frameHeight - sourceIconSize) * 0.5f));
+        CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon }, sourceIconSize);
+
+        ImGui.SameLine(0, innerSpacing);
+        ImGui.SetCursorPosY(rowStartY);
         var qty = item.Quantity;
         var qtyStep = ImGui.GetIO().KeyShift ? 100 : ImGui.GetIO().KeyCtrl ? 10 : 1;
         ImGui.SetNextItemWidth(qtyTotalWidth);
