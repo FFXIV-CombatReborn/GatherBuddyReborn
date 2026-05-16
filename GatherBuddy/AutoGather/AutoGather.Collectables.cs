@@ -18,7 +18,8 @@ namespace GatherBuddy.AutoGather
 
         private unsafe bool HasCollectables()
         {
-            if (!GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables)
+            if (!GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables
+             || !CollectableTurnInRequirements.IsAvailable)
                 return false;
 
             if (GatherBuddy.CollectableManager == null)

@@ -17,6 +17,11 @@ namespace GatherBuddy.Gui;
 public sealed class CollectablesWindow : Window
 {
     public const string WindowId = "Collectables###GatherBuddyCollectablesWindow";
+    private static readonly ImGuiEx.RequiredPluginInfo[] RequiredCollectablePlugins =
+    [
+        new("InventoryTools", "Allagan Tools"),
+        new(CollectableTurnInRequirements.AllaganItemSearchInternalName, "Allagan Item Search"),
+    ];
 
     private bool _wasFocusedLastFrame;
 
@@ -80,6 +85,7 @@ public sealed class CollectablesWindow : Window
 
     private static void DrawExecutionControls(CollectableManager manager)
     {
+        var turnInsAvailable = CollectableTurnInRequirements.IsAvailable;
         if (manager.IsRunning)
         {
             if (ImGui.Button("Stop Collectables Run", new Vector2(180f, 0f)))
@@ -87,10 +93,16 @@ public sealed class CollectablesWindow : Window
         }
         else
         {
-            if (ImGui.Button("Run Turn-Ins Now", new Vector2(180f, 0f)))
+            using var disabledRunButton = ImRaii.Disabled(!turnInsAvailable);
+            if (ImGui.Button("Run Turn-Ins Now", new Vector2(180f, 0f)) && turnInsAvailable)
                 manager.Start(CollectableRunSource.Manual);
+            if (ImGui.IsItemHovered(turnInsAvailable ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(turnInsAvailable
+                    ? "Runs collectable turn-ins immediately."
+                    : CollectableTurnInRequirements.UnavailableHelpText);
         }
 
+        ImGuiEx.PluginAvailabilityIndicator(RequiredCollectablePlugins, "Requires one of these plugins:", all: false);
         ImGui.SameLine();
         if (ImGui.Button("Open Vendor Buy Lists", new Vector2(170f, 0f)))
             GatherBuddy.VendorBuyListWindow?.Open();
@@ -102,9 +114,15 @@ public sealed class CollectablesWindow : Window
 
     private static void DrawAutomationSettings(CollectableManager manager, CollectableConfig config)
     {
+        var turnInsAvailable = CollectableTurnInRequirements.IsAvailable;
         var autoTurnIn = config.AutoTurnInCollectables;
         var previousHardFailReason = config.AutoTurnInHardFailReason;
-        if (ImGui.Checkbox("Auto turn in collectables", ref autoTurnIn))
+        if (!turnInsAvailable && !autoTurnIn)
+        {
+            using var disabledAutoTurnIn = ImRaii.Disabled(true);
+            ImGui.Checkbox("Auto turn in collectables", ref autoTurnIn);
+        }
+        else if (ImGui.Checkbox("Auto turn in collectables", ref autoTurnIn))
         {
             config.AutoTurnInCollectables = autoTurnIn;
             if (autoTurnIn)
@@ -115,8 +133,18 @@ public sealed class CollectablesWindow : Window
             }
             GatherBuddy.Config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Lets Auto-Gather and Vulcan queues run collectable turn-ins automatically.");
+        var autoTurnInHovered = ImGui.IsItemHovered(turnInsAvailable || autoTurnIn ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled);
+        ImGuiEx.PluginAvailabilityIndicator(RequiredCollectablePlugins, "Requires one of these plugins:", all: false);
+        if (autoTurnInHovered)
+            ImGui.SetTooltip(turnInsAvailable
+                ? "Lets Auto-Gather and Vulcan queues run collectable turn-ins automatically."
+                : CollectableTurnInRequirements.UnavailableHelpText);
+
+        if (!turnInsAvailable)
+        {
+            DrawWrappedColoredText(ImGuiColors.DalamudYellow, CollectableTurnInRequirements.UnavailableHelpText);
+            ImGui.Spacing();
+        }
 
         if (!config.AutoTurnInCollectables && !string.IsNullOrWhiteSpace(config.AutoTurnInHardFailReason))
         {
@@ -317,6 +345,8 @@ public sealed class CollectablesWindow : Window
         ImGui.TextColored(ImGuiColors.ParsedGold, "Status");
         var stateColor = manager.IsRunning ? ImGuiColors.ParsedGold : ImGuiColors.DalamudGrey3;
         DrawWrappedColoredText(stateColor, string.IsNullOrWhiteSpace(manager.StatusText) ? "Idle" : manager.StatusText);
+        if (!CollectableTurnInRequirements.IsAvailable)
+            DrawWrappedColoredText(ImGuiColors.DalamudYellow, CollectableTurnInRequirements.UnavailableHelpText);
         CollectableInventoryHelper.InitializeAsync();
         if (!CollectableInventoryHelper.IsTurnInItemMetadataReady)
         {

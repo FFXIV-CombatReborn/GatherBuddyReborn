@@ -92,6 +92,13 @@ public unsafe class CollectableManager : IDisposable
             return false;
         }
 
+        if (!CollectableTurnInRequirements.IsAvailable)
+        {
+            StatusText = CollectableTurnInRequirements.UnavailableStatusText;
+            GatherBuddy.Log.Debug("[CollectableManager] Blocked collectables start because neither AllaganTools nor AllaganItemSearch is loaded");
+            return false;
+        }
+
         CollectableInventoryHelper.InitializeAsync();
         if (!CollectableInventoryHelper.IsTurnInItemMetadataReady)
         {
@@ -558,6 +565,15 @@ public unsafe class CollectableManager : IDisposable
             case VendorBuyListManager.StartResult.VendorDataLoading:
             case VendorBuyListManager.StartResult.LocationDataLoading:
             case VendorBuyListManager.StartResult.AnotherPurchaseRunning:
+                return;
+            case VendorBuyListManager.StartResult.AutomationUnavailable:
+                if (_overcapInterrupted)
+                {
+                    DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but vendor automation is unavailable because neither Allagan Tools nor Allagan Item Search is installed and enabled.");
+                    return;
+                }
+                _activePurchaseListId = null;
+                AdvancePurchaseListsOrComplete();
                 return;
             case VendorBuyListManager.StartResult.Empty:
             case VendorBuyListManager.StartResult.NoPendingEntries:

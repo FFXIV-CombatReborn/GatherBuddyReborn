@@ -14,6 +14,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     {
         Started,
         AlreadyRunning,
+        AutomationUnavailable,
         WaitingForPreviousInteraction,
         NoList,
         Empty,
@@ -394,6 +395,11 @@ public sealed partial class VendorBuyListManager : IDisposable
         EnsureListState();
         if (_isRunning)
             return StartResult.AlreadyRunning;
+        if (!VendorAutomationRequirements.IsAvailable)
+        {
+            _statusText = VendorAutomationRequirements.UnavailableStatusText;
+            return StartResult.AutomationUnavailable;
+        }
         _skippedEntryIds.Clear();
         _partiallyFulfilledEntryIds.Clear();
         _purchaseConstraints = purchaseConstraints;

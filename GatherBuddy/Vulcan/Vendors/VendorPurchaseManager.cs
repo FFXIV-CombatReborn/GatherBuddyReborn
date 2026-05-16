@@ -136,6 +136,12 @@ public sealed class VendorPurchaseManager : IDisposable
             GatherBuddy.Log.Warning($"[VendorPurchaseManager] Unsupported purchase request for {entry.ItemName}: shopType={entry.ShopType}, menuShopType={vendor.MenuShopType}, shopId={vendor.ShopId}, sourceShopId={vendor.SourceShopId}, shopItemIndex={vendor.ShopItemIndex}, gcRankIndex={vendor.GcRankIndex}, gcCategoryIndex={vendor.GcCategoryIndex}");
             return;
         }
+        if (!VendorAutomationRequirements.IsAvailable)
+        {
+            _statusText = VendorAutomationRequirements.UnavailableStatusText;
+            GatherBuddy.Log.Debug("[VendorPurchaseManager] Blocked vendor purchase start because neither AllaganTools nor AllaganItemSearch is loaded");
+            return;
+        }
 
         Stop();
 
@@ -163,6 +169,8 @@ public sealed class VendorPurchaseManager : IDisposable
             : State.WaitingForNavigation;
 
         YesAlready.Lock();
+        if (requestedQuantity > 1 && GetSinglePurchaseBatchReason(entry.ItemId) is { } singleBatchReason)
+            GatherBuddy.Log.Debug($@"[VendorPurchaseManager] Forcing single-item purchase batches for {entry.ItemName} because it is an {singleBatchReason} item.");
         if (continueCurrentVendorInteraction)
             return;
         else
@@ -219,9 +227,15 @@ public sealed class VendorPurchaseManager : IDisposable
         => _request == null || _request.Quantity <= _completedQuantity
             ? 0
             : _request.Quantity - _completedQuantity;
+    private static string? GetSinglePurchaseBatchReason(uint itemId)
+        => VendorShopResolver.HousingItemIds.Contains(itemId)
+            ? "housing"
+            : VendorShopResolver.EquippableItemIds.Contains(itemId)
+                ? "equippable"
+                : null;
 
     private static bool RequiresSinglePurchaseBatch(uint itemId)
-        => VendorShopResolver.HousingItemIds.Contains(itemId);
+        => GetSinglePurchaseBatchReason(itemId) != null;
 
     private uint GetDesiredBatchQuantity(uint remainingQuantity)
     {

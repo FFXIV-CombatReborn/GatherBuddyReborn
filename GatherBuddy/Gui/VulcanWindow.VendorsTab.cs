@@ -79,6 +79,11 @@ public partial class VulcanWindow
     private static readonly Vector4                      VendorBuyListButtonColor    = new(0.95f, 0.80f, 0.35f, 1f);
     private static readonly Vector4                      VendorAutomationButtonColor = new(0.60f, 0.95f, 0.60f, 1f);
     private static readonly Vector4                      VendorSelectedFilterColor   = new(0.25f, 0.50f, 0.85f, 1.00f);
+    private static readonly ImGuiEx.RequiredPluginInfo[] RequiredVendorAutomationPlugins =
+    [
+        new("InventoryTools", "Allagan Tools"),
+        new(VendorAutomationRequirements.AllaganItemSearchInternalName, "Allagan Item Search"),
+    ];
     private static (VendorShopType ShopType, uint ItemId, uint CurrencyItemId, uint Cost) VendorQuantityKey(VendorShopEntry entry)
         => (entry.ShopType, entry.ItemId, entry.CurrencyItemId, entry.Cost);
 
@@ -865,6 +870,16 @@ public partial class VulcanWindow
             ImGui.Spacing();
         }
 
+        if (!VendorAutomationRequirements.IsAvailable)
+        {
+            ImGui.TextColored(ImGuiColors.DalamudYellow, VendorAutomationRequirements.UnavailableStatusText);
+            ImGuiEx.PluginAvailabilityIndicator(RequiredVendorAutomationPlugins, "Requires one of these plugins:", all: false);
+            ImGui.PushTextWrapPos();
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, VendorAutomationRequirements.UnavailableHelpText);
+            ImGui.PopTextWrapPos();
+            ImGui.Spacing();
+        }
+
         if (_vendorCategory == VendorShopType.GrandCompanySeals && GetCurrentGrandCompanyEntryCount() == 0)
         {
             ImGui.TextColored(ImGuiColors.DalamudGrey, "Loading GC Seal data...");
@@ -1098,6 +1113,12 @@ public partial class VulcanWindow
 
         var entry            = row.Entry;
         var canPurchaseHere  = VendorPurchaseManager.IsPurchaseSupported(entry, selectedNpc.Npc);
+        if (canPurchaseHere && !VendorAutomationRequirements.IsAvailable)
+        {
+            DrawVendorIconButton($"vendor_go_disabled_{row.IdSuffix}", FontAwesomeIcon.ShoppingCart,
+                VendorAutomationButtonColor, VendorAutomationRequirements.UnavailableHelpText, true);
+            return;
+        }
         var requestedQuantity = canPurchaseHere ? GetVendorPurchaseQuantity(entry) : 1;
         var navigator        = GatherBuddy.VendorNavigator;
         var purchaseManager  = GatherBuddy.VendorPurchaseManager;

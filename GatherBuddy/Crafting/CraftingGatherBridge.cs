@@ -468,6 +468,17 @@ public static class CraftingGatherBridge
             return;
         }
 
+        if (!CollectableTurnInRequirements.IsAvailable)
+        {
+            if (_collectablesStartPending)
+            {
+                GatherBuddy.Log.Debug("[CraftingGatherBridge] Collectables interruption was pending when neither AllaganTools nor AllaganItemSearch was loaded, resuming the queue without starting collectables");
+                ResetCollectablesInterruptionState();
+                _queueProcessor.Resume();
+            }
+            return;
+        }
+
         if (!_collectablesStartPending)
         {
             if (_queueProcessor.Paused)
