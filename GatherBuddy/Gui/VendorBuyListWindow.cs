@@ -25,6 +25,11 @@ public sealed partial class VendorBuyListWindow : Window
         ulong RequiredAmount);
     public const string WindowId = "Vendor Buy List###VendorBuyListWindow";
     private const string ListNamePopupId = "Vendor Buy List Name###VendorBuyListNamePopup";
+    private static readonly ImGuiEx.RequiredPluginInfo[] RequiredVendorAutomationPlugins =
+    [
+        new("InventoryTools", "Allagan Tools"),
+        new(VendorAutomationRequirements.AllaganItemSearchInternalName, "Allagan Item Search"),
+    ];
     private readonly Dictionary<uint, ushort> _currencyIconIds = new();
     private readonly Dictionary<uint, string> _currencyNames = new();
 
@@ -246,6 +251,7 @@ public sealed partial class VendorBuyListWindow : Window
         var entries = manager.Entries.ToList();
         var pending = manager.GetPendingEntryCount();
         var currencyRequirements = BuildCurrencyRequirements(entries, manager);
+        var vendorAutomationAvailable = VendorAutomationRequirements.IsAvailable;
 
         ImGui.TextColored(ImGuiColors.ParsedGold, activeList.Name);
         ImGui.TextColored(ImGuiColors.DalamudGrey3, $"{entries.Count} entry(s) · {pending} pending");
@@ -254,6 +260,15 @@ public sealed partial class VendorBuyListWindow : Window
             ImGui.Spacing();
             ImGui.TextColored(manager.IsRunning ? ImGuiColors.ParsedGold : ImGuiColors.DalamudGrey3, manager.StatusText);
         }
+        if (!vendorAutomationAvailable)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(ImGuiColors.DalamudYellow, VendorAutomationRequirements.UnavailableStatusText);
+            ImGuiEx.PluginAvailabilityIndicator(RequiredVendorAutomationPlugins, "Requires one of these plugins:", all: false);
+            ImGui.PushTextWrapPos();
+            ImGui.TextColored(ImGuiColors.DalamudGrey3, VendorAutomationRequirements.UnavailableHelpText);
+            ImGui.PopTextWrapPos();
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -261,11 +276,15 @@ public sealed partial class VendorBuyListWindow : Window
 
         if (!manager.IsRunning)
         {
-            using (ImRaii.Disabled(entries.Count == 0 || pending == 0 || manager.IsBusy))
+            using (ImRaii.Disabled(entries.Count == 0 || pending == 0 || manager.IsBusy || !vendorAutomationAvailable))
             {
-                if (ImGui.Button("Start List", new Vector2(120f, 0)))
+                if (ImGui.Button("Start List", new Vector2(120f, 0)) && vendorAutomationAvailable)
                     manager.Start();
             }
+            if (ImGui.IsItemHovered(vendorAutomationAvailable ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(vendorAutomationAvailable
+                    ? "Run the active vendor list."
+                    : VendorAutomationRequirements.UnavailableHelpText);
         }
         else if (ImGui.Button("Stop", new Vector2(120f, 0)))
         {
