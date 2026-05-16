@@ -1349,19 +1349,24 @@ public class CraftingListEditor
 
         var item = _list.Recipes[row.ListIndex];
         if (row.Validation != null)
+        {
+            ImGui.AlignTextToFramePadding();
             DrawValidationMarker(row.Validation);
+        }
 
         var isSelected = _selectedRecipeIndices.Contains(row.ListIndex);
         const float qtyTextWidth = 50f;
         const float sourceIconSize = 16f;
         var innerSpacing = ImGui.GetStyle().ItemInnerSpacing.X;
         var frameHeight = ImGui.GetFrameHeight();
+        var rowStartY = ImGui.GetCursorPosY();
         var qtyTotalWidth = qtyTextWidth + 2 * (frameHeight + innerSpacing);
         var iconBtnSize = new Vector2(frameHeight, frameHeight);
         var selectableWidth = Math.Max(50f, ImGui.GetContentRegionAvail().X - qtyTotalWidth - 2 * frameHeight - 3 * innerSpacing - sourceIconSize - innerSpacing);
         var crafterIcon = CraftingRowIcons.GetCrafterIcon(row.Recipe);
         ImGui.PushStyleColor(ImGuiCol.Text, row.TextColor);
-        var clicked = ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0));
+        using var selectableAlign = ImRaii.PushStyle(ImGuiStyleVar.SelectableTextAlign, new Vector2(0f, 0.5f));
+        var clicked = ImGui.Selectable(row.Label, isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, frameHeight));
         ImGui.PopStyleColor();
 
         if (clicked)
@@ -1390,9 +1395,11 @@ public class CraftingListEditor
         }
 
         ImGui.SameLine(0, innerSpacing);
+        ImGui.SetCursorPosY(rowStartY + Math.Max(0f, (frameHeight - sourceIconSize) * 0.5f));
         CraftingRowIcons.DrawIconsRightAligned(new[] { crafterIcon }, sourceIconSize);
 
         ImGui.SameLine(0, innerSpacing);
+        ImGui.SetCursorPosY(rowStartY);
         var qty = item.Quantity;
         var qtyStep = ImGui.GetIO().KeyShift ? 100 : ImGui.GetIO().KeyCtrl ? 10 : 1;
         ImGui.SetNextItemWidth(qtyTotalWidth);

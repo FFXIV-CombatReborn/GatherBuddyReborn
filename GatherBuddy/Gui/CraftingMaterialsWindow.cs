@@ -937,11 +937,13 @@ public class CraftingMaterialsWindow : Window
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
         var clicked = false;
+        ImGui.PushID(popupId);
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(MobDropIconId));
         if (icon.TryGetWrap(out var wrap, out _))
             clicked = ImGui.ImageButton(wrap.Handle, iconSize);
         else
             ImGui.Dummy(iconSize);
+        ImGui.PopID();
         ImGui.PopStyleColor(3);
         ImGui.PopStyleVar();
 

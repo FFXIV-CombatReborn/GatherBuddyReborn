@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
-using GatherBuddy.Crafting;
 using GatherBuddy.Enums;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
@@ -158,6 +157,7 @@ internal static class CraftingRowIcons
 
     private static bool TryResolveCurrencyItemId(uint itemId, out uint currencyItemId)
     {
+        VendorShopResolver.InitializeAsync();
         // Cheapest matching SpecialShop entry (covers tomestones, scrips, bicolor, hunt seals, MGP, wolf marks, etc.)
         currencyItemId = 0;
         var bestCost = uint.MaxValue;
@@ -191,27 +191,6 @@ internal static class CraftingRowIcons
             {
                 currencyItemId = VendorShopResolver.GilCurrencyItemId;
                 return true;
-            }
-        }
-
-        // Scrip fallback for items the vendor cache may not yet cover
-        if (MaterialSourceClassifier.Classify(itemId) == MaterialSource.Scrip)
-        {
-            foreach (var shopItem in AutoGather.Collectables.ScripShopItemManager.ShopItems)
-            {
-                if (shopItem.ItemId == itemId)
-                {
-                    currencyItemId = shopItem.ScripType switch
-                    {
-                        AutoGather.Collectables.Data.ScripType.PurpleCraftersScrips  => 33913,
-                        AutoGather.Collectables.Data.ScripType.PurpleGatherersScrips => 33914,
-                        AutoGather.Collectables.Data.ScripType.OrangeCraftersScrips  => 41784,
-                        AutoGather.Collectables.Data.ScripType.OrangeGatherersScrips => 41785,
-                        _                                                            => 0u,
-                    };
-                    if (currencyItemId != 0)
-                        return true;
-                }
             }
         }
 
