@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
 using System.Threading.Tasks;
 using GatherBuddy.Plugin;
 using Lumina.Excel;
@@ -58,12 +60,41 @@ public static class MobDropInfoCache
     private const float ClusterMergeDistance = 0.7f;
     private const float ClusterMergeDistanceSquared = ClusterMergeDistance * ClusterMergeDistance;
     private const string UnknownZoneName = "Unknown zone";
+    private const string OverrideResourceName = "GatherBuddy.CustomInfo.mob_drop_overrides.json";
 
     private static Dictionary<uint, MobDropItemInfo> _dropsByItemId = new();
     private static HashSet<uint> _dropItemIds = new();
+    private static readonly JsonSerializerOptions OverrideSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
     private static readonly object _initializeLock = new();
     private static volatile bool _initialized;
     private static volatile bool _initializing;
+    private readonly record struct MobDropLinkKey(uint ItemId, uint BNpcNameId);
+    private readonly record struct MobDropSpawnPoint(uint TerritoryTypeId, Vector3 Position);
+
+    private sealed record MobDropOverrides
+    {
+        public static MobDropOverrides Empty { get; } = new();
+        public List<MobDropOverrideDrop> AddedDrops { get; init; } = [];
+        public List<MobDropOverrideDrop> RemovedDrops { get; init; } = [];
+        public List<MobDropOverrideSpawn> Spawns { get; init; } = [];
+    }
+
+    private sealed record MobDropOverrideDrop
+    {
+        public uint ItemId { get; init; }
+        public uint BNpcNameId { get; init; }
+    }
+
+    private sealed record MobDropOverrideSpawn
+    {
+        public uint BNpcNameId { get; init; }
+        public uint TerritoryTypeId { get; init; }
+        public float MapX { get; init; }
+        public float MapY { get; init; }
+    }
 
     public static bool IsInitialized => _initialized;
 
@@ -126,16 +157,16 @@ public static class MobDropInfoCache
             out _,
             out _,
             gameData,
-            language);
+            language) ?? [];
         var mobSpawns = CsvLoader.LoadResource<MobSpawnPosition>(
             CsvLoader.MobSpawnResourceName,
             true,
             out _,
             out _,
             gameData,
-            language);
+            language) ?? [];
 
-        if (mobDrops == null || mobDrops.Count == 0)
+        if (mobDrops.Count == 0)
             return;
 
         var bNpcNameSheet = Dalamud.GameData.GetExcelSheet<BNpcName>();
@@ -143,71 +174,146 @@ public static class MobDropInfoCache
         var mapSheet = Dalamud.GameData.GetExcelSheet<Map>();
         if (bNpcNameSheet == null || territorySheet == null || mapSheet == null)
             return;
+        var overrides = LoadOverrides();
 
-        var spawnsByName = new Dictionary<uint, List<MobSpawnPosition>>();
-        if (mobSpawns != null)
-        {
-            foreach (var spawn in mobSpawns)
-            {
-                if (spawn.BNpcNameId == 0 || spawn.TerritoryTypeId == 0)
-                    continue;
-                if (!spawnsByName.TryGetValue(spawn.BNpcNameId, out var list))
-                    spawnsByName[spawn.BNpcNameId] = list = new List<MobSpawnPosition>();
-                list.Add(spawn);
-            }
-        }
+        var spawnsByName = BuildSpawnIndex(mobSpawns, overrides.Spawns);
+        var removedDrops = overrides.RemovedDrops
+            .Where(drop => drop.ItemId > 0 && drop.BNpcNameId > 0)
+            .Select(drop => new MobDropLinkKey(drop.ItemId, drop.BNpcNameId))
+            .ToHashSet();
 
         var dropsByItemId = new Dictionary<uint, List<MobDropMobInfo>>();
         var dropItemIds = new HashSet<uint>();
-        var addedMobKeys = new HashSet<(uint ItemId, uint BNpcNameId)>();
+        var addedMobKeys = new HashSet<MobDropLinkKey>();
         foreach (var drop in mobDrops)
         {
-            if (drop.ItemId == 0 || drop.BNpcNameId == 0)
+            var dropKey = new MobDropLinkKey(drop.ItemId, drop.BNpcNameId);
+            if (removedDrops.Contains(dropKey))
                 continue;
-            if (!bNpcNameSheet.TryGetRow(drop.BNpcNameId, out var bNpcName))
-                continue;
+            AddDropInfo(
+                drop.ItemId,
+                drop.BNpcNameId,
+                spawnsByName,
+                bNpcNameSheet,
+                territorySheet,
+                mapSheet,
+                dropsByItemId,
+                dropItemIds,
+                addedMobKeys);
+        }
 
-            var mobName = bNpcName.Singular.ExtractText();
-            if (string.IsNullOrWhiteSpace(mobName))
-                continue;
-            dropItemIds.Add(drop.ItemId);
-            if (!addedMobKeys.Add((drop.ItemId, drop.BNpcNameId)))
-                continue;
-
-            spawnsByName.TryGetValue(drop.BNpcNameId, out var spawns);
-            var zones = BuildZonesForMob(drop.ItemId, drop.BNpcNameId, mobName, spawns, territorySheet, mapSheet);
-            if (zones.Count == 0)
-            {
-                GatherBuddy.Log.Debug($"[MobDropInfoCache] Filtered all displayable zones for mob {mobName} ({drop.BNpcNameId}) dropping item {drop.ItemId}");
-                continue;
-            }
-            if (!dropsByItemId.TryGetValue(drop.ItemId, out var mobList))
-                dropsByItemId[drop.ItemId] = mobList = new List<MobDropMobInfo>();
-            mobList.Add(new MobDropMobInfo(drop.BNpcNameId, mobName, zones));
+        foreach (var drop in overrides.AddedDrops)
+        {
+            AddDropInfo(
+                drop.ItemId,
+                drop.BNpcNameId,
+                spawnsByName,
+                bNpcNameSheet,
+                territorySheet,
+                mapSheet,
+                dropsByItemId,
+                dropItemIds,
+                addedMobKeys);
         }
 
         var finalDropsByItemId = new Dictionary<uint, MobDropItemInfo>(dropsByItemId.Count);
         foreach (var (itemId, mobs) in dropsByItemId)
         {
             finalDropsByItemId[itemId] = new MobDropItemInfo(
-                mobs.OrderBy(mob => mob.MobName, StringComparer.OrdinalIgnoreCase).ToList());
+                mobs.OrderBy(mob => mob.MobName, StringComparer.OrdinalIgnoreCase).ThenBy(mob => mob.BNpcNameId).ToList());
         }
 
         _dropsByItemId = finalDropsByItemId;
         _dropItemIds = dropItemIds;
     }
 
-    private static IReadOnlyList<MobDropZoneInfo> BuildZonesForMob(
+    private static MobDropOverrides LoadOverrides()
+    {
+        try
+        {
+            var assembly = typeof(GatherBuddy).Assembly;
+            using var stream = assembly.GetManifestResourceStream(OverrideResourceName);
+            if (stream == null)
+            {
+                GatherBuddy.Log.Warning($"[MobDropInfoCache] Embedded override resource {OverrideResourceName} was not found");
+                return MobDropOverrides.Empty;
+            }
+
+            return JsonSerializer.Deserialize<MobDropOverrides>(stream, OverrideSerializerOptions) ?? MobDropOverrides.Empty;
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Warning($"[MobDropInfoCache] Failed to load mob-drop overrides: {ex.Message}");
+            return MobDropOverrides.Empty;
+        }
+    }
+
+    private static Dictionary<uint, List<MobDropSpawnPoint>> BuildSpawnIndex(
+        IReadOnlyList<MobSpawnPosition> mobSpawns,
+        IReadOnlyList<MobDropOverrideSpawn> overrideSpawns)
+    {
+        var spawnsByName = new Dictionary<uint, List<MobDropSpawnPoint>>();
+        foreach (var spawn in mobSpawns)
+            AddSpawn(spawnsByName, spawn.BNpcNameId, spawn.TerritoryTypeId, spawn.Position);
+        foreach (var spawn in overrideSpawns)
+            AddSpawn(spawnsByName, spawn.BNpcNameId, spawn.TerritoryTypeId, new Vector3(spawn.MapX, spawn.MapY, 0f));
+        return spawnsByName;
+    }
+
+    private static void AddSpawn(
+        Dictionary<uint, List<MobDropSpawnPoint>> spawnsByName,
+        uint bNpcNameId,
+        uint territoryTypeId,
+        Vector3 position)
+    {
+        if (bNpcNameId == 0 || territoryTypeId == 0)
+            return;
+        if (!spawnsByName.TryGetValue(bNpcNameId, out var list))
+            spawnsByName[bNpcNameId] = list = new List<MobDropSpawnPoint>();
+        list.Add(new MobDropSpawnPoint(territoryTypeId, position));
+    }
+
+    private static void AddDropInfo(
         uint itemId,
         uint bNpcNameId,
-        string mobName,
-        IReadOnlyList<MobSpawnPosition>? spawns,
+        Dictionary<uint, List<MobDropSpawnPoint>> spawnsByName,
+        ExcelSheet<BNpcName> bNpcNameSheet,
+        ExcelSheet<TerritoryType> territorySheet,
+        ExcelSheet<Map> mapSheet,
+        Dictionary<uint, List<MobDropMobInfo>> dropsByItemId,
+        HashSet<uint> dropItemIds,
+        HashSet<MobDropLinkKey> addedMobKeys)
+    {
+        if (itemId == 0 || bNpcNameId == 0)
+            return;
+        if (!bNpcNameSheet.TryGetRow(bNpcNameId, out var bNpcName))
+            return;
+
+        var mobName = bNpcName.Singular.ExtractText();
+        if (string.IsNullOrWhiteSpace(mobName))
+            return;
+
+        var dropKey = new MobDropLinkKey(itemId, bNpcNameId);
+        dropItemIds.Add(itemId);
+        if (!addedMobKeys.Add(dropKey))
+            return;
+
+        spawnsByName.TryGetValue(bNpcNameId, out var spawns);
+        var zones = BuildZonesForMob(spawns, territorySheet, mapSheet);
+        if (zones.Count == 0)
+            return;
+
+        if (!dropsByItemId.TryGetValue(itemId, out var mobList))
+            dropsByItemId[itemId] = mobList = new List<MobDropMobInfo>();
+        mobList.Add(new MobDropMobInfo(bNpcNameId, mobName, zones));
+    }
+
+    private static IReadOnlyList<MobDropZoneInfo> BuildZonesForMob(
+        IReadOnlyList<MobDropSpawnPoint>? spawns,
         ExcelSheet<TerritoryType> territorySheet,
         ExcelSheet<Map> mapSheet)
     {
         if (spawns == null || spawns.Count == 0)
-        {
-            GatherBuddy.Log.Debug($"[MobDropInfoCache] No spawn data for mob {mobName} ({bNpcNameId}) dropping item {itemId}");
             return
             [
                 new MobDropZoneInfo(UnknownZoneName, 0u,
@@ -215,7 +321,6 @@ public static class MobDropInfoCache
                     new MobDropClusterInfo(1, 0, 0u, 0u, 0f, 0f),
                 ]),
             ];
-        }
 
         var zones = new List<MobDropZoneInfo>();
         foreach (var territoryGroup in spawns
@@ -233,14 +338,10 @@ public static class MobDropInfoCache
                 mapRowId = territory.Map.RowId;
                 mapRow = mapRowId != 0 && mapSheet.TryGetRow(mapRowId, out var foundMap) ? foundMap : null;
             }
-            if (territoryTypeId != 0 && mapRowId == 0)
-                GatherBuddy.Log.Debug($"[MobDropInfoCache] {mobName} in {zoneName} has no map row; area flags will be text-only");
 
             var clusters = BuildClusters(
                 territoryGroup.Select(spawn => spawn.Position).ToList(),
                 territoryTypeId,
-                zoneName,
-                mobName,
                 mapRow);
             zones.Add(new MobDropZoneInfo(zoneName, territoryTypeId, clusters));
         }
@@ -268,8 +369,6 @@ public static class MobDropInfoCache
     private static List<MobDropClusterInfo> BuildClusters(
         IReadOnlyList<Vector3> positions,
         uint territoryTypeId,
-        string zoneName,
-        string mobName,
         Map? mapRow)
     {
         var normalizedPositions = positions
@@ -291,7 +390,6 @@ public static class MobDropInfoCache
             {
                 coordX = 0f;
                 coordY = 0f;
-                GatherBuddy.Log.Debug($"[MobDropInfoCache] {mobName} area {i + 1} in {zoneName} produced out-of-range map coordinates");
             }
 
             clusters.Add(new MobDropClusterInfo(

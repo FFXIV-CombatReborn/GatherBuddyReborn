@@ -34,6 +34,8 @@ public class CraftingMaterialsWindow : Window
     private static readonly Vector4 AccentCraft  = new(0.35f, 0.90f, 0.90f, 1f);
     private static readonly Vector4 MobDropMarkerButtonColor   = new(0.45f, 0.80f, 1.00f, 1f);
     private static readonly Vector4 MobDropTeleportButtonColor = new(0.60f, 0.95f, 0.60f, 1f);
+    private const float MaterialRowIconSpacing = 4f;
+    private const float MaterialRowIconGutter = 8f;
     private static readonly Dictionary<string, bool> MobDropZoneOpenStates = new(StringComparer.Ordinal);
     private enum RetainerColumnMode
     {
@@ -616,25 +618,15 @@ public class CraftingMaterialsWindow : Window
             ImGui.EndPopup();
         }
 
-        var sourceIcons = CraftingRowIcons.GetMaterialIcons(itemId, isPrecraft);
-        if (entry.CurrencyOptions.Count > 0 && sourceIcons.Count > 0)
-        {
-            var currencyIconIds = new HashSet<uint>();
-            foreach (var option in entry.CurrencyOptions)
-                currencyIconIds.Add(option.IconId);
-            var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
-            foreach (var sourceIcon in sourceIcons)
-                if (!currencyIconIds.Contains(sourceIcon.IconId))
-                    filtered.Add(sourceIcon);
-            sourceIcons = filtered;
-        }
-        var hasTrailingIcons = sourceIcons.Count > 0 || entry.CurrencyOptions.Count > 0 || entry.DropInfo.HasData;
+        var sourceIcons = GetVisibleSourceIcons(entry);
+        var hasCurrencyOrDrop = entry.CurrencyOptions.Count > 0 || entry.DropInfo.HasData;
+        var hasTrailingIcons = sourceIcons.Count > 0 || hasCurrencyOrDrop;
         if (hasTrailingIcons)
         {
-            var iconColumnTargetX = nameTextStartX + maxNameWidth + 8f;
+            var iconColumnTargetX = nameTextStartX + maxNameWidth + MaterialRowIconGutter;
             ImGui.SameLine(0, 0);
             var currentX = ImGui.GetCursorScreenPos().X;
-            var gap      = iconColumnTargetX - currentX;
+            var gap = iconColumnTargetX - currentX;
             if (gap > 0f)
             {
                 ImGui.Dummy(new Vector2(gap, 0));
@@ -642,15 +634,27 @@ public class CraftingMaterialsWindow : Window
             }
             else
             {
-                ImGui.Dummy(new Vector2(4f, 0));
+                ImGui.Dummy(new Vector2(MaterialRowIconSpacing, 0));
                 ImGui.SameLine(0, 0);
             }
-            if (sourceIcons.Count > 0)
-                CraftingRowIcons.DrawIconsRightAligned(sourceIcons);
-        }
 
-        DrawCurrencyPicker(entry, preferBicolorDefault);
-        DrawMobDropIcon(entry);
+            var hasDrawnIcon = false;
+            if (sourceIcons.Count > 0)
+            {
+                CraftingRowIcons.DrawIconsRightAligned(sourceIcons, lineH, MaterialRowIconSpacing);
+                hasDrawnIcon = true;
+            }
+            if (entry.CurrencyOptions.Count > 0)
+            {
+                if (hasDrawnIcon)
+                    ImGui.SameLine(0, MaterialRowIconSpacing);
+                hasDrawnIcon = DrawCurrencyPicker(entry, preferBicolorDefault);
+            }
+            if (entry.DropInfo.HasData)
+            {
+                DrawMobDropIcon(entry, hasDrawnIcon);
+            }
+        }
 
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
@@ -870,10 +874,28 @@ public class CraftingMaterialsWindow : Window
         }
     }
 
-    private void DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
+    private static IReadOnlyList<CraftingRowIcons.RowIcon> GetVisibleSourceIcons(MaterialEntry entry)
+    {
+        var sourceIcons = CraftingRowIcons.GetMaterialIcons(entry.ItemId, entry.IsPrecraft);
+        if (entry.CurrencyOptions.Count == 0 || sourceIcons.Count == 0)
+            return sourceIcons;
+
+        var currencyIconIds = new HashSet<uint>();
+        foreach (var option in entry.CurrencyOptions)
+            currencyIconIds.Add(option.IconId);
+
+        var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
+        foreach (var sourceIcon in sourceIcons)
+            if (!currencyIconIds.Contains(sourceIcon.IconId))
+                filtered.Add(sourceIcon);
+
+        return filtered;
+    }
+
+    private bool DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
     {
         if (entry.CurrencyOptions.Count == 0)
-            return;
+            return false;
 
         var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
         var lineH = ImGui.GetTextLineHeight();
@@ -887,7 +909,8 @@ public class CraftingMaterialsWindow : Window
 
         for (var i = 0; i < entry.CurrencyOptions.Count; i++)
         {
-            ImGui.SameLine(0, 3f);
+            if (i > 0)
+                ImGui.SameLine(0, MaterialRowIconSpacing);
             var option = entry.CurrencyOptions[i];
             var isSelected = option.CurrencyItemId == selectedCurrencyId;
 
@@ -922,19 +945,20 @@ public class CraftingMaterialsWindow : Window
 
         ImGui.PopStyleColor(3);
         ImGui.PopStyleVar();
+        return true;
     }
 
-    private static void DrawMobDropIcon(MaterialEntry entry)
+    private static bool DrawMobDropIcon(MaterialEntry entry, bool addLeadingSpacing)
     {
         if (!entry.DropInfo.HasData)
-            return;
+            return false;
 
         const uint MobDropIconId = 60041u;
         var lineH = ImGui.GetTextLineHeight();
         var iconSize = new Vector2(lineH, lineH);
         var popupId = $"##mobdrops_{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}";
-
-        ImGui.SameLine(0, 6f);
+        if (addLeadingSpacing)
+            ImGui.SameLine(0, MaterialRowIconSpacing);
 
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
         ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
@@ -980,6 +1004,7 @@ public class CraftingMaterialsWindow : Window
             ImGui.OpenPopup(popupId);
 
         DrawMobDropPopup(entry, popupId);
+        return true;
     }
 
     private static void DrawMobDropPopup(MaterialEntry entry, string popupId)
@@ -1097,7 +1122,8 @@ public class CraftingMaterialsWindow : Window
         bool defaultZoneOpen,
         bool isAppearing)
     {
-        var rowHeight = ImGui.GetTextLineHeight() + ImGui.GetStyle().ItemSpacing.Y;
+        var style = ImGui.GetStyle();
+        var rowHeight = ImGui.GetTextLineHeight() + style.ItemSpacing.Y;
         var visibleRowCount = 0;
         for (var i = 0; i < zoneGroups.Count; i++)
         {
@@ -1119,8 +1145,7 @@ public class CraftingMaterialsWindow : Window
             if (i < zoneGroups.Count - 1)
                 visibleRowCount += 1;
         }
-
-        return Math.Max(1, visibleRowCount) * rowHeight + ImGui.GetStyle().FramePadding.Y * 2f;
+        return Math.Max(1, visibleRowCount) * rowHeight + style.FramePadding.Y * 2f + style.ItemSpacing.Y;
     }
 
     private static string GetMobDropZoneStateId(string popupId, uint territoryTypeId, int zoneIndex)
