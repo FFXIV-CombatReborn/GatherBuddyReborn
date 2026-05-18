@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Interface.Textures;
@@ -31,6 +32,11 @@ public class CraftingMaterialsWindow : Window
     private static readonly Vector4 AccentShop   = new(0.80f, 0.55f, 1.00f, 1f);
     private static readonly Vector4 AccentVendor = new(1.00f, 0.85f, 0.20f, 1f);
     private static readonly Vector4 AccentCraft  = new(0.35f, 0.90f, 0.90f, 1f);
+    private static readonly Vector4 MobDropMarkerButtonColor   = new(0.45f, 0.80f, 1.00f, 1f);
+    private static readonly Vector4 MobDropTeleportButtonColor = new(0.60f, 0.95f, 0.60f, 1f);
+    private const float MaterialRowIconSpacing = 4f;
+    private const float MaterialRowIconGutter = 8f;
+    private static readonly Dictionary<string, bool> MobDropZoneOpenStates = new(StringComparer.Ordinal);
     private enum RetainerColumnMode
     {
         None,
@@ -48,7 +54,7 @@ public class CraftingMaterialsWindow : Window
         ushort IconId,
         bool IsPrecraft,
         IReadOnlyList<CurrencyOption> CurrencyOptions,
-        IReadOnlyList<MobDropInfo> MobDrops);
+        MobDropItemInfo DropInfo);
     private sealed record MaterialPanel(
         string Id,
         string Label,
@@ -362,8 +368,8 @@ public class CraftingMaterialsWindow : Window
             : _editor?.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0;
         var skipExtras = CraftingRowIcons.IsElementalCrystal(itemId);
         var currencyOptions = skipExtras ? Array.Empty<CurrencyOption>() : ResolveCurrencyOptions(itemId);
-        var mobDrops = skipExtras ? Array.Empty<MobDropInfo>() : MobDropInfoCache.GetDropsForItem(itemId);
-        entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft, currencyOptions, mobDrops);
+        var dropInfo = skipExtras ? MobDropItemInfo.Empty : MobDropInfoCache.GetDropInfoForItem(itemId);
+        entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft, currencyOptions, dropInfo);
         return true;
     }
 
@@ -612,25 +618,15 @@ public class CraftingMaterialsWindow : Window
             ImGui.EndPopup();
         }
 
-        var sourceIcons = CraftingRowIcons.GetMaterialIcons(itemId, isPrecraft);
-        if (entry.CurrencyOptions.Count > 0 && sourceIcons.Count > 0)
-        {
-            var currencyIconIds = new HashSet<uint>();
-            foreach (var option in entry.CurrencyOptions)
-                currencyIconIds.Add(option.IconId);
-            var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
-            foreach (var sourceIcon in sourceIcons)
-                if (!currencyIconIds.Contains(sourceIcon.IconId))
-                    filtered.Add(sourceIcon);
-            sourceIcons = filtered;
-        }
-        var hasTrailingIcons = sourceIcons.Count > 0 || entry.CurrencyOptions.Count > 0 || entry.MobDrops.Count > 0;
+        var sourceIcons = GetVisibleSourceIcons(entry);
+        var hasCurrencyOrDrop = entry.CurrencyOptions.Count > 0 || entry.DropInfo.HasData;
+        var hasTrailingIcons = sourceIcons.Count > 0 || hasCurrencyOrDrop;
         if (hasTrailingIcons)
         {
-            var iconColumnTargetX = nameTextStartX + maxNameWidth + 8f;
+            var iconColumnTargetX = nameTextStartX + maxNameWidth + MaterialRowIconGutter;
             ImGui.SameLine(0, 0);
             var currentX = ImGui.GetCursorScreenPos().X;
-            var gap      = iconColumnTargetX - currentX;
+            var gap = iconColumnTargetX - currentX;
             if (gap > 0f)
             {
                 ImGui.Dummy(new Vector2(gap, 0));
@@ -638,15 +634,27 @@ public class CraftingMaterialsWindow : Window
             }
             else
             {
-                ImGui.Dummy(new Vector2(4f, 0));
+                ImGui.Dummy(new Vector2(MaterialRowIconSpacing, 0));
                 ImGui.SameLine(0, 0);
             }
-            if (sourceIcons.Count > 0)
-                CraftingRowIcons.DrawIconsRightAligned(sourceIcons);
-        }
 
-        DrawCurrencyPicker(entry, preferBicolorDefault);
-        DrawMobDropIcon(entry);
+            var hasDrawnIcon = false;
+            if (sourceIcons.Count > 0)
+            {
+                CraftingRowIcons.DrawIconsRightAligned(sourceIcons, lineH, MaterialRowIconSpacing);
+                hasDrawnIcon = true;
+            }
+            if (entry.CurrencyOptions.Count > 0)
+            {
+                if (hasDrawnIcon)
+                    ImGui.SameLine(0, MaterialRowIconSpacing);
+                hasDrawnIcon = DrawCurrencyPicker(entry, preferBicolorDefault);
+            }
+            if (entry.DropInfo.HasData)
+            {
+                DrawMobDropIcon(entry, hasDrawnIcon);
+            }
+        }
 
         var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
@@ -866,10 +874,28 @@ public class CraftingMaterialsWindow : Window
         }
     }
 
-    private void DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
+    private static IReadOnlyList<CraftingRowIcons.RowIcon> GetVisibleSourceIcons(MaterialEntry entry)
+    {
+        var sourceIcons = CraftingRowIcons.GetMaterialIcons(entry.ItemId, entry.IsPrecraft);
+        if (entry.CurrencyOptions.Count == 0 || sourceIcons.Count == 0)
+            return sourceIcons;
+
+        var currencyIconIds = new HashSet<uint>();
+        foreach (var option in entry.CurrencyOptions)
+            currencyIconIds.Add(option.IconId);
+
+        var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
+        foreach (var sourceIcon in sourceIcons)
+            if (!currencyIconIds.Contains(sourceIcon.IconId))
+                filtered.Add(sourceIcon);
+
+        return filtered;
+    }
+
+    private bool DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
     {
         if (entry.CurrencyOptions.Count == 0)
-            return;
+            return false;
 
         var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
         var lineH = ImGui.GetTextLineHeight();
@@ -883,7 +909,8 @@ public class CraftingMaterialsWindow : Window
 
         for (var i = 0; i < entry.CurrencyOptions.Count; i++)
         {
-            ImGui.SameLine(0, 3f);
+            if (i > 0)
+                ImGui.SameLine(0, MaterialRowIconSpacing);
             var option = entry.CurrencyOptions[i];
             var isSelected = option.CurrencyItemId == selectedCurrencyId;
 
@@ -918,19 +945,20 @@ public class CraftingMaterialsWindow : Window
 
         ImGui.PopStyleColor(3);
         ImGui.PopStyleVar();
+        return true;
     }
 
-    private static void DrawMobDropIcon(MaterialEntry entry)
+    private static bool DrawMobDropIcon(MaterialEntry entry, bool addLeadingSpacing)
     {
-        if (entry.MobDrops.Count == 0)
-            return;
+        if (!entry.DropInfo.HasData)
+            return false;
 
         const uint MobDropIconId = 60041u;
         var lineH = ImGui.GetTextLineHeight();
         var iconSize = new Vector2(lineH, lineH);
         var popupId = $"##mobdrops_{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}";
-
-        ImGui.SameLine(0, 6f);
+        if (addLeadingSpacing)
+            ImGui.SameLine(0, MaterialRowIconSpacing);
 
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
         ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
@@ -949,21 +977,26 @@ public class CraftingMaterialsWindow : Window
 
         if (ImGui.IsItemHovered() && !ImGui.IsPopupOpen(popupId))
         {
-            const int MaxDropsShown = 8;
-            var lines = new List<string>(MaxDropsShown + 3) { "Drops from:" };
-            for (var i = 0; i < entry.MobDrops.Count && i < MaxDropsShown; i++)
+            const int MaxMobsShown = 6;
+            var lines = new List<string>(MaxMobsShown + 3)
             {
-                var drop = entry.MobDrops[i];
-                var line = string.IsNullOrEmpty(drop.LocationLabel)
-                    ? drop.MobName
-                    : $"{drop.MobName} — {drop.LocationLabel}";
-                if (!drop.HasCoordinates)
-                    line += " (no coords)";
-                lines.Add(line);
+                $"Drops from {BuildMobDropSummaryText(entry.DropInfo)}.",
+            };
+            for (var i = 0; i < entry.DropInfo.Mobs.Count && i < MaxMobsShown; i++)
+            {
+                var mob = entry.DropInfo.Mobs[i];
+                var mobDisplayName = NormalizeMobDisplayName(mob.MobName);
+                var zoneSummary = mob.ZoneCount == 1
+                    ? mob.Zones[0].ZoneName
+                    : $"{mob.ZoneCount} {Pluralize("zone", mob.ZoneCount)}";
+                lines.Add($"{mobDisplayName} — {zoneSummary} · {mob.ClusterCount} {Pluralize("area", mob.ClusterCount)}");
             }
-            if (entry.MobDrops.Count > MaxDropsShown)
-                lines.Add($"...and {entry.MobDrops.Count - MaxDropsShown} more");
-            lines.Add("Click for map flags.");
+            if (entry.DropInfo.MobCount > MaxMobsShown)
+            {
+                var remainingMobCount = entry.DropInfo.MobCount - MaxMobsShown;
+                lines.Add($"...and {remainingMobCount} more {Pluralize("mob", remainingMobCount)}");
+            }
+            lines.Add("Click for grouped flags.");
             ImGui.SetTooltip(string.Join('\n', lines));
         }
 
@@ -971,6 +1004,7 @@ public class CraftingMaterialsWindow : Window
             ImGui.OpenPopup(popupId);
 
         DrawMobDropPopup(entry, popupId);
+        return true;
     }
 
     private static void DrawMobDropPopup(MaterialEntry entry, string popupId)
@@ -979,55 +1013,345 @@ public class CraftingMaterialsWindow : Window
             return;
 
         ImGui.TextUnformatted($"Drops for {entry.Name}");
+        ImGui.TextColored(new Vector4(0.65f, 0.65f, 0.70f, 1f), BuildMobDropSummaryText(entry.DropInfo));
         ImGui.Separator();
 
-        var lineH = ImGui.GetTextLineHeight();
-        var rowCount = Math.Min(entry.MobDrops.Count, 16);
-        var childHeight = (lineH + ImGui.GetStyle().ItemSpacing.Y) * rowCount + ImGui.GetStyle().FramePadding.Y * 2;
-        ImGui.BeginChild($"{popupId}_scroll", new Vector2(420f, childHeight), false);
-
-        for (var i = 0; i < entry.MobDrops.Count; i++)
+        var zoneGroups = entry.DropInfo.Mobs
+            .SelectMany(mob => mob.Zones.Select(zone => (Mob: mob, Zone: zone)))
+            .GroupBy(data => (data.Zone.TerritoryTypeId, data.Zone.ZoneName))
+            .OrderBy(group => group.Key.ZoneName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        const float MaxPopupContentHeight = 440f;
+        var isAppearing = ImGui.IsWindowAppearing();
+        var defaultZoneOpen = entry.DropInfo.ZoneCount == 1;
+        var childHeight = CalculateMobDropPopupContentHeight(zoneGroups, popupId, defaultZoneOpen, isAppearing);
+        ImGui.BeginChild($"{popupId}_scroll", new Vector2(460f, Math.Min(childHeight, MaxPopupContentHeight)), false);
+        for (var i = 0; i < zoneGroups.Count; i++)
         {
-            var drop = entry.MobDrops[i];
-            ImGui.PushID(i);
+            var zoneGroup = zoneGroups[i];
+            var zoneEntries = zoneGroup
+                .OrderBy(grouped => NormalizeMobDisplayName(grouped.Mob.MobName), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var zonePrimaryCluster = GetZonePrimaryCluster(zoneEntries);
+            var zoneStateId = GetMobDropZoneStateId(popupId, zoneGroup.Key.TerritoryTypeId, i);
+            if (isAppearing && defaultZoneOpen)
+                MobDropZoneOpenStates[zoneStateId] = true;
+            var zoneOpenState = GetMobDropZoneOpenState(zoneStateId, defaultZoneOpen);
 
-            if (drop.HasCoordinates)
+            ImGui.PushID($"zone_{zoneGroup.Key.TerritoryTypeId}_{i}");
+            if (zonePrimaryCluster.HasValue)
             {
-                if (ImGui.SmallButton("Flag"))
-                {
-                    try
-                    {
-                        var payload = new MapLinkPayload(drop.TerritoryTypeId, drop.MapRowId, drop.MapX, drop.MapY);
-                        Dalamud.GameGui.OpenMapWithMapLink(payload);
-                    }
-                    catch (Exception ex)
-                    {
-                        GatherBuddy.Log.Warning($"[CraftingMaterialsWindow] Failed to place map flag for {drop.MobName}: {ex.Message}");
-                    }
-                }
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Place a flag on the map at this location.");
+                DrawMobDropFlagButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "flag_zone",
+                    "Place a map marker near the center of this zone's mob locations.",
+                    "No zone-level coordinates are available for this zone.");
+
+                ImGui.SameLine();
+                DrawMobDropTeleportButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "teleport_zone",
+                    "Teleport to the nearest aetheryte for this zone and place a map marker there.",
+                    "No teleport target available for this zone.");
             }
             else
             {
-                ImGui.BeginDisabled();
-                ImGui.SmallButton("—");
-                ImGui.EndDisabled();
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("No spawn coordinates available for this drop.");
+                DrawMobDropIconButton("flag_zone", FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor,
+                    "No zone-level coordinates are available for this zone.", true);
+
+                ImGui.SameLine();
+                DrawMobDropIconButton("teleport_zone", FontAwesomeIcon.Running, MobDropTeleportButtonColor,
+                    "No teleport target available for this zone.", true);
             }
 
             ImGui.SameLine();
-            var label = string.IsNullOrEmpty(drop.LocationLabel)
-                ? drop.MobName
-                : $"{drop.MobName} — {drop.LocationLabel}";
-            ImGui.TextUnformatted(label);
+            ImGui.SetNextItemOpen(zoneOpenState, ImGuiCond.Always);
+            bool zoneOpen;
+            using (ImRaii.PushColor(ImGuiCol.Text, AccentDrop))
+                zoneOpen = ImGui.TreeNodeEx(zoneGroup.Key.ZoneName);
+            MobDropZoneOpenStates[zoneStateId] = zoneOpen;
 
+            if (zoneOpen)
+            {
+                for (var zoneEntryIndex = 0; zoneEntryIndex < zoneEntries.Count; zoneEntryIndex++)
+                {
+                    var (mob, zone) = zoneEntries[zoneEntryIndex];
+                    var mobDisplayName = NormalizeMobDisplayName(mob.MobName);
+
+                    ImGui.PushID($"{mob.BNpcNameId}_{zone.TerritoryTypeId}");
+                    ImGui.TextUnformatted(mobDisplayName);
+                    ImGui.Indent();
+
+                    for (var clusterIndex = 0; clusterIndex < zone.Clusters.Count; clusterIndex++)
+                    {
+                        var cluster = zone.Clusters[clusterIndex];
+                        ImGui.PushID(clusterIndex);
+
+                        DrawMobDropFlagButton(cluster, mobDisplayName, "flag",
+                            "Place a map marker for this location.",
+                            "No coordinates available for this location.");
+                        ImGui.SameLine();
+                        DrawMobDropTeleportButton(cluster, mobDisplayName, "teleport",
+                            "Teleport to the nearest aetheryte for this location and place a map marker there.",
+                            "No teleport target available for this location.");
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted(BuildMobDropClusterText(cluster));
+                        ImGui.PopID();
+                    }
+
+                    ImGui.Unindent();
+                    ImGui.PopID();
+
+                    if (zoneEntryIndex < zoneEntries.Count - 1)
+                        ImGui.Spacing();
+                }
+
+                ImGui.TreePop();
+            }
             ImGui.PopID();
+            if (i < zoneGroups.Count - 1)
+            {
+                ImGui.Spacing();
+                ImGui.Separator();
+            }
         }
 
         ImGui.EndChild();
         ImGui.EndPopup();
+    }
+
+    private static float CalculateMobDropPopupContentHeight(
+        IReadOnlyList<IGrouping<(uint TerritoryTypeId, string ZoneName), (MobDropMobInfo Mob, MobDropZoneInfo Zone)>> zoneGroups,
+        string popupId,
+        bool defaultZoneOpen,
+        bool isAppearing)
+    {
+        var style = ImGui.GetStyle();
+        var rowHeight = ImGui.GetTextLineHeight() + style.ItemSpacing.Y;
+        var visibleRowCount = 0;
+        for (var i = 0; i < zoneGroups.Count; i++)
+        {
+            var zoneStateId = GetMobDropZoneStateId(popupId, zoneGroups[i].Key.TerritoryTypeId, i);
+            if (isAppearing && defaultZoneOpen)
+                MobDropZoneOpenStates[zoneStateId] = true;
+            var zoneOpen = GetMobDropZoneOpenState(zoneStateId, defaultZoneOpen);
+            visibleRowCount += 1;
+            if (zoneOpen)
+            {
+                var zoneEntries = zoneGroups[i]
+                    .OrderBy(grouped => NormalizeMobDisplayName(grouped.Mob.MobName), StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                visibleRowCount += zoneEntries.Count;
+                visibleRowCount += zoneEntries.Sum(entry => entry.Zone.Clusters.Count);
+                if (zoneEntries.Count > 1)
+                    visibleRowCount += zoneEntries.Count - 1;
+            }
+            if (i < zoneGroups.Count - 1)
+                visibleRowCount += 1;
+        }
+        return Math.Max(1, visibleRowCount) * rowHeight + style.FramePadding.Y * 2f + style.ItemSpacing.Y;
+    }
+
+    private static string GetMobDropZoneStateId(string popupId, uint territoryTypeId, int zoneIndex)
+        => $"{popupId}_zone_{territoryTypeId}_{zoneIndex}";
+
+    private static bool GetMobDropZoneOpenState(string zoneStateId, bool defaultZoneOpen)
+    {
+        if (MobDropZoneOpenStates.TryGetValue(zoneStateId, out var zoneOpen))
+            return zoneOpen;
+        return defaultZoneOpen;
+    }
+
+    private static string BuildMobDropSummaryText(MobDropItemInfo dropInfo)
+        => $"{dropInfo.MobCount} {Pluralize("mob", dropInfo.MobCount)} · {dropInfo.ZoneCount} {Pluralize("zone", dropInfo.ZoneCount)} · {dropInfo.ClusterCount} {Pluralize("area", dropInfo.ClusterCount)}";
+
+    private static string BuildMobDropClusterText(MobDropClusterInfo cluster)
+        => cluster.HasCoordinates
+            ? $"{cluster.MapX:F1}, {cluster.MapY:F1}"
+            : "No coordinates";
+
+    private static (MobDropClusterInfo Cluster, string MobName)? GetZonePrimaryCluster(
+        IReadOnlyList<(MobDropMobInfo Mob, MobDropZoneInfo Zone)> zoneEntries)
+    {
+        var candidates = zoneEntries
+            .SelectMany(
+                entry => entry.Zone.Clusters
+                    .Where(cluster => cluster.HasCoordinates)
+                    .Select(cluster => (Cluster: cluster, MobName: NormalizeMobDisplayName(entry.Mob.MobName))))
+            .ToList();
+        if (candidates.Count == 0)
+            return null;
+        if (candidates.Count == 1)
+            return candidates[0];
+
+        var bestCandidate = candidates[0];
+        var bestScore = double.PositiveInfinity;
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var score = 0d;
+            for (var j = 0; j < candidates.Count; j++)
+            {
+                var weight = Math.Max(1, candidates[j].Cluster.SpawnPointCount);
+                var deltaX = candidates[i].Cluster.MapX - candidates[j].Cluster.MapX;
+                var deltaY = candidates[i].Cluster.MapY - candidates[j].Cluster.MapY;
+                score += weight * ((deltaX * deltaX) + (deltaY * deltaY));
+            }
+
+            if (score > bestScore)
+                continue;
+            if (Math.Abs(score - bestScore) < 0.0001d
+             && candidates[i].Cluster.SpawnPointCount < bestCandidate.Cluster.SpawnPointCount)
+                continue;
+            bestScore = score;
+            bestCandidate = candidates[i];
+        }
+
+        return bestCandidate;
+    }
+
+    private static string NormalizeMobDisplayName(string mobName)
+    {
+        if (string.IsNullOrWhiteSpace(mobName))
+            return mobName;
+
+        var chars = mobName.ToLowerInvariant().ToCharArray();
+        var capitalizeNext = true;
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var c = chars[i];
+            if (char.IsLetter(c))
+            {
+                if (capitalizeNext)
+                    chars[i] = char.ToUpperInvariant(c);
+                capitalizeNext = false;
+                continue;
+            }
+
+            if (char.IsDigit(c))
+            {
+                capitalizeNext = false;
+                continue;
+            }
+
+            capitalizeNext = c != '\'';
+        }
+
+        return new string(chars);
+    }
+
+    private static string Pluralize(string singular, int count)
+        => count == 1 ? singular : $"{singular}s";
+
+    private static bool DrawMobDropIconButton(string id, FontAwesomeIcon icon, Vector4 color, string tooltip, bool disabled = false)
+    {
+        var hoveredFlags = disabled ? ImGuiHoveredFlags.AllowWhenDisabled : ImGuiHoveredFlags.None;
+        var size = Vector2.One * ImGui.GetFrameHeight();
+
+        bool DrawCenteredButton()
+        {
+            using var font = ImRaii.PushFont(UiBuilder.IconFont);
+            var iconText = icon.ToIconString();
+            var cursor = ImGui.GetCursorScreenPos();
+            var iconSize = ImGui.CalcTextSize(iconText);
+
+            bool clicked;
+            using (ImRaii.PushId(id))
+                clicked = ImGui.Button(string.Empty, size);
+
+            var iconPos = cursor + ((size - iconSize) / 2f);
+            ImGui.GetWindowDrawList().AddText(iconPos, ImGui.GetColorU32(color), iconText);
+            return clicked;
+        }
+
+        if (disabled)
+        {
+            bool disabledHovered;
+            using (ImRaii.Disabled())
+            {
+                DrawCenteredButton();
+                disabledHovered = ImGui.IsItemHovered(hoveredFlags);
+            }
+
+            if (disabledHovered)
+                ImGui.SetTooltip(tooltip);
+            return false;
+        }
+
+        var clicked = DrawCenteredButton();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+        return clicked;
+    }
+
+    private static void DrawMobDropFlagButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip)
+    {
+        if (!cluster.HasCoordinates)
+        {
+            DrawMobDropIconButton(id, FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor, unavailableTooltip, true);
+            return;
+        }
+
+        if (DrawMobDropIconButton(id, FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor, tooltip))
+            PlaceMobDropFlag(cluster, mobName);
+    }
+
+    private static void DrawMobDropTeleportButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip)
+    {
+        var aetheryte = ResolveMobDropAetheryte(cluster);
+        if (aetheryte == null)
+        {
+            DrawMobDropIconButton(id, FontAwesomeIcon.Running, MobDropTeleportButtonColor, unavailableTooltip, true);
+            return;
+        }
+        if (DrawMobDropIconButton(id, FontAwesomeIcon.Running, MobDropTeleportButtonColor, tooltip))
+            TeleportToMobDropAetheryte(cluster, mobName, aetheryte);
+    }
+
+    private static global::GatherBuddy.Classes.Aetheryte? ResolveMobDropAetheryte(MobDropClusterInfo cluster)
+    {
+        if (!cluster.HasCoordinates || cluster.TerritoryTypeId == 0)
+            return null;
+
+        if (!GatherBuddy.GameData.Territories.TryGetValue(cluster.TerritoryTypeId, out var territory))
+        {
+            var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
+            if (territorySheet == null || !territorySheet.TryGetRow(cluster.TerritoryTypeId, out var territoryRow))
+                return null;
+
+            territory = GatherBuddy.GameData.FindOrAddTerritory(territoryRow);
+        }
+
+        if (territory == null || territory.Aetherytes.Count == 0)
+            return null;
+
+        var mapX = (int)MathF.Round(cluster.MapX * 100f);
+        var mapY = (int)MathF.Round(cluster.MapY * 100f);
+        return territory.Aetherytes
+            .OrderBy(aetheryte => aetheryte.WorldDistance(territory.Id, mapX, mapY))
+            .ThenBy(aetheryte => aetheryte.Id)
+            .FirstOrDefault();
+    }
+
+    private static void TeleportToMobDropAetheryte(MobDropClusterInfo cluster, string mobName, global::GatherBuddy.Classes.Aetheryte aetheryte)
+    {
+        try
+        {
+            PlaceMobDropFlag(cluster, mobName);
+            Executor.TeleportToAetheryte(aetheryte);
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Warning($"[CraftingMaterialsWindow] Failed to teleport for {mobName} area {cluster.AreaIndex}: {ex.Message}");
+        }
+    }
+
+    private static void PlaceMobDropFlag(MobDropClusterInfo cluster, string mobName)
+    {
+        try
+        {
+            var payload = new MapLinkPayload(cluster.TerritoryTypeId, cluster.MapRowId, cluster.MapX, cluster.MapY);
+            Dalamud.GameGui.OpenMapWithMapLink(payload);
+        }
+        catch (Exception ex)
+        {
+            GatherBuddy.Log.Warning($"[CraftingMaterialsWindow] Failed to place map flag for {mobName} area {cluster.AreaIndex}: {ex.Message}");
+        }
     }
 
 }

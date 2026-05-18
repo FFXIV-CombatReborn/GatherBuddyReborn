@@ -84,7 +84,7 @@ internal static class CraftingRowIcons
         return icon;
     }
 
-    public static void DrawIconsRightAligned(IReadOnlyList<RowIcon> icons, float iconSize = 16f)
+    public static void DrawIconsRightAligned(IReadOnlyList<RowIcon> icons, float iconSize = 16f, float spacing = 4f)
     {
         if (icons.Count == 0)
             return;
@@ -93,7 +93,7 @@ internal static class CraftingRowIcons
         for (var i = 0; i < icons.Count; i++)
         {
             if (i > 0)
-                ImGui.SameLine(0, 4f);
+                ImGui.SameLine(0, spacing);
             DrawIcon(icons[i], size);
         }
     }

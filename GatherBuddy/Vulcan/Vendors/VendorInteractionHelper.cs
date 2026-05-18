@@ -350,6 +350,23 @@ public static class VendorInteractionHelper
         addon->FireCallback(2, selectSubPage);
         return true;
     }
+    public static unsafe bool TryGetVisibleInclusionShopItemIndex(uint requestedItemId, out int liveItemIndex, out string? error)
+    {
+        liveItemIndex = -1;
+        error         = null;
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+            return false;
+
+        return TryGetVisibleInclusionShopItemIndex(addon, requestedItemId, out liveItemIndex, out error);
+    }
+
+    public static unsafe string DescribeVisibleInclusionShopItems(int maxItems = 12)
+    {
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+            return "unavailable";
+
+        return DescribeVisibleInclusionShopItems(addon, maxItems);
+    }
 
     public static unsafe bool TrySelectInclusionShopItem(int itemIndex, uint requestedItemId, uint quantity, out string? error)
     {
@@ -369,12 +386,8 @@ public static class VendorInteractionHelper
             new() { Type = ValueType.UInt, UInt = (uint)itemIndex },
             new() { Type = ValueType.UInt, UInt = Math.Max(1u, quantity) },
         };
-        var liveItemIndex = FindInclusionShopItemIndex(addon, requestedItemId);
-        if (liveItemIndex < 0)
-        {
-            error = $"Could not find requested item {requestedItemId} in live InclusionShop rows.";
+        if (!TryGetVisibleInclusionShopItemIndex(addon, requestedItemId, out var liveItemIndex, out error))
             return false;
-        }
 
         if (liveItemIndex != itemIndex)
             GatherBuddy.Log.Debug($"[VendorInteractionHelper] Remapped InclusionShop item index from stored index {itemIndex} to live index {liveItemIndex} for requested item {requestedItemId}");
@@ -1079,6 +1092,35 @@ public static class VendorInteractionHelper
         }
 
         return -1;
+    }
+
+    private static unsafe bool TryGetVisibleInclusionShopItemIndex(AtkUnitBase* addon, uint requestedItemId, out int liveItemIndex, out string? error)
+    {
+        liveItemIndex = FindInclusionShopItemIndex(addon, requestedItemId);
+        error         = null;
+        if (liveItemIndex >= 0)
+            return true;
+
+        error = $"Could not find requested item {requestedItemId} in the currently visible InclusionShop rows.";
+        GatherBuddy.Log.Debug($"[VendorInteractionHelper] {error} Visible rows: {DescribeVisibleInclusionShopItems(addon)}");
+        return false;
+    }
+
+    private static unsafe string DescribeVisibleInclusionShopItems(AtkUnitBase* addon, int maxItems = 12)
+    {
+        var numEntries = (int)ReadAtkUInt(addon, 298);
+        if (numEntries <= 0)
+            return "empty";
+
+        var count        = Math.Min(maxItems, numEntries);
+        var descriptions = new List<string>(count);
+        for (var index = 0; index < count; index++)
+            descriptions.Add($"{index}:{ReadAtkUInt(addon, 300 + (index * 18))}");
+
+        if (numEntries > count)
+            descriptions.Add($"+{numEntries - count} more");
+
+        return string.Join(", ", descriptions);
     }
 
 }

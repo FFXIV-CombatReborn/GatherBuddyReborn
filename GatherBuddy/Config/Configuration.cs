@@ -34,6 +34,10 @@ public partial class Configuration : IPluginConfiguration
     // Interface
     public AetherytePreference AetherytePreference { get; set; } = AetherytePreference.Distance;
     public ItemFilter          ShowItems           { get; set; } = ItemFilter.All;
+    public GatheredFilter      ShowGatheredItems   { get; set; } = GatheredFilter.All;
+    public LevelingFilter      ShowLevelingItems   { get; set; } = LevelingFilter.All;
+    public List<int>           HiddenGatherableLevelFilters    { get; set; } = [];
+    public List<uint>          HiddenGatherableFolkloreFilters { get; set; } = [];
     public FishFilter          ShowFish            { get; set; } = FishFilter.All;
     public PatchFlag           HideFishPatch       { get; set; } = 0;
     public JobFlags            LocationFilter      { get; set; } = (JobFlags)0x3F;
@@ -202,6 +206,7 @@ public partial class Configuration : IPluginConfiguration
         {
             if (Dalamud.PluginInterface.GetPluginConfig() is Configuration config)
             {
+                var changed = false;
                 config.AddColors();
                 config.Migrate4To5();
                 config.Migrate5To6();
@@ -214,10 +219,19 @@ public partial class Configuration : IPluginConfiguration
                 config.Migrate12To13();
                 config.Migrate13To14();
                 config.Migrate14To15();
+                changed |= config.HiddenGatherableLevelFilters == null;
+                config.HiddenGatherableLevelFilters ??= [];
+                changed |= config.HiddenGatherableFolkloreFilters == null;
+                config.HiddenGatherableFolkloreFilters ??= [];
+                changed |= config.VendorNpcPreferences == null;
                 config.VendorNpcPreferences ??= new();
+                changed |= config.VendorRoutePreferences == null;
                 config.VendorRoutePreferences ??= new();
+                changed |= config.VendorBuyLists == null;
                 config.VendorBuyLists ??= new();
                 if (config.EnsureVendorBuyListState())
+                    changed = true;
+                if (changed)
                     config.Save();
                 return config;
             }
@@ -372,6 +386,7 @@ public partial class Configuration : IPluginConfiguration
         Version   =  15;
         Save();
     }
+
 
     public bool EnsureVendorBuyListState()
     {

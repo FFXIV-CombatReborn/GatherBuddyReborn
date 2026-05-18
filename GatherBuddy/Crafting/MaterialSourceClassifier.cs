@@ -26,7 +26,7 @@ public static class MaterialSourceClassifier
     private static HashSet<uint>? _scripItems;
     private static HashSet<uint>? _specialCurrencyItems;
     private static HashSet<uint>? _craftableItems;
-    private static HashSet<uint>? _dropItems;
+    private static HashSet<uint>? _fallbackDropItems;
     private static bool _initialized;
 
     public static void Reset()
@@ -35,7 +35,7 @@ public static class MaterialSourceClassifier
         _scripItems           = null;
         _specialCurrencyItems = null;
         _craftableItems       = null;
-        _dropItems            = null;
+        _fallbackDropItems    = null;
         _initialized          = false;
     }
 
@@ -54,8 +54,10 @@ public static class MaterialSourceClassifier
 
         if (_scripItems?.Contains(itemId) == true)
             return MaterialSource.Scrip;
+        if (MobDropInfoCache.IsKnownDropItem(itemId))
+            return MaterialSource.Drop;
 
-        if (_dropItems?.Contains(itemId) == true)
+        if (!MobDropInfoCache.IsInitialized && _fallbackDropItems?.Contains(itemId) == true)
             return MaterialSource.Drop;
 
         if (_craftableItems?.Contains(itemId) == true)
@@ -136,15 +138,14 @@ public static class MaterialSourceClassifier
 
     private static void BuildDropSet()
     {
-        _dropItems = new HashSet<uint>();
+        _fallbackDropItems = new HashSet<uint>();
         try
         {
             var sheet = Dalamud.GameData.GetExcelSheet<RetainerTaskNormal>();
             if (sheet == null) return;
             foreach (var row in sheet)
                 if (row.Item.RowId > 0 && row.GatheringLog.RowId == 0 && row.FishingLog.RowId == 0)
-                    _dropItems.Add(row.Item.RowId);
-            GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Drop set: {_dropItems.Count} items");
+                    _fallbackDropItems.Add(row.Item.RowId);
         }
         catch (Exception ex)
         {

@@ -33,11 +33,13 @@
 
   <ItemGroup>
     <None Remove="CustomInfo\IlvConvertTable.csv" />
+    <None Remove="CustomInfo\mob_drop_overrides.json" />
     <None Remove="CustomInfo\world_locations.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="CustomInfo\world_locations.json" />
+    <EmbeddedResource Include="CustomInfo\mob_drop_overrides.json" />
     <None Remove="CustomInfo\node_offsets.json" />
     <EmbeddedResource Include="CustomInfo\node_offsets.json" />
     <None Remove="CustomInfo\honk-sound.wav" />

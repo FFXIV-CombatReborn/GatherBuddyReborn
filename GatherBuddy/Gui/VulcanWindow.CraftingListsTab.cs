@@ -285,8 +285,14 @@ public partial class VulcanWindow
         if (ImGui.Selectable("Edit"))
             OpenCraftingList(list);
 
-        if (ImGui.Selectable("Start"))
-            StartCraftingList(list);
+        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
+        using (ImRaii.Disabled(artisanLoaded))
+        {
+            if (ImGui.Selectable("Start"))
+                StartCraftingList(list);
+        }
+        if (artisanLoaded && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.");
 
         if (ImGui.BeginMenu("Move to Folder"))
         {

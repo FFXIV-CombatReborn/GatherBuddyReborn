@@ -459,6 +459,39 @@ public partial class AutoGatherListsManager
         }
     }
 
+    public void ChangeEnabled(AutoGatherList list, IReadOnlyCollection<IGatherable> items, bool enabled)
+    {
+        var changed = false;
+        var skipped = 0;
+
+        foreach (var item in items)
+        {
+            if (enabled && list.Enabled && !ValidateSingleFishBait(item))
+            {
+                skipped++;
+                continue;
+            }
+
+            if (enabled && list.Enabled && !ValidateSingleGatherablePerception(item))
+            {
+                skipped++;
+                continue;
+            }
+
+            changed |= list.SetEnabled(item, enabled);
+        }
+
+        if (skipped > 0)
+            GatherBuddy.Log.Debug($"[Auto-Gather] Skipped enabling {skipped:N0} visible item(s) in list '{list.Name}' because validation failed.");
+
+        if (changed)
+        {
+            Save();
+            if (list.Enabled)
+                SetActiveItems();
+        }
+    }
+
     public void MoveItem(AutoGatherList list, int idx1, int idx2)
     {
         if (list.Move(idx1, idx2))

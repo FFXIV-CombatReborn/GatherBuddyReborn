@@ -37,6 +37,7 @@ public class CraftingTreeWindow : Window
     private List<TreeNode> _cachedTree = [];
     private long _cachedVersion = -1;
     private CraftingListEditor? _cachedEditor;
+    private bool _cachedMobDropInfoInitialized;
 
     private readonly List<bool> _ancestorHasMoreSiblings = new();
     private float _iconColumnScreenX;
@@ -74,6 +75,7 @@ public class CraftingTreeWindow : Window
         }
 
         using var theme = VulcanUiStyle.PushTheme();
+        MobDropInfoCache.EnsureInitializeStarted();
 
         if (ShouldRebuild())
             RebuildTree();
@@ -385,7 +387,9 @@ public class CraftingTreeWindow : Window
             return false;
         if (!ReferenceEquals(_cachedEditor, _editor))
             return true;
-        return _cachedVersion != _editor.MaterialCacheVersion;
+        if (_cachedVersion != _editor.MaterialCacheVersion)
+            return true;
+        return _cachedMobDropInfoInitialized != MobDropInfoCache.IsInitialized;
     }
 
     private void InvalidateTree()
@@ -393,6 +397,7 @@ public class CraftingTreeWindow : Window
         _cachedTree = [];
         _cachedVersion = -1;
         _cachedEditor = null;
+        _cachedMobDropInfoInitialized = false;
     }
 
     private void RebuildTree()
@@ -452,6 +457,7 @@ public class CraftingTreeWindow : Window
 
         _cachedEditor  = _editor;
         _cachedVersion = _editor?.MaterialCacheVersion ?? -1;
+        _cachedMobDropInfoInitialized = MobDropInfoCache.IsInitialized;
     }
 
     private static void BuildChildren(
