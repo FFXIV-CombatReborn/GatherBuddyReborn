@@ -89,6 +89,31 @@ public static class VendorShopResolver
     public static HashSet<uint> GetAllVendorNpcIds()
         => new(_allVendorNpcIds);
 
+    public static int GetInclusionShopSubPageCount(uint inclusionShopId, int pageIndex)
+    {
+        if (pageIndex < 0)
+            return 0;
+
+        var inclusionSheet = Dalamud.GameData.GetExcelSheet<InclusionShop>();
+        var categorySheet  = Dalamud.GameData.GetExcelSheet<InclusionShopCategory>();
+        var seriesSheet    = Dalamud.GameData.GetSubrowExcelSheet<InclusionShopSeries>();
+        if (inclusionSheet == null || categorySheet == null || seriesSheet == null)
+            return 0;
+        if (!inclusionSheet.TryGetRow(inclusionShopId, out var inclusionShop))
+            return 0;
+        if (pageIndex >= inclusionShop.Category.Count)
+            return 0;
+
+        var categoryRef = inclusionShop.Category[pageIndex];
+        if (categoryRef.RowId == 0 || !categorySheet.TryGetRow(categoryRef.RowId, out var category))
+            return 0;
+
+        var seriesId = category.InclusionShopSeries.RowId;
+        return seriesId != 0 && seriesSheet.TryGetRow(seriesId, out var seriesRow)
+            ? seriesRow.Count
+            : 0;
+    }
+
     public static void InitializeAsync()
     {
         if (_initializing) return;

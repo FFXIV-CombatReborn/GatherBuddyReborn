@@ -109,9 +109,11 @@ public partial class Interface
             _plugin.AutoGatherListsManager.ListOrderChanged -= OnListOrderChanged;
         }
 
-        public int  NewGatherableIdx;
-        public bool EditName;
-        public bool EditDesc;
+        public int             NewGatherableIdx;
+        public bool            EditName;
+        public bool            EditDesc;
+        public string          ItemFilter = string.Empty;
+        public AutoGatherList? ItemFilterList;
     }
 
     private readonly AutoGatherListsCache _autoGatherListsCache;
@@ -284,8 +286,45 @@ public partial class Interface
           + "But if a node doesn't contain any items from regular lists or if you gathered enough of them,\n"
           + "items from fallback lists would be gathered instead if they could be found in that node.",
             list.Fallback, (v) => _plugin.AutoGatherListsManager.SetFallback(list, v));
+        if (!ReferenceEquals(_autoGatherListsCache.ItemFilterList, list))
+        {
+            _autoGatherListsCache.ItemFilterList = list;
+            _autoGatherListsCache.ItemFilter     = string.Empty;
+        }
 
-        ImGui.Text($"{list.Items.Count} Items in List");
+        var itemFilter = _autoGatherListsCache.ItemFilter;
+        ImGui.SetNextItemWidth(130f * Scale);
+        if (ImGui.InputTextWithHint("##autoGatherItemFilter", "Search items...", ref itemFilter, 128))
+            _autoGatherListsCache.ItemFilter = itemFilter;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Filter items by name. Reordering is disabled while a search is active.");
+
+        var filterKeywords = _autoGatherListsCache.ItemFilter.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(keyword => keyword.Trim())
+            .Where(keyword => keyword.Length > 0)
+            .ToArray();
+        var filteringItems   = filterKeywords.Length > 0;
+        var visibleItemIndices = new List<int>(list.Items.Count);
+        for (var i = 0; i < list.Items.Count; ++i)
+        {
+            var itemName = list.Items[i].Name[GatherBuddy.Language].ToString();
+            if (filterKeywords.All(keyword => itemName.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                visibleItemIndices.Add(i);
+        }
+
+        var visibleItems = visibleItemIndices.Select(index => list.Items[index]).ToList();
+        var bulkActionButtonSize = new Vector2(ImGui.GetFrameHeight() + 6f * Scale, ImGui.GetFrameHeight());
+
+        ImGui.SameLine();
+        if (DrawAutoGatherIconButton("EnableVisibleItems", FontAwesomeIcon.Check.ToIconString(), bulkActionButtonSize, "Enable visible items in this list.", visibleItems.Count == 0))
+            _plugin.AutoGatherListsManager.ChangeEnabled(list, visibleItems, true);
+
+        ImGui.SameLine();
+        if (DrawAutoGatherIconButton("DisableVisibleItems", FontAwesomeIcon.Ban.ToIconString(), bulkActionButtonSize, "Disable visible items in this list.", visibleItems.Count == 0))
+            _plugin.AutoGatherListsManager.ChangeEnabled(list, visibleItems, false);
+
+        ImGui.SameLine();
+        ImGui.Text($"{visibleItems.Count} / {list.Items.Count} Items in List");
         ImGui.NewLine();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() - ImGui.GetStyle().ItemInnerSpacing.X);
         using var box = ImRaii.ListBox("##gatherWindowList", new Vector2(-1.5f * ImGui.GetStyle().ItemSpacing.X, -1));
@@ -297,8 +336,9 @@ public partial class Interface
         var selector    = _autoGatherListsCache.GatherableSelector;
         int changeIndex = -1, changeItemIndex = -1, deleteIndex = -1;
 
-        for (var i = 0; i < list.Items.Count; ++i)
+        for (var visibleIdx = 0; visibleIdx < visibleItemIndices.Count; ++visibleIdx)
         {
+            var       i     = visibleItemIndices[visibleIdx];
             var       item  = list.Items[i];
             using var id    = ImRaii.PushId((int)item.ItemId);
             using var group = ImRaii.Group();
@@ -333,28 +373,33 @@ public partial class Interface
                 _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
             group.Dispose();
 
-            // Custom drag-drop for moving items within and between lists
-            using (var source = ImRaii.DragDropSource())
+            if (!filteringItems)
             {
-                if (source.Success)
+                using (var source = ImRaii.DragDropSource())
                 {
-                    _autoGatherListsCache.Selector.DragDropItem = new AutoGatherListsDragDropData(list, item, i);
-                    ImGui.SetDragDropPayload(AutoGatherListsDragDropData.Label, []);
-                    ImGui.TextUnformatted(item.Name[GatherBuddy.Language]);
+                    if (source.Success)
+                    {
+                        _autoGatherListsCache.Selector.DragDropItem = new AutoGatherListsDragDropData(list, item, i);
+                        ImGui.SetDragDropPayload(AutoGatherListsDragDropData.Label, []);
+                        ImGui.TextUnformatted(item.Name[GatherBuddy.Language]);
+                    }
                 }
-            }
 
-            var localIdx = i;
-            using (var target = ImRaii.DragDropTarget())
-            {
-                var dragDropData = _autoGatherListsCache.Selector.DragDropItem;
-                if (target.Success && ImGuiUtil.IsDropping(AutoGatherListsDragDropData.Label) && dragDropData != null)
+                var localIdx = i;
+                using (var target = ImRaii.DragDropTarget())
                 {
-                    _plugin.AutoGatherListsManager.MoveItem(dragDropData.List, dragDropData.ItemIdx, localIdx);
-                    _autoGatherListsCache.Selector.DragDropItem = null;
+                    var dragDropData = _autoGatherListsCache.Selector.DragDropItem;
+                    if (target.Success && ImGuiUtil.IsDropping(AutoGatherListsDragDropData.Label) && dragDropData != null)
+                    {
+                        _plugin.AutoGatherListsManager.MoveItem(dragDropData.List, dragDropData.ItemIdx, localIdx);
+                        _autoGatherListsCache.Selector.DragDropItem = null;
+                    }
                 }
             }
         }
+
+        if (visibleItemIndices.Count == 0)
+            ImGui.TextDisabled("No matching items.");
 
         if (deleteIndex >= 0)
             _plugin.AutoGatherListsManager.RemoveItem(list, deleteIndex);
@@ -381,6 +426,45 @@ public partial class Interface
             _autoGatherListsCache.NewGatherableIdx = idx;
             _plugin.AutoGatherListsManager.AddItem(list, gatherables[_autoGatherListsCache.NewGatherableIdx]);
         }
+    }
+
+    private static bool DrawAutoGatherIconButton(string id, string iconText, Vector2 size, string tooltip, bool disabled = false)
+    {
+        var hoveredFlags = disabled ? ImGuiHoveredFlags.AllowWhenDisabled : ImGuiHoveredFlags.None;
+
+        bool DrawCenteredButton()
+        {
+            using var font = ImRaii.PushFont(UiBuilder.IconFont);
+            var cursor = ImGui.GetCursorScreenPos();
+            var iconSize = ImGui.CalcTextSize(iconText);
+
+            bool clicked;
+            using (ImRaii.PushId(id))
+                clicked = ImGui.Button(string.Empty, size);
+
+            var iconPos = cursor + ((size - iconSize) / 2f);
+            ImGui.GetWindowDrawList().AddText(iconPos, ImGui.GetColorU32(ImGuiCol.Text), iconText);
+            return clicked;
+        }
+
+        if (disabled)
+        {
+            bool hovered;
+            using (ImRaii.Disabled())
+            {
+                DrawCenteredButton();
+                hovered = ImGui.IsItemHovered(hoveredFlags);
+            }
+
+            if (hovered)
+                ImGui.SetTooltip(tooltip);
+            return false;
+        }
+
+        var result = DrawCenteredButton();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+        return result;
     }
 
     private void DrawAutoGatherTab()

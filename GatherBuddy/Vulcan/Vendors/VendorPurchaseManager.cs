@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
@@ -83,6 +84,9 @@ public sealed class VendorPurchaseManager : IDisposable
     private bool                   _gcCategorySelected;
     private bool                   _grandCompanyQuantityPrepared;
     private VendorPurchaseConstraints? _purchaseConstraints;
+    private List<int>?             _inclusionRecoverySubPageCandidates;
+    private int                    _inclusionRecoverySubPageCandidateIndex;
+    private int                    _activeInclusionSubPageIndex;
 
     public event Action<PurchaseResult>? PurchaseFinished;
 
@@ -159,6 +163,9 @@ public sealed class VendorPurchaseManager : IDisposable
         _gcCategorySelected = false;
         _grandCompanyQuantityPrepared = false;
         _purchaseConstraints = purchaseConstraints;
+        _inclusionRecoverySubPageCandidates = null;
+        _inclusionRecoverySubPageCandidateIndex = 0;
+        _activeInclusionSubPageIndex = vendor.InclusionSubPageIndex;
         _lastActionTime = DateTime.MinValue;
         _stateStartTime = DateTime.UtcNow;
         _statusText = continueCurrentVendorInteraction
@@ -544,6 +551,131 @@ public sealed class VendorPurchaseManager : IDisposable
         _statusText = $"Confirming purchase of {_currentBatchQuantity:N0}x {_request.ItemName} ({_completedQuantity:N0}/{_request.Quantity:N0})";
     }
 
+    private bool TryRecoverMissingInclusionShopItem(out string? failureMessage)
+    {
+        failureMessage = null;
+        if (_request == null)
+            return false;
+
+        if (_inclusionRecoverySubPageCandidates == null)
+        {
+            var knownSubPageCount = VendorShopResolver.GetInclusionShopSubPageCount(_request.Vendor.ShopId, _request.Vendor.InclusionPageIndex);
+            _inclusionRecoverySubPageCandidates = BuildInclusionRecoverySubPageCandidates(_request.Vendor.InclusionSubPageIndex, _activeInclusionSubPageIndex, knownSubPageCount);
+            _inclusionRecoverySubPageCandidateIndex = 0;
+            GatherBuddy.Log.Debug($"[VendorPurchaseManager] Requested item {_request.ItemId} was not found on expected InclusionShop page={GetDisplayInclusionPageIndex()} subpage={DescribeInclusionSubPageIndex(_activeInclusionSubPageIndex)}. Starting recovery scan across {_inclusionRecoverySubPageCandidates.Count} fallback subpages.");
+        }
+
+        if (TrySelectNextInclusionRecoverySubPage(out failureMessage))
+            return true;
+
+        if (failureMessage != null)
+            return false;
+
+        if (_inclusionRecoverySubPageCandidates != null && _inclusionRecoverySubPageCandidateIndex < _inclusionRecoverySubPageCandidates.Count)
+            return true;
+
+        failureMessage = BuildInclusionRecoveryFailureMessage();
+        return false;
+    }
+
+    private bool TrySelectNextInclusionRecoverySubPage(out string? failureMessage)
+    {
+        failureMessage = null;
+        if (_request == null || _inclusionRecoverySubPageCandidates == null)
+            return false;
+
+        while (_inclusionRecoverySubPageCandidateIndex < _inclusionRecoverySubPageCandidates.Count)
+        {
+            var candidateSubPageIndex = _inclusionRecoverySubPageCandidates[_inclusionRecoverySubPageCandidateIndex];
+            if (candidateSubPageIndex == _activeInclusionSubPageIndex)
+            {
+                _inclusionRecoverySubPageCandidateIndex++;
+                continue;
+            }
+
+            if (!VendorInteractionHelper.TrySelectInclusionSubPage(candidateSubPageIndex, out var subPageError))
+            {
+                failureMessage = subPageError;
+                return false;
+            }
+
+            _inclusionRecoverySubPageCandidateIndex++;
+            _activeInclusionSubPageIndex = candidateSubPageIndex;
+            _inclusionSubPageSelected = true;
+            _lastActionTime = DateTime.UtcNow;
+            _statusText = $"Scanning inclusion subpage {candidateSubPageIndex} for {_request.ItemName} ({_completedQuantity:N0}/{_request.Quantity:N0})";
+            GatherBuddy.Log.Debug($"[VendorPurchaseManager] Scanning fallback InclusionShop page={GetDisplayInclusionPageIndex()} subpage={candidateSubPageIndex} for requested item {_request.ItemId}.");
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ClearInclusionSubPageRecovery(int liveItemIndex)
+    {
+        if (_request == null || _inclusionRecoverySubPageCandidates == null)
+            return;
+
+        GatherBuddy.Log.Debug($"[VendorPurchaseManager] Found requested item {_request.ItemId} on fallback InclusionShop page={GetDisplayInclusionPageIndex()} subpage={DescribeInclusionSubPageIndex(_activeInclusionSubPageIndex)} liveIndex={liveItemIndex}.");
+        _inclusionRecoverySubPageCandidates = null;
+        _inclusionRecoverySubPageCandidateIndex = 0;
+    }
+
+    private string BuildInclusionRecoveryFailureMessage()
+    {
+        if (_request == null)
+            return "Could not recover the InclusionShop item selection.";
+
+        var scannedSubPages = 1 + _inclusionRecoverySubPageCandidateIndex;
+        var visibleRows     = VendorInteractionHelper.DescribeVisibleInclusionShopItems();
+        GatherBuddy.Log.Error($"[VendorPurchaseManager] Failed to find requested item {_request.ItemId} after scanning {scannedSubPages} InclusionShop subpages on page={GetDisplayInclusionPageIndex()}. Last checked subpage={DescribeInclusionSubPageIndex(_activeInclusionSubPageIndex)}. Visible rows: {visibleRows}");
+        return $"Could not find {_request.ItemName} in {_request.Vendor.Name}'s inclusion shop after scanning {scannedSubPages} subpages on page {GetDisplayInclusionPageIndex()}.";
+    }
+
+    private int GetDisplayInclusionPageIndex()
+        => _request == null
+            ? 0
+            : _request.Vendor.InclusionPageIndex + 1;
+
+    private static string DescribeInclusionSubPageIndex(int subPageIndex)
+        => subPageIndex > 0
+            ? subPageIndex.ToString()
+            : "unknown";
+
+    private static List<int> BuildInclusionRecoverySubPageCandidates(int expectedSubPageIndex, int currentSubPageIndex, int knownSubPageCount)
+    {
+        var upperBound = Math.Max(knownSubPageCount, Math.Max(expectedSubPageIndex, currentSubPageIndex));
+        if (upperBound <= 0)
+            upperBound = 3;
+        else if (knownSubPageCount <= 0)
+            upperBound += 3;
+
+        var candidates = new List<int>();
+        var seen       = new HashSet<int>();
+
+        void AddCandidate(int subPageIndex)
+        {
+            if (subPageIndex <= 0 || subPageIndex > upperBound || subPageIndex == currentSubPageIndex || !seen.Add(subPageIndex))
+                return;
+
+            candidates.Add(subPageIndex);
+        }
+
+        if (expectedSubPageIndex > 0)
+        {
+            for (var delta = 1; delta < upperBound; delta++)
+            {
+                AddCandidate(expectedSubPageIndex - delta);
+                AddCandidate(expectedSubPageIndex + delta);
+            }
+        }
+
+        for (var subPageIndex = 1; subPageIndex <= upperBound; subPageIndex++)
+            AddCandidate(subPageIndex);
+
+        return candidates;
+    }
+
     private unsafe void UpdatePurchasingDirectSpecialShopItem()
     {
         if (_request == null)
@@ -631,9 +763,9 @@ public sealed class VendorPurchaseManager : IDisposable
             }
         }
 
-        if (!_inclusionSubPageSelected && _request.Vendor.InclusionSubPageIndex > 0)
+        if (!_inclusionSubPageSelected && _activeInclusionSubPageIndex > 0)
         {
-            if (VendorInteractionHelper.TrySelectInclusionSubPage(_request.Vendor.InclusionSubPageIndex, out var subPageError))
+            if (VendorInteractionHelper.TrySelectInclusionSubPage(_activeInclusionSubPageIndex, out var subPageError))
             {
                 _inclusionSubPageSelected = true;
                 _lastActionTime = DateTime.UtcNow;
@@ -648,6 +780,18 @@ public sealed class VendorPurchaseManager : IDisposable
             }
         }
 
+        if (!VendorInteractionHelper.TryGetVisibleInclusionShopItemIndex(_request.ItemId, out var liveItemIndex, out var visibleItemError))
+        {
+            if (visibleItemError != null)
+            {
+                if (TryRecoverMissingInclusionShopItem(out var recoveryError))
+                    return;
+
+                Fail(recoveryError ?? visibleItemError);
+            }
+            return;
+        }
+
         var remainingQuantity = GetRemainingQuantity();
         if (!TryPrepareBatchQuantity(remainingQuantity))
             return;
@@ -659,6 +803,7 @@ public sealed class VendorPurchaseManager : IDisposable
             return;
         }
 
+        ClearInclusionSubPageRecovery(liveItemIndex);
         _state = State.ConfirmingPurchase;
         _stateStartTime = DateTime.UtcNow;
         _lastActionTime = DateTime.UtcNow;
@@ -960,6 +1105,9 @@ public sealed class VendorPurchaseManager : IDisposable
         _gcCategorySelected = false;
         _grandCompanyQuantityPrepared = false;
         _purchaseConstraints = null;
+        _inclusionRecoverySubPageCandidates = null;
+        _inclusionRecoverySubPageCandidateIndex = 0;
+        _activeInclusionSubPageIndex = 0;
         _statusText = string.Empty;
     }
 
