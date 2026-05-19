@@ -20,7 +20,7 @@ public partial class VulcanWindow
 
         if (GatherBuddy.ControllerSupport != null)
         {
-        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 5, 8);
+        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Settings##settingsTab", 6, 9);
             tabItem = handle;
             tabOpen = handle;
         }
@@ -98,6 +98,15 @@ public partial class VulcanWindow
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Delay in milliseconds between each crafting action (0 = instant, max 1000ms)");
+
+            var ctxMenuEntries = GatherBuddy.Config.VulcanContextMenuEntries;
+            if (ImGui.Checkbox("Context Menu Entries (Vs in context menus)", ref ctxMenuEntries))
+            {
+                GatherBuddy.Config.VulcanContextMenuEntries = ctxMenuEntries;
+                GatherBuddy.Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Show Vulcan-related entries (Open in Vulcan, Add to Crafting List, Add to Vendor Buy List) in the in-game right-click menu.");
 
             DrawVulcanRepairConfig();
 

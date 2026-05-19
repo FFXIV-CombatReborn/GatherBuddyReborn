@@ -114,6 +114,48 @@ public partial class Interface
         ImGui.SameLine();
         ConfigFunctions.DrawAlarmToggle();
         ImGui.SameLine();
+        var vulcanButtonWidth = Math.Max(95f * Scale, ImGui.CalcTextSize("Vulcan").X + FramePadding.X * 5f);
+        var collectablesButtonWidth = Math.Max(125f * Scale, ImGui.CalcTextSize("Collectables").X + FramePadding.X * 5f);
+        {
+            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
+            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.30f, 0.25f, 0.46f, 1f));
+            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.36f, 0.30f, 0.55f, 1f));
+            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.24f, 0.20f, 0.38f, 1f));
+            if (ImGui.Button("Vulcan", new Vector2(vulcanButtonWidth, 0f)))
+            {
+                if (GatherBuddy.VulcanWindow == null)
+                {
+                    GatherBuddy.Log.Debug("[Interface] Vulcan header button clicked, but the Vulcan window was unavailable.");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug("[Interface] Restoring Vulcan from the main header button.");
+                    GatherBuddy.VulcanWindow.RestoreWindow();
+                }
+            }
+        }
+        ImGuiUtil.HoverTooltip("Open the Vulcan crafting window.");
+        ImGui.SameLine();
+        {
+            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
+            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.23f, 0.37f, 0.52f, 1f));
+            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.28f, 0.45f, 0.63f, 1f));
+            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.19f, 0.31f, 0.43f, 1f));
+            if (ImGui.Button("Collectables", new Vector2(collectablesButtonWidth, 0f)))
+            {
+                if (GatherBuddy.CollectablesWindow == null)
+                {
+                    GatherBuddy.Log.Debug("[Interface] Collectables header button clicked, but the collectables window was unavailable.");
+                }
+                else
+                {
+                    GatherBuddy.Log.Debug("[Interface] Opening collectables from the main header button.");
+                    GatherBuddy.CollectablesWindow.Open();
+                }
+            }
+        }
+        ImGuiUtil.HoverTooltip("Open the collectables window.");
+        ImGui.SameLine();
         _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
         DrawLastItemAlarm();
         ImGui.SameLine();
@@ -127,8 +169,14 @@ public partial class Interface
         {
             using var tt = ImRaii.Tooltip();
             ImGui.TextUnformatted("If this does not correspond to your in-game Eorzea Time, verify that your windows system time is accurate.");
-            ImGui.TextUnformatted($"Next Aldenard Ocean Route: {OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow)}");
-            ImGui.TextUnformatted($"Next Othard Ocean Route: {OceanUptime.NextOceanRoute(OceanArea.Othard,     TimeStamp.UtcNow)}");
+            ImGui.TextUnformatted($"Next Aldenard Ocean Routes:");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow)}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow.AddHours(2))}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow.AddHours(4))}");
+            ImGui.TextUnformatted($"Next Othard Ocean Routes:");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow)}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow.AddHours(2))}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow.AddHours(4))}");
         }
     }
 

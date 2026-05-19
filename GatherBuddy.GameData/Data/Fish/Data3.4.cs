@@ -66,7 +66,7 @@ public static partial class Fish
             .Bite      (data, HookSet.Precise, BiteType.Legendary)
             .Time      (360, 600);
         data.Apply     (16754, Patch.SoulSurrender) // Bobgoblin Bass
-            .Mooch     (data, 12706, 12780)
+            .Mooch     (data, 12707, 12780)
             .Bite      (data, HookSet.Powerful, BiteType.Legendary)
             .Time      (120, 360)
             .Transition(data, 7)

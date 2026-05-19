@@ -328,6 +328,12 @@ public static class Simulator
             return VulcanSkill.BasicTouch;
         }
 
+        public static VulcanSkill NextTouchComboRefined(StepState step, CraftState craft)
+        {
+            if (step.PrevComboAction == VulcanSkill.BasicTouch && craft.StatLevel >= MinLevel(VulcanSkill.RefinedTouch)) return VulcanSkill.RefinedTouch;
+            return VulcanSkill.BasicTouch;
+        }
+
         public static Condition GetNextCondition(CraftState craft, StepState step, float roll) => step.Condition switch
         {
             Condition.Normal => GetTransitionByRoll(craft, step, roll),

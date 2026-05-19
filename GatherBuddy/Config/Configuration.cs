@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Numerics;
 using Dalamud.Configuration;
 using Dalamud.Game.ClientState.Keys;
@@ -12,12 +13,13 @@ using GatherBuddy.Crafting;
 using Newtonsoft.Json;
 using GatherBuddy.Enums;
 using ElliLib.Classes;
+using GatherBuddy.Vulcan.Vendors;
 
 namespace GatherBuddy.Config;
 
 public partial class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 9;
+    public int Version { get; set; } = 15;
 
     // Set Names
     public string BotanistSetName { get; set; } = "Botanist";
@@ -32,6 +34,10 @@ public partial class Configuration : IPluginConfiguration
     // Interface
     public AetherytePreference AetherytePreference { get; set; } = AetherytePreference.Distance;
     public ItemFilter          ShowItems           { get; set; } = ItemFilter.All;
+    public GatheredFilter      ShowGatheredItems   { get; set; } = GatheredFilter.All;
+    public LevelingFilter      ShowLevelingItems   { get; set; } = LevelingFilter.All;
+    public List<int>           HiddenGatherableLevelFilters    { get; set; } = [];
+    public List<uint>          HiddenGatherableFolkloreFilters { get; set; } = [];
     public FishFilter          ShowFish            { get; set; } = FishFilter.All;
     public PatchFlag           HideFishPatch       { get; set; } = 0;
     public JobFlags            LocationFilter      { get; set; } = (JobFlags)0x3F;
@@ -75,12 +81,22 @@ public partial class Configuration : IPluginConfiguration
     public VulcanMateriaConfig VulcanMateriaConfig { get; set; } = new();
     public VulcanRetainerBellConfig VulcanRetainerBellConfig { get; set; } = new();
     public int VulcanExecutionDelayMs { get; set; } = 300;
+    public bool VulcanContextMenuEntries { get; set; } = true;
     public string CraftingLists { get; set; } = string.Empty;
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
+    public Vector2 TeamCraftImportWindowSize { get; set; } = new(520, 310);
+    public Vector2 VendorTeamCraftImportWindowSize { get; set; } = new(520, 310);
     public string RecipeBrowserSettings { get; set; } = string.Empty;
     public string UserMacros             { get; set; } = string.Empty;
     public bool   SkipMacroStepIfUnable { get; set; } = true;
     public bool   MacroFallbackEnabled  { get; set; } = true;
+    public Dictionary<string, uint> VendorNpcPreferences { get; set; } = new();
+    public Dictionary<string, string> VendorRoutePreferences { get; set; } = new();
+    [JsonProperty("VendorBuyListEntries", NullValueHandling = NullValueHandling.Ignore)]
+    public List<VendorBuyListEntry>? LegacyVendorBuyListEntries { get; set; }
+    public List<VendorBuyListDefinition> VendorBuyLists { get; set; } = new();
+    public Guid ActiveVendorBuyListId { get; set; } = Guid.Empty;
+    public bool   VendorNpcLocationsDataShareFirst { get; set; } = true;
 
     // Weather tab
     public bool ShowWeatherNames { get; set; } = true;
@@ -114,6 +130,7 @@ public partial class Configuration : IPluginConfiguration
     public int    SecondIntervalsRounding { get; set; } = 1;
     public bool   ShowCollectableHints    { get; set; } = true;
     public bool   ShowMultiHookHints      { get; set; } = true;
+    public bool   ShowOceanTypeHints      { get; set; } = true;
     
     // Fish Stats Tab
     public bool EnableFishStats       { get; set; } = false;
@@ -149,8 +166,28 @@ public partial class Configuration : IPluginConfiguration
     public ModifierHotkey   GatherWindowDeleteModifier     { get; set; } = VirtualKey.CONTROL;
     public VirtualKey       GatherWindowHoldKey            { get; set; } = VirtualKey.MENU;
 
+    [JsonIgnore] private bool _savePending  = false;
+    [JsonIgnore] private long _lastMarkTick = 0;
+
     public void Save()
-        => Dalamud.PluginInterface.SavePluginConfig(this);
+    {
+        _savePending  = true;
+        _lastMarkTick = Environment.TickCount64;
+    }
+
+    public void SaveIfDirty(bool force = false)
+    {
+        if (!_savePending) return;
+        if (!force && Environment.TickCount64 - _lastMarkTick < 250) return;
+        _savePending = false;
+        if (force)
+            Dalamud.PluginInterface.SavePluginConfig(this);
+        else
+            Task.Run(() => Dalamud.PluginInterface.SavePluginConfig(this));
+    }
+
+    public bool ShouldSerializeLegacyVendorBuyListEntries()
+        => false;
 
 
     // Add missing colors to the dictionary if necessary.
@@ -169,12 +206,33 @@ public partial class Configuration : IPluginConfiguration
         {
             if (Dalamud.PluginInterface.GetPluginConfig() is Configuration config)
             {
+                var changed = false;
                 config.AddColors();
                 config.Migrate4To5();
                 config.Migrate5To6();
                 config.Migrate6To7();
                 config.Migrate7To8();
                 config.Migrate8To9();
+                config.Migrate9To10();
+                config.Migrate10To11();
+                config.Migrate11To12();
+                config.Migrate12To13();
+                config.Migrate13To14();
+                config.Migrate14To15();
+                changed |= config.HiddenGatherableLevelFilters == null;
+                config.HiddenGatherableLevelFilters ??= [];
+                changed |= config.HiddenGatherableFolkloreFilters == null;
+                config.HiddenGatherableFolkloreFilters ??= [];
+                changed |= config.VendorNpcPreferences == null;
+                config.VendorNpcPreferences ??= new();
+                changed |= config.VendorRoutePreferences == null;
+                config.VendorRoutePreferences ??= new();
+                changed |= config.VendorBuyLists == null;
+                config.VendorBuyLists ??= new();
+                if (config.EnsureVendorBuyListState())
+                    changed = true;
+                if (changed)
+                    config.Save();
                 return config;
             }
         }
@@ -198,6 +256,7 @@ public partial class Configuration : IPluginConfiguration
         }
 
         var newConfig = new Configuration();
+        newConfig.EnsureVendorBuyListState();
         newConfig.Save();
         return newConfig;
     }
@@ -254,15 +313,112 @@ public partial class Configuration : IPluginConfiguration
     {
         if (Version >= 9)
             return;
-        
-        if (CollectableConfig.PreferredCollectableShop == null || 
-            string.IsNullOrEmpty(CollectableConfig.PreferredCollectableShop.Name))
-        {
-            CollectableConfig.PreferredCollectableShop = AutoGather.Collectables.CollectableNpcLocations.GetDefaultShop();
-        }
 
         Version = 9;
         Save();
+    }
+
+    public void Migrate9To10()
+    {
+        if (Version >= 10)
+            return;
+
+        Version = 10;
+        Save();
+    }
+
+    public void Migrate10To11()
+    {
+        if (Version >= 11)
+            return;
+
+        VendorNpcPreferences ??= new();
+        LegacyVendorBuyListEntries ??= [];
+        Version = 11;
+        Save();
+    }
+
+    public void Migrate11To12()
+    {
+        if (Version >= 12)
+            return;
+
+        VendorNpcPreferences ??= new();
+        VendorRoutePreferences ??= new();
+        LegacyVendorBuyListEntries ??= [];
+        VendorBuyLists ??= new();
+        EnsureVendorBuyListState();
+        Version = 12;
+        Save();
+    }
+    public void Migrate12To13()
+    {
+        if (Version >= 13)
+            return;
+
+        EnsureVendorBuyListState();
+        Version = 13;
+        Save();
+    }
+
+    public void Migrate13To14()
+    {
+        if (Version >= 14)
+            return;
+
+        EnsureVendorBuyListState();
+        if (LegacyVendorBuyListEntries != null)
+            foreach (var entry in LegacyVendorBuyListEntries)
+                entry.Enabled = true;
+        foreach (var list in VendorBuyLists)
+            foreach (var entry in list.Entries)
+                entry.Enabled = true;
+        Version = 14;
+        Save();
+    }
+
+    public void Migrate14To15()
+    {
+        if (Version >= 15)
+            return;
+
+        ShowItems |= ItemFilter.AlreadyGathered | ItemFilter.Ungathered | ItemFilter.UnknownLogState;
+        Version   =  15;
+        Save();
+    }
+
+
+    public bool EnsureVendorBuyListState()
+    {
+        VendorNpcPreferences ??= new();
+        VendorRoutePreferences ??= new();
+        VendorBuyLists ??= new();
+        var legacyVendorBuyListEntries = LegacyVendorBuyListEntries ?? [];
+
+        var changed = false;
+        if (VendorBuyLists.Count == 0)
+        {
+            VendorBuyLists.Add(new VendorBuyListDefinition
+            {
+                Name = "Default",
+                Entries = new List<VendorBuyListEntry>(legacyVendorBuyListEntries),
+            });
+            changed = true;
+        }
+
+        if (LegacyVendorBuyListEntries != null)
+        {
+            LegacyVendorBuyListEntries = null;
+            changed = true;
+        }
+
+        if (VendorBuyLists.Count > 0 && (ActiveVendorBuyListId == Guid.Empty || VendorBuyLists.All(list => list.Id != ActiveVendorBuyListId)))
+        {
+            ActiveVendorBuyListId = VendorBuyLists[0].Id;
+            changed = true;
+        }
+
+        return changed;
     }
 }
 

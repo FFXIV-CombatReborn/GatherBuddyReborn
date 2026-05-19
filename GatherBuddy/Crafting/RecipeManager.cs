@@ -30,6 +30,8 @@ public static class RecipeExtensions
 
 public static class RecipeManager
 {
+    private static Dictionary<uint, List<Recipe>>? _recipesByItemId;
+
     public static Recipe? GetRecipe(uint recipeId)
     {
         var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
@@ -40,16 +42,33 @@ public static class RecipeManager
 
     public static Recipe? GetRecipeForItem(uint itemId)
     {
+        var recipes = GetRecipesForItem(itemId);
+        return recipes.Count > 0 ? recipes[0] : (Recipe?)null;
+    }
+
+    public static IReadOnlyList<Recipe> GetRecipesForItem(uint itemId)
+    {
+        if (_recipesByItemId == null)
+            BuildRecipeIndex();
+        return _recipesByItemId!.GetValueOrDefault(itemId) ?? (IReadOnlyList<Recipe>)Array.Empty<Recipe>();
+    }
+
+    private static void BuildRecipeIndex()
+    {
         var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
-        if (sheet == null)
-            return null;
-        
+        _recipesByItemId = new Dictionary<uint, List<Recipe>>();
+        if (sheet == null) return;
         foreach (var recipe in sheet)
         {
-            if (recipe.ItemResult.RowId == itemId)
-                return recipe;
+            if (recipe.ItemResult.RowId == 0) continue;
+            if (!_recipesByItemId.TryGetValue(recipe.ItemResult.RowId, out var list))
+            {
+                list = new List<Recipe>();
+                _recipesByItemId[recipe.ItemResult.RowId] = list;
+            }
+            list.Add(recipe);
         }
-        return null;
+        GatherBuddy.Log.Debug($"[RecipeManager] Built recipe index: {_recipesByItemId.Count} distinct result items");
     }
 
     public static List<(uint itemId, int amount)> GetIngredients(Recipe recipe)

@@ -24,7 +24,7 @@ public partial class VulcanWindow
 
         if (GatherBuddy.ControllerSupport != null && !_craftingListsRequestFocus)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 8);
+            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 9);
             tabItem = handle;
             tabOpen = handle;
         }
@@ -285,8 +285,14 @@ public partial class VulcanWindow
         if (ImGui.Selectable("Edit"))
             OpenCraftingList(list);
 
-        if (ImGui.Selectable("Start"))
-            StartCraftingList(list);
+        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
+        using (ImRaii.Disabled(artisanLoaded))
+        {
+            if (ImGui.Selectable("Start"))
+                StartCraftingList(list);
+        }
+        if (artisanLoaded && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.");
 
         if (ImGui.BeginMenu("Move to Folder"))
         {
@@ -310,6 +316,20 @@ public partial class VulcanWindow
             {
                 ImGui.SetClipboardText(exported);
                 GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+            }
+        }
+
+        if (ImGui.Selectable("Export to TeamCraft"))
+        {
+            var (exported, error) = GatherBuddy.CraftingListManager.ExportListToTeamCraft(list.ID);
+            if (exported != null)
+            {
+                ImGui.SetClipboardText(exported);
+                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to TeamCraft and copied the link to the clipboard");
+            }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                GatherBuddy.Log.Warning($"[VulcanWindow] Failed to export '{list.Name}' to TeamCraft: {error}");
             }
         }
 
@@ -387,28 +407,41 @@ public partial class VulcanWindow
         else
         {
             var iconSz = new Vector2(22f, 22f);
-            foreach (var item in list.Recipes)
+            var rowHeight = iconSz.Y + ImGui.GetStyle().ItemSpacing.Y;
+            var clipper = ImGui.ImGuiListClipper();
+            clipper.Begin(list.Recipes.Count, rowHeight);
+            while (clipper.Step())
             {
-                var recipe = RecipeManager.GetRecipe(item.RecipeId);
-                if (recipe == null) continue;
+                for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                {
+                    var item = list.Recipes[i];
+                    var recipe = RecipeManager.GetRecipe(item.RecipeId);
+                    if (recipe == null)
+                    {
+                        ImGui.Dummy(new Vector2(0, rowHeight));
+                        continue;
+                    }
 
-                var resultItem = recipe.Value.ItemResult.Value;
-                var textY = ImGui.GetCursorPosY() + (iconSz.Y - ImGui.GetTextLineHeight()) / 2f;
-                var icon = Icons.DefaultStorage.TextureProvider
-                    .GetFromGameIcon(new GameIconLookup(resultItem.Icon));
-                if (icon.TryGetWrap(out var wrap, out _))
-                    ImGui.Image(wrap.Handle, iconSz);
-                else
-                    ImGui.Dummy(iconSz);
+                    var resultItem = recipe.Value.ItemResult.Value;
+                    var textY = ImGui.GetCursorPosY() + (iconSz.Y - ImGui.GetTextLineHeight()) / 2f;
+                    var icon = Icons.DefaultStorage.TextureProvider
+                        .GetFromGameIcon(new GameIconLookup(resultItem.Icon));
+                    if (icon.TryGetWrap(out var wrap, out _))
+                        ImGui.Image(wrap.Handle, iconSz);
+                    else
+                        ImGui.Dummy(iconSz);
 
-                ImGui.SameLine(0, 6);
-                ImGui.SetCursorPosY(textY);
-                ImGui.Text(resultItem.Name.ExtractText());
-                ImGui.SameLine();
-                ImGui.SetCursorPosY(textY);
-                ImGui.TextColored(ImGuiColors.DalamudGrey3,
-                    $"x{item.Quantity}  ({JobNames[recipe.Value.CraftType.RowId]})");
+                    ImGui.SameLine(0, 6);
+                    ImGui.SetCursorPosY(textY);
+                    ImGui.Text(resultItem.Name.ExtractText());
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosY(textY);
+                    ImGui.TextColored(ImGuiColors.DalamudGrey3,
+                        $"x{item.Quantity}  ({JobNames[recipe.Value.CraftType.RowId]})");
+                }
             }
+            clipper.End();
+            clipper.Destroy();
         }
 
         ImGui.EndChild();

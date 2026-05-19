@@ -33,7 +33,7 @@ public class RetainerBellNavigator
     public bool StartNavigation(IGameObject bell)
     {
         _targetBell = bell;
-        var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+        var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
 
         if (playerPos == Vector3.Zero)
         {
@@ -50,8 +50,6 @@ public class RetainerBellNavigator
             return true;
         }
 
-        GatherBuddy.Log.Information($"[RetainerBellNavigator] Starting navigation to bell at {bell.Position} ({distance:F1}m away)");
-        
         try
         {
             VNavmesh.SimpleMove.PathfindAndMoveTo(bell.Position, false);
@@ -77,7 +75,7 @@ public class RetainerBellNavigator
 
         try
         {
-            var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+            var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
             if (playerPos == Vector3.Zero)
                 return;
 
@@ -90,7 +88,6 @@ public class RetainerBellNavigator
 
             if (distance <= ArrivalDistance)
             {
-                GatherBuddy.Log.Information($"[RetainerBellNavigator] Arrived at bell ({distance:F1}m)");
                 VNavmesh.Path.Stop();
                 _state = NavigationState.Arrived;
                 return;
@@ -116,7 +113,6 @@ public class RetainerBellNavigator
                 }
                 _restartAttempts++;
                 _nextRestartAttempt = DateTime.UtcNow.AddSeconds(RestartCooldownSeconds);
-                GatherBuddy.Log.Debug($"[RetainerBellNavigator] Path stopped, restarting attempt {_restartAttempts}/{MaxRestartAttempts} ({distance:F1}m remaining)");
                 try
                 {
                     VNavmesh.SimpleMove.PathfindAndMoveTo(_targetBell.Position, false);

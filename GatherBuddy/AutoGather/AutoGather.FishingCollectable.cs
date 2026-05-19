@@ -34,7 +34,10 @@ namespace GatherBuddy.AutoGather
             var text = master.TextLegacy;
 
             if (!CollectablePatterns.Any(text.Contains))
+            {
+                GatherBuddy.Log.Debug($"[AutoCollectable] SelectYesno prompt did not match collectable patterns: {text}");
                 return false;
+            }
 
             GatherBuddy.Log.Debug($"[AutoCollectable] Detected collectable dialog with text: {text}");
 

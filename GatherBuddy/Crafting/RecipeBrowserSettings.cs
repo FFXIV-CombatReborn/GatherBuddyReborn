@@ -162,7 +162,6 @@ public class RecipeBrowserSettings
             foreach (var key in toRemove)
                 _settings.Remove(key);
 
-            GatherBuddy.Log.Debug($"[RecipeBrowserSettings] Loaded {_settings.Count} recipe settings");
         }
         catch (Exception ex)
         {

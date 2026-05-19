@@ -14,7 +14,7 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
     {
         try
         {
-            var player = Dalamud.ClientState.LocalPlayer;
+            var player = Dalamud.Objects.LocalPlayer;
             if (player == null)
             {
                 return new GameStateBuilder.PlayerStats(
@@ -161,7 +161,7 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
     {
         try
         {
-            var player = Dalamud.ClientState.LocalPlayer;
+            var player = Dalamud.Objects.LocalPlayer;
             if (player == null)
                 return false;
 

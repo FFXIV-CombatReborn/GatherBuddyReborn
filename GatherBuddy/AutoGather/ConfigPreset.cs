@@ -37,6 +37,7 @@ namespace GatherBuddy.AutoGather
         public bool SpendGPOnBestNodesOnly { get; set; } = false;
         public GatheringActionsRec GatherableActions { get; init; } = new();
         public CollectableActionsRec CollectableActions { get; init; } = new();
+        public FishingActionsRec FishingActions { get; init; } = new();
         public ConsumablesRec Consumables { get; init; } = new();
     
         public record class ActionConfig
@@ -78,6 +79,18 @@ namespace GatherBuddy.AutoGather
         public record class ActionConfigConsumable : ActionConfig
         {
             public uint ItemId { get; set; } = 0;
+        }
+        public record class ToggleConfig
+        {
+            public bool Enabled { get; set; } = true;
+        }
+        public record class FishingActionConfig
+        {
+            private int gpThreshold = 0;
+
+            public bool Enabled { get; set; } = false;
+            public int GpThreshold { get => gpThreshold; set => gpThreshold = Math.Max(0, Math.Min(ConfigPreset.MaxGP, value)); }
+            public bool GpThresholdAbove { get; set; } = true;
         }
 
         public record class LevelRec {
@@ -148,6 +161,26 @@ namespace GatherBuddy.AutoGather
                 SolidAge = original.SolidAge with { };
             }
         }
+        public record class FishingActionsRec
+        {
+            public ToggleConfig        Patience      { get; init; } = new() { Enabled = true };
+            public FishingActionConfig PrizeCatch    { get; init; } = new() { GpThreshold = AutoGather.Actions.PrizeCatch.GpCost };
+            public FishingActionConfig Chum          { get; init; } = new() { GpThreshold = AutoGather.Actions.Chum.GpCost };
+            public FishingActionConfig SurfaceSlap   { get; init; } = new() { GpThreshold = AutoGather.Actions.SurfaceSlap.GpCost };
+            public FishingActionConfig IdenticalCast { get; init; } = new() { GpThreshold = AutoGather.Actions.IdenticalCast.GpCost };
+            public FishingActionConfig AmbitiousLure { get; init; } = new() { GpThreshold = 200 };
+            public FishingActionConfig ModestLure    { get; init; } = new() { GpThreshold = 200, GpThresholdAbove = false };
+            public FishingActionsRec(FishingActionsRec original)
+            {
+                Patience      = original.Patience with { };
+                PrizeCatch    = original.PrizeCatch with { };
+                Chum          = original.Chum with { };
+                SurfaceSlap   = original.SurfaceSlap with { };
+                IdenticalCast = original.IdenticalCast with { };
+                AmbitiousLure = original.AmbitiousLure with { };
+                ModestLure    = original.ModestLure with { };
+            }
+        }
         public record class ConsumablesRec
         {
             public ActionConfigConsumable Cordial { get; init; } = new() { Enabled = false };
@@ -190,6 +223,7 @@ namespace GatherBuddy.AutoGather
 
             GatherableActions = original.GatherableActions with { };
             CollectableActions = original.CollectableActions with { };
+            FishingActions = original.FishingActions with { };
             Consumables = original.Consumables with { };
         }
 

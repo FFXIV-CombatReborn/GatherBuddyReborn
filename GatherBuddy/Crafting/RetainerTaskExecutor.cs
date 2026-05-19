@@ -70,6 +70,7 @@ internal unsafe class RetainerTaskExecutor
     private const int MaxAddonRetries = 40;
     private readonly Dictionary<uint, int> _materials;
     private readonly Dictionary<uint, IngredientQualityDemand> _qualityTargets;
+    private readonly HashSet<uint> _precraftItemIds;
     private bool _withdrawalPlanBuilt;
 
     public bool IsComplete => _phase == Phase.Complete;
@@ -77,10 +78,12 @@ internal unsafe class RetainerTaskExecutor
 
     public RetainerTaskExecutor(
         Dictionary<uint, int> materials,
-        Dictionary<uint, IngredientQualityDemand> qualityTargets)
+        Dictionary<uint, IngredientQualityDemand> qualityTargets,
+        HashSet<uint>? precraftItemIds = null)
     {
         _materials = materials;
         _qualityTargets = qualityTargets;
+        _precraftItemIds = precraftItemIds ?? [];
     }
 
     private bool BuildWithdrawalPlan()
@@ -103,15 +106,24 @@ internal unsafe class RetainerTaskExecutor
                 ? qualityDemand
                 : IngredientQualityDemand.FromPreferHQ(totalNeeded);
 
-            int inBagHQ = 0, inBagNQ = 0;
-            var inventoryMgr = InventoryManager.Instance();
-            if (inventoryMgr != null)
+            IngredientQualityDemand remainingDemand;
+            if (_precraftItemIds.Contains(itemId))
             {
-                inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true,  false, false);
-                inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
+                GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Precraft item {itemId}: pulling exact retainer amount {demand.Total} (inventory already accounted for in plan)");
+                remainingDemand = demand;
+            }
+            else
+            {
+                int inBagHQ = 0, inBagNQ = 0;
+                var inventoryMgr = InventoryManager.Instance();
+                if (inventoryMgr != null)
+                {
+                    inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true,  false, false);
+                    inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
+                }
+                remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
             }
 
-            var remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
             if (remainingDemand.Total <= 0)
                 continue;
 
@@ -240,7 +252,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Done;
         }
 
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Interacting with bell: {bell.Name}");
         TargetSystem.Instance()->OpenObjectInteraction((FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)bell.Address);
         _phase = Phase.WaitOccupied;
         _addonRetryCount = 0;
@@ -252,7 +263,6 @@ internal unsafe class RetainerTaskExecutor
     {
         if (Dalamud.Conditions[ConditionFlag.OccupiedSummoningBell])
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Bell occupied, waiting for RetainerList");
             _phase = Phase.WaitRetainerList;
             _addonRetryCount = 0;
             return CraftingTasks.TaskResult.Retry;
@@ -300,8 +310,6 @@ internal unsafe class RetainerTaskExecutor
 
                 _withdrawalPlanBuilt = true;
             }
-
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList open");
             _retainerVisitIndex = 0;
             _addonRetryCount = 0;
             _phase = _retainersToVisit.Count == 0 ? Phase.CloseRetainerList : Phase.SelectRetainer;
@@ -331,7 +339,6 @@ internal unsafe class RetainerTaskExecutor
     {
         if (_retainerVisitIndex >= _retainersToVisit.Count)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] All retainers visited, closing list");
             _phase = Phase.CloseRetainerList;
             return CraftingTasks.TaskResult.Retry;
         }
@@ -343,7 +350,6 @@ internal unsafe class RetainerTaskExecutor
         }
 
         var entry = _retainersToVisit[_retainerVisitIndex];
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting retainer at sorted index {entry.SortedIndex}");
         Callback.Fire(addon, true, 2, (uint)entry.SortedIndex);
         _addonRetryCount = 0;
         _phase = Phase.WaitRetainerMenu;
@@ -356,7 +362,6 @@ internal unsafe class RetainerTaskExecutor
         if (GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var menu) &&
             menu->AtkUnitBase.IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer SelectString menu open");
             _phase = Phase.SelectEntrustWithdraw;
             _addonRetryCount = 0;
             Delay(200);
@@ -391,7 +396,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting 'Entrust or Withdraw' at index 0 ({entryCount} entries total)");
         new AddonMaster.SelectString((nint)menu).Entries[0].Select();
         _addonRetryCount = 0;
         _phase = Phase.WaitInventory;
@@ -404,7 +408,6 @@ internal unsafe class RetainerTaskExecutor
         var agentRetainer = AgentModule.Instance()->GetAgentByInternalId(AgentId.Retainer);
         if (agentRetainer != null && agentRetainer->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer inventory open");
             var entry = _retainersToVisit[_retainerVisitIndex];
             _currentRetainerItems = BuildItemListForRetainer(entry.RetainerId);
             _currentItemIndex = 0;
@@ -452,7 +455,6 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        GatherBuddy.Log.Debug("[RetainerTaskExecutor] All items for this retainer withdrawn, closing inventory");
         _phase = Phase.CloseRetainerInventory;
         return CraftingTasks.TaskResult.Retry;
     }
@@ -558,7 +560,7 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var param in contextAgent->EventParams)
         {
-            if (param.Type == FFXIVClientStructs.FFXIV.Component.GUI.ValueType.String)
+            if (param.Type == FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String)
             {
                 var label = MemoryHelper.ReadSeStringNullTerminated(new IntPtr(param.String)).TextValue;
                 if (label == retrieveAll) idxAll = looper;
@@ -593,7 +595,6 @@ internal unsafe class RetainerTaskExecutor
                 return CraftingTasks.TaskResult.Retry;
             }
 
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Retrieve all ({_foundSlotQty}): index {idxAll}");
             Callback.Fire(menu, true, 0, idxAll, 0, 0, 0);
 
             if (_lookingForHQ) target.RemainingHQ -= _foundSlotQty;
@@ -723,7 +724,6 @@ internal unsafe class RetainerTaskExecutor
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent != null && retainerAgent->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Hiding retainer agent");
             retainerAgent->Hide();
             _addonRetryCount = 0;
             _phase = Phase.WaitInventoryClosed;
@@ -742,7 +742,6 @@ internal unsafe class RetainerTaskExecutor
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent == null || !retainerAgent->IsAgentActive())
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer inventory closed");
             _phase = Phase.SelectQuit;
             _addonRetryCount = 0;
             return CraftingTasks.TaskResult.Retry;
@@ -787,7 +786,6 @@ internal unsafe class RetainerTaskExecutor
             if (!label.Contains(quitText, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Selecting 'Quit' at index {i}");
             new AddonMaster.SelectString((nint)menu).Entries[i].Select();
             _retainerVisitIndex++;
             _addonRetryCount = 0;
@@ -816,7 +814,6 @@ internal unsafe class RetainerTaskExecutor
         if (!GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var menu) ||
             !menu->AtkUnitBase.IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] Retainer menu closed after Quit");
             _phase = Phase.SelectRetainer;
             _addonRetryCount = 0;
             Delay(200);
@@ -861,12 +858,10 @@ internal unsafe class RetainerTaskExecutor
                 return CraftingTasks.TaskResult.Retry;
             }
 
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList gone and bell released, extraction complete");
             _phase = Phase.Complete;
             return CraftingTasks.TaskResult.Done;
         }
 
-        GatherBuddy.Log.Debug("[RetainerTaskExecutor] Closing RetainerList");
         Callback.Fire(addon, true, -1);
         _addonRetryCount = 0;
         _phase = Phase.WaitListClosed;
@@ -885,7 +880,6 @@ internal unsafe class RetainerTaskExecutor
 
         if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("RetainerList", out var addon) || !addon->IsVisible)
         {
-            GatherBuddy.Log.Debug("[RetainerTaskExecutor] RetainerList closed, extraction complete");
             _phase = Phase.Complete;
             return CraftingTasks.TaskResult.Done;
         }
@@ -942,7 +936,7 @@ internal unsafe class RetainerTaskExecutor
 
     public static IGameObject? FindNearestBellForNavigation()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null) return null;
 
         var bellName = GetBellName();
@@ -951,7 +945,7 @@ internal unsafe class RetainerTaskExecutor
 
         foreach (var obj in Dalamud.Objects)
         {
-            if (obj.ObjectKind != ObjectKind.Housing && obj.ObjectKind != ObjectKind.EventObj)
+            if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
                 continue;
 
             var name = obj.Name.TextValue;
@@ -975,14 +969,14 @@ internal unsafe class RetainerTaskExecutor
 
     private static IGameObject? FindNearestBell()
     {
-        var player = Dalamud.ClientState.LocalPlayer;
+        var player = Dalamud.Objects.LocalPlayer;
         if (player == null) return null;
 
         var bellName = GetBellName();
 
         foreach (var obj in Dalamud.Objects)
         {
-            if (obj.ObjectKind != ObjectKind.Housing && obj.ObjectKind != ObjectKind.EventObj)
+            if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
                 continue;
 
             var name = obj.Name.TextValue;
@@ -990,7 +984,7 @@ internal unsafe class RetainerTaskExecutor
                 !name.Equals("リテイナーベル", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            float maxDist = obj.ObjectKind == ObjectKind.Housing ? 6.5f : 4.75f;
+            float maxDist = obj.ObjectKind == ObjectKind.HousingEventObject ? 6.5f : 4.75f;
             if (Vector3.Distance(obj.Position, player.Position) > maxDist)
                 continue;
 

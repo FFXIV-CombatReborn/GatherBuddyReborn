@@ -42,6 +42,8 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
 
     public bool IsBotanist
         => GatheringType.ToGroup() == GatheringType.Botanist;
+    public uint FolkloreId { get; init; }
+    public bool IsLeveling { get; init; }
 
     public string Folklore { get; init; }
 
@@ -91,10 +93,14 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
         DefaultRadius    = Radius;
 
         // Obtain additional information.
-        Folklore = MultiString.ParseSeStringLumina(nodeRow?.GatheringSubCategory.ValueNullable?.FolkloreBook);
+        var subCategory = nodeRow?.GatheringSubCategory.ValueNullable;
+        var subCategoryItemId = subCategory is { } category ? category.Item.RowId : 0;
+        FolkloreId = subCategoryItemId;
+        IsLeveling = subCategoryItemId == 0;
+        Folklore = MultiString.ParseSeStringLumina(subCategory?.FolkloreBook);
         var extendedRow = nodeRow == null ? null : data.DataManager.GetExcelSheet<GatheringPointTransient>()?.GetRow(nodeRow.Value.RowId);
         (Times, NodeType) = nodeRow?.Type == 8 ? (BitfieldUptime.AllHours, NodeType.Clouded) : GetTimes(extendedRow);
-        if (Folklore.Length > 0 && NodeType == NodeType.Unspoiled && nodeRow!.Value.GatheringSubCategory.Value!.Item.RowId != 0)
+        if (Folklore.Length > 0 && NodeType == NodeType.Unspoiled && subCategoryItemId != 0)
             NodeType = NodeType.Legendary;
 
         if (NodeType == NodeType.Clouded)

@@ -42,7 +42,7 @@ public class RepairNPCNavigator
         
         if (Dalamud.ClientState.TerritoryType == targetNPC.TerritoryType)
         {
-            var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+            var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
             if (playerPos != Vector3.Zero)
             {
                 var distance = Vector3.Distance(playerPos, targetNPC.Position);
@@ -152,7 +152,7 @@ public class RepairNPCNavigator
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
             return;
 
-        var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+        var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPos == Vector3.Zero)
             return;
 
@@ -184,7 +184,7 @@ public class RepairNPCNavigator
 
     private void UpdateNavigating()
     {
-        var playerPos = Dalamud.ClientState.LocalPlayer?.Position ?? Vector3.Zero;
+        var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPos == Vector3.Zero)
             return;
 

@@ -7,10 +7,13 @@ using ElliLib.Filesystem.Selector;
 using ElliLib.Log;
 using ElliLib.Raii;
 using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan.Vendors;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace GatherBuddy.Gui;
@@ -19,6 +22,15 @@ public partial class Interface
 {
     private sealed class AutoGatherListFileSystemSelector : FileSystemSelector<AutoGatherList, int>
     {
+        private const string BaitBuyListResultPopupId = "Bait Buy List Result###AutoGatherBaitBuyListResult";
+        private sealed record BaitBuyListGenerationResult(
+            bool VendorDataReady,
+            IReadOnlyList<string> AllBaitNames,
+            IReadOnlyList<VendorBuyListManager.VendorTargetRequest> Targets,
+            IReadOnlyList<string> SkippedBaitNames);
+        private sealed record BaitBuyListResultPopupState(string Summary, IReadOnlyList<string> SkippedBaitNames);
+
+        private BaitBuyListResultPopupState? _baitBuyListResultPopup;
         public override ISortMode<AutoGatherList> SortMode
             => AutoGatherListsManager.SortMode;
 
@@ -49,6 +61,7 @@ public partial class Interface
             SubscribeRightClickLeaf(DuplicateListContext, 200);
             SubscribeRightClickLeaf(ToggleListContext, 300);
             SubscribeRightClickLeaf(ExportListContext, 400);
+            SubscribeRightClickLeaf(GenerateVendorBuyListContext, 450);
             SubscribeRightClickFolder(CreateFolderContext, 500);
             SubscribeRightClickFolder(DeleteFolderContext, 600);
             UnsubscribeRightClickLeaf(RenameLeaf);
@@ -57,6 +70,40 @@ public partial class Interface
         }
 
         public AutoGatherListsDragDropData? DragDropItem { set; get; }
+
+        public void DrawBaitBuyListResultPopup()
+        {
+            if (_baitBuyListResultPopup == null)
+                return;
+            using var theme = VulcanUiStyle.PushTheme();
+            ImGui.PushStyleColor(ImGuiCol.WindowBg, VulcanUiStyle.PanelBackground);
+            ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
+            var windowCenter = ImGui.GetWindowPos() + ImGui.GetWindowSize() * 0.5f;
+            ImGui.SetNextWindowPos(windowCenter, ImGuiCond.Always, new Vector2(0.5f, 0.5f));
+            if (!ImGui.Begin(BaitBuyListResultPopupId, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse
+                | ImGuiWindowFlags.NoDocking | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings))
+            {
+                ImGui.End();
+                ImGui.PopStyleVar();
+                ImGui.PopStyleColor();
+                return;
+            }
+
+            ImGui.TextWrapped(_baitBuyListResultPopup.Summary);
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Needs manual acquisition");
+            DrawBaitNameList(_baitBuyListResultPopup.SkippedBaitNames);
+            ImGui.Spacing();
+
+            if (ImGui.Button("Close", new Vector2(100f * ImGuiHelpers.GlobalScale, 0f)))
+                _baitBuyListResultPopup = null;
+
+            ImGui.End();
+            ImGui.PopStyleVar();
+            ImGui.PopStyleColor();
+        }
 
         private void OnPathDropped(List<KeyValuePair<string, FileSystem<AutoGatherList>.IPath>> movedPaths, FileSystem<AutoGatherList>.IPath targetPath)
         {
@@ -230,6 +277,156 @@ public partial class Interface
                 {
                     Communicator.PrintClipboardMessage("Auto-gather list", leaf.Value.Name, e);
                 }
+            }
+        }
+
+        private void GenerateVendorBuyListContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            var vendorBuyListManager = GatherBuddy.VendorBuyListManager;
+            var vendorBuyListWindow  = GatherBuddy.VendorBuyListWindow;
+            var result               = BuildVendorBuyListGenerationResult(leaf.Value, vendorBuyListManager);
+            var canOpenMenu          = vendorBuyListManager != null && vendorBuyListWindow != null && result.VendorDataReady && result.AllBaitNames.Count > 0;
+
+            if (!ImGui.BeginMenu("Generate Bait Buy List", canOpenMenu))
+            {
+                if (!canOpenMenu && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    var tooltip = vendorBuyListManager == null || vendorBuyListWindow == null
+                        ? "Vendor buy lists are not available."
+                        : result.AllBaitNames.Count == 0
+                            ? "No direct fishing bait was found in this auto-gather list."
+                            : VendorShopResolver.IsInitializing
+                                ? "Vendor data is still loading."
+                                : "Vendor data is not ready yet.";
+                    ImGui.SetTooltip(tooltip);
+                }
+                return;
+            }
+
+            if (ImGui.MenuItem("Create New List", string.Empty, false, result.Targets.Count > 0))
+                OpenCreateVendorBuyListPopup(leaf.Value, result, vendorBuyListWindow!);
+
+            if (ImGui.BeginMenu("Add to Existing List", result.Targets.Count > 0 && vendorBuyListManager!.Lists.Count > 0))
+            {
+                foreach (var list in vendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+                {
+                    if (ImGui.MenuItem(list.Name))
+                        AddTargetsToVendorBuyList(leaf.Value, list.Id, list.Name, result, vendorBuyListManager);
+                }
+
+                ImGui.EndMenu();
+            }
+
+            if (result.SkippedBaitNames.Count > 0)
+            {
+                ImGui.Separator();
+                if (ImGui.MenuItem("Show Non-Vendor Baits"))
+                    OpenSkippedBaitPopup(leaf.Value, result);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        private static BaitBuyListGenerationResult BuildVendorBuyListGenerationResult(AutoGatherList list,
+            VendorBuyListManager? vendorBuyListManager)
+        {
+            var baits = list.Items.OfType<Fish>()
+                .Select(fish => fish.InitialBait)
+                .Where(bait => bait is { Id: not 0 })
+                .GroupBy(bait => bait.Id)
+                .Select(group => group.First())
+                .OrderBy(bait => bait.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var baitNames = baits.Select(bait => bait.Name).ToList();
+
+            if (vendorBuyListManager == null)
+                return new BaitBuyListGenerationResult(false, baitNames, [], []);
+
+            VendorShopResolver.InitializeAsync();
+            if (!VendorShopResolver.IsInitialized)
+                return new BaitBuyListGenerationResult(false, baitNames, [], []);
+
+            var targets = new List<VendorBuyListManager.VendorTargetRequest>();
+            var skippedBaits = new List<string>();
+            foreach (var bait in baits)
+            {
+                if (vendorBuyListManager.CanAddSupportedItem(bait.Id))
+                    targets.Add(new VendorBuyListManager.VendorTargetRequest(bait.Id, 1));
+                else
+                    skippedBaits.Add(bait.Name);
+            }
+
+            return new BaitBuyListGenerationResult(true, baitNames, targets, skippedBaits);
+        }
+
+        private void OpenCreateVendorBuyListPopup(AutoGatherList sourceList, BaitBuyListGenerationResult result,
+            VendorBuyListWindow vendorBuyListWindow)
+        {
+            var listName = string.IsNullOrWhiteSpace(sourceList.Name)
+                ? "Auto-Gather Baits"
+                : $"{sourceList.Name} Baits";
+            GatherBuddy.Log.Debug(
+                $"[AutoGatherListSelector] Creating a new vendor buy list '{listName}' from auto-gather list '{sourceList.Name}' with {result.Targets.Count:N0} bait target(s) and {result.SkippedBaitNames.Count:N0} skipped bait(s).");
+            if (!vendorBuyListWindow.OpenCreateListPopup(listName, result.Targets))
+            {
+                GatherBuddy.Log.Debug(
+                    $"[AutoGatherListSelector] Unable to create vendor buy list '{listName}' from auto-gather list '{sourceList.Name}'.");
+                return;
+            }
+
+            OpenSkippedBaitPopup(sourceList, result, $"Created vendor buy list '{listName}'");
+        }
+
+        private void AddTargetsToVendorBuyList(AutoGatherList sourceList, Guid listId, string listName,
+            BaitBuyListGenerationResult result, VendorBuyListManager vendorBuyListManager)
+        {
+            GatherBuddy.Log.Debug(
+                $"[AutoGatherListSelector] Adding {result.Targets.Count:N0} bait target(s) from auto-gather list '{sourceList.Name}' to vendor buy list '{listName}' with {result.SkippedBaitNames.Count:N0} skipped bait(s).");
+            if (vendorBuyListManager.TrySetTargets(listId, result.Targets, selectList: true, openWindow: true, announce: true) == 0)
+            {
+                GatherBuddy.Log.Debug(
+                    $"[AutoGatherListSelector] Unable to add bait targets from auto-gather list '{sourceList.Name}' to vendor buy list '{listName}'.");
+                return;
+            }
+
+            OpenSkippedBaitPopup(sourceList, result, $"Updated vendor buy list '{listName}'");
+        }
+
+        private void OpenSkippedBaitPopup(AutoGatherList sourceList, BaitBuyListGenerationResult result, string? actionPrefix = null)
+        {
+            if (result.SkippedBaitNames.Count == 0)
+                return;
+
+            var sourceListName = string.IsNullOrWhiteSpace(sourceList.Name)
+                ? "this auto-gather list"
+                : $"'{sourceList.Name}'";
+            var baitLabel = result.SkippedBaitNames.Count == 1 ? "bait was" : "baits were";
+            var requirementText = result.SkippedBaitNames.Count == 1
+                ? "It needs to be crafted or obtained outside the vendor system."
+                : "They need to be crafted or obtained outside the vendor system.";
+            var summary = actionPrefix == null
+                ? $"The following {baitLabel} not added from {sourceListName}. {requirementText}"
+                : $"{actionPrefix} from {sourceListName}. The following {baitLabel} not added. {requirementText}";
+
+            _baitBuyListResultPopup = new BaitBuyListResultPopupState(summary, result.SkippedBaitNames);
+        }
+
+        private static void DrawBaitNameList(IReadOnlyList<string> baitNames)
+        {
+            var height = Math.Clamp(
+                baitNames.Count * ImGui.GetTextLineHeightWithSpacing() + ImGui.GetStyle().FramePadding.Y * 4f,
+                80f * ImGuiHelpers.GlobalScale,
+                220f * ImGuiHelpers.GlobalScale);
+            using var panel = VulcanUiStyle.PushPanel();
+            using var child = ImRaii.Child("##baitBuyListSkippedBaits", new Vector2(440f * ImGuiHelpers.GlobalScale, height), true);
+            if (!child)
+                return;
+
+            foreach (var baitName in baitNames)
+            {
+                ImGui.Bullet();
+                ImGui.SameLine();
+                ImGui.TextUnformatted(baitName);
             }
         }
 

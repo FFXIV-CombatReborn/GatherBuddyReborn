@@ -17,9 +17,9 @@ public sealed class EnhancedCurrentWeather
 
         var territoryType = Dalamud.ClientState.TerritoryType;
         
-        if (territoryType != 0 && weatherManager->HasIndividualWeather(territoryType))
+        if (territoryType != 0 && weatherManager->HasIndividualWeather((ushort)territoryType))
         {
-            var individualWeather = weatherManager->GetIndividualWeather(territoryType);
+            var individualWeather = weatherManager->GetIndividualWeather((ushort)territoryType);
             return individualWeather;
         }
         
@@ -40,11 +40,11 @@ public sealed class EnhancedCurrentWeather
         
         if (territoryType != 0)
         {
-            var hasIndividual = weatherManager->HasIndividualWeather(territoryType);
+            var hasIndividual = weatherManager->HasIndividualWeather((ushort)territoryType);
             
             if (hasIndividual)
             {
-                var individualWeather = weatherManager->GetIndividualWeather(territoryType);
+                var individualWeather = weatherManager->GetIndividualWeather((ushort)territoryType);
                 
                 if (isInDiadem)
                 {

@@ -100,8 +100,8 @@ public static class MacroValidator
         {
             if (step.Progress >= craft.CraftProgress || step.Durability <= 0)
                 break;
-
-            var skill = (VulcanSkill)macro.Actions[i];
+            var importedSkill = (VulcanSkill)macro.Actions[i];
+            var skill = ResolveImportedAction(importedSkill, craft, step);
 
             if (!Simulator.CanUseAction(craft, step, skill))
             {
@@ -157,6 +157,14 @@ public static class MacroValidator
 
     private static bool IsConditionGated(VulcanSkill action)
         => action is VulcanSkill.IntensiveSynthesis or VulcanSkill.PreciseTouch or VulcanSkill.TricksOfTrade;
+
+    private static VulcanSkill ResolveImportedAction(VulcanSkill importedSkill, CraftState craft, StepState step)
+        => importedSkill switch
+        {
+            VulcanSkill.TouchCombo => Simulator.NextTouchCombo(step, craft),
+            VulcanSkill.TouchComboRefined => Simulator.NextTouchComboRefined(step, craft),
+            _ => importedSkill,
+        };
 
     private static uint? ResolveId(ConsumableOverrideMode? mode, uint? specificId, uint? inheritId)
         => mode switch

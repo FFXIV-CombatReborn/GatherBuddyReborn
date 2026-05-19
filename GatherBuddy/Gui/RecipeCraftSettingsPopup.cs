@@ -69,6 +69,7 @@ public class RecipeCraftSettingsPopup
     
     private List<IngredientData> _ingredients = new();
     private bool _useAllNQ = false;
+    public System.Action? OnSaved { get; set; }
     
 
     public void Open(uint recipeId, string recipeName)
@@ -289,6 +290,7 @@ public class RecipeCraftSettingsPopup
                     GatherBuddy.RecipeBrowserSettings.Set(_recipeId, _editingSettings);
                     GatherBuddy.RecipeBrowserSettings.Save();
                 }
+                OnSaved?.Invoke();
                 _isOpen = false;
             }
 
@@ -313,6 +315,7 @@ public class RecipeCraftSettingsPopup
                     GatherBuddy.RecipeBrowserSettings.Remove(_recipeId);
                     GatherBuddy.RecipeBrowserSettings.Save();
                 }
+                OnSaved?.Invoke();
                 _isOpen = false;
             }
 

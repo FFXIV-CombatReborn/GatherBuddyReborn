@@ -26,6 +26,10 @@ public enum ItemFilter
 
     Available    = 0x010000,
     Unavailable  = 0x020000,
+    AlreadyGathered = 0x040000,
+    Ungathered      = 0x080000,
+    UnknownLogState = 0x200000,
+    Leveling        = 0x400000,
 
-    All = 0x133FFF,
+    All = 0x7F3FFF,
 }

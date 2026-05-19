@@ -22,7 +22,7 @@ public class UptimeManager : IDisposable
     private readonly (ILocation Location, TimeInterval Interval)[] _bestUptime;
     private readonly (ILocation Location, uint Reset)[]            _bestLocation;
     private          uint                                          _lastReset = 1;
-    private          ushort                                        _currentTerritory;
+    private          uint                                          _currentTerritory;
     private          ushort                                        _aetherStreamX;
     private          ushort                                        _aetherStreamY;
     private          ushort                                        _aetherPlane;
@@ -50,7 +50,7 @@ public class UptimeManager : IDisposable
         for (var i = 0; i < _bestLocation.Length; ++i)
             _bestLocation[i] = (null!, 0);
 
-        SetCurrentTerritory(Dalamud.ClientState.TerritoryType);
+        SetCurrentTerritory((ushort)Dalamud.ClientState.TerritoryType);
         Dalamud.ClientState.TerritoryChanged += OnTerritoryChange;
     }
 
@@ -61,6 +61,7 @@ public class UptimeManager : IDisposable
     {
         foreach (var fish in TimedGatherables.OfType<Fish>().Where(f => f.HasOverridenData))
         {
+            var stopwatch = Stopwatch.StartNew();
             switch (fish.InternalLocationId)
             {
                 case > 0: _bestUptime[fish.InternalLocationId]    = (null!, TimeInterval.Never); break;
@@ -103,7 +104,7 @@ public class UptimeManager : IDisposable
         return closest;
     }
 
-    private void OnTerritoryChange(ushort id)
+    private void OnTerritoryChange(uint id)
         => SetCurrentTerritory(id);
 
     public void Dispose()
@@ -201,16 +202,20 @@ public class UptimeManager : IDisposable
     private (ILocation, TimeInterval) UpdateUptime(IGatherable item)
     {
         var (loc, bestTime) = _bestUptime[item.InternalLocationId];
-        if (bestTime.End < GatherBuddy.Time.ServerTime)
+        if (loc == null || bestTime != TimeInterval.Invalid && bestTime.End < GatherBuddy.Time.ServerTime)
         {
+            var stopwatch = Stopwatch.StartNew();
             switch (item)
             {
                 case Gatherable g: (loc, bestTime) = GetBestUptime(g.NodeList, GatherBuddy.Time.ServerTime); break;
                 case Fish f:       (loc, bestTime) = GetBestUptime(f,          f.FishingSpots, GatherBuddy.Time.ServerTime); break;
             }
+            stopwatch.Stop();
 
             Debug.Assert(loc != null);
             _bestUptime[item.InternalLocationId] = (loc, bestTime);
+            if (item is Fish fish && stopwatch.ElapsedMilliseconds >= 10)
+                GatherBuddy.Log.Debug($"[UptimeManager] Recomputed uptime for {fish.Name[GatherBuddy.Language]} in {stopwatch.ElapsedMilliseconds} ms ({fish.FishingSpots.Count} spots, result={bestTime}).");
             UptimeChange?.Invoke(item);
         }
 
@@ -313,7 +318,7 @@ public class UptimeManager : IDisposable
         };
 
     // Get the aetherstream position of the player character, i.e. the aetherstream coordinates of the aetheryte corresponding to the current territory.
-    private void SetCurrentTerritory(ushort territory)
+    private void SetCurrentTerritory(uint territory)
     {
         if (territory == _currentTerritory)
             return;

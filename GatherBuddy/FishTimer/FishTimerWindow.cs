@@ -227,7 +227,14 @@ public partial class FishTimerWindow : Window, IDisposable
             _availableFish = enumerator.OrderBy(f => f.SortOrder).ToArray();
 
             var currentTime = GatherBuddy.Time.ServerTime;
-            _nextUptimeChange = _availableFish.Min(f => f.NextUptime.Start < currentTime ? f.NextUptime.End : f.NextUptime.Start);
+            if (_availableFish.Length > 0)
+            {
+                _nextUptimeChange = _availableFish.Min(f => f.NextUptime.Start < currentTime ? f.NextUptime.End : f.NextUptime.Start);
+            }
+            else
+            {
+                _nextUptimeChange = TimeStamp.MaxValue;
+            }
         }
     }
 

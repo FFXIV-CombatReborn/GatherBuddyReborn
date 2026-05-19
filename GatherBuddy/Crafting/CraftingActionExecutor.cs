@@ -27,7 +27,7 @@ public class CraftingActionExecutor : IActionExecutor
     {
         try
         {
-            var playerJobId = (uint)(Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0);
+            var playerJobId = (uint)(Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0);
             var actionId = action.ActionId(playerJobId);
             if (actionId == 0)
                 actionId = (uint)action;

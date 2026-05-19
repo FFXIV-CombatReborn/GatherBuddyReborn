@@ -26,8 +26,6 @@ public static class RepairNPCHelper
     {
         try
         {
-            GatherBuddy.Log.Information("[RepairNPCHelper] Starting to populate repair NPCs...");
-            
             var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
             var eNpcResidentSheet = Dalamud.GameData.GetExcelSheet<ENpcResident>();
             var eNpcBaseSheet = Dalamud.GameData.GetExcelSheet<ENpcBase>();
@@ -108,8 +106,6 @@ public static class RepairNPCHelper
                 return scoreFirst.CompareTo(scoreSecond);
             });
 
-            GatherBuddy.Log.Information($"[RepairNPCHelper] Found {RepairNPCs.Count} repair NPCs");
-            
             RestorePreferredNPC();
         }
         catch (Exception ex)

@@ -1,20 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface;
-using Dalamud.Interface.Textures;
-using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -22,7 +11,7 @@ public partial class VulcanWindow
 {
     private static unsafe void SwitchJobIfNeeded(uint requiredJobId)
     {
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         if (currentJob == requiredJobId)
             return;
 
@@ -56,7 +45,7 @@ public partial class VulcanWindow
     private static void StartCraftWithRaphael(Recipe recipe)
     {
         var requiredJob = (uint)(recipe.CraftType.RowId + 8);
-        var currentJob = Dalamud.ClientState.LocalPlayer?.ClassJob.RowId ?? 0;
+        var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         
         if (currentJob != requiredJob)
         {
@@ -205,22 +194,10 @@ public partial class VulcanWindow
     private static void StartBrowserQuickSynth(Recipe recipe, int quantity)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
-        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, settings);
-        var expandedQueue = new List<CraftingListItem>(quantity);
-        for (int i = 0; i < quantity; i++)
-        {
-            var item = new CraftingListItem(recipe.RowId, 1)
-            {
-                IsOriginalRecipe = true,
-                CraftSettings = settings?.Clone(),
-                QualityPolicy = qualityPolicy,
-                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
-            };
-            item.Options.NQOnly = true;
-            expandedQueue.Add(item);
-        }
+        var retainerRestock = _browserRetainerRestock && AllaganTools.Enabled;
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, settings, true, retainerRestock);
         GatherBuddy.Log.Information($"[VulcanWindow] Browser quick synth: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, new Dictionary<uint, int>());
+        CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
     }
 
     private static void StartBrowserCraft(Recipe recipe, int quantity)
@@ -249,22 +226,38 @@ public partial class VulcanWindow
             };
         }
 
-        var expandedQueue = new List<CraftingListItem>(quantity);
-        var qualityPolicy = CraftingQualityPolicyResolver.Resolve(recipe, craftSettings);
-        for (int i = 0; i < quantity; i++)
-        {
-            var item = new CraftingListItem(recipe.RowId, 1)
-            {
-                IsOriginalRecipe = true,
-                CraftSettings = craftSettings?.Clone(),
-                QualityPolicy = qualityPolicy,
-                IngredientPreferences = qualityPolicy.BuildGuaranteedHQPreferences(),
-            };
-            expandedQueue.Add(item);
-        }
+        var retainerRestock = _browserRetainerRestock && AllaganTools.Enabled;
+        var executionPlan = CreateBrowserExecutionPlan(recipe, quantity, craftSettings, false, retainerRestock);
 
         GatherBuddy.Log.Information($"[VulcanWindow] Browser craft: {recipe.ItemResult.Value.Name.ExtractText()} x{quantity}");
-        CraftingGatherBridge.StartQueueCraftAndGather(expandedQueue, new Dictionary<uint, int>());
+        CraftingGatherBridge.StartQueueCraftAndGather(executionPlan);
+    }
+
+    private static CraftingExecutionPlan CreateBrowserExecutionPlan(Recipe recipe, int quantity, RecipeCraftSettings? craftSettings, bool nqOnly, bool retainerRestock)
+    {
+        var list = new CraftingListDefinition
+        {
+            ID = -1,
+            Name = recipe.ItemResult.Value.Name.ExtractText(),
+            SkipIfEnough = true,
+            SkipFinalIfEnough = false,
+            RetainerRestock = retainerRestock,
+        };
+
+        list.Recipes.Add(new CraftingListItem(recipe.RowId, quantity)
+        {
+            IsOriginalRecipe = true,
+            CraftSettings = craftSettings?.Clone(),
+            Options = new ListItemOptions
+            {
+                NQOnly = nqOnly,
+            },
+        });
+
+        var executionPlan = CraftingExecutionPlan.Create(list);
+        GatherBuddy.Log.Debug(
+            $"[VulcanWindow] Browser execution plan for recipe {recipe.RowId}: quantity={quantity}, nqOnly={nqOnly}, queue={executionPlan.QueueView.Count}, materials={executionPlan.MaterialsView.Count}, precrafts={executionPlan.PrecraftsView.Count}, skipIfEnough={executionPlan.SkipIfEnough}, skipFinalIfEnough={executionPlan.SkipFinalIfEnough}");
+        return executionPlan;
     }
 
 }

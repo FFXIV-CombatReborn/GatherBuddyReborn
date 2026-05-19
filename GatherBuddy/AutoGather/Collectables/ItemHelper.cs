@@ -1,4 +1,5 @@
 using Dalamud.Game.Inventory;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using System;
@@ -10,6 +11,7 @@ namespace GatherBuddy.AutoGather.Collectables;
 
 public static class ItemHelper
 {
+    private static DateTime _lastInventoryManagerFallbackLogTime = DateTime.MinValue;
     public static List<GameInventoryItem> GetCurrentInventoryItems()
     {
         ReadOnlySpan<GameInventoryType> inventoriesToFetch = [
@@ -25,6 +27,30 @@ public static class ItemHelper
         return inventoryItems;
     }
     
+
+    public static unsafe int GetInventoryAndArmoryItemCount(uint itemId, bool includeEquipped = false)
+    {
+        try
+        {
+            var inventoryManager = InventoryManager.Instance();
+            if (inventoryManager != null)
+            {
+                var nq = inventoryManager->GetInventoryItemCount(itemId, false, includeEquipped, true);
+                var hq = inventoryManager->GetInventoryItemCount(itemId, true, includeEquipped, true);
+                return Math.Max(0, nq) + Math.Max(0, hq);
+            }
+
+            LogInventoryManagerFallback($"[ItemHelper] InventoryManager unavailable while counting item {itemId}, falling back to inventory bags only");
+        }
+        catch (Exception ex)
+        {
+            LogInventoryManagerFallback($"[ItemHelper] Failed to count item {itemId} with InventoryManager: {ex.Message}");
+        }
+
+        return GetCurrentInventoryItems()
+            .Where(item => item.BaseItemId == itemId)
+            .Sum(item => (int)item.Quantity);
+    }
     public static List<Item> GetLuminaItemsFromInventory()
     {
         List<Item> luminaItems = new List<Item>();
@@ -37,5 +63,14 @@ public static class ItemHelper
                 luminaItems.Add(luminaItem);
         }
         return luminaItems;
+    }
+
+    private static void LogInventoryManagerFallback(string message)
+    {
+        if ((DateTime.UtcNow - _lastInventoryManagerFallbackLogTime).TotalSeconds < 5)
+            return;
+
+        _lastInventoryManagerFallbackLogTime = DateTime.UtcNow;
+        GatherBuddy.Log.Debug(message);
     }
 }

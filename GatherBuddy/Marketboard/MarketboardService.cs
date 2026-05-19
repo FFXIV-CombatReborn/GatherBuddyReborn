@@ -221,7 +221,7 @@ public sealed class MarketboardService : IDisposable
             foreach (var dc in dcSheet)
             {
                 if (dc.IsCloud) continue;
-                if (dc.Region < 1 || dc.Region > 4) continue;
+                if (dc.Region.RowId < 1 || dc.Region.RowId > 4) continue;
                 var name = dc.Name.ExtractText();
                 if (!string.IsNullOrEmpty(name) && name != homeDc)
                     result.Add(name);
@@ -240,7 +240,7 @@ public sealed class MarketboardService : IDisposable
         var result = new List<string>();
         try
         {
-            var worldId = Dalamud.ClientState.LocalPlayer?.HomeWorld.RowId ?? 0u;
+            var worldId = Dalamud.Objects.LocalPlayer?.HomeWorld.RowId ?? 0u;
             if (worldId == 0) return result;
 
             var worldSheet = Dalamud.GameData.GetExcelSheet<World>();
@@ -270,7 +270,7 @@ public sealed class MarketboardService : IDisposable
     {
         try
         {
-            var worldId = Dalamud.ClientState.LocalPlayer?.HomeWorld.RowId ?? 0u;
+            var worldId = Dalamud.Objects.LocalPlayer?.HomeWorld.RowId ?? 0u;
             if (worldId == 0) return "Aether";
             var worldSheet = Dalamud.GameData.GetExcelSheet<World>();
             if (worldSheet?.TryGetRow(worldId, out var world) == true)

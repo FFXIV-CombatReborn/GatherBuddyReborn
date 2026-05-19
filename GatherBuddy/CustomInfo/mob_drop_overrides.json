@@ -1,0 +1,143 @@
+{
+  "removedDrops": [
+    {
+      "itemId": 44072,
+      "bNpcNameId": 281
+    }
+  ],
+  "addedDrops": [],
+  "spawns": [
+    {
+      "bNpcNameId": 480,
+      "territoryTypeId": 153,
+      "mapX": 26.1,
+      "mapY": 20.1
+    },
+    {
+      "bNpcNameId": 1753,
+      "territoryTypeId": 155,
+      "mapX": 25.621801,
+      "mapY": 25.663221
+    },
+    {
+      "bNpcNameId": 12930,
+      "territoryTypeId": 1188,
+      "mapX": 9.0,
+      "mapY": 10.0
+    },
+    {
+      "bNpcNameId": 12939,
+      "territoryTypeId": 1188,
+      "mapX": 30.1,
+      "mapY": 16.0
+    },
+    {
+      "bNpcNameId": 12943,
+      "territoryTypeId": 1188,
+      "mapX": 11.5,
+      "mapY": 22.9
+    },
+    {
+      "bNpcNameId": 12944,
+      "territoryTypeId": 1188,
+      "mapX": 19.7,
+      "mapY": 29.8
+    },
+    {
+      "bNpcNameId": 12953,
+      "territoryTypeId": 1189,
+      "mapX": 21.5,
+      "mapY": 12.3
+    },
+    {
+      "bNpcNameId": 12956,
+      "territoryTypeId": 1189,
+      "mapX": 13.0,
+      "mapY": 10.0
+    },
+    {
+      "bNpcNameId": 12964,
+      "territoryTypeId": 1189,
+      "mapX": 17.2,
+      "mapY": 25.2
+    },
+    {
+      "bNpcNameId": 12972,
+      "territoryTypeId": 1190,
+      "mapX": 30.6,
+      "mapY": 34.5
+    },
+    {
+      "bNpcNameId": 12973,
+      "territoryTypeId": 1190,
+      "mapX": 23.6,
+      "mapY": 34.2
+    },
+    {
+      "bNpcNameId": 12974,
+      "territoryTypeId": 1190,
+      "mapX": 17.3,
+      "mapY": 9.8
+    },
+    {
+      "bNpcNameId": 12991,
+      "territoryTypeId": 1190,
+      "mapX": 21.8,
+      "mapY": 10.2
+    },
+    {
+      "bNpcNameId": 13079,
+      "territoryTypeId": 1187,
+      "mapX": 32.0,
+      "mapY": 14.9
+    },
+    {
+      "bNpcNameId": 13080,
+      "territoryTypeId": 1187,
+      "mapX": 18.0,
+      "mapY": 12.7
+    },
+    {
+      "bNpcNameId": 13082,
+      "territoryTypeId": 1187,
+      "mapX": 27.5,
+      "mapY": 15.0
+    },
+    {
+      "bNpcNameId": 13101,
+      "territoryTypeId": 1191,
+      "mapX": 32.5,
+      "mapY": 32.2
+    },
+    {
+      "bNpcNameId": 13104,
+      "territoryTypeId": 1191,
+      "mapX": 15.0,
+      "mapY": 15.0
+    },
+    {
+      "bNpcNameId": 13131,
+      "territoryTypeId": 1192,
+      "mapX": 36.4,
+      "mapY": 16.9
+    },
+    {
+      "bNpcNameId": 13239,
+      "territoryTypeId": 1189,
+      "mapX": 17.2,
+      "mapY": 25.2
+    },
+    {
+      "bNpcNameId": 13548,
+      "territoryTypeId": 1190,
+      "mapX": 21.8,
+      "mapY": 10.2
+    },
+    {
+      "bNpcNameId": 13588,
+      "territoryTypeId": 1190,
+      "mapX": 21.8,
+      "mapY": 10.2
+    }
+  ]
+}

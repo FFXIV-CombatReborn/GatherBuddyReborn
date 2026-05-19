@@ -20,18 +20,11 @@ public partial class VulcanWindow
 
         if (list.QuickSynthAll)
             GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
-        var useRetainerCraftablePlanning = list.SkipIfEnough && list.RetainerRestock && AllaganTools.Enabled;
-        var plan = list.CreatePlan(useRetainerCraftablePlanning);
-        var expandedQueue = CraftingListQueueBuilder.CreateExpandedQueue(list, plan);
-        var materials = new Dictionary<uint, int>(plan.Materials);
-        var retainerPrecraftItems = new Dictionary<uint, int>(plan.RetainerConsumedCraftables);
-        var retainerPlanningList = list.RetainerRestock ? list.CreateRetainerPlanningSnapshot() : null;
+        var executionPlan = CraftingExecutionPlan.Create(list);
 
-        GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {expandedQueue.Count} crafts from {plan.Recipes.Count} planned recipes");
+        GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {executionPlan.QueueView.Count} crafts from {executionPlan.ResolvedPlan.Recipes.Count} planned recipes");
         CraftingGatherBridge.StartQueueCraftAndGather(
-            expandedQueue, materials, list.Consumables, list.SkipIfEnough,
-            list.RetainerRestock, retainerPrecraftItems,
-            list.Ephemeral ? (int?)list.ID : null, retainerPlanningList);
+            executionPlan, list.Consumables, list.Ephemeral ? (int?)list.ID : null);
     }
 
     private static RecipeCraftSettings? BuildEffectiveQueueCraftSettings(

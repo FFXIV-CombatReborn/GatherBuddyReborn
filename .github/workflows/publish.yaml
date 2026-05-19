@@ -57,7 +57,7 @@ jobs:
         run: Compress-Archive -Path .\build\* -DestinationPath .\build\GatherbuddyReborn.zip
 
       - name: Publish Plugin
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ./build/GatherbuddyReborn.zip
           token: ${{ secrets.GITHUB_TOKEN }}

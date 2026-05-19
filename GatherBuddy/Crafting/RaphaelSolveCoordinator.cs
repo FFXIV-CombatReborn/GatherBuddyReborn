@@ -75,7 +75,6 @@ public class RaphaelSolveCoordinator
                 loaded++;
             }
 
-            GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Loaded {loaded}/{solutions.Count} solutions from cache ({solutions.Count - loaded} expired/skipped)");
         }
         catch (Exception ex)
         {
@@ -388,6 +387,17 @@ public class RaphaelSolveCoordinator
         _inProgressTasks.Clear();
         _activeSolveCount = 0;
         Save();
+    }
+
+    public bool RemoveCachedSolution(RaphaelSolveRequest request)
+    {
+        var key = request.GetKey();
+        if (_cachedSolutions.TryRemove(key, out _))
+        {
+            Save();
+            return true;
+        }
+        return false;
     }
 
     private List<RaphaelSolveRequest> ExtractUniqueCrafts(

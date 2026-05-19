@@ -1,4 +1,5 @@
 using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Chat;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -103,6 +104,7 @@ namespace GatherBuddy.AutoGather
 
         // Track the current gather target for robust node handling
         private GatherTarget? _currentGatherTarget;
+        private bool _waitingForFishingToFinishAfterTargetChange = false;
         private volatile bool _fishDetectedPlayer = false;
         private volatile bool _fishWaryDetected = false;
         private volatile bool _processingFishingToast = false;
@@ -163,13 +165,13 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        private void OnMessageHandled(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+        private void OnMessageHandled(IHandleableChatMessage chatMessage)
         {
             try
             {
-                if (type is (XivChatType)2243)
+                if (chatMessage.LogKind is (XivChatType)2243)
                 {
-                    var text = message.TextValue;
+                    var text = chatMessage.Message.TextValue;
                     var id = Dalamud.GameData.GetExcelSheet<LogMessage>()
                         ?.FirstOrDefault(x => x.Text.ToString() == text).RowId;
 
@@ -186,6 +188,9 @@ namespace GatherBuddy.AutoGather
                 GatherBuddy.Log.Error($"Failed to handle message: {e}");
             }
         }
+
+        private void ResetPendingFishingTargetChange()
+            => _waitingForFishingToFinishAfterTargetChange = false;
 
         private readonly GatherBuddy      _plugin;
         private readonly SoundHelper      _soundHelper;
@@ -244,6 +249,7 @@ namespace GatherBuddy.AutoGather
                     _lastJiggleTime = DateTime.MinValue;
                     _jiggleAttempts.Clear();
                     _fishingSpotArrivalTime.Clear();
+                    ResetPendingFishingTargetChange();
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
                     
                     // Restore normal controller blocking (blocks everything)
@@ -440,6 +446,7 @@ namespace GatherBuddy.AutoGather
                 }
                 // Unset the current gather target when leaving the node
                 _currentGatherTarget = null;
+                ResetPendingFishingTargetChange();
             }
 
 
@@ -520,7 +527,7 @@ namespace GatherBuddy.AutoGather
                     if (IsGathering)
                         CloseGatheringAddons();
                     else
-                        GatherBuddy.CollectableManager?.Start();
+                        GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                 }
                 else
                 {
@@ -597,16 +604,24 @@ namespace GatherBuddy.AutoGather
                     {
                         if (IsFishing && AutoHook.Enabled)
                         {
-                            // Wait until fishing is finished before quitting, as spawn conditions snapshot when the line is cast.
-                            AutoHook.SetAutoStartFishing(false);
+                            AutoStatus = "Finishing current cast before switching target...";
+                            if (!_waitingForFishingToFinishAfterTargetChange)
+                            {
+                                _waitingForFishingToFinishAfterTargetChange = true;
+                                var nextTargetName = nextTarget == default ? "no active target" : nextTarget.Item.Name[GatherBuddy.Language];
+                                GatherBuddy.Log.Debug($"[AutoGather] Current fishing target {fish.Item.Name[GatherBuddy.Language]} is no longer active, waiting for cast to finish before switching to {nextTargetName}.");
+                                AutoHook.SetAutoStartFishing(false);
+                            }
                         }
                         else
                         {
+                            ResetPendingFishingTargetChange();
                             CleanupAutoHook();
                             QueueQuitFishingTasks();
                         }
                         return;
                     }
+                    ResetPendingFishingTargetChange();
 
                     if (GatherBuddy.Config.AutoGatherConfig.UseNavigation)
                     {
@@ -693,7 +708,7 @@ namespace GatherBuddy.AutoGather
              && !isPathing
              && !Dalamud.Conditions[ConditionFlag.Mounted])
             {
-                if (TryUseFoodAndMedicine())
+                if (Player.Job == 18 /* FSH */ && TryUseFishingConsumables(GetFishingConsumablesPreset()))
                     return;
 
                 if (SpiritbondMax > 0)
@@ -781,7 +796,7 @@ namespace GatherBuddy.AutoGather
                 if (HasCollectables())
                 {
                     AutoStatus = "Turning in collectables...";
-                    GatherBuddy.CollectableManager?.Start();
+                    GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                     return;
                 }
 
@@ -878,7 +893,7 @@ namespace GatherBuddy.AutoGather
             if (HasCollectables())
             {
                 AutoStatus = "Turning in collectables...";
-                GatherBuddy.CollectableManager?.Start();
+                GatherBuddy.CollectableManager?.Start(Collectables.CollectableRunSource.AutoGather);
                 return;
             }
 
@@ -1203,7 +1218,9 @@ namespace GatherBuddy.AutoGather
 
             var targetGatheringType = next.Location.GatheringType.ToGroup();
             
-            var config = MatchConfigPreset(next.Gatherable);
+            var config = next.Fish != null
+                ? MatchConfigPreset(next.Fish)
+                : MatchConfigPreset(next.Gatherable);
 
             if (DoUseConsumablesWithoutCastTime(config))
                 return;
@@ -1329,7 +1346,10 @@ namespace GatherBuddy.AutoGather
 
             if (IsFishing)
             {
-                GatherBuddy.Log.Debug($"[AutoGather] IsFishing block entered, timer will be checked. MaxFishingSpotMinutes={GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes}, Expiration={fishingSpotData.Expiration}");
+                if (GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes > 0)
+                {
+                    GatherBuddy.Log.Debug($"[AutoGather] IsFishing block entered, timer will be checked. MaxFishingSpotMinutes={GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes}, Expiration={fishingSpotData.Expiration}");
+                }
                 if (_fishWaryDetected)
                 {
                     _fishWaryDetected = false;

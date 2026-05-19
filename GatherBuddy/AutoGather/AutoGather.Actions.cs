@@ -153,40 +153,41 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void DoFishingTasks(GatherTarget target)
         {
-        if (TryUseFoodAndMedicine())
-            return;
-        
-        if (SpiritbondMax > 0)
-        {
-            if (GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+            var config = MatchConfigPreset(target.Fish!);
+            if (TryUseFishingConsumables(config))
                 return;
-            
-            if (IsGathering || IsFishing)
+        
+            if (SpiritbondMax > 0)
             {
+                if (GatherBuddy.Config.AutoGatherConfig.DeferMateriaExtractionDuringFishingBuffs && (IsFishing || HasActiveFishingBuff()))
+                    return;
+                
+                if (IsGathering || IsFishing)
+                {
+                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                    {
+                        AutoHook.SetPluginState?.Invoke(false);
+                        AutoHook.SetAutoStartFishing?.Invoke(false);
+                    }
+                    QueueQuitFishingTasks();
+                    return;
+                }
+
                 if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
                 {
                     AutoHook.SetPluginState?.Invoke(false);
                     AutoHook.SetAutoStartFishing?.Invoke(false);
                 }
-                QueueQuitFishingTasks();
-                return;
-            }
 
-            if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-            {
-                AutoHook.SetPluginState?.Invoke(false);
-                AutoHook.SetAutoStartFishing?.Invoke(false);
-            }
-
-            DoMateriaExtraction();
-            TaskManager.Enqueue(() =>
-            {
-                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                DoMateriaExtraction();
+                TaskManager.Enqueue(() =>
                 {
-                    AutoHook.SetPluginState?.Invoke(true);
-                    AutoHook.SetAutoStartFishing?.Invoke(true);
-                }
-            });
+                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                    {
+                        AutoHook.SetPluginState?.Invoke(true);
+                        AutoHook.SetAutoStartFishing?.Invoke(true);
+                    }
+                });
                 return;
             }
 
@@ -225,7 +226,6 @@ namespace GatherBuddy.AutoGather
                 return;
 
             var state  = GatherBuddy.EventFramework.FishingState;
-            var config = MatchConfigPreset(target.Fish!);
             
             if (!GatherBuddy.Config.AutoGatherConfig.UseAutoHook || !AutoHook.Enabled)
             {
