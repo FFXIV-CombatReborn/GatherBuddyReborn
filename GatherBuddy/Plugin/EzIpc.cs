@@ -220,19 +220,30 @@ internal static class EzIPC
         Type providerType;
         Type delegateType;
         
-        if (paramTypes.Length == 0)
+        switch (paramTypes.Length)
         {
-            providerType = typeof(ICallGateProvider<>).MakeGenericType(returnType);
-            delegateType = typeof(Func<>).MakeGenericType(returnType);
-        }
-        else if (paramTypes.Length == 1)
-        {
-            providerType = typeof(ICallGateProvider<,>).MakeGenericType(allTypes);
-            delegateType = typeof(Func<,>).MakeGenericType(allTypes);
-        }
-        else
-        {
-            return;
+            case 0:
+                providerType = typeof(ICallGateProvider<>).MakeGenericType(returnType);
+                delegateType = typeof(Func<>).MakeGenericType(returnType);
+                break;
+            case 1:
+                providerType = typeof(ICallGateProvider<,>).MakeGenericType(allTypes);
+                delegateType = typeof(Func<,>).MakeGenericType(allTypes);
+                break;
+            case 2:
+                providerType = typeof(ICallGateProvider<,,>).MakeGenericType(allTypes);
+                delegateType = typeof(Func<,,>).MakeGenericType(allTypes);
+                break;
+            case 3:
+                providerType = typeof(ICallGateProvider<,,,>).MakeGenericType(allTypes);
+                delegateType = typeof(Func<,,,>).MakeGenericType(allTypes);
+                break;
+            case 4:
+                providerType = typeof(ICallGateProvider<,,,,>).MakeGenericType(allTypes);
+                delegateType = typeof(Func<,,,,>).MakeGenericType(allTypes);
+                break;
+            default:
+                throw new NotSupportedException($"IPC func provider {name} has {paramTypes.Length} parameters, but at most 4 are supported.");
         }
 
         var getProviderMethod = typeof(IDalamudPluginInterface)
