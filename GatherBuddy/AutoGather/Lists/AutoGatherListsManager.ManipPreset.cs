@@ -29,6 +29,107 @@ public partial class AutoGatherListsManager
             SetActiveItems();
     }
 
+    public bool EnsureNamedList(string name, string description)
+    {
+        var normalizedName = NormalizeListName(name);
+        if (normalizedName.Length == 0)
+            return false;
+        if (TryGetListByName(normalizedName, out _))
+            return true;
+
+        AddList(new AutoGatherList
+        {
+            Name = normalizedName,
+            Description = description ?? string.Empty,
+            Enabled = false,
+        });
+        return true;
+    }
+
+    public int UpdateNamedList(string name, Dictionary<uint, uint>? targets, bool enabled, bool removeCompletedItems)
+    {
+        if (!TryGetListByName(NormalizeListName(name), out var list))
+            return 0;
+
+        var changed = false;
+        var refreshed = false;
+        var validItems = new HashSet<IGatherable>();
+        var validTargets = 0;
+
+        foreach (var (itemId, quantity) in targets ?? [])
+        {
+            if (!TryResolveGatherable(itemId, out var item))
+                continue;
+
+            validItems.Add(item);
+            validTargets++;
+
+            var normalizedQuantity = Math.Max(1u, quantity);
+            if (!list!.Quantities.ContainsKey(item))
+            {
+                changed |= list.Add(item, normalizedQuantity);
+            }
+            else
+            {
+                changed |= list.SetQuantity(item, normalizedQuantity);
+            }
+
+            changed |= list.SetEnabled(item, true);
+        }
+
+        if (validTargets == 0)
+            return 0;
+
+        foreach (var item in list!.Items)
+        {
+            if (!validItems.Contains(item))
+                changed |= list.SetEnabled(item, false);
+        }
+
+        if (list.RemoveCompletedItems != removeCompletedItems)
+        {
+            list.RemoveCompletedItems = removeCompletedItems;
+            changed = true;
+        }
+
+        var wasEnabled = list.Enabled;
+        if (!ApplyNamedListEnabled(list, enabled && validTargets > 0))
+            return 0;
+
+        if (list.Enabled != wasEnabled)
+        {
+            changed = true;
+            refreshed = true;
+        }
+
+        if (!changed)
+            return validTargets;
+
+        Save();
+        if (refreshed || list.Items.Count > 0)
+            SetActiveItems();
+
+        return validTargets;
+    }
+
+    public bool SetNamedListEnabled(string name, bool enabled)
+    {
+        if (!TryGetListByName(NormalizeListName(name), out var list))
+            return false;
+
+        var wasEnabled = list!.Enabled;
+        if (!ApplyNamedListEnabled(list, enabled))
+            return false;
+        if (list.Enabled == wasEnabled)
+            return true;
+
+        Save();
+        if (list.Items.Count > 0)
+            SetActiveItems();
+
+        return true;
+    }
+
     public void DeleteList(AutoGatherList list)
     {
         if (!_fileSystem.TryGetValue(list, out var leaf))
@@ -113,6 +214,51 @@ public partial class AutoGatherListsManager
         Save();
         if (list.Items.Count > 0)
             SetActiveItems();
+    }
+
+    private bool ApplyNamedListEnabled(AutoGatherList list, bool enabled)
+    {
+        if (list.Enabled == enabled)
+            return true;
+        if (enabled && (!ValidateFishingBait(list) || !ValidateGatherablePerception(list)))
+            return false;
+
+        list.Enabled = enabled;
+        return true;
+    }
+
+    private bool TryGetListByName(string name, out AutoGatherList? list)
+    {
+        list = null;
+        if (name.Length == 0)
+            return false;
+
+        list = _fileSystem.Root.GetAllDescendants(SortMode)
+            .OfType<FileSystem<AutoGatherList>.Leaf>()
+            .Select(leaf => leaf.Value)
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+        return list != null;
+    }
+
+    private static string NormalizeListName(string? name)
+        => string.IsNullOrWhiteSpace(name) ? string.Empty : name.Trim();
+
+    private static bool TryResolveGatherable(uint itemId, out IGatherable item)
+    {
+        if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
+        {
+            item = gatherable;
+            return true;
+        }
+
+        if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
+        {
+            item = fish;
+            return true;
+        }
+
+        item = null!;
+        return false;
     }
     
     private unsafe bool ValidateFishingBait(AutoGatherList list)

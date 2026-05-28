@@ -51,20 +51,16 @@ public sealed class GatherBuddyIpc : IDisposable
     public Action<bool> AutoGatherEnabledChanged;
 
     [EzIPC]
-    public string[] GetAutoGatherListPaths()
-        => _plugin.AutoGatherListsManager.GetIpcListPaths();
+    public bool CreateAutoGatherList((string Name, string Description) request)
+        => _plugin.AutoGatherListsManager.EnsureNamedList(request.Name, request.Description);
 
     [EzIPC]
-    public string CreateAutoGatherList(string name, string description)
-        => _plugin.AutoGatherListsManager.CreateIpcList(name, description);
+    public int UpdateAutoGatherList((string Name, Dictionary<uint, uint> Targets, bool Enabled, bool RemoveCompletedItems) request)
+        => _plugin.AutoGatherListsManager.UpdateNamedList(request.Name, request.Targets, request.Enabled, request.RemoveCompletedItems);
 
     [EzIPC]
-    public int UpdateAutoGatherList(string path, Dictionary<uint, uint> targets, bool enabled, bool removeCompletedItems)
-        => _plugin.AutoGatherListsManager.UpdateIpcList(path, targets, enabled, removeCompletedItems);
-
-    [EzIPC]
-    public bool SetAutoGatherListEnabled(string path, bool enabled)
-        => _plugin.AutoGatherListsManager.SetIpcListEnabled(path, enabled);
+    public bool SetAutoGatherListEnabled((string Name, bool Enabled) request)
+        => _plugin.AutoGatherListsManager.SetNamedListEnabled(request.Name, request.Enabled);
 
 #pragma warning restore CA1822 // Mark members as static
 
