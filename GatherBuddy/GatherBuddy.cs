@@ -72,6 +72,7 @@ public partial class GatherBuddy : IDalamudPlugin
     public static SeTugType             TugType         { get; private set; } = null!;
     public static WaymarkManager        WaymarkManager  { get; private set; } = null!;
     public static AutoGather.AutoGather AutoGather      { get; private set; } = null!;
+    public static Deimos.Deimos?        Deimos          { get; private set; }
     public static AutoHookIntegration.BiteTimerService BiteTimerService { get; private set; } = null!;
     public static AutoGather.Collectables.CollectableManager CollectableManager { get; private set; } = null!;
     public static Crafting.CraftingListManager CraftingListManager { get; private set; } = null!;
@@ -177,6 +178,7 @@ public partial class GatherBuddy : IDalamudPlugin
             FishRecorder.Enable();
             BiteTimerService = new AutoHookIntegration.BiteTimerService(pluginInterface.ConfigDirectory.FullName);
             AutoGather   = new AutoGather.AutoGather(this);
+            Deimos       = new Deimos.Deimos(this);
             CollectableManager = new AutoGather.Collectables.CollectableManager(Dalamud.Framework, Dalamud.Conditions, Config);
             global::GatherBuddy.AutoGather.Collectables.CollectableInventoryHelper.InitializeAsync();
             CraftingGatherBridge.BindCollectableManager(CollectableManager);
@@ -335,6 +337,15 @@ public partial class GatherBuddy : IDalamudPlugin
         {
             Log.Error($"Error while running auto gather: {e}");
         }
+
+        try
+        {
+            Deimos?.Tick();
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Error while running Deimos: {e}");
+        }
     }
 
     void IDisposable.Dispose()
@@ -349,6 +360,7 @@ public partial class GatherBuddy : IDalamudPlugin
         ContextMenu?.Dispose();
         UptimeManager?.Dispose();
         AutoGather?.Dispose();
+        Deimos?.Dispose();
         CollectableManager?.Dispose();
         VendorBuyListManager?.Dispose();
         VendorPurchaseManager?.Dispose();

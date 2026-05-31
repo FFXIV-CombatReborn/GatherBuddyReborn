@@ -38,6 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Deimos\Resources\MissionScores.csv" />
     <EmbeddedResource Include="CustomInfo\world_locations.json" />
     <EmbeddedResource Include="CustomInfo\mob_drop_overrides.json" />
     <None Remove="CustomInfo\node_offsets.json" />
