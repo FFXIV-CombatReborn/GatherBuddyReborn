@@ -36,6 +36,8 @@ public record class CraftState
         public bool IsCosmic;
         public ConditionFlags ConditionFlags;
         public bool MissionHasMaterialMiracle;
+        public bool MissionHasSteadyHand;
+        public int  CurrentSteadyHandCharges;
         public int InitialQuality;
 
         public uint ItemId;
@@ -75,6 +77,13 @@ public record class CraftState
         public VulcanSkill PrevComboAction;
         public uint MaterialMiracleCharges;
         public bool MaterialMiracleActive;
+        public int   MaterialMiraclesUsed;
+        public float MaterialMiracleSecondsLeft;
+        public bool  PrevMaterialMiracleActive;
+        public bool  ExpertMiracleTrigger;
+        public uint  SteadyHandCharges;
+        public int   SteadyHandLeft;
+        public int   SteadyHandsUsed;
         public int ObserveCounter;
 
         public override string ToString() => $"#{Index} {Condition}: {Progress}/{Quality}/{Durability}/{RemainingCP}; {BuffsString()}; Prev={PrevComboAction}{(PrevActionFailed ? " (failed)" : "")}";

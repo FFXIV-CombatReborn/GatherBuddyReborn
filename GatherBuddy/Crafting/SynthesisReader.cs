@@ -74,6 +74,10 @@ public static unsafe class SynthesisReader
             HeartAndSoulAvailable = previousStep?.HeartAndSoulAvailable ?? craft.Specialist,
             QuickInnoAvailable = previousStep?.QuickInnoAvailable ?? false,
             MaterialMiracleCharges = previousStep?.MaterialMiracleCharges ?? (craft.MissionHasMaterialMiracle ? 1u : 0u),
+            MaterialMiraclesUsed = previousStep?.MaterialMiraclesUsed ?? 0,
+            ExpertMiracleTrigger = previousStep?.ExpertMiracleTrigger ?? false,
+            SteadyHandCharges = previousStep?.SteadyHandCharges ?? (craft.MissionHasSteadyHand ? (uint)craft.CurrentSteadyHandCharges : 0u),
+            SteadyHandsUsed = previousStep?.SteadyHandsUsed ?? 0,
             CarefulObservationLeft = previousStep?.CarefulObservationLeft ?? (craft.Specialist ? 2 : 0),
             PrevComboAction = previousStep?.PrevComboAction ?? VulcanSkill.None,
             PrevActionFailed = previousStep?.PrevActionFailed ?? false
@@ -103,7 +107,7 @@ public static unsafe class SynthesisReader
                 case 252:
                     step.WasteNotLeft = status.Param;
                     break;
-                case 2009:
+                case 257:
                     step.WasteNotLeft = status.Param;
                     break;
                 case 1164:
@@ -127,11 +131,14 @@ public static unsafe class SynthesisReader
                 case 2665:
                     step.HeartAndSoulActive = true;
                     break;
-                case 3858:
+                case 3813:
                     step.TrainedPerfectionActive = true;
                     break;
-                case 3857:
+                case 3812:
                     step.ExpedienceLeft = status.Param;
+                    break;
+                case 4839: // Steady Hand (cosmic)
+                    step.SteadyHandLeft = status.Param;
                     break;
             }
         }

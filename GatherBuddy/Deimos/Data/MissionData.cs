@@ -148,7 +148,7 @@ public static class MissionData
             < 545  => CosmicZone.SinusArdorum,
             < 1040 => CosmicZone.Phaenna,
             < 1370 => CosmicZone.Oizys,
-            _      => CosmicZone.Moon4Reserved,
+            _      => CosmicZone.Auxesia,
         };
 
         var marker = missionToDo.MapMarker;

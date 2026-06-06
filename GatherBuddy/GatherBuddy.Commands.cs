@@ -5,6 +5,7 @@ using Dalamud.Game;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
 using GatherBuddy.Crafting;
+using GatherBuddy.Deimos;
 using GatherBuddy.Enums;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
@@ -117,9 +118,72 @@ public partial class GatherBuddy
             ShowInHelp  = true,
         };
 
+        _commands["/deimos"] = new CommandInfo(OnDeimos)
+        {
+            HelpMessage = "TESTING ALPHA RELEASE UNSTABLE.Cosmic Exploration automation. '/deimos' for options.'",
+            ShowInHelp  = true,
+        };
+
         foreach (var (command, info) in _commands)
             Dalamud.Commands.AddHandler(command, info);
     }
+
+    private void OnDeimos(string command, string arguments)
+    {
+        var parts = arguments.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var verb  = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
+        var cfg   = Deimos?.Config;
+
+        switch (verb)
+        {
+            case "start" or "on":  Deimos?.Enable(); break;
+            case "stop" or "off":  Deimos?.Disable(); break;
+            case "add" when cfg != null:
+                foreach (var id in ParseMissionIds(parts)) cfg.EnabledMissions.Add(id);
+                cfg.Save();
+                break;
+            case "remove" when cfg != null:
+                foreach (var id in ParseMissionIds(parts)) cfg.EnabledMissions.Remove(id);
+                cfg.Save();
+                break;
+            case "only" when cfg != null:
+                cfg.EnabledMissions = ParseMissionIds(parts).ToHashSet();
+                cfg.Save();
+                break;
+            case "clear" when cfg != null:
+                cfg.EnabledMissions.Clear();
+                cfg.Save();
+                break;
+            case "mode" when cfg != null:
+                cfg.Mode = parts.Length > 1 && parts[1].ToLowerInvariant() is "gold" or "missiongold"
+                    ? DeimosMode.MissionGold : DeimosMode.Standard;
+                cfg.Save();
+                Dalamud.Chat.Print($"Deimos mode: {cfg.Mode}");
+                break;
+            case "skipexpert" when cfg != null:
+                cfg.SkipExpertCrafts = parts.Length > 1
+                    ? parts[1].ToLowerInvariant() is "on" or "true" or "1"
+                    : !cfg.SkipExpertCrafts;
+                cfg.Save();
+                Dalamud.Chat.Print($"Deimos skip expert crafts: {cfg.SkipExpertCrafts}");
+                break;
+            case "list":
+                Dalamud.Chat.Print(cfg == null || cfg.EnabledMissions.Count == 0
+                    ? "Deimos: all missions enabled"
+                    : $"Deimos enabled: {string.Join(", ", cfg.EnabledMissions)}");
+                break;
+            case "":
+                if (Deimos is { Enabled: true }) Deimos.Disable();
+                else Deimos?.Enable();
+                break;
+            default:
+                Dalamud.Chat.Print("Deimos: start | stop | add <ids> | remove <ids> | only <ids> | clear | mode standard|gold | skipexpert [on|off] | list");
+                break;
+        }
+    }
+
+    private static IEnumerable<uint> ParseMissionIds(string[] parts)
+        => parts.Skip(1).Select(p => uint.TryParse(p, out var v) ? v : 0u).Where(v => v != 0);
 
     private void DisposeCommands()
     {

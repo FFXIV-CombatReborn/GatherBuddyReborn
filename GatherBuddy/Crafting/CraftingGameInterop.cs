@@ -59,6 +59,7 @@ public static class CraftingGameInterop
     private static CraftState _currentState = CraftState.IdleNormal;
     private static Recipe? _currentRecipe = null;
     private static uint? _currentRecipeId = null;
+    private static CosmicCraftContext? _cosmicContext = null;
     private static Vulcan.CraftState? _vulcanCraftState = null;
     private static Vulcan.StepState? _vulcanStepState = null;
     private static CraftingActionExecutor? _actionExecutor = null;
@@ -95,7 +96,9 @@ public static class CraftingGameInterop
         CraftingProcessor.Setup();
         // Register UserMacro solver first (highest priority)
         CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
-        
+        // cosmic solver (inert for non-cosmic crafts)
+        CraftingProcessor.RegisterSolver(new Vulcan.CosmicExpertSolverDefinition(new Vulcan.CosmicSolverConfig()));
+
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
         switch (solverMode)
         {
@@ -118,7 +121,8 @@ public static class CraftingGameInterop
         {
             CraftingProcessor.RegisterSolver(new Vulcan.UserMacroSolverDefinition(_userMacroLibrary));
         }
-        
+        CraftingProcessor.RegisterSolver(new Vulcan.CosmicExpertSolverDefinition(new Vulcan.CosmicSolverConfig()));
+
         var solverMode = GatherBuddy.Config.RaphaelSolverConfig.SolverMode;
         switch (solverMode)
         {
@@ -238,6 +242,113 @@ public static class CraftingGameInterop
         }
         
         GatherBuddy.Log.Information($"[Crafting] Starting craft of {recipe.ItemResult.Value.Name.ExtractText()} (qty: {quantity}, QuickSynth={useQuickSynthesis})");
+    }
+
+    // cosmic entry point: same synthesis state machine, different recipe-open path (WKSRecipeNotebook)
+    public static void StartCosmicCraft(Recipe recipe, CosmicCraftContext context)
+    {
+        if (recipe.RowId == 0)
+            return;
+
+        _currentRecipe        = recipe;
+        _currentRecipeId      = recipe.RowId;
+        _cosmicContext        = context;
+        _currentState         = CraftState.PreparingCraft;
+        _taskManagerIdleSince = DateTime.MinValue;
+        _lastPreparationFailure = null;
+
+        var tm = GatherBuddy.AutoGather?.TaskManager;
+        if (tm == null)
+            return;
+
+        tm.Enqueue(() => OpenCosmicRecipe(recipe.RowId), 5000, true, "OpenCosmicRecipe");
+        tm.Enqueue(() => SelectCosmicRecipe(recipe.RowId), 5000, true, "SelectCosmicRecipe");
+        tm.Enqueue(() => SelectHqIngredients(), 3000, "SelectHqIngredients");
+        tm.DelayNext(300);
+        tm.Enqueue(() => StartCosmicSynthesis(), 3000, "StartCosmicSynthesis");
+
+        GatherBuddy.Log.Information($"[Crafting] Starting cosmic craft of {recipe.ItemResult.Value.Name.ExtractText()} (MM={context.HasMaterialMiracle}, Steady={context.HasSteadyHand})");
+    }
+
+    private static unsafe bool? OpenCosmicRecipe(uint recipeId)
+    {
+        var addon = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
+        if (addon != null && addon->IsVisible)
+            return true;
+
+        var agent = AgentRecipeNote.Instance();
+        if (agent == null)
+            return false;
+
+        agent->OpenRecipeByRecipeId(recipeId);
+        return false;
+    }
+
+    private static unsafe bool? SelectCosmicRecipe(uint recipeId)
+    {
+        var addon = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
+        if (addon == null || !addon->IsVisible)
+            return false;
+
+        var list = FFXIVClientStructs.FFXIV.Client.Game.UI.RecipeNote.Instance()->RecipeList;
+        if (list == null)
+            return false;
+
+        var selected = list->SelectedRecipe;
+        if (selected != null && selected->RecipeId == recipeId)
+            return true;
+
+        // the notebook doesn't open onto a specific entry, so step through it until ours is selected
+        for (var i = 0; i < list->RecipeCount; i++)
+        {
+            Callback.Fire(addon, false, 0, i);
+            selected = list->SelectedRecipe;
+            if (selected != null && selected->RecipeId == recipeId)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static unsafe bool? StartCosmicSynthesis()
+    {
+        var addon = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
+        if (addon == null || !addon->IsVisible)
+            return false;
+
+        Callback.Fire(addon, true, 6);
+        GatherBuddy.Log.Information("[Crafting] Cosmic synthesis started");
+        return true;
+    }
+
+    private static unsafe bool? SelectHqIngredients()
+    {
+        var addon = (AtkUnitBase*)Dalamud.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
+        if (addon == null || !addon->IsVisible)
+            return false;
+
+        if (addon->GetNodeById(40) != null)
+        {
+            ClickComponentButton(addon, 39);
+            ClickComponentButton(addon, 40);
+        }
+
+        return true;
+    }
+
+    private static unsafe void ClickComponentButton(AtkUnitBase* addon, uint nodeId)
+    {
+        var node   = addon->GetNodeById(nodeId);
+        var button = node != null ? node->GetAsAtkComponentButton() : null;
+        if (button == null)
+            return;
+
+        var btnRes = button->AtkComponentBase.OwnerNode->AtkResNode;
+        var evt    = (AtkEvent*)btnRes.AtkEventManager.Event;
+        if (evt == null)
+            return;
+
+        addon->ReceiveEvent(evt->State.EventType, (int)evt->Param, evt);
     }
 
     private static unsafe bool OpenRecipe(uint recipeId)
@@ -1296,7 +1407,9 @@ public static class CraftingGameInterop
 
         var actualRecipe = recipe.Value;
         GatherBuddy.Log.Debug($"[Crafting] Building craft state for recipe {_currentRecipeId}");
-        _vulcanCraftState = CraftingStateBuilder.BuildCraftState(actualRecipe);
+        _vulcanCraftState = _cosmicContext is { } cosmic
+            ? CraftingStateBuilder.BuildCosmicCraftState(actualRecipe, cosmic)
+            : CraftingStateBuilder.BuildCraftState(actualRecipe);
         var qualityPolicy = GetActiveQualityPolicy();
         if (qualityPolicy != null)
         {
@@ -1446,6 +1559,7 @@ public static class CraftingGameInterop
 
         _currentRecipe = null;
         _currentRecipeId = null;
+        _cosmicContext = null;
         _vulcanCraftState = null;
         _vulcanStepState = null;
         

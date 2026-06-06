@@ -61,7 +61,15 @@ public static class Simulator
             next.TrainedPerfectionActive = action == VulcanSkill.TrainedPerfection || (step.TrainedPerfectionActive && !HasDurabilityCost(action));
             next.TrainedPerfectionAvailable = step.TrainedPerfectionAvailable && action != VulcanSkill.TrainedPerfection;
             next.MaterialMiracleCharges = action == VulcanSkill.MaterialMiracle ? step.MaterialMiracleCharges - 1 : step.MaterialMiracleCharges;
-            next.MaterialMiracleActive = step.MaterialMiracleActive;
+            var mmLeft = step.MaterialMiracleSecondsLeft > 0 ? Math.Max(0f, step.MaterialMiracleSecondsLeft - (IsLongAction(action) ? 2.5f : 1.25f)) : 0f;
+            next.MaterialMiracleSecondsLeft = action == VulcanSkill.MaterialMiracle ? 45f : mmLeft;
+            next.MaterialMiracleActive = action == VulcanSkill.MaterialMiracle || next.MaterialMiracleSecondsLeft > 0;
+            next.MaterialMiraclesUsed = action == VulcanSkill.MaterialMiracle ? step.MaterialMiraclesUsed + 1 : step.MaterialMiraclesUsed;
+            next.PrevMaterialMiracleActive = step.MaterialMiracleActive;
+            next.ExpertMiracleTrigger = step.ExpertMiracleTrigger; // owned by the cosmic solver
+            next.SteadyHandCharges = action == VulcanSkill.SteadyHand ? step.SteadyHandCharges - 1 : step.SteadyHandCharges;
+            next.SteadyHandLeft = action == VulcanSkill.SteadyHand ? 3 : (step.SteadyHandLeft > 0 && !SkipUpdates(action) ? step.SteadyHandLeft - 1 : step.SteadyHandLeft);
+            next.SteadyHandsUsed = action == VulcanSkill.SteadyHand ? step.SteadyHandsUsed + 1 : step.SteadyHandsUsed;
             next.ObserveCounter = action == VulcanSkill.Observe ? step.ObserveCounter + 1 : 0;
 
             if (step.FinalAppraisalLeft > 0 && next.Progress >= craft.CraftProgress)
@@ -88,6 +96,14 @@ public static class Simulator
 
             return (success ? ExecuteResult.Succeeded : ExecuteResult.Failed, next);
         }
+
+        // rough action-time split for ticking down the Material Miracle window in lookaheads
+        private static bool IsLongAction(VulcanSkill action) => action is not (
+            VulcanSkill.Veneration or VulcanSkill.Innovation or VulcanSkill.GreatStrides or
+            VulcanSkill.WasteNot or VulcanSkill.WasteNot2 or VulcanSkill.Manipulation or
+            VulcanSkill.FinalAppraisal or VulcanSkill.Observe or VulcanSkill.MastersMend or
+            VulcanSkill.HeartAndSoul or VulcanSkill.CarefulObservation or VulcanSkill.TricksOfTrade or
+            VulcanSkill.SteadyHand or VulcanSkill.MaterialMiracle);
 
         private static bool HasDurabilityCost(VulcanSkill action)
         {
@@ -134,8 +150,10 @@ public static class Simulator
             VulcanSkill.DaringTouch => step.ExpedienceLeft > 0,
             VulcanSkill.QuickInnovation => step.QuickInnoLeft > 0 && step.InnovationLeft == 0,
             VulcanSkill.MaterialMiracle => step.MaterialMiracleCharges > 0 && !step.MaterialMiracleActive,
+            VulcanSkill.SteadyHand => craft.MissionHasSteadyHand && step.SteadyHandCharges > 0,
             _ => true
-        } && craft.StatLevel >= MinLevel(action) && step.RemainingCP >= GetCPCost(step, action);
+        } && (action is VulcanSkill.MaterialMiracle or VulcanSkill.SteadyHand || craft.StatLevel >= MinLevel(action))
+          && step.RemainingCP >= GetCPCost(step, action);
 
         public static bool SkipUpdates(VulcanSkill action) => action is VulcanSkill.CarefulObservation or VulcanSkill.FinalAppraisal or VulcanSkill.HeartAndSoul or VulcanSkill.MaterialMiracle;
         public static bool ConsumeHeartAndSoul(VulcanSkill action) => action is VulcanSkill.IntensiveSynthesis or VulcanSkill.PreciseTouch or VulcanSkill.TricksOfTrade;
@@ -184,6 +202,8 @@ public static class Simulator
 
         public static double GetSuccessRate(StepState step, VulcanSkill action)
         {
+            if (step.SteadyHandLeft > 0)
+                return 1.0; // cosmic Steady Hand guarantees the next few actions
             var rate = action switch
             {
                 VulcanSkill.RapidSynthesis => 0.5,

@@ -370,4 +370,56 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
     {
         return GameStateBuilder.BuildInitialStepState(craft, startingQuality: 0);
     }
+
+    // cosmic build: scales the recipe to player level, pulls cosmic score breakpoints, flags MM/Steady
+    public static CraftState BuildCosmicCraftState(Recipe recipe, CosmicCraftContext ctx)
+    {
+        var stats = GetCurrentPlayerStats();
+        var info  = BuildCosmicRecipeInfo(recipe, stats.Level, ctx.HasMaterialMiracle);
+        var craft = GameStateBuilder.BuildCraftState(info, stats);
+        return craft with
+        {
+            IsCosmic                 = true,
+            SplendorCosmic           = stats.SplendorCosmic,
+            MissionHasSteadyHand     = ctx.HasSteadyHand,
+            CurrentSteadyHandCharges = (int)ctx.SteadyHandCharges,
+        };
+    }
+
+    private static GameStateBuilder.RecipeInfo BuildCosmicRecipeInfo(Recipe recipe, int playerLevel, bool hasMaterialMiracle)
+    {
+        // cosmic recipes carry Number == 0 and scale to the player's level below 100
+        var lt = recipe.RecipeLevelTable.Value;
+        if (recipe.Number == 0 && playerLevel < 100)
+        {
+            var scaled = Dalamud.GameData.GetExcelSheet<RecipeLevelTable>()
+                .FirstOrDefault(x => x.ClassJobLevel == playerLevel);
+            if (scaled.RowId != 0)
+                lt = scaled;
+        }
+
+        var difficulty    = (int)(lt.Difficulty * recipe.DifficultyFactor / 100);
+        var qualityMax    = (int)(lt.Quality * recipe.QualityFactor / 100);
+        var durability    = (int)(lt.Durability * recipe.DurabilityFactor / 100);
+        return new GameStateBuilder.RecipeInfo(
+            RecipeId: recipe.RowId,
+            Level: lt.ClassJobLevel,
+            Difficulty: difficulty,
+            QualityMax: qualityMax,
+            Durability: durability,
+            ProgressDivider: lt.ProgressDivider,
+            ProgressModifier: lt.ProgressModifier,
+            QualityDivider: lt.QualityDivider,
+            QualityModifier: lt.QualityModifier,
+            CanHQ: recipe.CanHq,
+            IsExpert: recipe.IsExpert,
+            // cosmic missions score on quality/collectability, so always build quality to the cap;
+            // the runner stops the whole mission once it hits gold, so a full run isn't wasted
+            IsCollectible: true,
+            QualityMin1: qualityMax,
+            QualityMin2: qualityMax,
+            QualityMin3: qualityMax,
+            ConditionFlags: (ConditionFlags)lt.ConditionsFlag,
+            HasMaterialMiracle: hasMaterialMiracle);
+    }
 }

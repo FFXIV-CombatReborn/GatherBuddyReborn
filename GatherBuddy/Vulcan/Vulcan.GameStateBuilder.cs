@@ -87,6 +87,7 @@ public static class GameStateBuilder
             PrevActionFailed = false,
             PrevComboAction = VulcanSkill.None,
             MaterialMiracleCharges = craft.MissionHasMaterialMiracle ? 1u : 0u,
+            SteadyHandCharges = craft.MissionHasSteadyHand ? (uint)craft.CurrentSteadyHandCharges : 0u,
             ObserveCounter = 0
         };
     }

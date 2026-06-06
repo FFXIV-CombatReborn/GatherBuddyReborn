@@ -47,4 +47,5 @@ public enum VulcanSkill
         TrainedPerfection = 100475,
 
         MaterialMiracle = 41269,
+        SteadyHand      = 46843,
     }

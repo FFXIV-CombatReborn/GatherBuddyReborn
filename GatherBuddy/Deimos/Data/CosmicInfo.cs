@@ -76,6 +76,9 @@ public sealed class CosmicInfo
     public bool IsWeather  => Attributes.HasFlag(MissionAttributes.ProvisionalWeather);
     public bool IsTimed    => Attributes.HasFlag(MissionAttributes.ProvisionalTimed);
     public bool IsSequence => Attributes.HasFlag(MissionAttributes.ProvisionalSequential);
+    public bool IsCraftOnly => Attributes.HasFlag(MissionAttributes.Craft)
+                            && !Attributes.HasFlag(MissionAttributes.Gather)
+                            && !Attributes.HasFlag(MissionAttributes.Fish);
     public bool ARank => Rank is 5 or 4;
     public bool BRank => Rank is 3;
     public bool CRank => Rank is 2;

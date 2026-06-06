@@ -1,9 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using GatherBuddy.Plugin;
 using Newtonsoft.Json;
 
 namespace GatherBuddy.Deimos;
+
+public enum DeimosMode
+{
+    Standard,    // run enabled missions
+    MissionGold, // run enabled missions that aren't golded yet
+}
 
 /// <summary>
 /// Deimos settings, lives by itself for modularity
@@ -15,6 +22,14 @@ public sealed class DeimosConfig
     private const string FileName = "deimos.json";
 
     public int Version { get; set; } = CurrentVersion;
+
+    /// mission ids the user wants to run; empty = run everything
+    public HashSet<uint> EnabledMissions { get; set; } = new();
+
+    public DeimosMode Mode { get; set; } = DeimosMode.Standard;
+
+    /// skip expert-craft missions when grabbing
+    public bool SkipExpertCrafts { get; set; } = false;
 
     [JsonIgnore] private bool _dirty;
 
