@@ -1,7 +1,9 @@
 using System;
+using Dalamud.Interface.Windowing;
 using GatherBuddy.AutoGather;
 using GatherBuddy.Deimos.Data;
 using GatherBuddy.Deimos.Scheduling;
+using GatherBuddy.Deimos.Ui;
 
 namespace GatherBuddy.Deimos;
 
@@ -17,12 +19,16 @@ public sealed class Deimos : IDisposable
     /// own scheduler, separate from AutoGather
     public TaskManager TaskManager { get; }
 
-    private readonly Scheduler _scheduler;
+    private readonly Scheduler    _scheduler;
+    private readonly WindowSystem _windows;
+    private readonly DeimosWindow _window;
 
     /// runtime on/off; boots idle
     public bool Enabled { get; private set; }
 
     public DeimosState State => _scheduler.State;
+
+    public int MissionsDone => _scheduler.MissionsDone;
 
     public Deimos(GatherBuddy plugin)
     {
@@ -30,8 +36,17 @@ public sealed class Deimos : IDisposable
         Config      = DeimosConfig.Load();
         TaskManager = new TaskManager(Dalamud.Framework) { ShowDebug = false };
         _scheduler  = new Scheduler(Config);
+
+        // own window system so the UI stays separate from the GBR interface
+        _windows = new WindowSystem("Deimos");
+        _window  = new DeimosWindow(this);
+        _windows.AddWindow(_window);
+        Dalamud.PluginInterface.UiBuilder.Draw += _windows.Draw;
+
         DeimosLog.Info("Initialized.");
     }
+
+    public void ToggleUi() => _window.Toggle();
 
     public void Enable()
     {
@@ -77,6 +92,8 @@ public sealed class Deimos : IDisposable
 
     public void Dispose()
     {
+        Dalamud.PluginInterface.UiBuilder.Draw -= _windows.Draw;
+        _windows.RemoveAllWindows();
         TaskManager.Dispose();
         Config.SaveIfDirty();
     }

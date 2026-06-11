@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
 using GatherBuddy.Crafting;
 using GatherBuddy.Deimos;
+using GatherBuddy.Deimos.Travel;
 using GatherBuddy.Enums;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
@@ -155,11 +157,45 @@ public partial class GatherBuddy
                 cfg.Save();
                 break;
             case "mode" when cfg != null:
-                cfg.Mode = parts.Length > 1 && parts[1].ToLowerInvariant() is "gold" or "missiongold"
-                    ? DeimosMode.MissionGold : DeimosMode.Standard;
+                cfg.Mode = parts.Length > 1 ? parts[1].ToLowerInvariant() switch
+                {
+                    "gold" or "missiongold" => DeimosMode.MissionGold,
+                    "leveling" or "level"   => DeimosMode.Leveling,
+                    _                       => DeimosMode.Standard,
+                } : DeimosMode.Standard;
                 cfg.Save();
                 Dalamud.Chat.Print($"Deimos mode: {cfg.Mode}");
                 break;
+            case "hub":
+            {
+                if (CosmicZone.HubCenter(CosmicZone.Current) is not { } center)
+                {
+                    Dalamud.Chat.Print("Deimos: not in a cosmic zone.");
+                    break;
+                }
+
+                if (Navigator.NearHub())
+                {
+                    Dalamud.Chat.Print("Deimos: already at the hub.");
+                }
+                else if (Navigator.CastStellarReturn())
+                {
+                    Dalamud.Chat.Print("Deimos: casting Stellar Return.");
+                }
+                else if (Navigator.Available && Deimos is { } deimos)
+                {
+                    // return on cooldown: mount up and ride instead
+                    deimos.TaskManager.Enqueue(() => { Navigator.CastMountRoulette(); }, "MountUp");
+                    deimos.TaskManager.Enqueue(() => (bool?)Dalamud.Conditions[ConditionFlag.Mounted], 2500, "WaitMount");
+                    deimos.TaskManager.Enqueue(() => { Navigator.MoveTo(center); }, "RideToHub");
+                    Dalamud.Chat.Print("Deimos: Stellar Return unavailable, riding to the hub.");
+                }
+                else
+                {
+                    Dalamud.Chat.Print("Deimos: couldn't return (Stellar Return on cooldown and no vnavmesh).");
+                }
+                break;
+            }
             case "skipexpert" when cfg != null:
                 cfg.SkipExpertCrafts = parts.Length > 1
                     ? parts[1].ToLowerInvariant() is "on" or "true" or "1"
@@ -173,11 +209,10 @@ public partial class GatherBuddy
                     : $"Deimos enabled: {string.Join(", ", cfg.EnabledMissions)}");
                 break;
             case "":
-                if (Deimos is { Enabled: true }) Deimos.Disable();
-                else Deimos?.Enable();
+                Deimos?.ToggleUi();
                 break;
             default:
-                Dalamud.Chat.Print("Deimos: start | stop | add <ids> | remove <ids> | only <ids> | clear | mode standard|gold | skipexpert [on|off] | list");
+                Dalamud.Chat.Print("Deimos: (no args = window) | start | stop | add <ids> | remove <ids> | only <ids> | clear | mode standard|gold|leveling | skipexpert [on|off] | list");
                 break;
         }
     }

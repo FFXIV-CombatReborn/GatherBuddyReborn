@@ -10,5 +10,6 @@ public enum DeimosState
     ExecuteMission,
     Craft,
     TurnIn,
+    Maintenance,
     Abandon,
 }

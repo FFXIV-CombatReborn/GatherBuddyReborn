@@ -34,6 +34,8 @@ public enum MissionAttributes
     GreaterReachGather = 131072,
     GreaterReachChain = 262144,
     GreaterReachBoon = 524288,
+
+    Master = 1048576, // Auxesia tool-mastery tier (rank 6)
 }
 
 public enum CosmicWeather
@@ -63,4 +65,20 @@ internal static class CosmicJobs
 
     public static bool IsCrafter(uint job)  => Crafters.Contains(job);
     public static bool IsGatherer(uint job) => Gatherers.Contains(job);
+
+    public static string Name(uint job) => job switch
+    {
+        8  => "CRP",
+        9  => "BSM",
+        10 => "ARM",
+        11 => "GSM",
+        12 => "LTW",
+        13 => "WVR",
+        14 => "ALC",
+        15 => "CUL",
+        16 => "MIN",
+        17 => "BTN",
+        18 => "FSH",
+        _  => job.ToString(),
+    };
 }

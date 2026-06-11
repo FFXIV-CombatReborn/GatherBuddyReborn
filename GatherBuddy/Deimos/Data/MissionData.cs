@@ -204,6 +204,12 @@ public static class MissionData
         attributes |= (startTime != 0 || endTime != 0) ? MissionAttributes.ProvisionalTimed : MissionAttributes.None;
         attributes |= previousMissionId != 0 ? MissionAttributes.ProvisionalSequential : MissionAttributes.None;
 
+        const MissionAttributes provisionalMask = MissionAttributes.ProvisionalWeather
+                                                | MissionAttributes.ProvisionalTimed
+                                                | MissionAttributes.ProvisionalSequential;
+        if (rank == 6 && (attributes & provisionalMask) == MissionAttributes.None)
+            attributes |= MissionAttributes.Master;
+
         var tempActionId    = missionToDo.TemporaryAction.RowId;
         var tempActionCount = (uint)missionToDo.Unknown14;
 

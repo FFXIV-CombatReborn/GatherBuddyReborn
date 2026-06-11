@@ -1,5 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.Game.WKS;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.STD;
 
 namespace GatherBuddy.Deimos;
 
@@ -90,6 +94,58 @@ internal static unsafe class Wks
         var mm = MissionModule;
         if (mm != null)
             mm->AbandonMission();
+    }
+
+    // this sig can be dropped once Structs ref is udpated
+    private delegate bool GetMissionsDelegate(AgentWKSMission* agent, StdVector<AgentWKSMission.MissionEntry>* list);
+    private static GetMissionsDelegate? _getMasterMissions;
+    private static bool _masterSigTried;
+
+    public static bool TryGetMasterMissions(AgentWKSMission* agent, StdVector<AgentWKSMission.MissionEntry>* list)
+    {
+        if (!_masterSigTried)
+        {
+            _masterSigTried = true;
+            try
+            {
+                var ptr = Dalamud.SigScanner.ScanText("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 41 56 41 57 48 83 EC ?? 4C 8B F2 48 8B D9 E8 ?? ?? ?? ?? 48 8B 4B");
+                _getMasterMissions = Marshal.GetDelegateForFunctionPointer<GetMissionsDelegate>(ptr);
+            }
+            catch (Exception ex)
+            {
+                DeimosLog.Warning($"Mastery mission list unavailable (sig not found): {ex.Message}");
+            }
+        }
+
+        return _getMasterMissions != null && agent != null && _getMasterMissions(agent, list);
+    }
+
+    /// point the mission board at a job's tab without swapping gearsets (board lists follow the tab)
+    public static bool SetBoardJobTab(uint classJobId, byte categoryTab = 0)
+    {
+        var agent = FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentWKSMission.Instance();
+        if (agent == null || agent->Data == null)
+            return false;
+
+        byte jobIndex = 0;
+        var found = false;
+        for (byte i = 0; i <= 11; i++)
+        {
+            if (agent->JobIndexToClassJobId(i) != classJobId)
+                continue;
+            jobIndex = i;
+            found = true;
+            break;
+        }
+        if (!found)
+            return false;
+
+        agent->SelectedTab = categoryTab;
+        agent->Data->SelectedJobIndex = jobIndex;
+        agent->Data->UpdateFlags = 1;
+        // HasSavedTab is private; clear it so the game doesn't revert our tab next tick
+        *((byte*)agent + 0x35) = 0;
+        return true;
     }
 
     /// research XP types (1-6) the given job still needs (current analysis below what's needed)
