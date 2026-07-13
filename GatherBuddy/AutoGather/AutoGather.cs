@@ -202,8 +202,9 @@ namespace GatherBuddy.AutoGather
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
+        private static readonly TimeSpan    PauseRequestLifetime = TimeSpan.FromMinutes(10);
         private readonly object             _pauseRequestGate = new();
-        private readonly HashSet<string>    _pauseRequests = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, DateTime> _pauseRequests = new(StringComparer.Ordinal);
         private bool                        _pauseEffective;
         private bool?                       _waitingBeforePause;
 
@@ -215,7 +216,7 @@ namespace GatherBuddy.AutoGather
             lock (_pauseRequestGate)
             {
                 if (paused)
-                    _pauseRequests.Add(owner);
+                    _pauseRequests[owner] = DateTime.UtcNow.Add(PauseRequestLifetime);
                 else
                     _pauseRequests.Remove(owner);
             }
@@ -224,13 +225,26 @@ namespace GatherBuddy.AutoGather
         public bool IsPauseRequestEffective(string owner)
         {
             lock (_pauseRequestGate)
-                return !string.IsNullOrWhiteSpace(owner) && _pauseRequests.Contains(owner) && _pauseEffective;
+            {
+                PruneExpiredPauseRequests();
+                return !string.IsNullOrWhiteSpace(owner) && _pauseRequests.ContainsKey(owner) && _pauseEffective;
+            }
         }
 
         private string[] PauseRequestOwners()
         {
             lock (_pauseRequestGate)
-                return _pauseRequests.OrderBy(owner => owner, StringComparer.Ordinal).ToArray();
+            {
+                PruneExpiredPauseRequests();
+                return _pauseRequests.Keys.OrderBy(owner => owner, StringComparer.Ordinal).ToArray();
+            }
+        }
+
+        private void PruneExpiredPauseRequests()
+        {
+            var now = DateTime.UtcNow;
+            foreach (var owner in _pauseRequests.Where(request => request.Value <= now).Select(request => request.Key).ToArray())
+                _pauseRequests.Remove(owner);
         }
 
         private bool SetPauseEffective(bool effective)
