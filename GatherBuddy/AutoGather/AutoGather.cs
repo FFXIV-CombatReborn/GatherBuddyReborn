@@ -202,24 +202,47 @@ namespace GatherBuddy.AutoGather
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
+        private readonly object             _pauseRequestGate = new();
         private readonly HashSet<string>    _pauseRequests = new(StringComparer.Ordinal);
         private bool                        _pauseEffective;
+        private bool?                       _waitingBeforePause;
 
         public void SetPauseRequest(string owner, bool paused)
         {
             if (string.IsNullOrWhiteSpace(owner))
                 throw new ArgumentException("A pause-request owner is required.", nameof(owner));
 
-            if (paused)
-                _pauseRequests.Add(owner);
-            else
-                _pauseRequests.Remove(owner);
-            if (_pauseRequests.Count == 0)
-                _pauseEffective = false;
+            lock (_pauseRequestGate)
+            {
+                if (paused)
+                    _pauseRequests.Add(owner);
+                else
+                    _pauseRequests.Remove(owner);
+            }
         }
 
         public bool IsPauseRequestEffective(string owner)
-            => !string.IsNullOrWhiteSpace(owner) && _pauseRequests.Contains(owner) && _pauseEffective;
+        {
+            lock (_pauseRequestGate)
+                return !string.IsNullOrWhiteSpace(owner) && _pauseRequests.Contains(owner) && _pauseEffective;
+        }
+
+        private string[] PauseRequestOwners()
+        {
+            lock (_pauseRequestGate)
+                return _pauseRequests.OrderBy(owner => owner, StringComparer.Ordinal).ToArray();
+        }
+
+        private bool SetPauseEffective(bool effective)
+        {
+            lock (_pauseRequestGate)
+            {
+                if (_pauseEffective == effective)
+                    return false;
+                _pauseEffective = effective;
+                return true;
+            }
+        }
 
         public bool Waiting
         {
@@ -498,34 +521,33 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (_pauseRequests.Count > 0)
+            var pauseOwners = PauseRequestOwners();
+            if (pauseOwners.Length > 0)
             {
                 if (IsGathering)
                 {
-                    AutoStatus = $"Pausing for {string.Join(", ", _pauseRequests)} after the current gathering interaction...";
+                    AutoStatus = $"Pausing for {string.Join(", ", pauseOwners)} after the current gathering interaction...";
                     if (Player.Job == 18 && IsFishing)
                         QueueQuitFishingTasks();
-                    else
-                        CloseGatheringAddons();
-                    _pauseEffective = false;
+                    SetPauseEffective(false);
                     return;
                 }
 
                 StopNavigation();
-                if (!_pauseEffective)
+                if (SetPauseEffective(true))
                 {
+                    _waitingBeforePause = Waiting;
                     Waiting = true;
                     _plugin.Ipc.AutoGatherWaiting();
                 }
-                _pauseEffective = true;
-                AutoStatus = $"Paused for {string.Join(", ", _pauseRequests)}";
+                AutoStatus = $"Paused for {string.Join(", ", pauseOwners)}";
                 return;
             }
 
-            if (_pauseEffective)
+            if (SetPauseEffective(false))
             {
-                _pauseEffective = false;
-                Waiting = false;
+                Waiting = _waitingBeforePause ?? false;
+                _waitingBeforePause = null;
             }
 
             if (!_homeWorldWarning && !Functions.OnHomeWorld())
