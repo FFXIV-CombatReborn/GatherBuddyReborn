@@ -5,7 +5,7 @@ namespace GatherBuddy.Plugin;
 
 public sealed class GatherBuddyIpc : IDisposable
 {
-    public const int IpcVersion = 2;
+    public const int IpcVersion = 3;
 
     private readonly GatherBuddy _plugin;
 
@@ -42,6 +42,14 @@ public sealed class GatherBuddyIpc : IDisposable
     [EzIPC]
     public bool IsAutoGatherWaiting()
         => GatherBuddy.AutoGather.Waiting;
+
+    [EzIPC]
+    public void SetAutoGatherPauseRequest(string owner, bool paused)
+        => GatherBuddy.AutoGather.SetPauseRequest(owner, paused);
+
+    [EzIPC]
+    public bool IsAutoGatherPauseRequestEffective(string owner)
+        => GatherBuddy.AutoGather.IsPauseRequestEffective(owner);
 
     [EzIPCEvent]
     public Action AutoGatherWaiting;

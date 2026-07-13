@@ -202,6 +202,24 @@ namespace GatherBuddy.AutoGather
         public TaskManager                TaskManager { get; }
 
         private           bool             _enabled { get; set; } = false;
+        private readonly HashSet<string>    _pauseRequests = new(StringComparer.Ordinal);
+        private bool                        _pauseEffective;
+
+        public void SetPauseRequest(string owner, bool paused)
+        {
+            if (string.IsNullOrWhiteSpace(owner))
+                throw new ArgumentException("A pause-request owner is required.", nameof(owner));
+
+            if (paused)
+                _pauseRequests.Add(owner);
+            else
+                _pauseRequests.Remove(owner);
+            if (_pauseRequests.Count == 0)
+                _pauseEffective = false;
+        }
+
+        public bool IsPauseRequestEffective(string owner)
+            => !string.IsNullOrWhiteSpace(owner) && _pauseRequests.Contains(owner) && _pauseEffective;
 
         public bool Waiting
         {
@@ -478,6 +496,36 @@ namespace GatherBuddy.AutoGather
             {
                 //GatherBuddy.Log.Verbose("TaskManager has tasks, skipping DoAutoGather");
                 return;
+            }
+
+            if (_pauseRequests.Count > 0)
+            {
+                if (IsGathering)
+                {
+                    AutoStatus = $"Pausing for {string.Join(", ", _pauseRequests)} after the current gathering interaction...";
+                    if (Player.Job == 18 && IsFishing)
+                        QueueQuitFishingTasks();
+                    else
+                        CloseGatheringAddons();
+                    _pauseEffective = false;
+                    return;
+                }
+
+                StopNavigation();
+                if (!_pauseEffective)
+                {
+                    Waiting = true;
+                    _plugin.Ipc.AutoGatherWaiting();
+                }
+                _pauseEffective = true;
+                AutoStatus = $"Paused for {string.Join(", ", _pauseRequests)}";
+                return;
+            }
+
+            if (_pauseEffective)
+            {
+                _pauseEffective = false;
+                Waiting = false;
             }
 
             if (!_homeWorldWarning && !Functions.OnHomeWorld())
