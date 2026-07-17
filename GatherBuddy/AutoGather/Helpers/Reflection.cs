@@ -31,7 +31,19 @@ namespace GatherBuddy.AutoGather.Helpers
             public bool TouchArtisanAssembly
                 => ReflectionHelpers.TryGetDalamudPlugin("Artisan", out ArtisanAssemblyInstance);
 
-            public Dictionary<int, string> GetArtisanListNames()
+            private System.Collections.IList? GetArtisanCraftingLists(bool premade)
+            {
+#pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by callers' catch blocks
+                // User lists live in Config.NewCraftingLists, premade (quest-derived) lists in PremadeLists.PremadeCraftingLists.
+                // Both are List<NewCraftingList>; Artisan's own IPC treats them as peers.
+                var container = premade
+                    ? ArtisanAssemblyInstance.GetFoP("PremadeLists")
+                    : ArtisanAssemblyInstance.GetFoP("Config");
+                return (System.Collections.IList?)container?.GetFoP(premade ? "PremadeCraftingLists" : "NewCraftingLists");
+#pragma warning restore CS8600, CS8602, CS8604, CS8605
+            }
+
+            public Dictionary<int, string> GetArtisanListNames(bool premade = false)
             {
                 Dictionary<int, string> listNames = [];
                 try
@@ -39,7 +51,13 @@ namespace GatherBuddy.AutoGather.Helpers
                     if (TouchArtisanAssembly)
                     {
 #pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
-                        System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
+                        var artisanCraftingLists = GetArtisanCraftingLists(premade);
+                        if (artisanCraftingLists == null)
+                        {
+                            GatherBuddy.Log.Debug($"Could not resolve Artisan {(premade ? "premade" : "user")} crafting lists.");
+                            return listNames;
+                        }
+
                         foreach (var list in artisanCraftingLists)
                         {
                             var name = list.GetFoP("Name").ToString();
@@ -58,19 +76,19 @@ namespace GatherBuddy.AutoGather.Helpers
                 }
             }
 
-            public void StartArtisanImport(KeyValuePair<int, string> listKvp)
+            public void StartArtisanImport(KeyValuePair<int, string> listKvp, bool premade = false)
             {
-                Task.Run(() => ImportArtisanList(listKvp));
+                Task.Run(() => ImportArtisanList(listKvp, premade));
             }
 
-            private bool ImportArtisanList(KeyValuePair<int, string> listKvp)
+            private bool ImportArtisanList(KeyValuePair<int, string> listKvp, bool premade)
             {
                 try
                 {
 #pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
                     if (TouchArtisanAssembly)
                     {
-                        System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
+                        System.Collections.IList artisanCraftingLists = GetArtisanCraftingLists(premade);
                         var   artisanRootAssembly  = Assembly.GetAssembly(ArtisanAssemblyInstance!.GetType())!;
                         var   craftingListFunctionsType = artisanRootAssembly.GetType("Artisan.CraftingLists.CraftingListFunctions")!;
                         var listMaterialsMethodInfo = craftingListFunctionsType.GetMethod("ListMaterials", All);
@@ -85,7 +103,7 @@ namespace GatherBuddy.AutoGather.Helpers
 
                         AutoGatherList list = new AutoGatherList();
                         list.Name        = listKvp.Value;
-                        list.Description = "Imported from Artisan";
+                        list.Description = premade ? "Imported from Artisan (Premade)" : "Imported from Artisan";
                         foreach (var (itemId, quantity) in matList)
                         {
                             if (!Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var mappedItemId))

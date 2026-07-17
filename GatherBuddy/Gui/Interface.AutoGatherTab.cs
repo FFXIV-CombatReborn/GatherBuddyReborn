@@ -114,6 +114,7 @@ public partial class Interface
         public bool            EditDesc;
         public string          ItemFilter = string.Empty;
         public AutoGatherList? ItemFilterList;
+        public string          ArtisanImportFilter = string.Empty;
     }
 
     private readonly AutoGatherListsCache _autoGatherListsCache;
@@ -145,36 +146,65 @@ public partial class Interface
         if (GatherBuddy.AutoGather.ArtisanExporter.ArtisanAssemblyEnabled)
         {
             if (ImGuiUtil.DrawDisabledButton("Import From Artisan", Vector2.Zero,
-                    "Import your lists from Artisan into GBR\nBrings up a dropdown to select which list to import.\nA new list will be created in GBR when you click on the name of the list in the dropdown.",
+                    "Import your lists from Artisan into GBR\nBrings up a dropdown to select which list to import, from both your user lists and Artisan's premade lists.\nA new list will be created in GBR when you click on the name of the list in the dropdown.",
                     !GatherBuddy.AutoGather.ArtisanExporter.ArtisanAssemblyEnabled))
             {
+                _autoGatherListsCache.ArtisanImportFilter = string.Empty;
                 ImGui.OpenPopup($"artisanImport");
             }
 
             if (ImGui.BeginPopup($"artisanImport"))
             {
-                var lists = GatherBuddy.AutoGather.ArtisanExporter.GetArtisanListNames();
+                var filter = _autoGatherListsCache.ArtisanImportFilter;
+                List<KeyValuePair<int, string>> FilterLists(Dictionary<int, string> lists)
+                    => lists.Where(kvp => filter.Length == 0 || kvp.Value.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                var userLists    = FilterLists(GatherBuddy.AutoGather.ArtisanExporter.GetArtisanListNames());
+                var premadeLists = FilterLists(GatherBuddy.AutoGather.ArtisanExporter.GetArtisanListNames(true));
 
                 float rowHeight       = ImGui.GetTextLineHeightWithSpacing();
                 float childPaddingY   = ImGui.GetStyle().WindowPadding.Y * 2f;
-                float totalListHeight = lists.Count * rowHeight + childPaddingY;
-                float totalListWidth  = lists.Max(n => ImGui.CalcTextSize(n.Value).X) + 40;
+                // Two section headers with separators, plus a "None" row for each empty section.
+                int   rowCount        = Math.Max(userLists.Count, 1) + Math.Max(premadeLists.Count, 1) + 2;
+                float totalListHeight = rowCount * rowHeight + ImGui.GetStyle().ItemSpacing.Y * 2 + childPaddingY;
+                float totalListWidth  = userLists.Concat(premadeLists)
+                        .Select(n => ImGui.CalcTextSize(n.Value).X)
+                        .DefaultIfEmpty(ImGui.CalcTextSize("Premade Lists").X)
+                        .Max()
+                    + 40;
 
                 float maxHeight   = ImGui.GetIO().DisplaySize.Y * 0.4f;
                 float childHeight = Math.Min(totalListHeight, maxHeight);
 
-                if (ImGui.BeginChild("ArtisanListsChild", new Vector2(totalListWidth, childHeight), true))
+                ImGui.SetNextItemWidth(totalListWidth);
+                ImGui.InputTextWithHint("##artisanImportFilter", "Filter...", ref _autoGatherListsCache.ArtisanImportFilter, 128);
+
+                void DrawSection(string header, List<KeyValuePair<int, string>> lists, bool premade)
                 {
+                    ImGui.TextDisabled(header);
+                    ImGui.Separator();
+                    if (lists.Count == 0)
+                    {
+                        ImGui.TextDisabled("None");
+                        return;
+                    }
+
                     foreach (var kvp in lists)
                     {
-                        if (ImGui.Selectable($"{kvp.Value}##{kvp.Key}"))
+                        if (ImGui.Selectable($"{kvp.Value}##{(premade ? "premade" : "user")}{kvp.Key}"))
                         {
                             Communicator.Print($"Importing '{kvp.Value}' from Artisan...");
-                            GatherBuddy.AutoGather.ArtisanExporter.StartArtisanImport(kvp);
+                            GatherBuddy.AutoGather.ArtisanExporter.StartArtisanImport(kvp, premade);
                         }
 
                         ImGuiUtil.HoverTooltip($"{kvp.Value} ({kvp.Key})\n(Click to import to new auto-gather list)");
                     }
+                }
+
+                if (ImGui.BeginChild("ArtisanListsChild", new Vector2(totalListWidth, childHeight), true))
+                {
+                    DrawSection("User Lists",    userLists,    false);
+                    DrawSection("Premade Lists", premadeLists, true);
                 }
 
                 ImGui.EndChild();
