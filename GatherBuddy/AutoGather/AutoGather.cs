@@ -1328,7 +1328,93 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
             }
+            if (_fishDetectedPlayer)
+            {
+                _fishDetectedPlayer = false;
+                _processingFishingToast = true;
 
+                if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
+                {
+                    AutoHook.SetPluginState?.Invoke(false);
+                    AutoHook.SetAutoStartFishing?.Invoke(false);
+                }
+                
+                if (_consecutiveAmissCount == 1)
+                {
+                    GatherBuddy.Log.Warning($"[AutoGather] First amiss detection - relocating within spot...");
+                    var oldPosition = fishingSpotData.Position;
+
+                    const float MinRelocationDistance = 10.0f;
+                    var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(
+                        fish!.FishingSpot,
+                        oldPosition,
+                        MinRelocationDistance);
+
+                    if (!positionData.HasValue)
+                    {
+                        _processingFishingToast = false;
+                        Communicator.PrintError(
+                            $"No alternate position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue.");
+                        AbortAutoGather();
+                        return;
+                    }
+
+                    var newPos = positionData.Value.Position;
+                    var newRot = positionData.Value.Rotation;
+                    var dist = Vector3.Distance(newPos, oldPosition);
+
+                    GatherBuddy.Log.Information($"[AutoGather] Relocating within '{fish.FishingSpot.Name}' " +
+                                  $"from {oldPosition} to {newPos}, distance={dist}y");
+
+                    FishingSpotData[fish] = (newPos, newRot, DateTime.MaxValue);
+                    
+                    AutoStatus = "Fish detected! Relocating and waiting...";
+                    QueueQuitFishingTasks();
+                    
+                    TaskManager.DelayNext(30000);
+                    TaskManager.Enqueue(() => 
+                    {
+                        _processingFishingToast = false;
+                        GatherBuddy.Log.Information("[AutoGather] Wait complete, resuming fishing...");
+                        return true;
+                    });
+                }
+                else
+                {
+                    GatherBuddy.Log.Warning($"[AutoGather] Persistent amiss (count: {_consecutiveAmissCount}) - teleporting out of zone to clear state...");
+                    
+                    AutoStatus = "Persistent amiss! Teleporting out to clear...";
+                    QueueQuitFishingTasks();
+                    
+                    TaskManager.Enqueue(() => 
+                    {
+                        var wentHome = GoHome();
+                        if (wentHome)
+                        {
+                            GatherBuddy.Log.Information("[AutoGather] Teleported home. Waiting before returning to fishing spot...");
+                        }
+                        else
+                        {
+                            GatherBuddy.Log.Warning("[AutoGather] Could not teleport home (Lifestream not available?). Waiting at current location...");
+                        }
+                        return true;
+                    });
+                    
+                    TaskManager.DelayNext(10000);
+                    
+                    TaskManager.Enqueue(() => 
+                    {
+                        _consecutiveAmissCount = 0;
+                        _processingFishingToast = false;
+                        WentHome = false;
+                        GatherBuddy.Log.Information("[AutoGather] Amiss cleared by zone teleport. Returning to fishing spot...");
+                        AutoStatus = "Returning to fishing spot...";
+                        return true;
+                    });
+                }
+                
+                return;
+            }
             if (IsFishing)
             {
                 if (GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes > 0)
@@ -1381,95 +1467,7 @@ namespace GatherBuddy.AutoGather
                     
                     return;
                 }
-                
-                if (_fishDetectedPlayer)
-                {
-                    _fishDetectedPlayer = false;
-                    _processingFishingToast = true;
 
-                    if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
-                    {
-                        AutoHook.SetPluginState?.Invoke(false);
-                        AutoHook.SetAutoStartFishing?.Invoke(false);
-                    }
-                    
-                    if (_consecutiveAmissCount == 1)
-                    {
-                        GatherBuddy.Log.Warning($"[AutoGather] First amiss detection - relocating within spot...");
-                        var oldPosition = fishingSpotData.Position;
-
-                        const float MinRelocationDistance = 10.0f;
-                        var positionData = _plugin.FishRecorder.GetPositionForFishingSpot(
-                            fish!.FishingSpot,
-                            oldPosition,
-                            MinRelocationDistance);
-
-                        if (!positionData.HasValue)
-                        {
-                            _processingFishingToast = false;
-                            Communicator.PrintError(
-                                $"No alternate position data for fishing spot {fish.FishingSpot.Name}. Auto-Fishing cannot continue.");
-                            AbortAutoGather();
-                            return;
-                        }
-
-                        var newPos = positionData.Value.Position;
-                        var newRot = positionData.Value.Rotation;
-                        var dist = Vector3.Distance(newPos, oldPosition);
-
-                        GatherBuddy.Log.Information($"[AutoGather] Relocating within '{fish.FishingSpot.Name}' " +
-                                      $"from {oldPosition} to {newPos}, distance={dist}y");
-
-                        FishingSpotData[fish] = (newPos, newRot, DateTime.MaxValue);
-                        
-                        AutoStatus = "Fish detected! Relocating and waiting...";
-                        QueueQuitFishingTasks();
-                        
-                        TaskManager.DelayNext(30000);
-                        TaskManager.Enqueue(() => 
-                        {
-                            _processingFishingToast = false;
-                            GatherBuddy.Log.Information("[AutoGather] Wait complete, resuming fishing...");
-                            return true;
-                        });
-                    }
-                    else
-                    {
-                        GatherBuddy.Log.Warning($"[AutoGather] Persistent amiss (count: {_consecutiveAmissCount}) - teleporting out of zone to clear state...");
-                        
-                        AutoStatus = "Persistent amiss! Teleporting out to clear...";
-                        QueueQuitFishingTasks();
-                        
-                        TaskManager.Enqueue(() => 
-                        {
-                            var wentHome = GoHome();
-                            if (wentHome)
-                            {
-                                GatherBuddy.Log.Information("[AutoGather] Teleported home. Waiting before returning to fishing spot...");
-                            }
-                            else
-                            {
-                                GatherBuddy.Log.Warning("[AutoGather] Could not teleport home (Lifestream not available?). Waiting at current location...");
-                            }
-                            return true;
-                        });
-                        
-                        TaskManager.DelayNext(10000);
-                        
-                        TaskManager.Enqueue(() => 
-                        {
-                            _consecutiveAmissCount = 0;
-                            _processingFishingToast = false;
-                            WentHome = false;
-                            GatherBuddy.Log.Information("[AutoGather] Amiss cleared by zone teleport. Returning to fishing spot...");
-                            AutoStatus = "Returning to fishing spot...";
-                            return true;
-                        });
-                    }
-                    
-                    return;
-                }
-                
                 if (GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes > 0 && fishingSpotData.Expiration < DateTime.Now)
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Fishing spot timer expired ({GatherBuddy.Config.AutoGatherConfig.MaxFishingSpotMinutes} minutes), relocating...");
