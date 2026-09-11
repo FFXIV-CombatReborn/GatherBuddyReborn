@@ -434,6 +434,16 @@ public partial class AutoGatherListsManager
         return true;
     }
 
+    public bool RemoveCompletedItemsFromLists()
+    {
+        if (!RemoveCompletedItemsFromEnabledLists())
+            return false;
+
+        Save();
+        SetActiveItems();
+        return true;
+    }
+
     private bool RemoveCompletedItemsFromEnabledLists()
     {
         var removedAny = false;

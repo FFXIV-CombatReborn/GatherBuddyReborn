@@ -178,6 +178,11 @@ namespace GatherBuddy.AutoGather
         internal IEnumerable<GatherTarget> ItemsToGather
             => _activeItemList;
 
+        private IGatherable? _currentRequestedTarget;
+
+        public IGatherable? CurrentRequestedTarget
+            => Enabled ? _currentRequestedTarget : null;
+
         internal ReadOnlyDictionary<GatheringNode, TimeInterval> DebugVisitedTimedLocations
             => _activeItemList.DebugVisitedTimedLocations;
 
