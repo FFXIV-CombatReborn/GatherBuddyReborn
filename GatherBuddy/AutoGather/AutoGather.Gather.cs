@@ -134,7 +134,9 @@ namespace GatherBuddy.AutoGather
             {
                 // Since it's possible that we are not gathering the top item in the list,
                 // we need to remember what we are going to gather inside MasterpieceAddon
-                CurrentCollectableRotation = new CollectableRotation(MatchConfigPreset(slot.Item), slot.Item, _activeItemList.FirstOrDefault(x => x.Item == slot.Item).Quantity);
+                CurrentCollectableRotation = new CollectableRotation(MatchConfigPreset(slot.Item), slot.Item,
+                    _activeItemList.FirstOrDefault(x => x.Item == slot.Item).Quantity,
+                    _plugin.AutoGatherListsManager.UsesRetainerInventory(slot.Item));
             }
 
             EnqueueActionWithDelay(slot.Gather);

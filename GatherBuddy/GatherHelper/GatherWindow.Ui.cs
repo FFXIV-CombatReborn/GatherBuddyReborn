@@ -163,7 +163,7 @@ public class GatherWindow : Window
         if (GatherBuddy.Config.ShowGatherWindowOnlyAvailable && time.Start > GatherBuddy.Time.ServerTime)
             return;
 
-        var inventoryCount = item.GetTotalCount();
+        var inventoryCount = item.GetTotalCount(_plugin.AutoGatherListsManager.UsesRetainerInventory(item));
 
         if (quantity > 0 && inventoryCount >= quantity && GatherBuddy.Config.HideGatherWindowCompletedItems)
             return;
