@@ -365,7 +365,7 @@ public partial class Interface
 
             ImGui.SameLine();
             ImGui.Text("Inventory: ");
-            var invTotal = item.GetTotalCount();
+            var invTotal = item.GetTotalCount(list.UsesRetainerInventory);
             ImGui.SameLine(0f, ImGui.CalcTextSize($"0000 / ").X - ImGui.CalcTextSize($"{invTotal} / ").X);
             ImGui.Text($"{invTotal} / ");
             ImGui.SameLine(0, 3f);

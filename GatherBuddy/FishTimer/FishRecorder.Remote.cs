@@ -58,9 +58,32 @@ public partial class FishRecorder
         return (selectedRecord.Position, selectedRecord.RotationAngle);
     }
 
-    public (Vector3 Position, Angle Rotation)? GetPositionForFishingSpot(FishingSpot spot, Vector3 avoidPosition, float minDistance)
+    public (Vector3 Position, Angle Rotation)? GetPositionForFishingSpot(
+        FishingSpot spot,
+        IReadOnlyCollection<Vector3> excludedPositions,
+        Vector3 referencePosition)
     {
-        var allValidRecords = RemoteRecords.Union(Records).Where(r => r.FishingSpot == spot && r.PositionDataValid).ToList();
+        var allValidRecords = RemoteRecords.Union(Records)
+            .Where(r => r.FishingSpot == spot && r.PositionDataValid)
+            .Where(r => excludedPositions.All(p => !ArePositionsIdentical(p, r.Position)))
+            .ToList();
+        if (allValidRecords.Count == 0)
+            return null;
+
+        var selectedRecord = allValidRecords.MinBy(r => Vector3.DistanceSquared(r.Position, referencePosition))!;
+        return (selectedRecord.Position, selectedRecord.RotationAngle);
+    }
+
+    public (Vector3 Position, Angle Rotation)? GetPositionForFishingSpot(
+        FishingSpot spot,
+        Vector3 avoidPosition,
+        float minDistance,
+        IReadOnlyCollection<Vector3> excludedPositions)
+    {
+        var allValidRecords = RemoteRecords.Union(Records)
+            .Where(r => r.FishingSpot == spot && r.PositionDataValid)
+            .Where(r => excludedPositions.All(p => !ArePositionsIdentical(p, r.Position)))
+            .ToList();
         if (allValidRecords.Count == 0)
             return null;
 

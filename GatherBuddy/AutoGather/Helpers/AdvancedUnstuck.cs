@@ -210,7 +210,10 @@ namespace GatherBuddy.AutoGather.Movement
                 Stop();
             }
         }
-        
+
+        public void Cancel()
+            => Stop();
+
         private void Stop()
         {
             _movementController.Enabled = false;

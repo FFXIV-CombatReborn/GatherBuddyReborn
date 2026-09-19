@@ -37,18 +37,20 @@ namespace GatherBuddy.AutoGather
 
         private unsafe partial class CollectableRotation
         {
-            public CollectableRotation(ConfigPreset config, Gatherable item, uint quantity)
+            public CollectableRotation(ConfigPreset config, Gatherable item, uint quantity, bool useRetainerInventory)
             {
                 this.config = config;
                 shouldUseFullRotation = Player.Object?.CurrentGp >= config.CollectableActionsMinGP;
                 this.item = item;
                 this.quantity = quantity;
+                this.useRetainerInventory = useRetainerInventory;
             }
 
             private readonly bool shouldUseFullRotation = false;
             private readonly ConfigPreset config;
             private readonly Gatherable item;
             private readonly uint quantity;
+            private readonly bool useRetainerInventory;
 
             [GeneratedRegex(@"\d+")]
             private static partial Regex NumberRegex();
@@ -56,7 +58,7 @@ namespace GatherBuddy.AutoGather
             public Actions.BaseAction GetNextAction(GatheringMasterpieceReader masterpieceReader)
             {
                 var player = Player.Object ?? throw new InvalidOperationException("Player object is null");
-                var itemsLeft = (int)(quantity - item.GetTotalCount());
+                var itemsLeft = (int)(quantity - item.GetTotalCount(useRetainerInventory));
 
                 if (itemsLeft <= 0 && GatherBuddy.Config.AutoGatherConfig.AbandonNodes)
                     throw new NoGatherableItemsInNodeException();

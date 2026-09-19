@@ -405,7 +405,6 @@ public partial class AutoGatherListsManager
 
     public bool RemoveCompletedItemFromLists(IGatherable item)
     {
-        var totalCount = item.GetTotalCount();
         var removedAny = false;
         foreach (var list in _fileSystem.Select(kvp => kvp.Key))
         {
@@ -413,6 +412,7 @@ public partial class AutoGatherListsManager
                 continue;
             if (!list.EnabledItems.TryGetValue(item, out var itemEnabled) || !itemEnabled)
                 continue;
+            var totalCount = item.GetTotalCount(list.UsesRetainerInventory);
             if (!list.Quantities.TryGetValue(item, out var quantity) || totalCount < quantity)
                 continue;
 
@@ -427,6 +427,16 @@ public partial class AutoGatherListsManager
         }
 
         if (!removedAny)
+            return false;
+
+        Save();
+        SetActiveItems();
+        return true;
+    }
+
+    public bool RemoveCompletedItemsFromLists()
+    {
+        if (!RemoveCompletedItemsFromEnabledLists())
             return false;
 
         Save();
@@ -450,7 +460,7 @@ public partial class AutoGatherListsManager
                 if (!list.Quantities.TryGetValue(item, out var quantity))
                     continue;
 
-                var totalCount = item.GetTotalCount();
+                var totalCount = item.GetTotalCount(list.UsesRetainerInventory);
                 if (totalCount < quantity)
                     continue;
 
