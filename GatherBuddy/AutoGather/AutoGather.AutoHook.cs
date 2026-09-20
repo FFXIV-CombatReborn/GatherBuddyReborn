@@ -18,6 +18,7 @@ public partial class AutoGather
     private string? _currentAutoHookTargetPresetName;
     private bool _isCurrentPresetUserOwned;
     private bool _isUsingAutoHookGlobalPreset;
+    private bool? _autoHookPluginStateBeforeAutoGig;
 
     private void CleanupAutoHookIfNeeded(GatherTarget newTarget)
     {
@@ -66,11 +67,8 @@ public partial class AutoGather
                 AutoHook.SetPreset?.Invoke(AutoHookGlobalPresetSelectionSentinel);
             if (target.Fish.IsSpearFish)
             {
-                if (AutoHook.SetAutoGigState == null)
+                if (!EnableAutoGig())
                     return;
-
-                AutoHook.SetAutoGigState.Invoke(true);
-                _autoHookSetupComplete = true;
             }
             else
             {
@@ -225,15 +223,9 @@ public partial class AutoGather
             
             if (target.Fish.IsSpearFish)
             {
-                if (AutoHook.SetAutoGigState == null)
+                if (EnableAutoGig())
                 {
-                    GatherBuddy.Log.Error("[AutoGather] SetAutoGigState IPC is null!");
-                }
-                else
-                {
-                    AutoHook.SetAutoGigState.Invoke(true);
-                    _autoHookSetupComplete = true;
-                    GatherBuddy.Log.Information("[AutoGather] Called SetAutoGigState(true) via IPC");
+                    GatherBuddy.Log.Information("[AutoGather] AutoHook and AutoGig enabled for spearfishing");
                 }
             }
             else
@@ -258,6 +250,27 @@ public partial class AutoGather
         {
             GatherBuddy.Log.Error($"[AutoGather] Exception setting up AutoHook: {ex.Message}");
         }
+    }
+
+    private bool EnableAutoGig()
+    {
+        if (AutoHook.SetPluginState == null)
+        {
+            GatherBuddy.Log.Error("[AutoGather] SetPluginState IPC is null!");
+            return false;
+        }
+
+        if (AutoHook.SetAutoGigState == null)
+        {
+            GatherBuddy.Log.Error("[AutoGather] SetAutoGigState IPC is null!");
+            return false;
+        }
+
+        _autoHookPluginStateBeforeAutoGig ??= AutoHook.GetPluginState?.Invoke() ?? false;
+        AutoHook.SetPluginState.Invoke(true);
+        AutoHook.SetAutoGigState.Invoke(true);
+        _autoHookSetupComplete = true;
+        return true;
     }
 
     private void CleanupAutoHook()
@@ -300,16 +313,17 @@ public partial class AutoGather
                 }
             }
             
-            AutoHook.SetPluginState?.Invoke(false);
             AutoHook.SetAutoStartFishing?.Invoke(false);
             AutoHook.SetAutoGigState?.Invoke(false);
-            GatherBuddy.Log.Debug("[AutoGather] AutoHook/AutoGig disabled");
+            AutoHook.SetPluginState?.Invoke(_autoHookPluginStateBeforeAutoGig ?? false);
+            GatherBuddy.Log.Debug("[AutoGather] AutoHook/AutoGig cleanup complete");
             
             _currentAutoHookTarget = null;
             _currentAutoHookPresetName = null;
             _currentAutoHookTargetPresetName = null;
             _isCurrentPresetUserOwned = false;
             _isUsingAutoHookGlobalPreset = false;
+            _autoHookPluginStateBeforeAutoGig = null;
             _autoHookSetupComplete = false;
         }
         catch (Exception ex)

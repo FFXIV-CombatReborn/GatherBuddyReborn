@@ -760,7 +760,9 @@ namespace GatherBuddy.AutoGather
                         var targetFishId = _currentAutoHookTarget?.Fish?.ItemId ?? 0;
                         var now = DateTime.Now;
                         
-                        if (!_currentAutoHookTarget.HasValue || targetFishId != currentFishId)
+                        if (!_currentAutoHookTarget.HasValue
+                         || targetFishId != currentFishId
+                         || _currentAutoHookTarget.Value.FishingSpot?.Id != fish.FishingSpot?.Id)
                         {
                             SetupAutoHookForFishing(fish);
                             _lastAutoHookSetupTime = now;
@@ -1779,6 +1781,9 @@ namespace GatherBuddy.AutoGather
 
             if (Vector3.Distance(fishingSpotData.Position, Player.Position) < 1)
             {
+                if (IsPathing || IsPathGenerating)
+                    StopNavigation();
+
                 if (Dalamud.Conditions[ConditionFlag.Mounted])
                 {
                     if (!_fishingSpotDismountAttempts.TryGetValue(fishingSpotData.Position, out var firstAttempt))
@@ -1802,7 +1807,7 @@ namespace GatherBuddy.AutoGather
                 }
 
                 var playerAngle = new Angle(Player.Rotation);
-                if (playerAngle != fishingSpotData.Rotation)
+                if (!playerAngle.AlmostEqual(fishingSpotData.Rotation, 1.Degrees().Rad))
                 {
                     TaskManager.Enqueue(() => SetRotation(fishingSpotData.Rotation));
                     _fishingSpotArrivalTime.Remove(fish);
