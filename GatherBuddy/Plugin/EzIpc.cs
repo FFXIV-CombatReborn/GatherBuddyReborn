@@ -99,13 +99,43 @@ internal static class EzIPC
                 var returnType = method.ReturnType;
                 var isAction = returnType == typeof(void);
 
+                var parameterTypes = parameters.Select(p => p.ParameterType).ToArray();
+
                 if (isAction)
                 {
-                    RegisterActionProvider(fullName, method, instance, parameters.Length);
+                    switch (parameterTypes.Length)
+                    {
+                        case 0:
+                        case 1:
+                            RegisterActionProvider(fullName, method, instance, parameterTypes.Length);
+                            break;
+                        case 2:
+                        case 3:
+                            RegisterMultiActionProvider(fullName, method, instance, parameterTypes);
+                            break;
+                        default:
+                            GatherBuddy.Log.Error(
+                                $"Failed to register IPC provider {fullName}: {parameterTypes.Length} parameters are not supported by EzIPC");
+                            break;
+                    }
                 }
                 else
                 {
-                    RegisterFuncProvider(fullName, method, instance, parameters, returnType);
+                    switch (parameterTypes.Length)
+                    {
+                        case 0:
+                        case 1:
+                            RegisterFuncProvider(fullName, method, instance, parameters, returnType);
+                            break;
+                        case 2:
+                        case 3:
+                            RegisterMultiFuncProvider(fullName, method, instance, parameterTypes, returnType);
+                            break;
+                        default:
+                            GatherBuddy.Log.Error(
+                                $"Failed to register IPC provider {fullName}: {parameterTypes.Length} parameters are not supported by EzIPC");
+                            break;
+                    }
                 }
             }
             catch (Exception e)
@@ -113,6 +143,53 @@ internal static class EzIPC
                 GatherBuddy.Log.Error($"Failed to register IPC provider {fullName}: {e.Message}");
             }
         }
+    }
+
+    private static void RegisterMultiActionProvider(string name, MethodInfo method, object? instance, Type[] parameterTypes)
+    {
+        var providerType = typeof(ICallGateProvider<,>).MakeGenericType(
+            parameterTypes.Prepend(typeof(object)).ToArray());
+        var getProviderMethod = typeof(IDalamudPluginInterface)
+            .GetMethods()
+            .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == 2)
+            .MakeGenericMethod(parameterTypes.Prepend(typeof(object)).ToArray());
+        var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, [name]);
+
+        var actionType = parameterTypes.Length == 2
+            ? typeof(Action<,>).MakeGenericType(parameterTypes)
+            : typeof(Action<,,>).MakeGenericType(parameterTypes.Append(typeof(object)).ToArray());
+        var action = Delegate.CreateDelegate(actionType, instance, method);
+
+        providerType.GetMethod("RegisterAction")!.Invoke(provider, [action]);
+        DisposalActions.Add(() =>
+        {
+            if (provider is ICallGateProvider baseProvider)
+                baseProvider.UnregisterAction();
+        });
+    }
+
+    private static void RegisterMultiFuncProvider(string name, MethodInfo method, object? instance,
+        Type[] parameterTypes, Type returnType)
+    {
+        var allTypes = parameterTypes.Append(returnType).ToArray();
+        var providerType = typeof(ICallGateProvider<,>).MakeGenericType(allTypes);
+        var getProviderMethod = typeof(IDalamudPluginInterface)
+            .GetMethods()
+            .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == 2)
+            .MakeGenericMethod(allTypes);
+        var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, [name]);
+
+        var funcType = parameterTypes.Length == 2
+            ? typeof(Func<,,>).MakeGenericType(allTypes)
+            : typeof(Func<,,,>).MakeGenericType(allTypes);
+        var func = Delegate.CreateDelegate(funcType, instance, method);
+
+        providerType.GetMethod("RegisterFunc")!.Invoke(provider, [func]);
+        DisposalActions.Add(() =>
+        {
+            if (provider is ICallGateProvider baseProvider)
+                baseProvider.UnregisterFunc();
+        });
     }
 
     private static void InitSubscribers(object? instance, Type type, string prefix, BindingFlags flags)

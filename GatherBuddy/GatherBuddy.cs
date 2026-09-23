@@ -107,6 +107,7 @@ public partial class GatherBuddy : IDalamudPlugin
     internal Gui.CollectablesWindow?                 _collectablesWindow;
 
     internal readonly GatherBuddyIpc Ipc;
+    internal readonly CraftingIpc    CraftingIpc;
     //    internal readonly WotsitIpc Wotsit;
 
     public GatherBuddy(IDalamudPluginInterface pluginInterface)
@@ -230,6 +231,7 @@ public partial class GatherBuddy : IDalamudPlugin
             }
 
             Ipc = new GatherBuddyIpc(this);
+            CraftingIpc = new CraftingIpc(this);
             CheckForOGGB();
             //Wotsit = new WotsitIpc();
         }
