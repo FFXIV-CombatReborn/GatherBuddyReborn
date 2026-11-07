@@ -1,20 +1,19 @@
+using FFXIVClientStructs.FFXIV.Client.Game;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
 public sealed class CraftingListPlan
 {
-    public List<CraftingListItem> OriginalRecipes { get; } = new();
-    public List<CraftingListItem> Recipes { get; } = new();
-    public Dictionary<uint, int> Materials { get; } = new();
-    public Dictionary<uint, int> Precrafts { get; } = new();
-    public Dictionary<uint, IngredientQualityDemand> IngredientDemands { get; } = new();
-    public Dictionary<uint, int> RetainerConsumedCraftables { get; } = new();
+    public List<CraftingListItem> OriginalRecipes { get; } = [];
+    public List<CraftingListItem> Recipes { get; } = [];
+    public Dictionary<uint, int> Materials { get; } = [];
+    public Dictionary<uint, int> Precrafts { get; } = [];
+    public Dictionary<uint, IngredientQualityDemand> IngredientDemands { get; } = [];
+    public Dictionary<uint, int> RetainerConsumedCraftables { get; } = [];
 }
 
 public readonly record struct CraftingListPlannerOptions(
@@ -54,11 +53,15 @@ public static class CraftingListPlanner
             foreach (var item in GetOriginalRecipesInDependencyOrder())
             {
                 if (item.Options.Skipping || item.Quantity <= 0)
+                {
                     continue;
+                }
 
                 var recipe = RecipeManager.GetRecipe(item.RecipeId);
                 if (!recipe.HasValue)
+                {
                     continue;
+                }
 
                 PlanOriginalRecipe(item, recipe.Value);
             }
@@ -73,7 +76,9 @@ public static class CraftingListPlanner
             var visitingRecipeIds = new HashSet<uint>();
 
             foreach (var item in _list.Recipes)
+            {
                 VisitOriginalRecipe(item, processedRecipeIds, visitingRecipeIds, orderedRecipes);
+            }
 
             return orderedRecipes;
         }
@@ -85,10 +90,14 @@ public static class CraftingListPlanner
             List<CraftingListItem> orderedRecipes)
         {
             if (processedRecipeIds.Contains(item.RecipeId))
+            {
                 return;
+            }
 
             if (!visitingRecipeIds.Add(item.RecipeId))
+            {
                 return;
+            }
 
             var recipe = RecipeManager.GetRecipe(item.RecipeId);
             if (recipe.HasValue)
@@ -97,11 +106,15 @@ public static class CraftingListPlanner
                 {
                     var dependencyRecipe = RecipeManager.GetRecipeForItem(itemId);
                     if (!dependencyRecipe.HasValue)
+                    {
                         continue;
+                    }
 
                     var dependencyItem = _list.Recipes.FirstOrDefault(candidate => candidate.RecipeId == dependencyRecipe.Value.RowId);
                     if (dependencyItem != null)
+                    {
                         VisitOriginalRecipe(dependencyItem, processedRecipeIds, visitingRecipeIds, orderedRecipes);
+                    }
                 }
             }
 
@@ -131,11 +144,15 @@ public static class CraftingListPlanner
 
 
                 if (consumedRetainers > 0)
+                {
                     AddCount(_plan.RetainerConsumedCraftables, resultItemId, consumedRetainers);
+                }
             }
 
             if (remainingItemCount <= 0)
+            {
                 return;
+            }
 
             var craftCount = DivideRoundUp(remainingItemCount, (int)recipe.AmountResult);
             AddRecipe(_plan.OriginalRecipes, item.RecipeId, craftCount, true);
@@ -185,7 +202,9 @@ public static class CraftingListPlanner
             }
 
             if (remainingDemand.Total <= 0)
+            {
                 return;
+            }
 
             var craftCount = DivideRoundUp(remainingDemand.Total, (int)recipe.AmountResult);
             AddRecipe(_plan.Recipes, recipe.RowId, craftCount, false);
@@ -204,7 +223,9 @@ public static class CraftingListPlanner
             {
                 var overrideRecipe = RecipeManager.GetRecipe(overrideRecipeId);
                 if (overrideRecipe.HasValue)
+                {
                     return overrideRecipe;
+                }
             }
             return RecipeManager.GetRecipeForItem(itemId);
         }
@@ -222,7 +243,9 @@ public static class CraftingListPlanner
         private static void AddRecipe(List<CraftingListItem> target, uint recipeId, int craftCount, bool isOriginalRecipe)
         {
             if (craftCount <= 0)
+            {
                 return;
+            }
 
             var existing = target.FirstOrDefault(item => item.RecipeId == recipeId && item.IsOriginalRecipe == isOriginalRecipe);
             if (existing != null)
@@ -240,7 +263,9 @@ public static class CraftingListPlanner
         private static void AddCount(Dictionary<uint, int> target, uint itemId, int amount)
         {
             if (amount <= 0)
+            {
                 return;
+            }
 
             target[itemId] = target.GetValueOrDefault(itemId) + amount;
         }
@@ -248,7 +273,9 @@ public static class CraftingListPlanner
         private static void AddDemand(Dictionary<uint, IngredientQualityDemand> target, uint itemId, IngredientQualityDemand demand)
         {
             if (demand.Total <= 0)
+            {
                 return;
+            }
 
             target[itemId] = target.TryGetValue(itemId, out var existing)
                 ? existing.Add(demand)
@@ -262,9 +289,9 @@ public static class CraftingListPlanner
     private sealed class AvailabilityLedger
     {
         private readonly bool _useRetainers;
-        private readonly Dictionary<uint, PlannedAvailability> _plannedAvailable = new();
-        private readonly Dictionary<uint, (int NQ, int HQ)> _inventoryAvailable = new();
-        private readonly Dictionary<uint, (int NQ, int HQ)> _retainerAvailable = new();
+        private readonly Dictionary<uint, PlannedAvailability> _plannedAvailable = [];
+        private readonly Dictionary<uint, (int NQ, int HQ)> _inventoryAvailable = [];
+        private readonly Dictionary<uint, (int NQ, int HQ)> _retainerAvailable = [];
 
         public AvailabilityLedger(bool useRetainers)
         {
@@ -274,12 +301,16 @@ public static class CraftingListPlanner
         public int ConsumePlanned(uint itemId, int requested)
         {
             if (requested <= 0)
+            {
                 return 0;
+            }
 
             var available = _plannedAvailable.GetValueOrDefault(itemId);
             var consumed = Math.Min(requested, available.Total);
             if (consumed <= 0)
+            {
                 return 0;
+            }
 
             var remainingToConsume = consumed;
             var consumeUnknown = Math.Min(remainingToConsume, available.Unknown);
@@ -300,11 +331,15 @@ public static class CraftingListPlanner
         public IngredientQualityDemand ConsumePlanned(uint itemId, IngredientQualityDemand demand)
         {
             if (demand.Total <= 0)
+            {
                 return demand;
+            }
 
             var available = _plannedAvailable.GetValueOrDefault(itemId);
             if (available.Total <= 0)
+            {
                 return demand;
+            }
 
             var remaining = demand.ConsumeSplit(available.NQ, available.HQ, out var consumedNQ, out var consumedHQ);
             remaining = remaining.ConsumeUnknownQuality(available.Unknown, out var consumedUnknown);
@@ -331,7 +366,9 @@ public static class CraftingListPlanner
         public void AddPlanned(uint itemId, int amount, PlannedOutputQuality outputQuality = PlannedOutputQuality.Unknown)
         {
             if (amount <= 0)
+            {
                 return;
+            }
 
             var available = _plannedAvailable.GetValueOrDefault(itemId);
             _plannedAvailable[itemId] = outputQuality switch
@@ -354,7 +391,9 @@ public static class CraftingListPlanner
             Func<uint, (int NQ, int HQ)> valueFactory)
         {
             if (requested <= 0)
+            {
                 return 0;
+            }
 
             if (!ledger.TryGetValue(itemId, out var available))
             {
@@ -364,7 +403,9 @@ public static class CraftingListPlanner
 
             var totalAvailable = available.NQ + available.HQ;
             if (totalAvailable <= 0)
+            {
                 return 0;
+            }
 
             var consumed = Math.Min(requested, totalAvailable);
             var remainingNQ = available.NQ;
@@ -383,7 +424,9 @@ public static class CraftingListPlanner
             Func<uint, (int NQ, int HQ)> valueFactory)
         {
             if (demand.Total <= 0)
+            {
                 return demand;
+            }
 
             if (!ledger.TryGetValue(itemId, out var available))
             {
@@ -392,7 +435,9 @@ public static class CraftingListPlanner
             }
 
             if (available.NQ <= 0 && available.HQ <= 0)
+            {
                 return demand;
+            }
 
             var remaining = demand.ConsumeSplit(available.NQ, available.HQ, out var consumedNQ, out var consumedHQ);
             ledger[itemId] = (Math.Max(0, available.NQ - consumedNQ), Math.Max(0, available.HQ - consumedHQ));
@@ -405,7 +450,9 @@ public static class CraftingListPlanner
             {
                 var inventory = InventoryManager.Instance();
                 if (inventory == null)
+                {
                     return (0, 0);
+                }
 
                 return (
                     (int)inventory->GetInventoryItemCount(itemId, false, false, false),

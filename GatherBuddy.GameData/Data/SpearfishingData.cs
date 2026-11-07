@@ -12,10 +12,14 @@ public static class SpearfishingData
             {
                 var parentSpot = requiredFish.FishingSpots.FirstOrDefault(spot => spot.Spearfishing && !spot.IsShadowNode);
                 if (parentSpot == null)
+                {
                     continue;
+                }
 
                 foreach (var shadowSpot in fish.FishingSpots.Where(spot => spot.Spearfishing && spot.IsShadowNode && spot.ParentNode == null))
+                {
                     shadowSpot.ParentNode = parentSpot;
+                }
             }
         }
     }

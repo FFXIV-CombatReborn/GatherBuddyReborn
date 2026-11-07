@@ -1,15 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using ElliLib;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -20,7 +20,9 @@ public partial class VulcanWindow
     {
         ImGui.Spacing();
         if (DrawSearchInputWithInlineClear("##recipeSearch", "Search...", ref _recipeSearchText, 256))
+        {
             _filtersDirty = true;
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -35,15 +37,22 @@ public partial class VulcanWindow
         var regionWidth = ImGui.GetContentRegionAvail().X;
         var btnSide = (regionWidth - (columns - 1) * buttonPad) / columns;
         var iconSide = btnSide - framePad.X * 2;
-        if (iconSide < VulcanUiScaling.Scaled(16f)) iconSide = VulcanUiScaling.Scaled(16f);
-        if (iconSide > VulcanUiScaling.Scaled(26f)) { iconSide = VulcanUiScaling.Scaled(26f); btnSide = iconSide + framePad.X * 2; }
+        if (iconSide < VulcanUiScaling.Scaled(16f))
+        {
+            iconSide = VulcanUiScaling.Scaled(16f);
+        }
+
+        if (iconSide > VulcanUiScaling.Scaled(26f))
+        { iconSide = VulcanUiScaling.Scaled(26f); btnSide = iconSide + framePad.X * 2; }
         var iconSize = new Vector2(iconSide, iconSide);
         var selectedColor = new Vector4(0.25f, 0.50f, 0.85f, 1.00f);
 
         var isAllSelected = _selectedJobFilters.Count == 0;
         if (isAllSelected)
+        {
             ImGui.PushStyleColor(ImGuiCol.Button, selectedColor);
-        
+        }
+
         ImGui.PushID("jobAll");
         if (ImGui.Button("All", new Vector2(btnSide, btnSide)))
         {
@@ -51,10 +60,12 @@ public partial class VulcanWindow
             _filtersDirty = true;
         }
         ImGui.PopID();
-        
+
         if (isAllSelected)
+        {
             ImGui.PopStyleColor();
-        
+        }
+
         ImGui.SameLine(0, buttonPad);
 
         for (var i = 0; i < JobNames.Length; i++)
@@ -65,7 +76,9 @@ public partial class VulcanWindow
             var jobIconId = 62100 + classJobId;
 
             if (isSelected)
+            {
                 ImGui.PushStyleColor(ImGuiCol.Button, selectedColor);
+            }
 
             var wrap = Icons.DefaultStorage.TextureProvider
                 .GetFromGameIcon(new GameIconLookup(jobIconId))
@@ -74,9 +87,14 @@ public partial class VulcanWindow
             var clicked = false;
             ImGui.PushID($"job{i}");
             if (wrap != null)
+            {
                 clicked = ImGui.ImageButton(wrap.Handle, iconSize);
+            }
             else
+            {
                 clicked = ImGui.Button(JobNames[i], new Vector2(iconSize.X + VulcanUiScaling.Scaled(8f), iconSize.Y + VulcanUiScaling.Scaled(8f)));
+            }
+
             ImGui.PopID();
 
             if (ImGui.IsItemHovered())
@@ -89,17 +107,26 @@ public partial class VulcanWindow
             if (clicked)
             {
                 if (_selectedJobFilters.Contains(jobId))
+                {
                     _selectedJobFilters.Remove(jobId);
+                }
                 else
+                {
                     _selectedJobFilters.Add(jobId);
+                }
+
                 _filtersDirty = true;
             }
 
             if (isSelected)
+            {
                 ImGui.PopStyleColor();
+            }
 
             if ((i + 2) % columns != 0 && i < JobNames.Length - 1)
+            {
                 ImGui.SameLine(0, buttonPad);
+            }
         }
 
         ImGui.Spacing();
@@ -110,9 +137,15 @@ public partial class VulcanWindow
         ImGui.Spacing();
 
         if (ImGui.Checkbox("Item Equip Level", ref _filterByEquipLevel))
+        {
             _filtersDirty = true;
+        }
+
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Filter and sort by item equip level instead of craft level");
+        }
+
         ImGui.Spacing();
 
         var sliderWidth = VulcanUiScaling.Scaled(150f);
@@ -159,8 +192,10 @@ public partial class VulcanWindow
             _filtersDirty = true;
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Only show recipes from the level-based crafting log lists.");
-        
+        }
+
         if (ImGui.Checkbox("Hide Crafted", ref _hideCrafted))
         {
             _filtersDirty = true;
@@ -168,46 +203,68 @@ public partial class VulcanWindow
         if (ImGui.Checkbox("Housing", ref _filterBrowserHousingRecipes))
         {
             if (_filterBrowserHousingRecipes)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Only show recipes whose result item is in the housing item category range.");
+        }
 
         if (ImGui.Checkbox("Dyes", ref _filterBrowserDyeRecipes))
         {
             if (_filterBrowserDyeRecipes)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Only show recipes whose result item is a dye.");
+        }
 
         if (ImGui.Checkbox("Collectables", ref _filterBrowserCollectables))
         {
             if (_filterBrowserCollectables)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Master Recipes", ref _filterBrowserMasterRecipes))
         {
             if (_filterBrowserMasterRecipes)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Expert Recipes", ref _filterBrowserExpertRecipes))
         {
             if (_filterBrowserExpertRecipes)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
 
         if (ImGui.Checkbox("Quest Recipes", ref _filterBrowserQuestRecipes))
         {
             if (_filterBrowserQuestRecipes)
+            {
                 _filterBrowserLevelingOnly = false;
+            }
+
             _filtersDirty = true;
         }
 
@@ -259,10 +316,9 @@ public partial class VulcanWindow
 
             var filteredLists = string.IsNullOrWhiteSpace(_bulkAddFilteredListSearch)
                 ? GatherBuddy.CraftingListManager.Lists.OrderBy(list => list.Name, StringComparer.OrdinalIgnoreCase).ToList()
-                : GatherBuddy.CraftingListManager.Lists
+                : [.. GatherBuddy.CraftingListManager.Lists
                     .Where(list => list.Name.Contains(_bulkAddFilteredListSearch, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(list => list.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                    .OrderBy(list => list.Name, StringComparer.OrdinalIgnoreCase)];
 
             var rowH = ImGui.GetTextLineHeightWithSpacing();
             var popupHeight = filteredLists.Count > 0 ? Math.Min(filteredLists.Count * rowH, VulcanUiScaling.Scaled(180f)) : rowH;
@@ -295,7 +351,9 @@ public partial class VulcanWindow
             foreach (var recipe in _filteredRecipes)
             {
                 if (recipe.IsCrafted)
+                {
                     continue;
+                }
 
                 list.Recipes.Add(new CraftingListItem(recipe.Recipe.RowId, 1));
                 addedCount++;
@@ -303,7 +361,9 @@ public partial class VulcanWindow
         }
 
         if (addedCount == 0)
+        {
             return;
+        }
 
         GatherBuddy.CraftingListManager.SaveList(list);
         RefreshOpenCraftingList(list.ID);
@@ -323,7 +383,7 @@ public partial class VulcanWindow
         var sortControlsWidth = VulcanUiScaling.Scaled(180f);
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1), $"  {_filteredRecipes.Count} recipes");
         ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), ImGui.GetContentRegionMax().X - sortControlsWidth));
-        
+
         var sortLabel = _sortColumn switch
         {
             SortColumn.Level => _filterByEquipLevel ? "Equip Lv" : "Level",
@@ -331,42 +391,52 @@ public partial class VulcanWindow
             _ => "Sort"
         };
         var sortIcon = _sortDirection == SortDirection.Ascending ? FontAwesomeIcon.ArrowUp : FontAwesomeIcon.ArrowDown;
-        
+
         ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "Sort:");
         ImGui.SameLine();
-        
+
         if (ImGui.Button($"{sortLabel}##sortBtn", new Vector2(VulcanUiScaling.Scaled(90f), 0)))
         {
             ImGui.OpenPopup("##sortMenu");
         }
-        
+
         ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
         using (ImRaii.PushFont(UiBuilder.IconFont))
         {
             ImGui.Text(sortIcon.ToIconString());
         }
-        
+
         if (ImGui.BeginPopup("##sortMenu"))
         {
             if (ImGui.MenuItem("Level", "", _sortColumn == SortColumn.Level))
             {
                 if (_sortColumn == SortColumn.Level)
+                {
                     _sortDirection = _sortDirection == SortDirection.Ascending ? SortDirection.Descending : SortDirection.Ascending;
+                }
                 else
+                {
                     _sortColumn = SortColumn.Level;
+                }
+
                 _filtersDirty = true;
             }
             if (ImGui.MenuItem("Crafted", "", _sortColumn == SortColumn.Crafted))
             {
                 if (_sortColumn == SortColumn.Crafted)
+                {
                     _sortDirection = _sortDirection == SortDirection.Ascending ? SortDirection.Descending : SortDirection.Ascending;
+                }
                 else
+                {
                     _sortColumn = SortColumn.Crafted;
+                }
+
                 _filtersDirty = true;
             }
             ImGui.EndPopup();
         }
-        
+
         ImGui.Separator();
 
         var iconSm = VulcanUiScaling.Scaled(28f, 28f);
@@ -396,10 +466,14 @@ public partial class VulcanWindow
             var rowStartY = ImGui.GetCursorPosY();
 
             if (recipe.Icon.TryGetWrap(out var wrap, out _))
+            {
                 ImGui.Image(wrap.Handle, iconSm);
+            }
             else
+            {
                 ImGui.Dummy(iconSm);
-            
+            }
+
             ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
 
             var cursorY = ImGui.GetCursorPosY();
@@ -421,7 +495,9 @@ public partial class VulcanWindow
             if (GatherBuddy.Config.ShowRecipeBrowserTooltips && ImGui.IsItemHovered())
             {
                 if (TryGetRecipesTooltipAnchor(out var tooltipAnchorMin, out var tooltipAnchorMax, out var tooltipExpandRight))
+                {
                     GatherBuddy.NativeItemTooltipBridge?.RequestItemTooltip(recipe.Recipe.ItemResult.RowId, tooltipAnchorMin, tooltipAnchorMax, tooltipExpandRight);
+                }
             }
 
             if (_pendingRecipeScrollId == recipe.Recipe.RowId)
@@ -433,7 +509,7 @@ public partial class VulcanWindow
             var isPopupOpen = GatherBuddy.ControllerSupport != null
                 ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"RecipeContextMenu##{recipe.Recipe.RowId}", Dalamud.GamepadState)
                 : ImGui.BeginPopupContextItem($"RecipeContextMenu##{recipe.Recipe.RowId}");
-            
+
             if (isPopupOpen)
             {
                 if (ImGui.MenuItem("Show Recipe Properties (Debug)"))
@@ -461,16 +537,16 @@ public partial class VulcanWindow
                     GatherBuddy.Log.Information($"Item.Rarity: {resultItem.Rarity}");
                     LogRecipeNotebookDivisionInfo(recipe.Recipe);
                 }
-                
+
                 ImGui.Separator();
 
                 var lists = GatherBuddy.CraftingListManager.Lists;
 
                 if (ImGui.IsWindowAppearing())
                 {
-                    _contextMenuListSearch      = string.Empty;
-                    _contextMenuAddQuantity     = 1;
-                    _contextMenuNewListName     = string.Empty;
+                    _contextMenuListSearch = string.Empty;
+                    _contextMenuAddQuantity = 1;
+                    _contextMenuNewListName = string.Empty;
                     _contextMenuNewListEphemeral = false;
                 }
 
@@ -479,7 +555,10 @@ public partial class VulcanWindow
                 var createEnter = ImGui.InputTextWithHint("##NewListName", "List name...", ref _contextMenuNewListName, 128, ImGuiInputTextFlags.EnterReturnsTrue);
                 ImGui.Checkbox("Ephemeral##ctxNewListEphemeral", ref _contextMenuNewListEphemeral);
                 if (ImGui.IsItemHovered())
+                {
                     ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+                }
+
                 if ((ImGui.Button("Create & Add", new Vector2(-1, 0)) || createEnter) && !string.IsNullOrWhiteSpace(_contextMenuNewListName))
                 {
                     var newList = GatherBuddy.CraftingListManager.CreateNewList(_contextMenuNewListName.Trim(), _contextMenuNewListEphemeral);
@@ -509,7 +588,11 @@ public partial class VulcanWindow
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(100f));
                     ImGui.InputInt("##ContextQty", ref _contextMenuAddQuantity, 1);
-                    if (_contextMenuAddQuantity < 1) _contextMenuAddQuantity = 1;
+                    if (_contextMenuAddQuantity < 1)
+                    {
+                        _contextMenuAddQuantity = 1;
+                    }
+
                     ImGui.SetNextItemWidth(-1);
                     ImGui.InputTextWithHint("##ContextListSearch", "Search lists...", ref _contextMenuListSearch, 128);
                     var childPaddingY = ImGui.GetStyle().WindowPadding.Y * 2f;
@@ -517,7 +600,10 @@ public partial class VulcanWindow
                     var singleH = Math.Min(singleContentH + childPaddingY, VulcanUiScaling.Scaled(150f) + childPaddingY);
                     ImGui.BeginChild("##SingleAddScroll", new Vector2(0, singleH), true);
                     if (filteredLists.Count == 0)
+                    {
                         ImGui.TextDisabled("No matches");
+                    }
+
                     foreach (var list in filteredLists)
                     {
                         if (ImGui.MenuItem(list.Name))
@@ -529,7 +615,7 @@ public partial class VulcanWindow
                             GatherBuddy.Log.Information($"Added {recipe.Name} x{_contextMenuAddQuantity} to crafting list '{list.Name}'");
                             Communicator.Print($"Added {recipe.Name} x{_contextMenuAddQuantity} to '{list.Name}'.");
                             _contextMenuLastAddedList = list.Name;
-                            _contextMenuLastAddedAt   = DateTime.Now;
+                            _contextMenuLastAddedAt = DateTime.Now;
                         }
                     }
                     ImGui.EndChild();
@@ -559,7 +645,7 @@ public partial class VulcanWindow
 
             ImGui.SetCursorPosX(contentMaxX - rightGroupWidth);
             ImGui.SetCursorPosY(rowStartY + (iconSm.Y - ImGui.GetTextLineHeight()) / 2);
-            
+
             using (ImRaii.PushFont(UiBuilder.IconFont))
             {
                 if (recipe.IsCrafted)
@@ -571,17 +657,19 @@ public partial class VulcanWindow
                     ImGui.TextColored(new Vector4(0.5f, 0.0f, 0.0f, 1), FontAwesomeIcon.Times.ToIconString());
                 }
             }
-            
+
             ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
             ImGui.SetCursorPosY(rowStartY + (iconSm.Y - jobIconSm.Y) / 2);
-            
+
             var jobIconId = 62100 + CraftTypeToClassJobId[recipe.Recipe.CraftType.RowId];
             var jobWrap = Icons.DefaultStorage.TextureProvider
                 .GetFromGameIcon(new GameIconLookup(jobIconId))
                 .GetWrapOrDefault();
             if (jobWrap != null)
+            {
                 ImGui.Image(jobWrap.Handle, jobIconSm);
-            
+            }
+
             ImGui.SameLine(0, VulcanUiScaling.Scaled(2f));
             ImGui.SetCursorPosY(rowStartY + (iconSm.Y - ImGui.GetTextLineHeight()) / 2);
             ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1), _filterByEquipLevel ? $"{recipe.ItemEquipLevel}" : $"{recipe.Level}");
@@ -616,15 +704,19 @@ public partial class VulcanWindow
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var headerIconSize = VulcanUiScaling.Scaled(48f);
         if (recipe.Icon.TryGetWrap(out var wrap, out _))
+        {
             ImGui.Image(wrap.Handle, new Vector2(headerIconSize, headerIconSize));
+        }
         else
+        {
             ImGui.Dummy(new Vector2(headerIconSize, headerIconSize));
-        
+        }
+
         ImGui.SameLine(0, detailInset);
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (headerIconSize - ImGui.GetTextLineHeight()) / 2);
         ImGui.TextColored(new Vector4(1.0f, 0.9f, 0.6f, 1.0f), recipe.Name);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
-        
+
         var r = recipe.Recipe;
         if (r.SecretRecipeBook.RowId > 0)
         {
@@ -658,9 +750,9 @@ public partial class VulcanWindow
         var classIconSize = VulcanUiScaling.Scaled(24f);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var classLineY = ImGui.GetCursorPosY();
-        var classMidY  = classLineY + (classIconSize - ImGui.GetTextLineHeight()) / 2;
-        var jobIconId  = 62100 + CraftTypeToClassJobId[r.CraftType.RowId];
-        var jobWrap    = Icons.DefaultStorage.TextureProvider
+        var classMidY = classLineY + (classIconSize - ImGui.GetTextLineHeight()) / 2;
+        var jobIconId = 62100 + CraftTypeToClassJobId[r.CraftType.RowId];
+        var jobWrap = Icons.DefaultStorage.TextureProvider
             .GetFromGameIcon(new GameIconLookup(jobIconId))
             .GetWrapOrDefault();
         ImGui.SetCursorPosY(classMidY);
@@ -668,7 +760,10 @@ public partial class VulcanWindow
         ImGui.SameLine();
         ImGui.SetCursorPosY(classLineY);
         if (jobWrap != null)
+        {
             ImGui.Image(jobWrap.Handle, new Vector2(classIconSize, classIconSize));
+        }
+
         ImGui.SameLine(0, VulcanUiScaling.Scaled(2f));
         ImGui.SetCursorPosY(classMidY);
         ImGui.TextColored(new Vector4(0.8f, 0.9f, 1.0f, 1.0f), recipe.JobAbbreviation);
@@ -688,16 +783,21 @@ public partial class VulcanWindow
         ImGui.Spacing();
         var lt = r.RecipeLevelTable.Value;
         var difficulty = (int)(lt.Difficulty * r.DifficultyFactor / 100);
-        var qualityMax  = (int)(lt.Quality    * r.QualityFactor    / 100);
-        var durability  = (int)(lt.Durability  * r.DurabilityFactor  / 100);
+        var qualityMax = (int)(lt.Quality * r.QualityFactor / 100);
+        var durability = (int)(lt.Durability * r.DurabilityFactor / 100);
         var statLabelColor = new Vector4(0.6f, 0.6f, 0.6f, 1.0f);
         var statValueColor = new Vector4(0.8f, 0.9f, 1.0f, 1.0f);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
-        ImGui.TextColored(statLabelColor, "Difficulty:"); ImGui.SameLine(0, detailLabelGap);
-        ImGui.TextColored(statValueColor, $"{difficulty}"); ImGui.SameLine(0, detailSectionGap);
-        ImGui.TextColored(statLabelColor, "Durability:"); ImGui.SameLine(0, detailLabelGap);
-        ImGui.TextColored(statValueColor, $"{durability}"); ImGui.SameLine(0, detailSectionGap);
-        ImGui.TextColored(statLabelColor, "Max Quality:"); ImGui.SameLine(0, detailLabelGap);
+        ImGui.TextColored(statLabelColor, "Difficulty:");
+        ImGui.SameLine(0, detailLabelGap);
+        ImGui.TextColored(statValueColor, $"{difficulty}");
+        ImGui.SameLine(0, detailSectionGap);
+        ImGui.TextColored(statLabelColor, "Durability:");
+        ImGui.SameLine(0, detailLabelGap);
+        ImGui.TextColored(statValueColor, $"{durability}");
+        ImGui.SameLine(0, detailSectionGap);
+        ImGui.TextColored(statLabelColor, "Max Quality:");
+        ImGui.SameLine(0, detailLabelGap);
         ImGui.TextColored(statValueColor, $"{qualityMax}");
 
         ImGui.Spacing();
@@ -713,16 +813,26 @@ public partial class VulcanWindow
         var craftable = directIngredients.Count > 0 ? int.MaxValue : 0;
         foreach (var (ingId, ingAmt) in directIngredients)
         {
-            if (ingAmt <= 0) continue;
+            if (ingAmt <= 0)
+            {
+                continue;
+            }
+
             var (ingNq, ingHq) = GetInventoryCountSplit(ingId);
             craftable = Math.Min(craftable, (ingNq + ingHq) / ingAmt);
         }
-        if (craftable == int.MaxValue) craftable = 0;
+        if (craftable == int.MaxValue)
+        {
+            craftable = 0;
+        }
 
         foreach (var (itemId, needed) in directIngredients)
         {
             if (itemSheet == null || !itemSheet.TryGetRow(itemId, out var item))
+            {
                 continue;
+            }
+
             DrawIngredientRow(itemId, needed, item, showRetainer);
         }
 
@@ -730,10 +840,12 @@ public partial class VulcanWindow
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var (resultNq, resultHq) = GetInventoryCountSplit(r.ItemResult.RowId);
         var bagTotal = resultNq + resultHq;
-        ImGui.TextColored(statLabelColor, "Craftable:"); ImGui.SameLine(0, detailLabelGap);
+        ImGui.TextColored(statLabelColor, "Craftable:");
+        ImGui.SameLine(0, detailLabelGap);
         ImGui.TextColored(craftable > 0 ? statValueColor : new Vector4(1f, 0.4f, 0.4f, 1f), $"{craftable}");
         ImGui.SameLine(0, detailSectionGap);
-        ImGui.TextColored(statLabelColor, "In Bag:"); ImGui.SameLine(0, detailLabelGap);
+        ImGui.TextColored(statLabelColor, "In Bag:");
+        ImGui.SameLine(0, detailLabelGap);
         ImGui.TextColored(bagTotal > 0 ? statValueColor : new Vector4(0.5f, 0.5f, 0.5f, 1f),
             resultHq > 0 ? $"{resultNq}+{resultHq}hq" : $"{resultNq}");
 
@@ -747,7 +859,10 @@ public partial class VulcanWindow
         foreach (var (itemId, needed) in resolvedIngredients.OrderBy(x => x.Key))
         {
             if (itemSheet == null || !itemSheet.TryGetRow(itemId, out var item))
+            {
                 continue;
+            }
+
             DrawIngredientRow(itemId, needed, item, showRetainer);
         }
 
@@ -762,7 +877,7 @@ public partial class VulcanWindow
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
             ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1.0f), "Configured Settings:");
             ImGui.Spacing();
-            
+
             if (itemSheet != null)
             {
                 if (settings.FoodItemId.HasValue && itemSheet.TryGetRow(settings.FoodItemId.Value, out var food))
@@ -803,7 +918,10 @@ public partial class VulcanWindow
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(24f));
             ImGui.TextColored(GetRaphaelAssessmentColor(raphaelAssessment), raphaelAssessment.Summary);
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(raphaelAssessment.Details);
+            }
+
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(24f));
             ImGui.PushTextWrapPos(0f);
             ImGui.TextColored(new Vector4(0.65f, 0.65f, 0.65f, 1.0f), raphaelAssessment.Details);
@@ -813,7 +931,9 @@ public partial class VulcanWindow
                 ImGui.Spacing();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(24f));
                 if (ImGui.Button("Queue Raphael Validation", new Vector2(0f, footerButtonHeight)))
+                {
                     RaphaelAssessmentService.TryQueueWarmupForRecipe(recipe.Recipe.RowId, settings);
+                }
             }
             ImGui.Spacing();
         }
@@ -826,18 +946,29 @@ public partial class VulcanWindow
         ImGui.SameLine();
         ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(100f));
         ImGui.InputInt("##browserQty", ref _browserCraftQuantity, 1);
-        if (_browserCraftQuantity < 1) _browserCraftQuantity = 1;
+        if (_browserCraftQuantity < 1)
+        {
+            _browserCraftQuantity = 1;
+        }
 
         ImGui.SameLine();
         var allaganEnabled = AllaganTools.Enabled;
         if (!allaganEnabled)
+        {
             _browserRetainerRestock = false;
+        }
+
         using (ImRaii.Disabled(!allaganEnabled))
+        {
             ImGui.Checkbox("Restock from Retainers##browserRestock", ref _browserRetainerRestock);
+        }
+
         if (ImGui.IsItemHovered(allaganEnabled ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+        {
             ImGui.SetTooltip(allaganEnabled
                 ? "Automatically withdraw missing materials from your retainers before crafting."
                 : "AllaganTools (InventoryTools) plugin is required.");
+        }
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var topRowButtonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
@@ -854,7 +985,10 @@ public partial class VulcanWindow
         }
         ImGui.SameLine();
         if (ImGui.Button("Settings", new Vector2(topRowButtonWidth, footerButtonHeight)))
+        {
             _craftSettingsPopup.Open(recipe.Recipe.RowId, recipe.Name);
+        }
+
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + detailInset);
         var canQuickSynth = recipe.Recipe.CanQuickSynth;
         var qsTooltip = artisanLoaded
@@ -899,20 +1033,24 @@ public partial class VulcanWindow
     {
         var detailInset = VulcanUiScaling.Scaled(12f);
         var colWidth = VulcanUiScaling.Scaled(40f);
-        var currentX    = ImGui.GetCursorPosX();
-        var headerY     = ImGui.GetCursorPosY();
+        var currentX = ImGui.GetCursorPosX();
+        var headerY = ImGui.GetCursorPosY();
         var contentMaxX = ImGui.GetContentRegionMax().X;
         var valueAreaStart = GetIngredientValueAreaStart(currentX, contentMaxX, showRetainer);
-        var nqColStart  = valueAreaStart;
-        var hqColStart  = valueAreaStart + colWidth;
-        var titleStartX   = currentX + detailInset;
+        var nqColStart = valueAreaStart;
+        var hqColStart = valueAreaStart + colWidth;
+        var titleStartX = currentX + detailInset;
         var titleMaxWidth = valueAreaStart - titleStartX - VulcanUiScaling.Scaled(8f);
         title = TruncateTextToWidth(title, titleMaxWidth);
         ImGui.SetCursorPosX(titleStartX);
         if (title.Length > 0)
+        {
             DrawClippedText(title, titleMaxWidth, new Vector4(0.7f, 0.9f, 1.0f, 1.0f));
+        }
         else
+        {
             ImGui.Dummy(new Vector2(0f, ImGui.GetTextLineHeight()));
+        }
 
         var colHeaderColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
 
@@ -946,16 +1084,16 @@ public partial class VulcanWindow
         var iconSize = VulcanUiScaling.Scaled(24f);
         var xnIconGap = VulcanUiScaling.Scaled(4f);
         var iconNameGap = VulcanUiScaling.Scaled(6f);
-        var currentX    = ImGui.GetCursorPosX();
-        var rowStartX   = currentX + detailInset;
-        var rowY        = ImGui.GetCursorPosY();
-        var textY       = rowY + (iconSize - ImGui.GetTextLineHeight()) / 2;
+        var currentX = ImGui.GetCursorPosX();
+        var rowStartX = currentX + detailInset;
+        var rowY = ImGui.GetCursorPosY();
+        var textY = rowY + (iconSize - ImGui.GetTextLineHeight()) / 2;
         var contentMaxX = ImGui.GetContentRegionMax().X;
         var valueAreaStart = GetIngredientValueAreaStart(currentX, contentMaxX, showRetainer);
-        var nqColStart  = valueAreaStart;
-        var hqColStart  = valueAreaStart + colWidth;
+        var nqColStart = valueAreaStart;
+        var hqColStart = valueAreaStart + colWidth;
 
-        var xnText  = $"\u00d7{needed}";
+        var xnText = $"\u00d7{needed}";
         var xnTextW = ImGui.CalcTextSize(xnText).X;
         ImGui.SetCursorPosX(rowStartX + (xnWidth - xnTextW) / 2);
         ImGui.SetCursorPosY(textY);
@@ -966,20 +1104,26 @@ public partial class VulcanWindow
         ImGui.SetCursorPosY(rowY);
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(item.Icon));
         if (icon.TryGetWrap(out var ingWrap, out _))
+        {
             ImGui.Image(ingWrap.Handle, new Vector2(iconSize, iconSize));
+        }
         else
+        {
             ImGui.Dummy(new Vector2(iconSize, iconSize));
+        }
 
-        var nameStartX   = iconX + iconSize + iconNameGap;
+        var nameStartX = iconX + iconSize + iconNameGap;
         var nameMaxWidth = valueAreaStart - nameStartX - VulcanUiScaling.Scaled(6f);
         ImGui.SetCursorPosX(nameStartX);
         ImGui.SetCursorPosY(textY);
         var name = TruncateTextToWidth(item.Name.ExtractText(), nameMaxWidth);
         if (name.Length > 0)
+        {
             DrawClippedText(name, nameMaxWidth, new Vector4(0.85f, 0.85f, 0.85f, 1.0f));
+        }
 
         var (nq, hq) = GetInventoryCountSplit(itemId);
-        var total     = nq + hq;
+        var total = nq + hq;
         var haveColor = total >= needed ? new Vector4(0.3f, 1.0f, 0.3f, 1.0f) : new Vector4(1.0f, 0.5f, 0.5f, 1.0f);
 
         var nqStr = nq > 9999 ? "9999+" : $"{nq}";
@@ -995,8 +1139,8 @@ public partial class VulcanWindow
         if (showRetainer)
         {
             var retColStart = valueAreaStart + colWidth * 2;
-            var retCount    = GetRetainerItemCount(itemId);
-            var retStr      = retCount > 9999 ? "9999+" : $"{retCount}";
+            var retCount = GetRetainerItemCount(itemId);
+            var retStr = retCount > 9999 ? "9999+" : $"{retCount}";
             ImGui.SetCursorPosX(retColStart + (colWidth - ImGui.CalcTextSize(retStr).X) / 2);
             ImGui.SetCursorPosY(textY);
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1.0f), retStr);
@@ -1008,18 +1152,26 @@ public partial class VulcanWindow
     private static string TruncateTextToWidth(string text, float maxWidth)
     {
         if (string.IsNullOrEmpty(text) || maxWidth <= 0f)
+        {
             return string.Empty;
+        }
 
         var ellipsis = "...";
         var ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
         if (maxWidth <= ellipsisWidth)
+        {
             return string.Empty;
+        }
 
         if (ImGui.CalcTextSize(text).X <= maxWidth)
+        {
             return text;
+        }
 
         while (text.Length > 0 && ImGui.CalcTextSize(text + ellipsis).X > maxWidth)
+        {
             text = text[..^1];
+        }
 
         return text.Length == 0 ? string.Empty : text + ellipsis;
     }
@@ -1027,7 +1179,9 @@ public partial class VulcanWindow
     private static void DrawClippedText(string text, float maxWidth, Vector4 color)
     {
         if (string.IsNullOrEmpty(text) || maxWidth <= 0f)
+        {
             return;
+        }
 
         var clipMin = ImGui.GetCursorScreenPos();
         var clipMax = new Vector2(clipMin.X + maxWidth, clipMin.Y + ImGui.GetTextLineHeight());
@@ -1058,9 +1212,13 @@ public partial class VulcanWindow
         try
         {
             var inventory = InventoryManager.Instance();
-            if (inventory == null) return (0, 0);
+            if (inventory == null)
+            {
+                return (0, 0);
+            }
+
             var nq = (int)inventory->GetInventoryItemCount(itemId, false, false, false);
-            var hq = (int)inventory->GetInventoryItemCount(itemId, true,  false, false);
+            var hq = (int)inventory->GetInventoryItemCount(itemId, true, false, false);
             return (nq, hq);
         }
         catch { return (0, 0); }
@@ -1069,12 +1227,16 @@ public partial class VulcanWindow
     private static int GetRetainerItemCount(uint itemId)
     {
         if (!AllaganTools.Enabled)
+        {
             return 0;
+        }
 
         var now = DateTime.Now;
         if (RetainerIngredientRefreshTimes.TryGetValue(itemId, out var lastRefresh)
          && (now - lastRefresh).TotalSeconds < RetainerIngredientRefreshIntervalSeconds)
+        {
             return CachedRetainerIngredientCounts.GetValueOrDefault(itemId, 0);
+        }
 
         var count = RetainerItemQuery.GetTotalCount(itemId);
         CachedRetainerIngredientCounts[itemId] = count;

@@ -1,18 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using GatherBuddy.Automation;
-using GatherBuddy.AutoGather.Collectables.Data;
 using GatherBuddy.Config;
 using GatherBuddy.Helpers;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.AutoGather.Collectables;
 
-enum CollectableState
+internal enum CollectableState
 {
     Idle,
     CheckingInventory,
@@ -157,7 +155,9 @@ public unsafe class CollectableManager : IDisposable
     public void Stop()
     {
         if (!IsRunning && _state == CollectableState.Idle)
+        {
             return;
+        }
 
         GatherBuddy.Log.Information("[CollectableManager] Stopping collectables run");
         CleanupCurrentRun(stopActivePurchaseList: true);
@@ -167,7 +167,9 @@ public unsafe class CollectableManager : IDisposable
     public void ClearStatus()
     {
         if (!IsRunning)
+        {
             StatusText = "Idle";
+        }
     }
 
     private void OnUpdate(IFramework framework)
@@ -175,7 +177,9 @@ public unsafe class CollectableManager : IDisposable
         try
         {
             if (!IsRunning)
+            {
                 return;
+            }
 
             switch (_state)
             {
@@ -292,7 +296,9 @@ public unsafe class CollectableManager : IDisposable
         }
 
         if (!GatherBuddy.VendorNavigator.IsReadyToPurchase)
+        {
             return;
+        }
 
         _stateStartTime = DateTime.UtcNow;
         _lastAction = DateTime.MinValue;
@@ -317,8 +323,10 @@ public unsafe class CollectableManager : IDisposable
             return;
         }
 
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         if (VendorInteractionHelper.TryClickTalk())
         {
@@ -344,14 +352,18 @@ public unsafe class CollectableManager : IDisposable
             return;
         }
 
-        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromSeconds(15))
+        if (DateTime.UtcNow - _stateStartTime > TimeSpan.FromSeconds(15))
+        {
             Fail($"Timed out opening {_turnInVendor.Name}'s collectables menu.");
+        }
     }
 
     private void SelectJob()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         if (_turnInQueue.Count == 0)
         {
@@ -374,8 +386,10 @@ public unsafe class CollectableManager : IDisposable
 
     private void SelectItem()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         var next = _turnInQueue.Peek();
         if (_currentItemId != next.ItemId)
@@ -392,8 +406,10 @@ public unsafe class CollectableManager : IDisposable
 
     private void SubmitItem()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         var next = _turnInQueue.Peek();
         StatusText = $"Turning in {next.ItemName}.";
@@ -432,14 +448,18 @@ public unsafe class CollectableManager : IDisposable
             return;
         }
 
-        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromMilliseconds(500))
+        if (DateTime.UtcNow - _stateStartTime > TimeSpan.FromMilliseconds(500))
+        {
             _state = CollectableState.WaitingForSubmit;
+        }
     }
 
     private void WaitForSubmit()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         if (_turnInQueue.Count == 0)
         {
@@ -450,7 +470,9 @@ public unsafe class CollectableManager : IDisposable
         var current = _turnInQueue.Dequeue();
         var remainingCount = current.Count - 1;
         if (remainingCount > 0)
+        {
             _turnInQueue = new Queue<CollectableTurnInItem>(new[] { current with { Count = remainingCount } }.Concat(_turnInQueue));
+        }
 
         _purchaseAttemptedForOvercap = false;
         _lastOvercapPurchaseHitScripReserveLimit = false;
@@ -462,8 +484,10 @@ public unsafe class CollectableManager : IDisposable
 
     private void CheckForMore()
     {
-        if ((DateTime.UtcNow - _lastAction) < _actionDelay)
+        if (DateTime.UtcNow - _lastAction < _actionDelay)
+        {
             return;
+        }
 
         if (_turnInQueue.Count > 0)
         {
@@ -499,19 +523,24 @@ public unsafe class CollectableManager : IDisposable
             _stateStartTime = DateTime.UtcNow;
             _lastAction = DateTime.MinValue;
             if (!string.IsNullOrWhiteSpace(nextStatus))
+            {
                 StatusText = nextStatus;
+            }
+
             _state = nextState;
             return;
         }
 
-        if ((DateTime.UtcNow - _lastAction) >= _actionDelay)
+        if (DateTime.UtcNow - _lastAction >= _actionDelay)
         {
             _windowHandler.CloseWindow();
             _lastAction = DateTime.UtcNow;
         }
 
-        if ((DateTime.UtcNow - _stateStartTime) > TimeSpan.FromSeconds(10))
+        if (DateTime.UtcNow - _stateStartTime > TimeSpan.FromSeconds(10))
+        {
             Fail("Timed out closing the collectables turn-in window.");
+        }
     }
 
     private void StartPurchaseList()
@@ -522,9 +551,14 @@ public unsafe class CollectableManager : IDisposable
             if (_pendingPurchaseListIds.Count == 0)
             {
                 if (_overcapInterrupted)
+                {
                     DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but no collectables purchase list is configured.");
+                }
                 else
+                {
                     BeginCompletionFlow();
+                }
+
                 return;
             }
 
@@ -535,15 +569,22 @@ public unsafe class CollectableManager : IDisposable
         if (purchaseListId == Guid.Empty)
         {
             if (_overcapInterrupted)
+            {
                 DisableAutoTurnInAndFail("Scrip cap reached while turning in collectables, but no collectables purchase list is configured.");
+            }
             else
+            {
                 BeginCompletionFlow();
+            }
+
             return;
         }
 
         var startResult = GatherBuddy.VendorBuyListManager.Start(purchaseListId, GetPurchaseConstraints());
         if (!string.IsNullOrWhiteSpace(GatherBuddy.VendorBuyListManager.StatusText))
+        {
             StatusText = GatherBuddy.VendorBuyListManager.StatusText;
+        }
 
         switch (startResult)
         {
@@ -551,7 +592,9 @@ public unsafe class CollectableManager : IDisposable
             case VendorBuyListManager.StartResult.AlreadyRunning:
             case VendorBuyListManager.StartResult.WaitingForPreviousInteraction:
                 if (_overcapInterrupted)
+                {
                     _purchaseAttemptedForOvercap = true;
+                }
 
                 if (GatherBuddy.VendorBuyListManager.IsBusy)
                 {
@@ -587,7 +630,9 @@ public unsafe class CollectableManager : IDisposable
                 return;
             case VendorBuyListManager.StartResult.NoList:
                 if (_overcapInterrupted)
+                {
                     DisableAutoTurnInAndFail("The configured collectables purchase list is unavailable.");
+                }
                 else
                 {
                     _activePurchaseListId = null;
@@ -600,10 +645,14 @@ public unsafe class CollectableManager : IDisposable
     private void WaitForPurchaseList()
     {
         if (!string.IsNullOrWhiteSpace(GatherBuddy.VendorBuyListManager.StatusText))
+        {
             StatusText = GatherBuddy.VendorBuyListManager.StatusText;
+        }
 
         if (GatherBuddy.VendorBuyListManager.IsBusy)
+        {
             return;
+        }
 
         HandlePurchaseListCompletion();
     }
@@ -630,12 +679,16 @@ public unsafe class CollectableManager : IDisposable
         if (!_homeReturnStarted)
         {
             if (Lifestream.Enabled && Lifestream.IsBusy())
+            {
                 return;
+            }
 
             if (!HomeNavigationHelper.TryStartReturnHome(out var error))
             {
                 if (!string.IsNullOrWhiteSpace(error))
+                {
                     GatherBuddy.Log.Warning($"[CollectableManager] {error}");
+                }
 
                 _completionMessage = string.IsNullOrWhiteSpace(error)
                     ? "Collectables turn-in complete."
@@ -651,7 +704,9 @@ public unsafe class CollectableManager : IDisposable
         }
 
         if (!HomeNavigationHelper.IsReturnComplete())
+        {
             return;
+        }
 
         _completionMessage = "Collectables turn-in complete.";
         _state = CollectableState.Completed;
@@ -712,7 +767,9 @@ public unsafe class CollectableManager : IDisposable
         }
 
         if (shouldSave)
+        {
             _config.Save();
+        }
 
         Communicator.PrintError($"[GatherBuddyReborn] {hardFailMessage}");
         Fail(hardFailMessage);
@@ -741,10 +798,14 @@ public unsafe class CollectableManager : IDisposable
     {
         _framework.Update -= OnUpdate;
         if (_turnInVendor != null)
+        {
             VendorInteractionHelper.ResetShopSelectionState(_turnInVendor);
+        }
 
         if (_windowHandler.IsReady)
+        {
             _windowHandler.CloseWindow();
+        }
 
         if (stopActivePurchaseList
          && _activePurchaseListId.HasValue
@@ -796,9 +857,13 @@ public unsafe class CollectableManager : IDisposable
         foreach (var item in items)
         {
             if (IsGatheringCollectable(item))
+            {
                 _runContainsGatheringCollectables = true;
+            }
             else
+            {
                 _runContainsCraftingCollectables = true;
+            }
         }
     }
 
@@ -806,7 +871,9 @@ public unsafe class CollectableManager : IDisposable
     {
         _pendingPurchaseListIds.Clear();
         foreach (var purchaseListId in GetConfiguredPurchaseListIds(_overcapInterrupted))
+        {
             _pendingPurchaseListIds.Enqueue(purchaseListId);
+        }
     }
 
     private List<Guid> GetConfiguredPurchaseListIds(bool prioritizeCurrentTurnInType)
@@ -829,10 +896,15 @@ public unsafe class CollectableManager : IDisposable
                 }
 
                 if (_runContainsGatheringCollectables)
+                {
                     AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.GatheringPurchaseListId);
+                }
 
                 if (_runContainsCraftingCollectables)
+                {
                     AddPurchaseListIdIfConfigured(purchaseListIds, _config.CollectableConfig.CraftingPurchaseListId);
+                }
+
                 break;
         }
 
@@ -857,7 +929,9 @@ public unsafe class CollectableManager : IDisposable
     {
         purchaseListId = Guid.Empty;
         if (_turnInQueue.Count == 0)
+        {
             return false;
+        }
 
         var currentTurnInItem = _turnInQueue.Peek();
         purchaseListId = IsGatheringCollectable(currentTurnInItem)
@@ -869,7 +943,9 @@ public unsafe class CollectableManager : IDisposable
     private static void AddPurchaseListIdIfConfigured(ICollection<Guid> purchaseListIds, Guid purchaseListId)
     {
         if (purchaseListId != Guid.Empty && !purchaseListIds.Contains(purchaseListId))
+        {
             purchaseListIds.Add(purchaseListId);
+        }
     }
 
     private static bool IsGatheringCollectable(CollectableTurnInItem item)

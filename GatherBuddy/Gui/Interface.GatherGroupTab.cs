@@ -1,22 +1,22 @@
-using System;
-using System.Collections.Generic;
-using GatherBuddy.Interfaces;
-using GatherBuddy.Time;
-using ElliLib;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
+using ElliLib;
+using ElliLib.Widgets;
 using GatherBuddy.Alarms;
+using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.GatherGroup;
 using GatherBuddy.GatherHelper;
-using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using ElliLib.Widgets;
+using GatherBuddy.Time;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -25,14 +25,14 @@ public partial class Interface
 {
     private class GatherGroupDragDropData
     {
-        public TimedGroup     Group;
+        public TimedGroup Group;
         public TimedGroupNode Node;
-        public int            NodeIdx;
+        public int NodeIdx;
 
         public GatherGroupDragDropData(TimedGroup group, TimedGroupNode node, int idx)
         {
-            Group   = group;
-            Node    = node;
+            Group = group;
+            Node = node;
             NodeIdx = idx;
         }
     }
@@ -59,7 +59,9 @@ public partial class Interface
             protected override bool OnDelete(int idx)
             {
                 if (Items.Count <= idx || idx < 0)
+                {
                     return false;
+                }
 
                 _manager.Groups.RemoveAt(idx);
                 _manager.Save();
@@ -72,7 +74,9 @@ public partial class Interface
             protected override bool OnClipboardImport(string name, string data)
             {
                 if (!TimedGroup.Config.FromBase64(data, out var cfgGroup))
+                {
                     return false;
+                }
 
                 TimedGroup.FromConfig(cfgGroup, out var group);
                 group.Name = name;
@@ -82,7 +86,9 @@ public partial class Interface
             protected override bool OnDuplicate(string name, int idx)
             {
                 if (Items.Count <= idx || idx < 0)
+                {
                     return false;
+                }
 
                 var group = _manager.Groups.Values[idx].Clone(name);
                 return _manager.AddGroup(name, group);
@@ -91,7 +97,9 @@ public partial class Interface
             protected override void OnDrop(object? data, int idx)
             {
                 if (Items.Count <= idx || idx < 0 || data is not GatherGroupDragDropData d)
+                {
                     return;
+                }
 
                 var group = Items[idx];
 
@@ -107,13 +115,12 @@ public partial class Interface
             }
         }
 
-        public static readonly IGatherable[] AllGatherables = GatherBuddy
+        public static readonly IGatherable[] AllGatherables = [.. GatherBuddy
             .GameData
             .Gatherables.Values
             .Concat(GatherBuddy.GameData.Fishes.Values.Cast<IGatherable>())
             .Where(g => g.Locations.Count != 0)
-            .OrderBy(g => g.Name[GatherBuddy.Language])
-            .ToArray();
+            .OrderBy(g => g.Name[GatherBuddy.Language])];
 
         public readonly ClippedSelectableCombo<IGatherable> GatherableSelector =
             new("AllGatherables", string.Empty, 250, AllGatherables, g => g.Name[GatherBuddy.Language]);
@@ -122,13 +129,13 @@ public partial class Interface
 
         public bool NameEdit;
         public bool DescriptionEdit;
-        public int  AnnotationEditIdx = -1;
+        public int AnnotationEditIdx = -1;
 
         public readonly string DefaultGroupTooltip;
-        public          int    NewItemIdx = 0;
+        public int NewItemIdx = 0;
 
-        private          bool        _itemPerMinuteDirty = true;
-        private readonly List<short> _itemPerMinute      = new(24);
+        private bool _itemPerMinuteDirty = true;
+        private readonly List<short> _itemPerMinute = [with(24)];
 
         public void SetDirty()
             => _itemPerMinuteDirty = true;
@@ -136,7 +143,9 @@ public partial class Interface
         public List<short> UpdateItemPerMinute(TimedGroup group)
         {
             if (!_itemPerMinuteDirty && group.Nodes.Count + 1 == _itemPerMinute.Count)
+            {
                 return _itemPerMinute;
+            }
 
             _itemPerMinute.Clear();
             _itemPerMinute.AddRange(Enumerable.Repeat((short)0, group.Nodes.Count + 1));
@@ -172,13 +181,13 @@ public partial class Interface
 
     private void DrawTimeInput(string label, float width, int value, Action<int> setter)
     {
-        var       hour   = value / RealTime.MinutesPerHour;
-        var       minute = value % RealTime.MinutesPerHour;
-        using var group  = ImRaii.Group();
-        using var id     = ImRaii.PushId(label);
+        var hour = value / RealTime.MinutesPerHour;
+        var minute = value % RealTime.MinutesPerHour;
+        using var group = ImRaii.Group();
+        using var id = ImRaii.PushId(label);
         ImGui.SetNextItemWidth(width);
-        using var style  = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, Vector2.One * 2 * ImGuiHelpers.GlobalScale);
-        var       change = ImGui.DragInt("##hour", ref hour, 0.05f, 0, RealTime.HoursPerDay - 1, "%02d", ImGuiSliderFlags.AlwaysClamp);
+        using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, Vector2.One * 2 * ImGuiHelpers.GlobalScale);
+        var change = ImGui.DragInt("##hour", ref hour, 0.05f, 0, RealTime.HoursPerDay - 1, "%02d", ImGuiSliderFlags.AlwaysClamp);
         ImGui.SameLine();
         ImGui.Text(":");
         ImGui.SameLine();
@@ -190,13 +199,15 @@ public partial class Interface
         {
             var newValue = Math.Clamp(hour * RealTime.MinutesPerHour + minute, 0, RealTime.MinutesPerDay - 1);
             if (newValue != value)
+            {
                 setter(newValue);
+            }
         }
     }
 
     private void DrawTimeInput(int fromValue, int toValue, Action<int, int> setter)
     {
-        var       width = 20 * ImGuiHelpers.GlobalScale;
+        var width = 20 * ImGuiHelpers.GlobalScale;
         using var group = ImRaii.Group();
 
         ImGui.Text(" from ");
@@ -213,11 +224,16 @@ public partial class Interface
     private static void DrawLocationTooltip(ILocation? loc)
     {
         if (loc == null || !ImGui.IsItemHovered())
+        {
             return;
+        }
 
         var tt = $"{string.Join("\n", loc.Gatherables.Select(g => g.Name[GatherBuddy.Language]))}";
         if (loc is GatheringNode g)
+        {
             tt = $"{loc.Territory.Name}\n{loc.GatheringType}\n{g.Times.PrintHours()}\n{tt}";
+        }
+
         ImGui.SetTooltip(tt);
     }
 
@@ -225,28 +241,34 @@ public partial class Interface
     {
         if (DrawLocationInput(node.Item, node.PreferLocation, out var newLoc)
          && _plugin.GatherGroupManager.ChangeGroupNodeLocation(group, nodeIdx, newLoc))
+        {
             _plugin.GatherGroupManager.Save();
+        }
     }
 
     private void DrawGatherGroupNode(TimedGroup group, ref int idx, int minutes)
     {
-        var       node           = group.Nodes[idx];
-        using var id             = ImRaii.PushId(idx);
-        var       i              = idx;
-        var       annotationEdit = _gatherGroupCache.AnnotationEditIdx;
+        var node = group.Nodes[idx];
+        using var id = ImRaii.PushId(idx);
+        var i = idx;
+        var annotationEdit = _gatherGroupCache.AnnotationEditIdx;
         ImGui.TableNextColumn();
         if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Trash.ToIconString(), IconButtonSize, "Delete this item.", false, true))
+        {
             if (_plugin.GatherGroupManager.ChangeGroupNode(group, i, null, null, null, null, true))
             {
                 --idx;
                 _plugin.GatherGroupManager.Save();
                 _gatherGroupCache.SetDirty();
             }
+        }
 
         ImGui.TableNextColumn();
         if (_gatherGroupCache.GatherableSelector.Draw(node.Item.Name[GatherBuddy.Language], out var newIdx)
          && _plugin.GatherGroupManager.ChangeGroupNode(group, i, GatherGroupCache.AllGatherables[newIdx], null, null, null, false))
+        {
             _plugin.GatherGroupManager.Save();
+        }
 
         _gatherGroupCache.Selector.CreateDropSource(new GatherGroupDragDropData(group, node, i), node.Item.Name[GatherBuddy.Language]);
 
@@ -268,8 +290,9 @@ public partial class Interface
         ImGuiUtil.DrawTextButton($"{length} minutes", Vector2.Zero,
             minutes < length ? ColorId.WarningBg.Value() : ImGui.GetColorU32(ImGuiCol.FrameBg));
         if (minutes < length)
+        {
             HoverTooltip($"{length - minutes} minutes are overwritten by overlap with earlier items.");
-
+        }
 
         ImGui.TableNextColumn();
         var annotation = node.Annotation;
@@ -292,17 +315,24 @@ public partial class Interface
             ImGui.SetNextItemWidth(400 * ImGuiHelpers.GlobalScale);
             if (ImGui.InputTextWithHint("##annotation", "Annotation...", ref annotation, 256, ImGuiInputTextFlags.EnterReturnsTrue)
              && _plugin.GatherGroupManager.ChangeGroupNode(group, i, null, null, null, annotation, false))
+            {
                 _plugin.GatherGroupManager.Save();
+            }
+
             if (annotationEdit == _gatherGroupCache.AnnotationEditIdx && !ImGui.IsItemActive())
+            {
                 _gatherGroupCache.AnnotationEditIdx = -1;
+            }
         }
     }
 
     private static void DrawMissingTimesHint(bool missingTimes)
     {
         if (missingTimes)
+        {
             ImGuiUtil.DrawTextButton("Not all minutes have a corresponding item.", new Vector2(-ImGui.GetStyle().WindowPadding.X, 0),
                 ColorId.WarningBg.Value());
+        }
     }
 
     private void DrawGatherGroupNodeTable(TimedGroup group)
@@ -312,10 +342,14 @@ public partial class Interface
 
         using var table = ImRaii.Table("##nodes", 6, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.ScrollX);
         if (!table)
+        {
             return;
+        }
 
         for (var i = 0; i < group.Nodes.Count; ++i)
+        {
             DrawGatherGroupNode(group, ref i, times[i + 1]);
+        }
 
         var idx = _gatherGroupCache.NewItemIdx;
         ImGui.TableNextColumn();
@@ -329,8 +363,11 @@ public partial class Interface
                 {
                     var changes = false;
                     foreach (var (start, end) in node.Times.AllUptimes())
+                    {
                         changes |= _plugin.GatherGroupManager.ChangeGroupNode(group, group.Nodes.Count, gatherable, (int)start * RealTime.MinutesPerHour, (int)end * RealTime.MinutesPerHour, null,
                             false);
+                    }
+
                     if (changes)
                     {
                         _gatherGroupCache.SetDirty();
@@ -350,7 +387,10 @@ public partial class Interface
 
         ImGui.TableNextColumn();
         if (_gatherGroupCache.GatherableSelector.Draw(idx, out idx))
+        {
             _gatherGroupCache.NewItemIdx = idx;
+        }
+
         ImGui.TableNextColumn();
         ImGui.TableNextColumn();
     }
@@ -373,7 +413,9 @@ public partial class Interface
         }
 
         if (r && _plugin.GatherGroupManager.RenameGroup(group, newName))
+        {
             _plugin.GatherGroupManager.Save();
+        }
     }
 
     private void DrawDescField(TimedGroup group)
@@ -381,10 +423,14 @@ public partial class Interface
         if (!ImGuiUtil.DrawEditButtonText(1, group.Description, out var newDesc, ref _gatherGroupCache.DescriptionEdit, IconButtonSize,
                 2 * SetInputWidth, 128)
          || newDesc == group.Description)
+        {
             return;
+        }
 
         if (_plugin.GatherGroupManager.ChangeDescription(group, newDesc))
+        {
             _plugin.GatherGroupManager.Save();
+        }
     }
 
     private void DrawGatherGroup(TimedGroup group)
@@ -436,8 +482,8 @@ public partial class Interface
             _plugin.AlarmManager.AddGroup(preset);
         }
 
-        var       holdingCtrl = ImGui.GetIO().KeyCtrl;
-        using var color       = ImRaii.PushColor(ImGuiCol.ButtonHovered, 0x8000A000, holdingCtrl);
+        var holdingCtrl = ImGui.GetIO().KeyCtrl;
+        using var color = ImRaii.PushColor(ImGuiCol.ButtonHovered, 0x8000A000, holdingCtrl);
         if (ImGui.Button("Restore Default Groups") && holdingCtrl && _plugin.GatherGroupManager.SetDefaults(true))
         {
             _gatherGroupCache.Selector.TryRestoreCurrent();
@@ -456,7 +502,7 @@ public partial class Interface
 
     private void DrawGatherGroupTab()
     {
-        using var id  = ImRaii.PushId("Gather Groups");
+        using var id = ImRaii.PushId("Gather Groups");
         using var tab = ImRaii.TabItem("Gather Groups");
 
         ImGuiUtil.HoverTooltip(
@@ -464,7 +510,9 @@ public partial class Interface
           + "Set up your own gather groups! You can even share them with others!");
 
         if (!tab)
+        {
             return;
+        }
 
         _gatherGroupCache.Selector.Draw(SelectorWidth);
         ImGui.SameLine();
@@ -472,7 +520,9 @@ public partial class Interface
         ItemDetailsWindow.Draw("Group Details", DrawGatherGroupHeaderLine, () =>
         {
             if (_gatherGroupCache.Selector.Current != null)
+            {
                 DrawGatherGroup(_gatherGroupCache.Selector.Current);
+            }
         });
     }
 }

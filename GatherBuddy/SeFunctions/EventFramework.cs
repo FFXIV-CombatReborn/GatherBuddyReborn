@@ -13,14 +13,16 @@ public sealed unsafe class EventFramework
         {
             var ptr = FishingEventHandler;
             if (ptr == null)
+            {
                 return null;
+            }
 
             return ptr->CurrentSelectedSwimBait switch
             {
                 0x00 when ptr->SwimBaitItemIds[0] != 0 => ptr->SwimBaitItemIds[0],
                 0x01 when ptr->SwimBaitItemIds[1] != 0 => ptr->SwimBaitItemIds[1],
                 0x02 when ptr->SwimBaitItemIds[2] != 0 => ptr->SwimBaitItemIds[2],
-                _                                      => null,
+                _ => null,
             };
         }
     }
@@ -29,14 +31,16 @@ public sealed unsafe class EventFramework
     {
         var ptr = FishingEventHandler;
         if (ptr == null)
+        {
             return null;
+        }
 
         return idx switch
         {
             0x00 when ptr->SwimBaitItemIds[0] != 0 => ptr->SwimBaitItemIds[0],
             0x01 when ptr->SwimBaitItemIds[1] != 0 => ptr->SwimBaitItemIds[1],
             0x02 when ptr->SwimBaitItemIds[2] != 0 => ptr->SwimBaitItemIds[2],
-            _                                      => null,
+            _ => null,
         };
     }
 
@@ -47,7 +51,9 @@ public sealed unsafe class EventFramework
         {
             var ptr = FishingEventHandler;
             if (ptr == null)
+            {
                 return 0;
+            }
 
             return (ptr->SwimBaitItemIds[0] != 0 ? 1 : 0)
               + (ptr->SwimBaitItemIds[1] != 0 ? 1 : 0)

@@ -1,9 +1,9 @@
+using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Helpers;
+using GatherBuddy.Utilities;
+using Lumina.Excel.Sheets;
 using System.Collections.Generic;
 using System.Linq;
-using GatherBuddy.Helpers;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using Lumina.Excel.Sheets;
-using GatherBuddy.Utilities;
 
 namespace GatherBuddy.AutoGather
 {
@@ -17,7 +17,7 @@ namespace GatherBuddy.AutoGather
 
         public static readonly Item[] PossibleManuals = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLManual).ToArray() ?? [];
 
-        private static readonly Dictionary<uint, uint> SquadronManualItemIdBuffId = new ()
+        private static readonly Dictionary<uint, uint> SquadronManualItemIdBuffId = new()
         {
             { 14949u, 1081u },
             { 14951u, 1083u },
@@ -27,7 +27,7 @@ namespace GatherBuddy.AutoGather
         };
         public static readonly Item[] PossibleSquadronManuals = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLSquadronManual).ToArray() ?? [];
 
-        private static readonly Dictionary<uint, uint> SquadronPassItemIdBuffId = new ()
+        private static readonly Dictionary<uint, uint> SquadronPassItemIdBuffId = new()
         {
             { 14954u, 1061u }
         };
@@ -46,7 +46,10 @@ namespace GatherBuddy.AutoGather
                 || !item.ItemAction.IsValid
                 // Buff: 48 well fed, 49 medicated
                 || item.ItemAction.Value.Data[0] is not 48 and not 49)
+            {
                 return [];
+            }
+
             return Dalamud.GameData.GetExcelSheet<ItemFood>().GetRow(item.ItemAction.Value.Data[1]).Params.Where(v => v.BaseParam.IsValid).Select(v => v.BaseParam.RowId).ToArray() ?? [];
         }
 
@@ -58,10 +61,14 @@ namespace GatherBuddy.AutoGather
         private static bool IsItemDoLFood(Item item)
         {
             if (item.RowId is 4751 or 4650 or 4728 or 4745)
+            {
                 return true;
-                
+            }
+
             if (item.ItemUICategory.RowId != 46)
+            {
                 return false;
+            }
             // 10 GP, 71 gathering, 73 perception
             return GetItemFoodProps(item).Any(p => p is 10 or 72 or 73);
         }
@@ -69,7 +76,9 @@ namespace GatherBuddy.AutoGather
         private static bool IsItemDoLPotion(Item item)
         {
             if (item.ItemUICategory.RowId != 44)
+            {
                 return false;
+            }
             // 10 GP, 68 spiritbond, 69 durability, 72 gathering, 73 perception
             return GetItemFoodProps(item).Any(p => p is 10 or 68 or 69 or 72 or 73);
         }

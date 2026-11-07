@@ -1,7 +1,7 @@
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -13,17 +13,17 @@ public class CraftingListDefinition
     public string FolderPath { get; set; } = string.Empty;
     public int Order { get; set; } = -1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<CraftingListItem> Recipes { get; set; } = new();
-    public List<uint> ExpandedList { get; set; } = new();
+    public List<CraftingListItem> Recipes { get; set; } = [];
+    public List<uint> ExpandedList { get; set; } = [];
     public CraftingListConsumableSettings Consumables { get; set; } = new();
-    public Dictionary<uint, ListItemOptions> PrecraftOptions { get; set; } = new();
-    public Dictionary<uint, RecipeCraftSettings> PrecraftCraftSettings { get; set; } = new();
+    public Dictionary<uint, ListItemOptions> PrecraftOptions { get; set; } = [];
+    public Dictionary<uint, RecipeCraftSettings> PrecraftCraftSettings { get; set; } = [];
     public string? DefaultPrecraftMacroId { get; set; }
     public string? DefaultFinalMacroId { get; set; }
     public SolverOverrideMode DefaultPrecraftSolverOverride { get; set; } = SolverOverrideMode.Default;
     public SolverOverrideMode DefaultFinalSolverOverride { get; set; } = SolverOverrideMode.Default;
-    
-    public Dictionary<uint, uint> PrecraftRecipeOverrides { get; set; } = new();
+
+    public Dictionary<uint, uint> PrecraftRecipeOverrides { get; set; } = [];
     public bool SkipIfEnough { get; set; } = false;
     public bool SkipFinalIfEnough { get; set; } = false;
     public bool QuickSynthAll { get; set; } = false;
@@ -48,7 +48,9 @@ public class CraftingListDefinition
     public CraftingQualityOverrideMode GetQualityOverrideMode(Recipe recipe, bool isOriginalRecipe)
     {
         if (!ShouldApplyQuickSynthAllOverrides(isOriginalRecipe))
+        {
             return CraftingQualityOverrideMode.None;
+        }
 
         if (recipe.CanQuickSynth)
         {
@@ -70,7 +72,9 @@ public class CraftingListDefinition
         var plan = CreatePlan();
         ExpandedList.Clear();
         foreach (var recipe in plan.OriginalRecipes)
+        {
             ExpandedList.AddRange(Enumerable.Repeat(recipe.RecipeId, recipe.Quantity));
+        }
     }
 
     public CraftingListDefinition CreateRetainerPlanningSnapshot()
@@ -110,7 +114,7 @@ public class CraftingListDefinition
                     Skipping = recipe.Options.Skipping,
                     NQOnly = recipe.Options.NQOnly,
                 },
-                IngredientPreferences = new Dictionary<uint, int>(recipe.IngredientPreferences),
+                IngredientPreferences = [with(recipe.IngredientPreferences)],
                 ConsumableOverrides = recipe.ConsumableOverrides.Clone(),
                 IsOriginalRecipe = recipe.IsOriginalRecipe,
                 CraftSettings = recipe.CraftSettings?.Clone(),
@@ -127,18 +131,22 @@ public class CraftingListDefinition
         }
 
         foreach (var (recipeId, settings) in PrecraftCraftSettings)
+        {
             snapshot.PrecraftCraftSettings[recipeId] = settings.Clone();
+        }
 
         foreach (var (itemId, recipeId) in PrecraftRecipeOverrides)
+        {
             snapshot.PrecraftRecipeOverrides[itemId] = recipeId;
+        }
 
         return snapshot;
     }
 
-    public Dictionary<uint, int> ListMaterials() => new(CreatePlan().Materials);
+    public Dictionary<uint, int> ListMaterials() => [with(CreatePlan().Materials)];
 
     public Dictionary<uint, int> ListPrecrafts()
-        => new(CreatePlan().Precrafts);
+        => [with(CreatePlan().Precrafts)];
 
     public void AddRecipe(uint recipeId, int quantity)
     {
@@ -173,15 +181,19 @@ public class CraftingListDefinition
         {
             var mainItem = Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
             if (mainItem != null)
+            {
                 return mainItem.Options;
+            }
         }
-        
+
         if (!PrecraftOptions.TryGetValue(recipeId, out var options))
+        {
             PrecraftOptions[recipeId] = options = new ListItemOptions();
-        
+        }
+
         return options;
     }
-    
+
     public void SetRecipeQuickSynth(uint recipeId, bool useQuickSynth, bool isOriginalRecipe)
     {
         GetRecipeOptions(recipeId, isOriginalRecipe).NQOnly = useQuickSynth;
@@ -190,9 +202,13 @@ public class CraftingListDefinition
     public void SetPrecraftCraftSettings(uint recipeId, RecipeCraftSettings? settings)
     {
         if (settings == null || !settings.HasAnySettings())
+        {
             PrecraftCraftSettings.Remove(recipeId);
+        }
         else
+        {
             PrecraftCraftSettings[recipeId] = settings;
+        }
     }
 
     public void Clear()

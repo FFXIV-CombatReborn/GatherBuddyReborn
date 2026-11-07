@@ -1,22 +1,22 @@
+using GatherBuddy.Plugin;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
-using GatherBuddy.Plugin;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.GatherGroup;
 
 public class TimedGroup
 {
-    public string Name        { get; set; }
+    public string Name { get; set; }
     public string Description { get; set; } = string.Empty;
 
     public TimedGroup(string name)
         => Name = name;
 
-    public List<TimedGroupNode> Nodes { get; init; } = new();
+    public List<TimedGroupNode> Nodes { get; init; } = [];
 
     public TimedGroupNode? CurrentNode(uint eorzeaMinuteOfDay)
         => Nodes.FirstOrDefault(node => node.IsUp(eorzeaMinuteOfDay));
@@ -25,7 +25,7 @@ public class TimedGroup
         => new(newName)
         {
             Description = Description,
-            Nodes       = Nodes.Select(n => n.Clone()).ToList(),
+            Nodes = [.. Nodes.Select(n => n.Clone())],
         };
 
     // Returns true if no problems arose, false if some nodes were invalid.
@@ -52,14 +52,14 @@ public class TimedGroup
 
     internal struct Config
     {
-        public const byte                    CurrentVersion = 1;
-        public       string                  Name;
-        public       string                  Description;
-        public       TimedGroupNode.Config[] Nodes;
+        public const byte CurrentVersion = 1;
+        public string Name;
+        public string Description;
+        public TimedGroupNode.Config[] Nodes;
 
         internal string ToBase64()
         {
-            var json  = JsonConvert.SerializeObject(this);
+            var json = JsonConvert.SerializeObject(this);
             var bytes = Encoding.UTF8.GetBytes(json).Prepend(CurrentVersion).ToArray();
             return Functions.CompressedBase64(bytes);
         }
@@ -72,12 +72,16 @@ public class TimedGroup
             {
                 var bytes = Functions.DecompressedBase64(data);
                 if (bytes.Length == 0 || bytes[0] != CurrentVersion)
+                {
                     return false;
+                }
 
                 var json = Encoding.UTF8.GetString(bytes.AsSpan()[1..]);
                 cfg = JsonConvert.DeserializeObject<Config>(json);
                 if (cfg.Nodes == null || cfg.Name == null || cfg.Description == null)
+                {
                     return false;
+                }
 
                 return true;
             }
@@ -91,8 +95,8 @@ public class TimedGroup
     internal Config ToConfig()
         => new()
         {
-            Name        = Name,
+            Name = Name,
             Description = Description,
-            Nodes       = Nodes.Select(n => n.ToConfig()).ToArray(),
+            Nodes = [.. Nodes.Select(n => n.ToConfig())],
         };
 };

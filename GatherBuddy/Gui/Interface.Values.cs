@@ -1,7 +1,7 @@
-﻿using System;
-using System.Numerics;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
+using System;
+using System.Numerics;
 
 namespace GatherBuddy.Gui;
 
@@ -14,27 +14,27 @@ public partial class Interface
     public static Vector2 ItemSpacing;
     public static Vector2 FramePadding;
     public static Vector2 IconButtonSize;
-    public static float   SelectorWidth;
-    public static float   SetInputWidth;
+    public static float SelectorWidth;
+    public static float SetInputWidth;
     public static Vector2 HorizontalSpace = Vector2.Zero;
-    public static float   TextHeight;
-    public static float   TextHeightSpacing;
-    public static float   Scale;
+    public static float TextHeight;
+    public static float TextHeightSpacing;
+    public static float Scale;
 
     private static void SetupValues()
     {
-        Scale             = ImGuiHelpers.GlobalScale;
-        ItemSpacing       = ImGui.GetStyle().ItemSpacing;
-        FramePadding      = ImGui.GetStyle().FramePadding;
-        SelectorWidth     = Math.Max(ImGui.GetWindowSize().X * 0.15f, 225 * Scale);
-        SetInputWidth     = 200f * ImGuiHelpers.GlobalScale;
-        TextHeight        = ImGui.GetTextLineHeight();
+        Scale = ImGuiHelpers.GlobalScale;
+        ItemSpacing = ImGui.GetStyle().ItemSpacing;
+        FramePadding = ImGui.GetStyle().FramePadding;
+        SelectorWidth = Math.Max(ImGui.GetWindowSize().X * 0.15f, 225 * Scale);
+        SetInputWidth = 200f * ImGuiHelpers.GlobalScale;
+        TextHeight = ImGui.GetTextLineHeight();
         TextHeightSpacing = ImGui.GetTextLineHeightWithSpacing();
-        IconSize          = ImGuiHelpers.ScaledVector2(40, 40);
-        WeatherIconSize   = ImGuiHelpers.ScaledVector2(30, 30);
-        SmallIconSize     = ImGuiHelpers.ScaledVector2(20, 20);
-        LineIconSize      = new Vector2(TextHeight,             TextHeight);
-        IconButtonSize    = new Vector2(ImGui.GetFrameHeight(), 0);
+        IconSize = ImGuiHelpers.ScaledVector2(40, 40);
+        WeatherIconSize = ImGuiHelpers.ScaledVector2(30, 30);
+        SmallIconSize = ImGuiHelpers.ScaledVector2(20, 20);
+        LineIconSize = new Vector2(TextHeight, TextHeight);
+        IconButtonSize = new Vector2(ImGui.GetFrameHeight(), 0);
     }
 
     private static float TextWidth(string text)

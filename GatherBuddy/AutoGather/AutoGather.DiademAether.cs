@@ -1,5 +1,4 @@
 using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
@@ -7,7 +6,6 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Helpers;
 using System;
-using System.Linq;
 using System.Numerics;
 
 namespace GatherBuddy.AutoGather
@@ -20,40 +18,50 @@ namespace GatherBuddy.AutoGather
         private const uint AethercannonActionId = 19700;
         private DateTime _lastAetherTarget = DateTime.MinValue;
         private readonly TimeSpan _aetherDebounce = TimeSpan.FromSeconds(2);
-        
+
         private unsafe bool IsDiademAetherGaugeReady()
         {
             var addonPtr = Dalamud.GameGui.GetAddonByName("HWDAetherGauge");
             if (addonPtr == nint.Zero)
+            {
                 return false;
+            }
 
             var addon = (AtkUnitBase*)(nint)addonPtr;
             if (addon == null || !addon->IsVisible)
+            {
                 return false;
+            }
 
-            int currentGauge = *(int*)((nint)addonPtr + AetherGaugeOffset);
+            var currentGauge = *(int*)((nint)addonPtr + AetherGaugeOffset);
             return currentGauge >= AetherGaugeReadyThreshold;
         }
-        
+
         private IGameObject? FindNearbyEnemyForAether()
         {
             var player = Dalamud.Objects.LocalPlayer;
-            if (player == null) 
+            if (player == null)
+            {
                 return null;
+            }
 
-            Vector3 pPos = player.Position;
+            var pPos = player.Position;
             IGameObject? best = null;
-            float bestDistSq = AetherTargetScanRadius * AetherTargetScanRadius;
+            var bestDistSq = AetherTargetScanRadius * AetherTargetScanRadius;
 
             foreach (var obj in Dalamud.Objects)
             {
                 if (obj is not IBattleNpc bnpc)
+                {
                     continue;
+                }
 
                 if (!IsValidDiademEnemy(bnpc))
+                {
                     continue;
+                }
 
-                float distSq = Vector3.DistanceSquared(pPos, bnpc.Position);
+                var distSq = Vector3.DistanceSquared(pPos, bnpc.Position);
                 if (distSq < bestDistSq)
                 {
                     bestDistSq = distSq;
@@ -63,48 +71,75 @@ namespace GatherBuddy.AutoGather
 
             return best;
         }
-        
+
         private bool IsValidDiademEnemy(IBattleNpc bnpc)
         {
             if (bnpc.IsDead)
+            {
                 return false;
+            }
 
             if (!bnpc.IsTargetable)
+            {
                 return false;
+            }
 
             if (bnpc.SubKind is 2 or 9)
+            {
                 return false;
+            }
 
             return true;
         }
-        
+
         private unsafe void TargetByGameObject(IGameObject gameObject)
         {
             var targetSystem = TargetSystem.Instance();
             if (targetSystem == null)
+            {
                 return;
-                
+            }
+
             targetSystem->Target = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)gameObject.Address;
         }
-        
+
         private unsafe bool TryUseAetherCannon()
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DiademAutoAetherCannon)
+            {
                 return false;
+            }
+
             if (!Diadem.IsInside)
+            {
                 return false;
+            }
+
             if (Dalamud.Conditions[ConditionFlag.Mounted])
+            {
                 return false;
+            }
+
             if (IsPathing)
+            {
                 return false;
+            }
+
             if (DateTime.UtcNow - _lastAetherTarget < _aetherDebounce)
+            {
                 return false;
+            }
+
             if (!IsDiademAetherGaugeReady())
+            {
                 return false;
+            }
 
             var enemy = FindNearbyEnemyForAether();
             if (enemy == null)
+            {
                 return false;
+            }
 
             var enemyId = enemy.GameObjectId;
             TargetByGameObject(enemy);

@@ -1,11 +1,11 @@
-﻿using System;
-using System.Linq;
-using Dalamud.Interface.Textures;
+﻿using Dalamud.Interface.Textures;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
+using System;
+using System.Linq;
 
 namespace GatherBuddy.Gui;
 
@@ -20,18 +20,18 @@ public partial class Interface
             Ungathered,
             Gathered,
         }
-        public Gatherable              Data;
+        public Gatherable Data;
         public ISharedImmediateTexture Icon;
-        public string                  Territories;
-        public string                  Uptimes;
-        public string                  Folklore;
-        public string                  Level;
-        public string                  NodeNames;
-        public string                  Expansion;
-        public string                  Aetherytes;
-        public LogState                GatheredState;
-        public bool                    Leveling;
-        public bool                    NotTrackedByGatheringLog;
+        public string Territories;
+        public string Uptimes;
+        public string Folklore;
+        public string Level;
+        public string NodeNames;
+        public string Expansion;
+        public string Aetherytes;
+        public LogState GatheredState;
+        public bool Leveling;
+        public bool NotTrackedByGatheringLog;
 
         private bool _gatheredStatusFailureLogged;
 
@@ -45,7 +45,9 @@ public partial class Interface
 
             Territories = string.Join("\n", data.NodeList.Select(n => n.Territory.Name).Distinct());
             if (!Territories.Contains('\n'))
+            {
                 Territories = '\0' + Territories;
+            }
 
             Folklore = data.NodeList.Count == 0 || data.NodeList.Any(n => n.Folklore.Length == 0)
                 ? string.Empty
@@ -54,12 +56,14 @@ public partial class Interface
             {
                 NodeType.Regular => "Always",
                 NodeType.Unknown => "Unknown",
-                _                => data.NodeList.Select(n => n.Times).Aggregate(BitfieldUptime.Combine).PrintHours(true),
+                _ => data.NodeList.Select(n => n.Times).Aggregate(BitfieldUptime.Combine).PrintHours(true),
             };
-            Level     = Data.LevelString();
+            Level = Data.LevelString();
             NodeNames = string.Join("\n", data.NodeList.Select(n => n.Name).Distinct());
             if (!NodeNames.Contains('\n'))
+            {
                 NodeNames = '\0' + NodeNames;
+            }
 
             Expansion = data.ExpansionIdx switch
             {
@@ -74,12 +78,16 @@ public partial class Interface
             Aetherytes = string.Join("\n",
                 data.NodeList.Where(n => n.ClosestAetheryte != null).Select(n => n.ClosestAetheryte!.Name).Distinct());
             if (!Aetherytes.Contains('\n'))
+            {
                 Aetherytes = '\0' + Aetherytes;
+            }
 
             var levelingStates = data.NodeList.Select(n => n.IsLeveling).Distinct().ToList();
             Leveling = levelingStates.Contains(true);
             if (levelingStates.Count > 1)
+            {
                 GatherBuddy.Log.Debug($"[GatherablesTab] Gatherable {Data.ItemId} has mixed leveling classification across nodes.");
+            }
 
             NotTrackedByGatheringLog = Data.ItemData.IsCollectable
              || Data.ItemData.AlwaysCollectable

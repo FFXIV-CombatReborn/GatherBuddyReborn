@@ -6,7 +6,6 @@ using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Enums;
 using GatherBuddy.Helpers;
-using GatherBuddy.Plugin;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -131,7 +130,9 @@ namespace GatherBuddy.AutoGather.Helpers
         public bool IsNodeAvailable(uint nodeId)
         {
             if (nodeId < FirstNode || nodeId > LastNode)
+            {
                 throw new ArgumentOutOfRangeException(nameof(nodeId));
+            }
 
             var offset = nodeId - FirstNode;
             var path = offset / NodesPerPath;
@@ -142,11 +143,15 @@ namespace GatherBuddy.AutoGather.Helpers
         private static (float, ImmutableArray<byte>) FindShortestPath(PathCache cache, Vector3 pos, uint job, uint path0, uint path1)
         {
             if (path0 == NodesPerPath && path1 == NodesPerPath)
+            {
                 return (Vector3.Distance(pos, GetNodePosition(job, 0, 0)), []);
+            }
 
             var key = (pos, path0, path1);
             if (cache.TryGetValue(key, out var val))
+            {
                 return val;
+            }
 
             float dist0 = float.PositiveInfinity, dist1 = float.PositiveInfinity;
             ImmutableArray<byte> list0 = default, list1 = default;
@@ -167,9 +172,13 @@ namespace GatherBuddy.AutoGather.Helpers
 
             (float, ImmutableArray<byte>) result;
             if (dist0 < dist1)
+            {
                 result = (dist0, list0.Add(0));
+            }
             else
+            {
                 result = (dist1, list1.Add(1));
+            }
 
             cache[key] = result;
             return result;
@@ -223,20 +232,32 @@ namespace GatherBuddy.AutoGather.Helpers
                 // This is needed to support enabling/rebuilding the plugin inside The Diadem.
 
                 var jobOffset = Player.Job switch { 16 /*MIN*/ => 0, 17 /*BTN*/ => (int)PathsPerJob, _ => -1 };
-                if (jobOffset < 0) return;
+                if (jobOffset < 0)
+                {
+                    return;
+                }
 
                 var effectId = AutoGather.Actions.Prospect.EffectId;
-                if (!Player.Status?.Any(s => s.StatusId == effectId) ?? true) return;
+                if (!Player.Status?.Any(s => s.StatusId == effectId) ?? true)
+                {
+                    return;
+                }
 
                 foreach (var obj in Dalamud.Objects.Where(obj => obj.ObjectKind == ObjectKind.GatheringPoint))
                 {
                     var nodeId = obj.BaseId;
-                    if (nodeId < FirstNode || nodeId > LastNode) continue;
+                    if (nodeId < FirstNode || nodeId > LastNode)
+                    {
+                        continue;
+                    }
 
                     var pathIndex = (int)((nodeId - FirstNode) / NodesPerPath);
                     var nodeIndex = (nodeId - FirstNode) % NodesPerChain;
-                    
-                    if ((_initialized & (1 << pathIndex)) != 0) continue;
+
+                    if ((_initialized & (1 << pathIndex)) != 0)
+                    {
+                        continue;
+                    }
 
                     if (obj.IsTargetable)
                     {

@@ -1,8 +1,8 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Windowing;
+using GatherBuddy.Crafting;
 using System;
 using System.Collections.Generic;
-using Dalamud.Interface.Windowing;
-using Dalamud.Bindings.ImGui;
-using GatherBuddy.Crafting;
 
 namespace GatherBuddy.Gui;
 
@@ -18,7 +18,7 @@ public class CraftingStatusWindow : Window
     private int _cachedEstimateQueueCount = -1;
     private int _cachedEstimateActionDelayMs = -1;
 
-    public CraftingStatusWindow() 
+    public CraftingStatusWindow()
         : base("Crafting Status###GatherBuddyCraftingStatus", ImGuiWindowFlags.AlwaysAutoResize)
     {
         IsOpen = false;
@@ -48,7 +48,9 @@ public class CraftingStatusWindow : Window
     public void OpenOrRestore()
     {
         if (_queueProcessor == null)
+        {
             return;
+        }
 
         IsOpen = true;
         _pendingCollapseState = false;
@@ -63,7 +65,9 @@ public class CraftingStatusWindow : Window
     public override void PreDraw()
     {
         if (!IsOpen)
+        {
             return;
+        }
 
         if (_pendingCollapseState.HasValue)
         {
@@ -81,8 +85,10 @@ public class CraftingStatusWindow : Window
     public override void Draw()
     {
         if (_queueProcessor == null)
+        {
             return;
-        
+        }
+
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         if (isFocused)
         {
@@ -129,7 +135,9 @@ public class CraftingStatusWindow : Window
             var remainingMs = GetRemainingEstimate(currentIndex);
             ImGui.Text($"Estimated Time Remaining: ~{CraftingTimeEstimator.FormatDuration(remainingMs)}");
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Estimate based on the active craft path for each queue item. Macros, Standard Solver, and Progress Only are simulated, while Raphael uses cached solution length when available and falls back to a provisional default until ready. Excludes time spent gathering, repairing, or switching jobs.");
+            }
         }
         else if (!ShouldRetainRemainingEstimateCache(currentState))
         {
@@ -156,7 +164,7 @@ public class CraftingStatusWindow : Window
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
-            
+
             if (!_queueProcessor.Paused)
             {
                 if (ImGui.Button("Pause"))
@@ -171,13 +179,13 @@ public class CraftingStatusWindow : Window
                     _queueProcessor.Resume();
                 }
             }
-            
+
             ImGui.SameLine();
             if (ImGui.Button("Stop"))
             {
                 CraftingGatherBridge.StopQueue();
             }
-            
+
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
@@ -190,12 +198,14 @@ public class CraftingStatusWindow : Window
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Delay between each crafting action");
+            }
 
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
-            
+
             if (ImGui.Button("Open Vulcan Window"))
             {
                 if (GatherBuddy.VulcanWindow != null)
@@ -218,7 +228,9 @@ public class CraftingStatusWindow : Window
     private long GetRemainingEstimate(int currentIndex)
     {
         if (_queueProcessor == null)
+        {
             return 0;
+        }
 
         var queue = _queueProcessor.Queue;
         var consumables = _queueProcessor.ListConsumables;
@@ -227,7 +239,9 @@ public class CraftingStatusWindow : Window
          && ReferenceEquals(_cachedEstimateConsumables, consumables)
          && _cachedEstimateQueueCount == queue.Count
          && _cachedEstimateActionDelayMs == actionDelayMs)
+        {
             return GetCachedRemainingEstimateAtIndex(currentIndex);
+        }
 
         _cachedEstimateQueue = queue;
         _cachedEstimateConsumables = consumables;
@@ -240,7 +254,9 @@ public class CraftingStatusWindow : Window
     private long GetCachedRemainingEstimateAtIndex(int currentIndex)
     {
         if (_cachedRemainingEstimatesByIndex.Length == 0)
+        {
             return 0;
+        }
 
         var safeIndex = Math.Clamp(currentIndex, 0, _cachedRemainingEstimatesByIndex.Length - 1);
         return _cachedRemainingEstimatesByIndex[safeIndex];
@@ -249,7 +265,9 @@ public class CraftingStatusWindow : Window
     private static long[] BuildRemainingEstimates(IReadOnlyList<CraftingListItem> queue, int actionDelayMs, CraftingListConsumableSettings? consumables)
     {
         if (queue.Count == 0)
+        {
             return [];
+        }
 
         var remainingByIndex = new long[queue.Count];
         long remainingMs = 0;
@@ -294,47 +312,60 @@ public class CraftingStatusWindow : Window
             _ => "Unknown"
         };
     }
-    
+
     private (int currentCraft, int totalCrafts) GetCurrentRecipeCraftNumbers()
     {
         if (_queueProcessor == null)
+        {
             return (0, 0);
-        
+        }
+
         var currentItem = _queueProcessor.CurrentRecipeItem;
         if (currentItem == null)
+        {
             return (0, 0);
-        
+        }
+
         var currentIndex = _queueProcessor.CurrentQueueIndex;
         var currentRecipeId = currentItem.RecipeId;
-        
-        int firstIndex = currentIndex;
+
+        var firstIndex = currentIndex;
         while (firstIndex > 0)
         {
             var prevItem = GetQueueItemAt(firstIndex - 1);
             if (prevItem == null || prevItem.RecipeId != currentRecipeId)
+            {
                 break;
+            }
+
             firstIndex--;
         }
-        
-        int lastIndex = currentIndex;
+
+        var lastIndex = currentIndex;
         while (lastIndex < _queueProcessor.QueueCount - 1)
         {
             var nextItem = GetQueueItemAt(lastIndex + 1);
             if (nextItem == null || nextItem.RecipeId != currentRecipeId)
+            {
                 break;
+            }
+
             lastIndex++;
         }
-        
-        int currentCraftNumber = currentIndex - firstIndex + 1;
-        int totalCrafts = lastIndex - firstIndex + 1;
-        
+
+        var currentCraftNumber = currentIndex - firstIndex + 1;
+        var totalCrafts = lastIndex - firstIndex + 1;
+
         return (currentCraftNumber, totalCrafts);
     }
-    
+
     private CraftingListItem? GetQueueItemAt(int index)
     {
         if (_queueProcessor == null || index < 0 || index >= _queueProcessor.QueueCount)
+        {
             return null;
+        }
+
         return _queueProcessor.Queue[index];
     }
 }

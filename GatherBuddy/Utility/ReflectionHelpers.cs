@@ -1,8 +1,9 @@
+using Dalamud.Plugin;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using Dalamud.Plugin;
 
 namespace GatherBuddy.Utility;
 
@@ -17,11 +18,15 @@ public static class ReflectionHelpers
         {
             var fieldInfo = type.GetField(name, AllFlags);
             if (fieldInfo != null)
+            {
                 return fieldInfo.GetValue(obj);
+            }
 
             var propertyInfo = type.GetProperty(name, AllFlags);
             if (propertyInfo != null)
+            {
                 return propertyInfo.GetValue(obj);
+            }
 
             type = type.BaseType;
         }
@@ -44,7 +49,9 @@ public static class ReflectionHelpers
 
             if (TrySelectPluginInstance(pluginEntries, IsLoadedPluginEntry, out instance)
              || TrySelectPluginInstance(pluginEntries, AlwaysMatchPluginEntry, out instance))
+            {
                 return true;
+            }
 
             instance = null;
             return false;
@@ -60,27 +67,35 @@ public static class ReflectionHelpers
     internal static bool IsPluginLoaded(string internalName, bool logIfMissing = false)
     {
         if (!TryGetInstalledPluginEntries(internalName, out var pluginEntries, logIfMissing))
+        {
             return false;
+        }
 
         var foundReadableLoadState = false;
         foreach (var pluginEntry in pluginEntries)
         {
             if (pluginEntry.GetFoP("IsLoaded") is not bool isLoaded)
+            {
                 continue;
+            }
 
             foundReadableLoadState = true;
             if (isLoaded)
+            {
                 return true;
+            }
         }
 
         if (foundReadableLoadState)
+        {
             return false;
+        }
 
         GatherBuddy.Log.Debug($"[ReflectionHelpers] Matching plugin entries for {internalName} were found, but none exposed IsLoaded. Falling back to plugin instance resolution.");
         return TryGetDalamudPlugin(internalName, out _);
     }
 
-    internal static bool TryGetInstalledPluginEntry(string internalName, out object? pluginEntry, bool logIfMissing)
+    internal static bool TryGetInstalledPluginEntry(string internalName, [NotNullWhen(true)] out object? pluginEntry, bool logIfMissing)
     {
         if (!TryGetInstalledPluginEntries(internalName, out var pluginEntries, logIfMissing))
         {
@@ -88,15 +103,20 @@ public static class ReflectionHelpers
             return false;
         }
 
-        var selected = TrySelectPluginEntry(pluginEntries, IsLoadedInstalledPluginEntry, out pluginEntry)
-                    || TrySelectPluginEntry(pluginEntries, IsLoadedPluginEntry, out pluginEntry)
-                    || TrySelectPluginEntry(pluginEntries, IsInstalledPluginEntry, out pluginEntry)
-                    || TrySelectPluginEntry(pluginEntries, AlwaysMatchPluginEntry, out pluginEntry);
+        if (TrySelectPluginEntry(pluginEntries, IsLoadedInstalledPluginEntry, out pluginEntry)
+         || TrySelectPluginEntry(pluginEntries, IsLoadedPluginEntry, out pluginEntry)
+         || TrySelectPluginEntry(pluginEntries, IsInstalledPluginEntry, out pluginEntry)
+         || TrySelectPluginEntry(pluginEntries, AlwaysMatchPluginEntry, out pluginEntry))
+        {
+            if (pluginEntries.Count > 1)
+            {
+                GatherBuddy.Log.Debug($"[ReflectionHelpers] Found {pluginEntries.Count} matching plugin entries for {internalName}; selected {DescribePluginEntry(pluginEntry)}.");
+            }
 
-        if (selected && pluginEntries.Count > 1)
-            GatherBuddy.Log.Debug($"[ReflectionHelpers] Found {pluginEntries.Count} matching plugin entries for {internalName}; selected {DescribePluginEntry(pluginEntry!)}.");
+            return true;
+        }
 
-        return selected;
+        return false;
     }
 
     private static bool TryGetInstalledPluginEntries(string internalName, out List<object> pluginEntries, bool logIfMissing)
@@ -121,24 +141,32 @@ public static class ReflectionHelpers
         {
             var pluginInternalName = plugin.GetFoP<string>("InternalName");
             if (string.Equals(pluginInternalName, internalName, StringComparison.OrdinalIgnoreCase))
+            {
                 pluginEntries.Add(plugin);
+            }
         }
 
         if (pluginEntries.Count > 0)
+        {
             return true;
+        }
 
         if (logIfMissing)
+        {
             GatherBuddy.Log.Debug($"[ReflectionHelpers] Plugin entry {internalName} was not found in InstalledPlugins.");
+        }
 
         return false;
     }
 
-    private static bool TrySelectPluginEntry(List<object> pluginEntries, Predicate<object> predicate, out object? pluginEntry)
+    private static bool TrySelectPluginEntry(List<object> pluginEntries, Predicate<object> predicate, [NotNullWhen(true)] out object? pluginEntry)
     {
         foreach (var candidate in pluginEntries)
         {
             if (!predicate(candidate))
+            {
                 continue;
+            }
 
             pluginEntry = candidate;
             return true;
@@ -153,10 +181,14 @@ public static class ReflectionHelpers
         foreach (var candidate in pluginEntries)
         {
             if (!predicate(candidate))
+            {
                 continue;
+            }
 
             if (!TryGetPluginInstance(candidate, out pluginInstance))
+            {
                 continue;
+            }
 
             return true;
         }
@@ -207,12 +239,14 @@ public static class ReflectionHelpers
             var targetType = dalamudAssembly.GetType(serviceName, true);
 
             if (serviceType == null || targetType == null)
+            {
                 return null;
+            }
 
             var genericServiceType = serviceType.MakeGenericType(targetType);
             var getMethod = genericServiceType.GetMethod("Get");
 
-            return getMethod?.Invoke(null, BindingFlags.Default, null, Array.Empty<object>(), null);
+            return getMethod?.Invoke(null, BindingFlags.Default, null, [], null);
         }
         catch
         {

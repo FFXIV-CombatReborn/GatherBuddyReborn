@@ -1,3 +1,16 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using ElliLib;
+using ElliLib.Widgets;
+using GatherBuddy.AutoGather.Extensions;
+using GatherBuddy.AutoGather.Helpers;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Classes;
+using GatherBuddy.Crafting;
+using GatherBuddy.CustomInfo;
+using GatherBuddy.Interfaces;
+using GatherBuddy.Plugin;
+using Lumina.Text.ReadOnly;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -5,22 +18,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
-using Dalamud.Interface;
-using GatherBuddy.AutoGather.Extensions;
-using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Classes;
-using GatherBuddy.Data;
-using GatherBuddy.Config;
-using GatherBuddy.Crafting;
-using GatherBuddy.CustomInfo;
-using GatherBuddy.Plugin;
-using Dalamud.Bindings.ImGui;
-using ElliLib;
-using ElliLib.Widgets;
 using ImRaii = ElliLib.Raii.ImRaii;
-using GatherBuddy.Interfaces;
-using Lumina.Text.ReadOnly;
-using GatherBuddy.AutoGather.Helpers;
 
 namespace GatherBuddy.Gui;
 
@@ -47,10 +45,10 @@ public partial class Interface
 
         public readonly AutoGatherListFileSystemSelector Selector = new();
 
-        public  ReadOnlyCollection<IGatherable>     AllGatherables      { get; private set; }
-        public  ReadOnlyCollection<IGatherable>     FilteredGatherables { get; private set; }
-        public  ClippedSelectableCombo<IGatherable> GatherableSelector  { get; private set; }
-        private HashSet<IGatherable>                ExcludedGatherables = [];
+        public ReadOnlyCollection<IGatherable> AllGatherables { get; private set; }
+        public ReadOnlyCollection<IGatherable> FilteredGatherables { get; private set; }
+        public ClippedSelectableCombo<IGatherable> GatherableSelector { get; private set; }
+        private HashSet<IGatherable> ExcludedGatherables = [];
 
         public void SetExcludedGatherbales(IEnumerable<IGatherable> exclude)
         {
@@ -88,9 +86,11 @@ public partial class Interface
             while (NewGatherableIdx > 0)
             {
                 var item = FilteredGatherables![NewGatherableIdx];
-                var idx  = newGatherables.IndexOf(item);
+                var idx = newGatherables.IndexOf(item);
                 if (idx < 0)
+                {
                     NewGatherableIdx--;
+                }
                 else
                 {
                     NewGatherableIdx = idx;
@@ -100,7 +100,7 @@ public partial class Interface
 
             FilteredGatherables = newGatherables;
             ExcludedGatherables = newExcluded;
-            GatherableSelector  = new("GatherablesSelector", string.Empty, 250, FilteredGatherables, g => g.Name[GatherBuddy.Language]);
+            GatherableSelector = new("GatherablesSelector", string.Empty, 250, FilteredGatherables, g => g.Name[GatherBuddy.Language]);
         }
 
         public void Dispose()
@@ -109,10 +109,10 @@ public partial class Interface
             _plugin.AutoGatherListsManager.ListOrderChanged -= OnListOrderChanged;
         }
 
-        public int             NewGatherableIdx;
-        public bool            EditName;
-        public bool            EditDesc;
-        public string          ItemFilter = string.Empty;
+        public int NewGatherableIdx;
+        public bool EditName;
+        public bool EditDesc;
+        public string ItemFilter = string.Empty;
         public AutoGatherList? ItemFilterList;
     }
 
@@ -155,13 +155,13 @@ public partial class Interface
             {
                 var lists = GatherBuddy.AutoGather.ArtisanExporter.GetArtisanListNames();
 
-                float rowHeight       = ImGui.GetTextLineHeightWithSpacing();
-                float childPaddingY   = ImGui.GetStyle().WindowPadding.Y * 2f;
-                float totalListHeight = lists.Count * rowHeight + childPaddingY;
-                float totalListWidth  = lists.Max(n => ImGui.CalcTextSize(n.Value).X) + 40;
+                var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+                var childPaddingY = ImGui.GetStyle().WindowPadding.Y * 2f;
+                var totalListHeight = lists.Count * rowHeight + childPaddingY;
+                var totalListWidth = lists.Max(n => ImGui.CalcTextSize(n.Value).X) + 40;
 
-                float maxHeight   = ImGui.GetIO().DisplaySize.Y * 0.4f;
-                float childHeight = Math.Min(totalListHeight, maxHeight);
+                var maxHeight = ImGui.GetIO().DisplaySize.Y * 0.4f;
+                var childHeight = Math.Min(totalListHeight, maxHeight);
 
                 if (ImGui.BeginChild("ArtisanListsChild", new Vector2(totalListWidth, childHeight), true))
                 {
@@ -198,9 +198,11 @@ public partial class Interface
 
                     Dictionary<ReadOnlySeString, uint>? diademItems = null;
                     Lumina.Excel.ExcelSheet<Lumina.Excel.Sheets.Item>? itemSheet = null;
-                    Dictionary<string, IGatherable> normalItems = new(GatherBuddy.GameData.Gatherables.Count + GatherBuddy.GameData.Fishes.Count);
+                    Dictionary<string, IGatherable> normalItems = [with(GatherBuddy.GameData.Gatherables.Count + GatherBuddy.GameData.Fishes.Count)];
                     foreach (var item in ((IEnumerable<IGatherable>)GatherBuddy.GameData.Gatherables.Values).Concat(GatherBuddy.GameData.Fishes.Values))
+                    {
                         normalItems[item.Name[GatherBuddy.Language]] = item;
+                    }
 
                     foreach (Match match in matches)
                     {
@@ -210,7 +212,9 @@ public partial class Interface
                         if (normalItems.TryGetValue(itemName, out var item))
                         {
                             if (!item.Locations.Any())
+                            {
                                 continue;
+                            }
                         }
                         else
                         {
@@ -220,24 +224,36 @@ public partial class Interface
                                 .ToDictionary();
 
                             if (!diademItems.TryGetValue(itemName, out var rawId))
+                            {
                                 continue;
+                            }
 
                             if (GatherBuddy.GameData.Gatherables.TryGetValue(rawId, out var gatherable))
+                            {
                                 item = gatherable;
+                            }
                             else if (GatherBuddy.GameData.Fishes.TryGetValue(rawId, out var fish))
+                            {
                                 item = fish;
+                            }
                             else
+                            {
                                 continue;
+                            }
                         }
 
-                        if(!list.Add(item, quantity))
+                        if (!list.Add(item, quantity))
+                        {
                             list.SetQuantity(item, quantity + list.Quantities[item]);
+                        }
                     }
 
                     _plugin.AutoGatherListsManager.Save();
 
                     if (list.Enabled)
+                    {
                         _plugin.AutoGatherListsManager.SetActiveItems();
+                    }
                 }
                 catch (Exception e)
                 {
@@ -247,7 +263,7 @@ public partial class Interface
         }
 
         ImGui.SetCursorPosX(ImGui.GetWindowSize().X - 50);
-        string agHelpText =
+        var agHelpText =
             "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in each list, " +
             "but timed nodes and fish are always prioritized.\n" +
             "You can drag and drop lists to move them.\n" +
@@ -256,8 +272,8 @@ public partial class Interface
             "In the Gather Window, you can hold Control and Right-Click an item to delete it from the list it belongs to.";
 
 
-        ImGuiEx.InfoMarker(agHelpText,                    null, FontAwesomeIcon.InfoCircle.ToIconString(), false);
-        ImGuiEx.InfoMarker("Auto-Gather Support Discord", null, FontAwesomeIcon.Comments.ToIconString(),   false);
+        ImGuiEx.InfoMarker(agHelpText, null, FontAwesomeIcon.InfoCircle.ToIconString(), false);
+        ImGuiEx.InfoMarker("Auto-Gather Support Discord", null, FontAwesomeIcon.Comments.ToIconString(), false);
         if (ImGuiEx.HoveredAndClicked())
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -272,14 +288,21 @@ public partial class Interface
     {
         if (ImGuiUtil.DrawEditButtonText(0, _autoGatherListsCache.EditName ? list.Name : CheckUnnamed(list.Name), out var newName,
                 ref _autoGatherListsCache.EditName, IconButtonSize, SetInputWidth, 64))
+        {
             _plugin.AutoGatherListsManager.ChangeName(list, newName);
+        }
+
         if (ImGuiUtil.DrawEditButtonText(1, _autoGatherListsCache.EditDesc ? list.Description : CheckUndescribed(list.Description),
                 out var newDesc, ref _autoGatherListsCache.EditDesc, IconButtonSize, 2 * SetInputWidth, 128))
+        {
             _plugin.AutoGatherListsManager.ChangeDescription(list, newDesc);
+        }
 
         var tmp = list.Enabled;
         if (ImGui.Checkbox("Enabled##list", ref tmp) && tmp != list.Enabled)
+        {
             _plugin.AutoGatherListsManager.ToggleList(list);
+        }
 
         ImGui.SameLine();
         ImGuiUtil.Checkbox("Fallback##list",
@@ -294,27 +317,34 @@ public partial class Interface
         if (!ReferenceEquals(_autoGatherListsCache.ItemFilterList, list))
         {
             _autoGatherListsCache.ItemFilterList = list;
-            _autoGatherListsCache.ItemFilter     = string.Empty;
+            _autoGatherListsCache.ItemFilter = string.Empty;
         }
 
         var itemFilter = _autoGatherListsCache.ItemFilter;
         ImGui.SetNextItemWidth(130f * Scale);
         if (ImGui.InputTextWithHint("##autoGatherItemFilter", "Search items...", ref itemFilter, 128))
+        {
             _autoGatherListsCache.ItemFilter = itemFilter;
+        }
+
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Filter items by name. Reordering is disabled while a search is active.");
+        }
 
         var filterKeywords = _autoGatherListsCache.ItemFilter.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(keyword => keyword.Trim())
             .Where(keyword => keyword.Length > 0)
             .ToArray();
-        var filteringItems   = filterKeywords.Length > 0;
+        var filteringItems = filterKeywords.Length > 0;
         var visibleItemIndices = new List<int>(list.Items.Count);
         for (var i = 0; i < list.Items.Count; ++i)
         {
             var itemName = list.Items[i].Name[GatherBuddy.Language].ToString();
             if (filterKeywords.All(keyword => itemName.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            {
                 visibleItemIndices.Add(i);
+            }
         }
 
         var visibleItems = visibleItemIndices.Select(index => list.Items[index]).ToList();
@@ -322,11 +352,15 @@ public partial class Interface
 
         ImGui.SameLine();
         if (DrawAutoGatherIconButton("EnableVisibleItems", FontAwesomeIcon.Check.ToIconString(), bulkActionButtonSize, "Enable visible items in this list.", visibleItems.Count == 0))
+        {
             _plugin.AutoGatherListsManager.ChangeEnabled(list, visibleItems, true);
+        }
 
         ImGui.SameLine();
         if (DrawAutoGatherIconButton("DisableVisibleItems", FontAwesomeIcon.Ban.ToIconString(), bulkActionButtonSize, "Disable visible items in this list.", visibleItems.Count == 0))
+        {
             _plugin.AutoGatherListsManager.ChangeEnabled(list, visibleItems, false);
+        }
 
         ImGui.SameLine();
         ImGui.Text($"{visibleItems.Count} / {list.Items.Count} Items in List");
@@ -334,32 +368,39 @@ public partial class Interface
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() - ImGui.GetStyle().ItemInnerSpacing.X);
         using var box = ImRaii.ListBox("##gatherWindowList", new Vector2(-1.5f * ImGui.GetStyle().ItemSpacing.X, -1));
         if (!box)
+        {
             return;
+        }
 
         _autoGatherListsCache.SetExcludedGatherbales(list.Items.OfType<Gatherable>());
         var gatherables = _autoGatherListsCache.FilteredGatherables;
-        var selector    = _autoGatherListsCache.GatherableSelector;
+        var selector = _autoGatherListsCache.GatherableSelector;
         int changeIndex = -1, changeItemIndex = -1, deleteIndex = -1;
 
         for (var visibleIdx = 0; visibleIdx < visibleItemIndices.Count; ++visibleIdx)
         {
-            var       i     = visibleItemIndices[visibleIdx];
-            var       item  = list.Items[i];
-            using var id    = ImRaii.PushId((int)item.ItemId);
+            var i = visibleItemIndices[visibleIdx];
+            var item = list.Items[i];
+            using var id = ImRaii.PushId((int)item.ItemId);
             using var group = ImRaii.Group();
             if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Trash.ToIconString(), IconButtonSize, "Delete this item from the list", false,
                     true))
+            {
                 deleteIndex = i;
+            }
+
             ImGui.SameLine();
 
             var enabled = list.EnabledItems[item];
             if (ImGui.Checkbox($"##{item.ItemId}", ref enabled))
+            {
                 _plugin.AutoGatherListsManager.ChangeEnabled(list, item, enabled);
+            }
 
             ImGui.SameLine();
             if (selector.Draw(item.Name[GatherBuddy.Language], out var newIdx))
             {
-                changeIndex     = i;
+                changeIndex = i;
                 changeItemIndex = newIdx;
             }
 
@@ -372,10 +413,16 @@ public partial class Interface
             var quantity = list.Quantities.TryGetValue(item, out var q) ? (int)q : 1;
             ImGui.SetNextItemWidth(100f * Scale);
             if (ImGui.InputInt("##quantity", ref quantity, 1, 10))
+            {
                 _plugin.AutoGatherListsManager.ChangeQuantity(list, item, (uint)quantity);
+            }
+
             ImGui.SameLine();
             if (DrawLocationInput(item, list.PreferredLocations.GetValueOrDefault(item), out var newLoc))
+            {
                 _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
+            }
+
             group.Dispose();
 
             if (!filteringItems)
@@ -404,26 +451,36 @@ public partial class Interface
         }
 
         if (visibleItemIndices.Count == 0)
+        {
             ImGui.TextDisabled("No matching items.");
+        }
 
         if (deleteIndex >= 0)
+        {
             _plugin.AutoGatherListsManager.RemoveItem(list, deleteIndex);
+        }
 
         if (changeIndex >= 0)
+        {
             _plugin.AutoGatherListsManager.ChangeItem(list, gatherables[changeItemIndex], changeIndex);
+        }
 
         if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Plus.ToIconString(), IconButtonSize, "Add this item at the end of the list", false,
                 true))
+        {
             _plugin.AutoGatherListsManager.AddItem(list, gatherables[_autoGatherListsCache.NewGatherableIdx]);
+        }
 
         ImGui.SameLine();
         var allEnabled = list.Items.All(i => list.EnabledItems[i]);
         if (ImGui.Checkbox("##AllEnabled", ref allEnabled))
         {
             foreach (var i in list.Items)
+            {
                 _plugin.AutoGatherListsManager.ChangeEnabled(list, i, allEnabled);
+            }
         }
-        ImGuiUtil.HoverTooltip((allEnabled ? "Disable" : "Enable" ) + " all items in the list");
+        ImGuiUtil.HoverTooltip((allEnabled ? "Disable" : "Enable") + " all items in the list");
 
         ImGui.SameLine();
         if (selector.Draw(_autoGatherListsCache.NewGatherableIdx, out var idx))
@@ -445,9 +502,11 @@ public partial class Interface
 
             bool clicked;
             using (ImRaii.PushId(id))
+            {
                 clicked = ImGui.Button(string.Empty, size);
+            }
 
-            var iconPos = cursor + ((size - iconSize) / 2f);
+            var iconPos = cursor + (size - iconSize) / 2f;
             ImGui.GetWindowDrawList().AddText(iconPos, ImGui.GetColorU32(ImGuiCol.Text), iconText);
             return clicked;
         }
@@ -462,26 +521,34 @@ public partial class Interface
             }
 
             if (hovered)
+            {
                 ImGui.SetTooltip(tooltip);
+            }
+
             return false;
         }
 
         var result = DrawCenteredButton();
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(tooltip);
+        }
+
         return result;
     }
 
     private void DrawAutoGatherTab()
     {
-        using var id  = ImRaii.PushId("AutoGatherLists");
+        using var id = ImRaii.PushId("AutoGatherLists");
         using var tab = ImRaii.TabItem("Auto-Gather");
 
         ImGuiUtil.HoverTooltip(
             "You read that right! Auto-gather!");
 
         if (!tab)
+        {
             return;
+        }
 
         AutoGather.AutoGatherUI.DrawAutoGatherStatus();
 
@@ -489,7 +556,9 @@ public partial class Interface
         using (var child = ImRaii.Child("AutoGatherListSelector", new Vector2(selectorWidth, -1), false))
         {
             if (child)
+            {
                 _autoGatherListsCache.Selector.Draw();
+            }
         }
 
         ImGui.SameLine();
@@ -507,7 +576,9 @@ public partial class Interface
         ItemDetailsWindow.Draw("List Details", DrawAutoGatherListsLine, () =>
         {
             if (_autoGatherListsCache.Selector.Selected != null)
+            {
                 DrawAutoGatherList(_autoGatherListsCache.Selector.Selected);
+            }
         });
 
         _autoGatherListsCache.Selector.DrawBaitBuyListResultPopup();

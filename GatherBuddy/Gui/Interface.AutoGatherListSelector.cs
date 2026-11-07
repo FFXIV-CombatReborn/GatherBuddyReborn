@@ -74,7 +74,10 @@ public partial class Interface
         public void DrawBaitBuyListResultPopup()
         {
             if (_baitBuyListResultPopup == null)
+            {
                 return;
+            }
+
             using var theme = VulcanUiStyle.PushTheme();
             ImGui.PushStyleColor(ImGuiCol.WindowBg, VulcanUiStyle.PanelBackground);
             ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 1f);
@@ -98,7 +101,9 @@ public partial class Interface
             ImGui.Spacing();
 
             if (ImGui.Button("Close", new Vector2(100f * ImGuiHelpers.GlobalScale, 0f)))
+            {
                 _baitBuyListResultPopup = null;
+            }
 
             ImGui.End();
             ImGui.PopStyleVar();
@@ -108,11 +113,19 @@ public partial class Interface
         private void OnPathDropped(List<KeyValuePair<string, FileSystem<AutoGatherList>.IPath>> movedPaths, FileSystem<AutoGatherList>.IPath targetPath)
         {
             if (movedPaths.Count == 0)
+            {
                 return;
+            }
+
             if (movedPaths.Count > 1)
+            {
                 throw new NotImplementedException();
+            }
+
             if (movedPaths[0].Value is not FileSystem<AutoGatherList>.Leaf movedLeaf || targetPath is not FileSystem<AutoGatherList>.Leaf targetLeaf)
+            {
                 return;
+            }
 
             var movedFromUpperPart = false;
             if (!FileSystem.Find(movedPaths[0].Key, out var sourceFolder))
@@ -148,7 +161,10 @@ public partial class Interface
                 do
                 {
                     if (descendant.Parent == ancestor)
+                    {
                         return true;
+                    }
+
                     descendant = descendant.Parent;
                 } while (descendant != null);
                 return false;
@@ -179,12 +195,12 @@ public partial class Interface
         {
             var list = leaf.Value;
             var flag = selected ? ImGuiTreeNodeFlags.Selected | LeafFlags : LeafFlags;
-            
+
             using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), !list.Enabled);
             var displayName = CheckUnnamed(list.Name);
-            
+
             using var _ = ImRaii.TreeNode(displayName, flag);
-            
+
             if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
                 _plugin.AutoGatherListsManager.ToggleList(list);
@@ -198,9 +214,11 @@ public partial class Interface
         {
             const string newListName = "newListName";
             if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Plus.ToIconString(), size, "Create a new auto-gather list.", false, true))
+            {
                 ImGui.OpenPopup(newListName);
+            }
 
-            string name = string.Empty;
+            var name = string.Empty;
             if (ImGuiUtil.OpenNameField(newListName, ref name) && name.Length > 0)
             {
                 var list = new AutoGatherList() { Name = name };
@@ -212,9 +230,11 @@ public partial class Interface
         {
             const string importName = "importListName";
             if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Clipboard.ToIconString(), size, "Import an auto-gather list from clipboard.", false, true))
+            {
                 ImGui.OpenPopup(importName);
+            }
 
-            string name = string.Empty;
+            var name = string.Empty;
             if (ImGuiUtil.OpenNameField(importName, ref name) && name.Length > 0)
             {
                 var clipboardText = ImGuiUtil.GetClipboardText();
@@ -230,19 +250,25 @@ public partial class Interface
         private void MoveUpContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             if (ImGui.MenuItem("Move Up"))
+            {
                 _plugin.AutoGatherListsManager.MoveListUp(leaf);
+            }
         }
 
         private void MoveDownContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             if (ImGui.MenuItem("Move Down"))
+            {
                 _plugin.AutoGatherListsManager.MoveListDown(leaf);
+            }
         }
 
         private void DeleteListContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             if (ImGui.MenuItem("Delete List"))
+            {
                 _plugin.AutoGatherListsManager.DeleteList(leaf.Value);
+            }
         }
 
         private void DuplicateListContext(FileSystem<AutoGatherList>.Leaf leaf)
@@ -259,7 +285,9 @@ public partial class Interface
         {
             var list = leaf.Value;
             if (ImGui.MenuItem(list.Enabled ? "Disable" : "Enable"))
+            {
                 _plugin.AutoGatherListsManager.ToggleList(list);
+            }
         }
 
         private void ExportListContext(FileSystem<AutoGatherList>.Leaf leaf)
@@ -283,9 +311,9 @@ public partial class Interface
         private void GenerateVendorBuyListContext(FileSystem<AutoGatherList>.Leaf leaf)
         {
             var vendorBuyListManager = GatherBuddy.VendorBuyListManager;
-            var vendorBuyListWindow  = GatherBuddy.VendorBuyListWindow;
-            var result               = BuildVendorBuyListGenerationResult(leaf.Value, vendorBuyListManager);
-            var canOpenMenu          = vendorBuyListManager != null && vendorBuyListWindow != null && result.VendorDataReady && result.AllBaitNames.Count > 0;
+            var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
+            var result = BuildVendorBuyListGenerationResult(leaf.Value, vendorBuyListManager);
+            var canOpenMenu = vendorBuyListManager != null && vendorBuyListWindow != null && result.VendorDataReady && result.AllBaitNames.Count > 0;
 
             if (!ImGui.BeginMenu("Generate Bait Buy List", canOpenMenu))
             {
@@ -304,14 +332,18 @@ public partial class Interface
             }
 
             if (ImGui.MenuItem("Create New List", string.Empty, false, result.Targets.Count > 0))
+            {
                 OpenCreateVendorBuyListPopup(leaf.Value, result, vendorBuyListWindow!);
+            }
 
             if (ImGui.BeginMenu("Add to Existing List", result.Targets.Count > 0 && vendorBuyListManager!.Lists.Count > 0))
             {
-                foreach (var list in vendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+                foreach (var list in vendorBuyListManager!.Lists.OrderByDescending(list => list.CreatedAt))
                 {
                     if (ImGui.MenuItem(list.Name))
+                    {
                         AddTargetsToVendorBuyList(leaf.Value, list.Id, list.Name, result, vendorBuyListManager);
+                    }
                 }
 
                 ImGui.EndMenu();
@@ -321,7 +353,9 @@ public partial class Interface
             {
                 ImGui.Separator();
                 if (ImGui.MenuItem("Show Non-Vendor Baits"))
+                {
                     OpenSkippedBaitPopup(leaf.Value, result);
+                }
             }
 
             ImGui.EndMenu();
@@ -340,20 +374,28 @@ public partial class Interface
             var baitNames = baits.Select(bait => bait.Name).ToList();
 
             if (vendorBuyListManager == null)
+            {
                 return new BaitBuyListGenerationResult(false, baitNames, [], []);
+            }
 
             VendorShopResolver.InitializeAsync();
             if (!VendorShopResolver.IsInitialized)
+            {
                 return new BaitBuyListGenerationResult(false, baitNames, [], []);
+            }
 
             var targets = new List<VendorBuyListManager.VendorTargetRequest>();
             var skippedBaits = new List<string>();
             foreach (var bait in baits)
             {
                 if (vendorBuyListManager.CanAddSupportedItem(bait.Id))
+                {
                     targets.Add(new VendorBuyListManager.VendorTargetRequest(bait.Id, 1));
+                }
                 else
+                {
                     skippedBaits.Add(bait.Name);
+                }
             }
 
             return new BaitBuyListGenerationResult(true, baitNames, targets, skippedBaits);
@@ -395,7 +437,9 @@ public partial class Interface
         private void OpenSkippedBaitPopup(AutoGatherList sourceList, BaitBuyListGenerationResult result, string? actionPrefix = null)
         {
             if (result.SkippedBaitNames.Count == 0)
+            {
                 return;
+            }
 
             var sourceListName = string.IsNullOrWhiteSpace(sourceList.Name)
                 ? "this auto-gather list"
@@ -420,7 +464,9 @@ public partial class Interface
             using var panel = VulcanUiStyle.PushPanel();
             using var child = ImRaii.Child("##baitBuyListSkippedBaits", new Vector2(440f * ImGuiHelpers.GlobalScale, height), true);
             if (!child)
+            {
                 return;
+            }
 
             foreach (var baitName in baitNames)
             {
@@ -434,9 +480,11 @@ public partial class Interface
         {
             const string newFolderName = "newFolderName";
             if (ImGui.MenuItem("Create Subfolder"))
+            {
                 ImGui.OpenPopup(newFolderName);
+            }
 
-            string name = string.Empty;
+            var name = string.Empty;
             if (ImGuiUtil.OpenNameField(newFolderName, ref name) && name.Length > 0)
             {
                 _plugin.AutoGatherListsManager.CreateFolder(name, folder);
@@ -446,7 +494,9 @@ public partial class Interface
         private void DeleteFolderContext(FileSystem<AutoGatherList>.Folder folder)
         {
             if (folder.IsRoot)
+            {
                 return;
+            }
 
             if (ImGui.MenuItem("Delete Folder"))
             {

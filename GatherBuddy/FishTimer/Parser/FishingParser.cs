@@ -1,21 +1,21 @@
-using System;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
+using System;
 
 namespace GatherBuddy.FishTimer.Parser;
 
 public unsafe partial class FishingParser : IDisposable
 {
-    public event Action<FishingSpot?>?                       BeganFishing;
-    public event Action?                                     BeganMooching;
-    public event Action<Fish, ushort, byte, bool, bool>?     CaughtFish;
-    public event Action<FishingSpot>?                        IdentifiedSpot;
-    public event Action<HookSet>?                            HookedIn;
-    private readonly Hook<AgentCatch.Delegates.UpdateCatch>  _catchHook;
+    public event Action<FishingSpot?>? BeganFishing;
+    public event Action? BeganMooching;
+    public event Action<Fish, ushort, byte, bool, bool>? CaughtFish;
+    public event Action<FishingSpot>? IdentifiedSpot;
+    public event Action<HookSet>? HookedIn;
+    private readonly Hook<AgentCatch.Delegates.UpdateCatch> _catchHook;
     private readonly Hook<ActionManager.Delegates.UseAction> _hookHook;
 
     public FishingParser(IGameInteropProvider provider)
@@ -67,14 +67,16 @@ public unsafe partial class FishingParser : IDisposable
         byte a12)
     {
         if (!GatherBuddy.Config.HideFishSizePopup)
+        {
             _catchHook.Original(thisPtr, itemId, isLarge, size, amount, level, stars, oceanStars, isMoochable, isFirstTimeCatch, a11, a12);
+        }
 
         // Check against collectibles.
         var collectible = false;
         if (itemId > 500000)
         {
-            itemId      -= 500000;
-            collectible =  true;
+            itemId -= 500000;
+            collectible = true;
         }
 
         if (!GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
@@ -92,12 +94,24 @@ public unsafe partial class FishingParser : IDisposable
         {
             switch (actionId)
             {
-                case 296:   HookedIn?.Invoke(HookSet.Hook); break;
-                case 269:   HookedIn?.Invoke(HookSet.DoubleHook); break;
-                case 4103:  HookedIn?.Invoke(HookSet.Powerful); break;
-                case 4179:  HookedIn?.Invoke(HookSet.Precise); break;
-                case 27523: HookedIn?.Invoke(HookSet.TripleHook); break;
-                case 41278: HookedIn?.Invoke(HookSet.Stellar); break;
+                case 296:
+                    HookedIn?.Invoke(HookSet.Hook);
+                    break;
+                case 269:
+                    HookedIn?.Invoke(HookSet.DoubleHook);
+                    break;
+                case 4103:
+                    HookedIn?.Invoke(HookSet.Powerful);
+                    break;
+                case 4179:
+                    HookedIn?.Invoke(HookSet.Precise);
+                    break;
+                case 27523:
+                    HookedIn?.Invoke(HookSet.TripleHook);
+                    break;
+                case 41278:
+                    HookedIn?.Invoke(HookSet.Stellar);
+                    break;
             }
         }
 

@@ -6,7 +6,6 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Data;
-using GatherBuddy.Enums;
 using GatherBuddy.Helpers;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
@@ -29,12 +28,12 @@ namespace GatherBuddy.AutoGather
             TaskManager.Enqueue(StopNavigation);
 
             var am = ActionManager.Instance();
-            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) am->UseAction(ActionType.Mount, 0); }, "Dismount");
+            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) { am->UseAction(ActionType.Mount, 0); } }, "Dismount");
 
             TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.InFlight] && CanAct, 1000, "Wait for not in flight");
-            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) am->UseAction(ActionType.Mount, 0); }, "Dismount 2");
+            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) { am->UseAction(ActionType.Mount, 0); } }, "Dismount 2");
             TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Mounted] && CanAct, 1000, "Wait for dismount");
-            TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Mounted]) TaskManager.DelayNextImmediate(500); } );//Prevent "Unable to execute command while jumping."
+            TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Mounted]) { TaskManager.DelayNextImmediate(500); } });//Prevent "Unable to execute command while jumping."
         }
 
         private unsafe void EnqueueMountUp()
@@ -72,14 +71,19 @@ namespace GatherBuddy.AutoGather
         {
             var instance = PlayerState.Instance();
             if (instance == null)
+            {
                 return false;
+            }
 
             return instance->IsMountUnlocked(mount);
         }
 
         private void MoveToCloseNode(IGameObject gameObject, Gatherable targetItem, ConfigPreset config)
         {
-            if (!Player.Available) return;
+            if (!Player.Available)
+            {
+                return;
+            }
 
             // We can open a node with less than 3 vertical and less than 3.5 horizontal separation
             var hSeparation = Vector2.Distance(gameObject.Position.ToVector2(), Player.Position.ToVector2());
@@ -93,7 +97,8 @@ namespace GatherBuddy.AutoGather
                 if (Dalamud.Conditions[ConditionFlag.Mounted] && (waitGP || GetConsumablesWithCastTime(config) > 0))
                 {
                     EnqueueDismount();
-                    TaskManager.Enqueue(() => {
+                    TaskManager.Enqueue(() =>
+                    {
                         if (Dalamud.Conditions[ConditionFlag.Mounted] && Dalamud.Conditions[ConditionFlag.InFlight] && !Dalamud.Conditions[ConditionFlag.Diving])
                         {
                             ForceLandAndDismount();
@@ -111,9 +116,13 @@ namespace GatherBuddy.AutoGather
                     if (GetConsumablesWithCastTime(config) is var consumable and > 0)
                     {
                         if (IsPathing)
+                        {
                             StopNavigation();
+                        }
                         else
+                        {
                             EnqueueActionWithDelay(() => UseItem(consumable));
+                        }
                     }
                     else
                     {
@@ -131,7 +140,7 @@ namespace GatherBuddy.AutoGather
                         {
                             StopNavigation();
                             EnqueueNodeInteraction(gameObject, targetItem);
-                        } 
+                        }
                         else
                         {
                             Navigate(gameObject.Position, false, nodeId: gameObject.BaseId);
@@ -157,7 +166,7 @@ namespace GatherBuddy.AutoGather
                 EnqueueDismount();
             }
             // If even that fails, do advanced unstuck
-            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) _advancedUnstuck.Force(); });
+            TaskManager.Enqueue(() => { if (Dalamud.Conditions[ConditionFlag.Mounted]) { _advancedUnstuck.Force(); } });
         }
 
         private void MoveToCloseSpearfishingNode(IGameObject gameObject, Classes.Fish targetFish, FishingSpot expectedSpot)
@@ -181,7 +190,7 @@ namespace GatherBuddy.AutoGather
 
                 if (!Dalamud.Conditions[ConditionFlag.Diving])
                 {
-                    TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) Navigate(gameObject.Position, false, nodeId: gameObject.BaseId); });
+                    TaskManager.Enqueue(() => { if (!Dalamud.Conditions[ConditionFlag.Gathering]) { Navigate(gameObject.Position, false, nodeId: gameObject.BaseId); } });
                 }
             }
             else if (hSeparation < Math.Max(GatherBuddy.Config.AutoGatherConfig.MountUpDistance, 5))
@@ -201,7 +210,9 @@ namespace GatherBuddy.AutoGather
 
             _navState = default;
             if (VNavmesh.Enabled)
+            {
                 VNavmesh.Path.Stop();
+            }
         }
 
         private void StopPathfinding()
@@ -218,7 +229,11 @@ namespace GatherBuddy.AutoGather
 
         private unsafe void SetRotation(Angle angle)
         {
-            if (!Player.Available) return;
+            if (!Player.Available)
+            {
+                return;
+            }
+
             var playerObject = (GameObject*)Player.Object.Address;
             GatherBuddy.Log.Debug($"Setting rotation to {angle.Rad}");
             playerObject->SetRotation(angle.Rad);
@@ -239,7 +254,7 @@ namespace GatherBuddy.AutoGather
 
             var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
 
-            if (_navState.destination == destination && _navState.stage == PathfindingStage.RetryCombinedPathfinding 
+            if (_navState.destination == destination && _navState.stage == PathfindingStage.RetryCombinedPathfinding
                 && _navState.task == null && Environment.TickCount64 - _navState.lastTry > 1000)
             {
                 _navState.lastTry = Environment.TickCount64;
@@ -247,10 +262,12 @@ namespace GatherBuddy.AutoGather
                 _navState.task = FindCombinedPath(Player.Position, destination, landingDistance, Dalamud.Conditions[ConditionFlag.InFlight], _navState.cts.Token);
                 GatherBuddy.Log.Debug($"Retrying combined pathfinding to {destination}.");
                 return;
-            }                
+            }
 
             if (_navState.destination == destination && (IsPathing || _navState.task != null))
-                return; 
+            {
+                return;
+            }
 
             StopPathfinding();
 
@@ -283,7 +300,9 @@ namespace GatherBuddy.AutoGather
         private void HandlePathfinding()
         {
             if (_navState.destination == default)
+            {
                 return;
+            }
 
             var landingDistance = GatherBuddy.Config.AutoGatherConfig.LandingDistance;
             var player = Player.Position;
@@ -306,10 +325,9 @@ namespace GatherBuddy.AutoGather
             if (_navState.flying && _navState.mountingUp && Dalamud.Conditions[ConditionFlag.Mounted])
             {
                 // Switch vnavmesh to fly mode when mounted up
-                path = VNavmesh.Path.ListWaypoints()
+                path = [.. VNavmesh.Path.ListWaypoints()
                     // Remove waypoints that are too close.
-                    .SkipWhile(p => Vector2.DistanceSquared(player.AsVector2(), p.AsVector2()) < 16f)
-                    .ToList();
+                    .SkipWhile(p => Vector2.DistanceSquared(player.AsVector2(), p.AsVector2()) < 16f)];
 
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(path, true);
@@ -319,12 +337,16 @@ namespace GatherBuddy.AutoGather
             }
 
             if (_navState.task == null || _navState.cts == null || !_navState.task.IsCompleted)
+            {
                 return;
+            }
 
             try
             {
                 path = _navState.task.Result;
-            } catch (Exception ex) {
+            }
+            catch (Exception ex)
+            {
                 GatherBuddy.Log.Error($"Pathfinding task threw an exception: {ex.Message}");
                 StopNavigation();
                 _advancedUnstuck.Force();
@@ -359,8 +381,12 @@ namespace GatherBuddy.AutoGather
             {
                 var pathtype = "unknown";
                 if (_navState.direct)
+                {
                     pathtype = "direct";
-                else switch (_navState.stage)
+                }
+                else
+                {
+                    switch (_navState.stage)
                     {
                         case PathfindingStage.InitialCombinedPathfinding:
                         case PathfindingStage.RetryCombinedPathfinding:
@@ -376,7 +402,13 @@ namespace GatherBuddy.AutoGather
                             _navState.stage++;
                             break;
                     }
-                if (IsPathing) RemovePassedWaypoints(path);
+                }
+
+                if (IsPathing)
+                {
+                    RemovePassedWaypoints(path);
+                }
+
                 VNavmesh.Path.Stop();
                 VNavmesh.Path.MoveTo(path, _navState.flying && !_navState.mountingUp);
                 GatherBuddy.Log.Debug($"VNavmesh started moving via {pathtype} path, {path.Count} waypoints.");
@@ -387,14 +419,22 @@ namespace GatherBuddy.AutoGather
                 var p = Player.Position;
                 var t = path[^1];
                 var fwd = new Vector3(t.X - p.X, 0f, t.Z - p.Z);
-                if (fwd.LengthSquared() < 1f) return;
+                if (fwd.LengthSquared() < 1f)
+                {
+                    return;
+                }
+
                 fwd = Vector3.Normalize(fwd);
 
                 var n = 0;
                 while (n < path.Count)
                 {
                     var next = new Vector3(path[n].X - p.X, 0f, path[n].Z - p.Z);
-                    if (Vector3.Dot(fwd, next) > 0) break;
+                    if (Vector3.Dot(fwd, next) > 0)
+                    {
+                        break;
+                    }
+
                     n++;
                 }
                 path.RemoveRange(0, n);
@@ -409,22 +449,40 @@ namespace GatherBuddy.AutoGather
         private static async Task<List<Vector3>> FindCombinedPath(Vector3 player, Vector3 target, float landingDistance, bool flying, CancellationToken token)
         {
             var point = flying ? VNavmesh.Query.Mesh.PointOnFloor(player, false, 5f) : player;
-            if (point == null) return [];
+            if (point == null)
+            {
+                return [];
+            }
 
             var groundPath = await VNavmesh.Nav.PathfindCancelable(point.Value, target, false, token);
-            if (groundPath.Count == 0) return [];
+            if (groundPath.Count == 0)
+            {
+                return [];
+            }
 
             var n = FindIntersection(groundPath, target, landingDistance);
             var landingWP = GetPointAtRadius(groundPath[n], groundPath[n + 1], target, landingDistance);
             var meshWP = VNavmesh.Query.Mesh.NearestPoint(landingWP, landingDistance, 10f); // Diadem fix
-            if (meshWP == null) return [];
-            if (Math.Abs(target.Y - meshWP.Value.Y) > 10f) return []; // Sanity check
+            if (meshWP == null)
+            {
+                return [];
+            }
+
+            if (Math.Abs(target.Y - meshWP.Value.Y) > 10f)
+            {
+                return []; // Sanity check
+            }
 
             var flyPath = await VNavmesh.Nav.PathfindCancelable(player, meshWP.Value, true, token);
-            if (flyPath.Count == 0) return [];
+            if (flyPath.Count == 0)
+            {
+                return [];
+            }
 
-            if (flyPath.Count > 1 && Vector3.DistanceSquared(flyPath[^1], flyPath[^2]) < 0.01f) 
+            if (flyPath.Count > 1 && Vector3.DistanceSquared(flyPath[^1], flyPath[^2]) < 0.01f)
+            {
                 flyPath.RemoveAt(flyPath.Count - 1);
+            }
 
             landingWP = flyPath[^1];
             flyPath.AddRange(groundPath.Skip(n + 1));
@@ -437,7 +495,9 @@ namespace GatherBuddy.AutoGather
                 for (var i = wp.Count - 2; i > 0; i--)
                 {
                     if (Vector3.DistanceSquared(wp[i], p) > r2)
+                    {
                         return i;
+                    }
                 }
                 return 0;
             }
@@ -455,7 +515,10 @@ namespace GatherBuddy.AutoGather
                 var discriminant = b * b - 4 * a * c;
 
                 // If discriminant < 0, there is no intersection (math safety).
-                if (discriminant < 0) return p1;
+                if (discriminant < 0)
+                {
+                    return p1;
+                }
 
                 discriminant = (float)Math.Sqrt(discriminant);
 
@@ -477,7 +540,7 @@ namespace GatherBuddy.AutoGather
             const float MaxVerticalSeparation = 2.5f;
 
             if (!GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions
-                && nodeId.HasValue 
+                && nodeId.HasValue
                 && AutoOffsets.TryGetRandomOffset(nodeId.Value, destination, player, out var offset))
             {
                 GatherBuddy.Log.Debug($"Using auto-offset for node {nodeId.Value}: {offset}. Distance to node: {Vector2.Distance(offset.ToVector2(), destination.ToVector2()):F2}y, angle: {Math.Acos(Vector2.Dot(Vector2.Normalize((player - destination).ToVector2()), Vector2.Normalize((offset - destination).ToVector2()))) * 180.0 / Math.PI:F1}°");
@@ -491,11 +554,17 @@ namespace GatherBuddy.AutoGather
                 {
                     offset = VNavmesh.Query.Mesh.NearestPoint(offset, MaxHorizontalSeparation, MaxVerticalSeparation).GetValueOrDefault(offset);
                     if ((separation = Vector2.Distance(offset.ToVector2(), destination.ToVector2())) > MaxHorizontalSeparation)
+                    {
                         GatherBuddy.Log.Warning($"Offset is ignored because the horizontal separation {separation} is too large after correcting for mesh. Maximum allowed is {MaxHorizontalSeparation}.");
+                    }
                     else if ((separation = Math.Abs(offset.Y - destination.Y)) > MaxVerticalSeparation)
+                    {
                         GatherBuddy.Log.Warning($"Offset is ignored because the vertical separation {separation} is too large after correcting for mesh. Maximum allowed is {MaxVerticalSeparation}.");
+                    }
                     else
+                    {
                         return offset;
+                    }
                 }
 
                 // There was code that corrected the destination to the nearest point on the mesh, but testing showed that
@@ -517,7 +586,9 @@ namespace GatherBuddy.AutoGather
 
             var territory = location.Territory;
             if (ForcedAetherytes.ZonesWithoutAetherytes.FirstOrDefault(x => x.ZoneId == territory.Id).AetheryteId is var alt && alt > 0)
+            {
                 territory = GatherBuddy.GameData.Aetherytes[alt].Territory;
+            }
 
             if (aetheryte == null || !Teleporter.IsAttuned(aetheryte.Id) || aetheryte.Territory != territory)
             {

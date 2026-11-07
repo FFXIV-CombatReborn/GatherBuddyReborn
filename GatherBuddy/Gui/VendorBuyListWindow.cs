@@ -1,15 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
-using ElliLib;
-using ElliLib.Raii;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -30,21 +28,21 @@ public sealed partial class VendorBuyListWindow : Window
         new("InventoryTools", "Allagan Tools"),
         new(VendorAutomationRequirements.AllaganItemSearchInternalName, "Allagan Item Search"),
     ];
-    private readonly Dictionary<uint, ushort> _currencyIconIds = new();
-    private readonly Dictionary<uint, string> _currencyNames = new();
+    private readonly Dictionary<uint, ushort> _currencyIconIds = [];
+    private readonly Dictionary<uint, string> _currencyNames = [];
 
-    private readonly Dictionary<uint, string> _zoneNames = new();
-    private bool   _wasFocusedLastFrame;
-    private Guid?  _editingListId;
+    private readonly Dictionary<uint, string> _zoneNames = [];
+    private bool _wasFocusedLastFrame;
+    private Guid? _editingListId;
     private string _listNameInput = string.Empty;
-    private bool   _focusListNameInput;
-    private bool   _openListNamePopup;
+    private bool _focusListNameInput;
+    private bool _openListNamePopup;
 
     public VendorBuyListWindow()
         : base(WindowId)
     {
         Flags |= ImGuiWindowFlags.NoScrollbar;
-        Size          = VulcanUiScaling.Scaled(900f, 520f);
+        Size = VulcanUiScaling.Scaled(900f, 520f);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
         {
@@ -64,7 +62,9 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var manager = GatherBuddy.VendorBuyListManager;
         if (manager == null)
+        {
             return false;
+        }
 
         var list = manager.CreateList("Vendor List", false);
         if (!manager.TryIncrementTarget(list.Id, itemId, 1, selectList: true, openWindow: false, announce: false))
@@ -75,7 +75,10 @@ public sealed partial class VendorBuyListWindow : Window
 
         Open();
         if (!manager.IsBusy)
+        {
             OpenListNamePopup(list.Id, list.Name);
+        }
+
         return true;
     }
 
@@ -86,7 +89,10 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var manager = GatherBuddy.VendorBuyListManager;
         if (manager == null || requests.Count == 0)
+        {
             return false;
+        }
+
         var list = manager.CreateList(listName, false);
         var addedCount = manager.TrySetTargets(list.Id, requests, selectList: true, openWindow: false, announce: false);
         if (addedCount == 0)
@@ -98,7 +104,10 @@ public sealed partial class VendorBuyListWindow : Window
 
         Open();
         if (!manager.IsBusy)
+        {
             OpenListNamePopup(list.Id, list.Name);
+        }
+
         return true;
     }
 
@@ -106,7 +115,9 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var manager = GatherBuddy.VendorBuyListManager;
         if (manager == null)
+        {
             return false;
+        }
 
         var list = manager.CreateList("Vendor List", false);
         if (!manager.TryAddTarget(list.Id, entry, vendor, targetQuantity, selectList: true, openWindow: false, announce: false))
@@ -117,7 +128,10 @@ public sealed partial class VendorBuyListWindow : Window
 
         Open();
         if (!manager.IsBusy)
+        {
             OpenListNamePopup(list.Id, list.Name);
+        }
+
         return true;
     }
 
@@ -125,7 +139,9 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var manager = GatherBuddy.VendorBuyListManager;
         if (manager == null)
+        {
             return;
+        }
 
         using var theme = VulcanUiStyle.PushTheme();
 
@@ -143,7 +159,9 @@ public sealed partial class VendorBuyListWindow : Window
 
         var activeList = manager.ActiveList;
         if (activeList == null)
+        {
             return;
+        }
 
         DrawHeader();
 
@@ -194,17 +212,23 @@ public sealed partial class VendorBuyListWindow : Window
                 OpenListNamePopup(list.Id, list.Name);
             }
             if (ImGui.Button("TeamCraft Import", new Vector2(-1, 0)))
+            {
                 OpenTeamCraftImportWindow(manager);
+            }
 
             var buttonWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
             if (ImGui.Button("Rename", new Vector2(buttonWidth, 0)))
+            {
                 OpenListNamePopup(activeList.Id, activeList.Name);
+            }
 
             ImGui.SameLine();
             using (ImRaii.Disabled(manager.Lists.Count <= 1))
             {
                 if (ImGui.Button("Delete", new Vector2(buttonWidth, 0)))
+                {
                     manager.DeleteList(activeList.Id);
+                }
             }
         }
 
@@ -214,7 +238,10 @@ public sealed partial class VendorBuyListWindow : Window
 
         ImGui.BeginChild("##vendorBuyListSelectorScroll", new Vector2(-1, 0), false);
         foreach (var list in manager.Lists.OrderBy(list => list.CreatedAt))
+        {
             DrawListSidebarEntry(manager, list, activeList.Id == list.Id, canModifyLists);
+        }
+
         ImGui.EndChild();
     }
 
@@ -223,22 +250,34 @@ public sealed partial class VendorBuyListWindow : Window
         var pendingCount = list.Entries.Count(entry => manager.GetRemainingQuantity(entry) > 0);
         var summary = $"{list.Entries.Count} entry(s)";
         if (pendingCount > 0)
+        {
             summary += $" · {pendingCount} pending";
+        }
+
         if (manager.IsRunning && manager.RunningListId == list.Id)
+        {
             summary += " · running";
+        }
+
         var selectableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
 
         if (isSelected)
+        {
             ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.ParsedGold);
+        }
 
         using (ImRaii.Disabled(!canModifyLists))
         {
             if (ImGui.Selectable($"{list.Name}##vendorBuyList_{list.Id}", isSelected, ImGuiSelectableFlags.None, new Vector2(selectableWidth, 0)))
+            {
                 manager.SetActiveList(list.Id);
+            }
         }
 
         if (isSelected)
+        {
             ImGui.PopStyleColor();
+        }
 
         var cursorX = ImGui.GetCursorPosX();
         ImGui.SetCursorPosX(cursorX + VulcanUiScaling.Scaled(8f));
@@ -279,12 +318,16 @@ public sealed partial class VendorBuyListWindow : Window
             using (ImRaii.Disabled(entries.Count == 0 || pending == 0 || manager.IsBusy || !vendorAutomationAvailable))
             {
                 if (ImGui.Button("Start List", VulcanUiScaling.Scaled(120f, 0f)) && vendorAutomationAvailable)
+                {
                     manager.Start();
+                }
             }
             if (ImGui.IsItemHovered(vendorAutomationAvailable ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+            {
                 ImGui.SetTooltip(vendorAutomationAvailable
                     ? "Run the active vendor list."
                     : VendorAutomationRequirements.UnavailableHelpText);
+            }
         }
         else if (ImGui.Button("Stop", VulcanUiScaling.Scaled(120f, 0f)))
         {
@@ -295,7 +338,9 @@ public sealed partial class VendorBuyListWindow : Window
         using (ImRaii.Disabled(entries.Count == 0 || manager.IsBusy))
         {
             if (ImGui.Button("Clear List", VulcanUiScaling.Scaled(120f, 0f)))
+            {
                 manager.Clear();
+            }
         }
 
         if (entries.Count > 0)
@@ -333,7 +378,9 @@ public sealed partial class VendorBuyListWindow : Window
         {
             var remainingQuantity = manager.GetRemainingQuantity(entry);
             if (remainingQuantity == 0 || entry.Cost == 0)
+            {
                 continue;
+            }
 
             var currencyItemId = entry.CurrencyItemId;
             var currencyName = GetCurrencyName(currencyItemId, entry.CurrencyName);
@@ -361,10 +408,9 @@ public sealed partial class VendorBuyListWindow : Window
                 requiredAmount));
         }
 
-        return requirements.Values
+        return [.. requirements.Values
             .OrderBy(requirement => requirement.CurrencyName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(requirement => requirement.CurrencyItemId)
-            .ToList();
+            .ThenBy(requirement => requirement.CurrencyItemId)];
     }
 
     private void DrawCurrencyRequirementSummary(IReadOnlyList<VendorCurrencyRequirement> requirements)
@@ -420,7 +466,9 @@ public sealed partial class VendorBuyListWindow : Window
         ImGui.TextUnformatted($"{requirement.RequiredAmount:N0}");
         ImGui.EndGroup();
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip($"{requirement.CurrencyName}\nHave: {requirement.AvailableAmount:N0}\nNeed: {requirement.RequiredAmount:N0}");
+        }
     }
 
     private void DrawEntryTable(List<VendorBuyListEntry> entries, VendorBuyListManager manager)
@@ -429,15 +477,17 @@ public sealed partial class VendorBuyListWindow : Window
                                          | ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
                                          | ImGuiTableFlags.SizingStretchProp;
         if (!ImGui.BeginTable("##vendorBuyListTable", 8, tableFlags, new Vector2(-1, -1)))
+        {
             return;
+        }
 
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Item",     ImGuiTableColumnFlags.WidthStretch, 1.25f);
-        ImGui.TableSetupColumn("Cost",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(58f));
-        ImGui.TableSetupColumn("Want",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(78f));
-        ImGui.TableSetupColumn("Have",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
-        ImGui.TableSetupColumn("Need",     ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
-        ImGui.TableSetupColumn("Vendor",   ImGuiTableColumnFlags.WidthStretch, 0.80f);
+        ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1.25f);
+        ImGui.TableSetupColumn("Cost", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(58f));
+        ImGui.TableSetupColumn("Want", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(78f));
+        ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
+        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
+        ImGui.TableSetupColumn("Vendor", ImGuiTableColumnFlags.WidthStretch, 0.80f);
         ImGui.TableSetupColumn("Location", ImGuiTableColumnFlags.WidthStretch, 1.00f);
         ImGui.TableSetupColumn("##remove", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(68f));
         ImGui.TableHeadersRow();
@@ -449,7 +499,9 @@ public sealed partial class VendorBuyListWindow : Window
         while (clipper.Step())
         {
             for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+            {
                 DrawEntryRow(entries[i], manager, iconVec, iconSize);
+            }
         }
         clipper.End();
         clipper.Destroy();
@@ -482,7 +534,9 @@ public sealed partial class VendorBuyListWindow : Window
         var windowCenter = ImGui.GetWindowPos() + ImGui.GetWindowSize() * 0.5f;
         ImGui.SetNextWindowPos(windowCenter, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
         if (!ImGui.BeginPopup(ListNamePopupId, ImGuiWindowFlags.AlwaysAutoResize))
+        {
             return;
+        }
 
         ImGui.Text("List Name");
         if (_focusListNameInput)
@@ -497,7 +551,10 @@ public sealed partial class VendorBuyListWindow : Window
         if (submitted || ImGui.Button("Save"))
         {
             if (_editingListId.HasValue)
+            {
                 manager.RenameList(_editingListId.Value, _listNameInput);
+            }
+
             _editingListId = null;
             ImGui.CloseCurrentPopup();
         }
@@ -517,25 +574,32 @@ public sealed partial class VendorBuyListWindow : Window
         manager.TryResolveLiveEntry(entry, out var liveEntry, out var resolvedVendor, out _);
         var vendorOptions = BuildVendorOptions(liveEntry);
         var selectedVendor = GetSelectedVendorOption(vendorOptions, resolvedVendor);
-        var isActive     = manager.ActiveEntryId == entry.Id;
-        var isEnabled    = entry.Enabled;
+        var isActive = manager.ActiveEntryId == entry.Id;
+        var isEnabled = entry.Enabled;
         var currentCount = Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
-        var remaining    = manager.GetRemainingQuantity(entry);
-        var targetCount  = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
+        var remaining = manager.GetRemainingQuantity(entry);
+        var targetCount = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
 
         ImGui.TableNextRow();
         if (isActive)
+        {
             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(new Vector4(1.00f, 0.84f, 0.00f, 0.16f)));
+        }
 
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
         using (ImRaii.Disabled(isActive || manager.IsBusy))
         {
             if (ImGui.Checkbox($"##vendorBuyListEnabled_{entry.Id}", ref isEnabled))
+            {
                 manager.SetEntryEnabled(entry.Id, isEnabled);
+            }
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(isEnabled ? "Enabled" : "Disabled");
+        }
+
         ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(entry.IconId));
         if (icon.TryGetWrap(out var wrap, out _))
@@ -551,13 +615,22 @@ public sealed partial class VendorBuyListWindow : Window
 
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
         if (isActive)
+        {
             ImGui.TextColored(ImGuiColors.ParsedGold, entry.ItemName);
+        }
         else if (!entry.Enabled)
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, entry.ItemName);
+        }
         else
+        {
             ImGui.TextUnformatted(entry.ItemName);
+        }
+
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(entry.ItemName);
+        }
 
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
@@ -568,7 +641,9 @@ public sealed partial class VendorBuyListWindow : Window
         {
             ImGui.SetNextItemWidth(-1);
             if (ImGui.InputInt($"##vendorBuyListTarget_{entry.Id}", ref targetCount))
+            {
                 manager.UpdateTargetQuantity(entry.Id, (uint)Math.Max(1, targetCount));
+            }
         }
 
         ImGui.TableNextColumn();
@@ -577,11 +652,17 @@ public sealed partial class VendorBuyListWindow : Window
         ImGui.TableNextColumn();
         ImGui.AlignTextToFramePadding();
         if (!entry.Enabled)
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, "Off");
+        }
         else if (remaining > 0)
+        {
             ImGui.TextColored(ImGuiColors.HealerGreen, $"{remaining:N0}");
+        }
         else
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, "0");
+        }
 
         ImGui.TableNextColumn();
         selectedVendor = DrawEntryVendorCell(entry, manager, isActive, vendorOptions, selectedVendor);
@@ -594,18 +675,27 @@ public sealed partial class VendorBuyListWindow : Window
         else
         {
             if (Dalamud.ClientState.TerritoryType == selectedVendor.Location.TerritoryId)
+            {
                 ImGui.TextColored(ImGuiColors.HealerGreen, selectedVendor.ZoneName);
+            }
             else
+            {
                 ImGui.TextUnformatted(selectedVendor.ZoneName);
+            }
+
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(selectedVendor.ZoneName);
+            }
         }
 
         ImGui.TableNextColumn();
         using (ImRaii.Disabled(isActive || manager.IsBusy))
         {
             if (ImGui.SmallButton($"Remove##vendorBuyListRemove_{entry.Id}"))
+            {
                 manager.RemoveEntry(entry.Id);
+            }
         }
     }
 
@@ -613,7 +703,9 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var options = new List<VendorListNpcOption>();
         if (liveEntry == null)
+        {
             return options;
+        }
 
         var locationCacheReady = VendorNpcLocationCache.IsInitialized;
         var selectableNpcs = VendorDevExclusions.GetSelectableNpcs(liveEntry.Npcs, "building the vendor buy list", liveEntry.ItemName);
@@ -621,7 +713,9 @@ public sealed partial class VendorBuyListWindow : Window
         {
             var location = VendorNpcLocationCache.TryGetFirstLocation(npc.NpcId);
             if (locationCacheReady && location == null)
+            {
                 continue;
+            }
 
             options.Add(new VendorListNpcOption(
                 npc,
@@ -635,7 +729,9 @@ public sealed partial class VendorBuyListWindow : Window
     private static VendorListNpcOption? GetSelectedVendorOption(IReadOnlyList<VendorListNpcOption> vendorOptions, VendorNpc? resolvedVendor)
     {
         if (vendorOptions.Count == 0)
+        {
             return null;
+        }
 
         if (resolvedVendor != null)
         {
@@ -644,7 +740,9 @@ public sealed partial class VendorBuyListWindow : Window
                 ?? vendorOptions.FirstOrDefault(option => option.Npc.NpcId == resolvedVendor.NpcId && option.Npc.MenuShopType == resolvedVendor.MenuShopType)
                 ?? vendorOptions.FirstOrDefault(option => option.Npc.NpcId == resolvedVendor.NpcId);
             if (selectedVendor != null)
+            {
                 return selectedVendor;
+            }
         }
 
         return vendorOptions[0];
@@ -657,7 +755,10 @@ public sealed partial class VendorBuyListWindow : Window
         {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, entry.VendorNpcName);
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(entry.VendorNpcName);
+            }
+
             return null;
         }
 
@@ -667,7 +768,10 @@ public sealed partial class VendorBuyListWindow : Window
             var label = GetVendorNpcDisplayLabel(vendorOptions, selectedVendor);
             ImGui.TextColored(ImGuiColors.HealerGreen, label);
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(label);
+            }
+
             return selectedVendor;
         }
 
@@ -683,16 +787,23 @@ public sealed partial class VendorBuyListWindow : Window
                     var isSelected = VendorPreferenceHelper.MatchesVendor(option.Npc, selectedVendor.Npc);
                     if (ImGui.Selectable(GetVendorNpcSelectableLabel(entry, vendorOptions, option), isSelected)
                      && manager.UpdateEntryVendor(entry.Id, option.Npc))
+                    {
                         selectedVendor = option;
+                    }
+
                     if (isSelected)
+                    {
                         ImGui.SetItemDefaultFocus();
+                    }
                 }
                 ImGui.EndCombo();
             }
         }
 
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(selectedLabel);
+        }
 
         return selectedVendor;
     }
@@ -706,19 +817,32 @@ public sealed partial class VendorBuyListWindow : Window
         {
             var routeLabel = GetVendorRouteLabel(option.Npc);
             if (!string.IsNullOrWhiteSpace(option.ZoneName) && !string.IsNullOrWhiteSpace(routeLabel))
+            {
                 return $"{option.Npc.Name} ({option.ZoneName} · {routeLabel})";
+            }
+
             if (!string.IsNullOrWhiteSpace(option.ZoneName))
+            {
                 return $"{option.Npc.Name} ({option.ZoneName})";
+            }
+
             if (!string.IsNullOrWhiteSpace(routeLabel))
+            {
                 return $"{option.Npc.Name} [{routeLabel}]";
+            }
+
             return $"{option.Npc.Name} [{option.Npc.NpcId}]";
         }
         var duplicateName = vendorOptions.Count(other => other.Npc.Name.Equals(option.Npc.Name, StringComparison.OrdinalIgnoreCase)) > 1;
         if (!duplicateName)
+        {
             return option.Npc.Name;
+        }
 
         if (!string.IsNullOrWhiteSpace(option.ZoneName))
+        {
             return $"{option.Npc.Name} ({option.ZoneName})";
+        }
 
         return $"{option.Npc.Name} [{option.Npc.NpcId}]";
     }
@@ -730,26 +854,45 @@ public sealed partial class VendorBuyListWindow : Window
     {
         var routeParts = new List<string>();
         if (npc.GcRankIndex >= 0)
+        {
             routeParts.Add($"Rank {npc.GcRankIndex + 1}");
+        }
+
         if (npc.GcCategoryIndex >= 0)
+        {
             routeParts.Add($"Category {npc.GcCategoryIndex + 1}");
+        }
+
         if (npc.InclusionPageIndex >= 0)
+        {
             routeParts.Add($"Page {npc.InclusionPageIndex + 1}");
+        }
+
         if (npc.InclusionSubPageIndex > 0)
+        {
             routeParts.Add($"Tab {npc.InclusionSubPageIndex}");
+        }
+
         if (routeParts.Count == 0 && npc.SourceShopId != 0)
+        {
             routeParts.Add($"Route {npc.SourceShopId}");
+        }
+
         return string.Join(" / ", routeParts);
     }
 
     private string GetZoneName(VendorNpcLocation location)
     {
         if (_zoneNames.TryGetValue(location.TerritoryId, out var zoneName))
+        {
             return zoneName;
+        }
 
         var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
         if (territorySheet == null || !territorySheet.TryGetRow(location.TerritoryId, out var territory))
+        {
             return _zoneNames[location.TerritoryId] = $"Territory {location.TerritoryId}";
+        }
 
         zoneName = territory.PlaceName.RowId != 0
             ? territory.PlaceName.Value.Name.ToString()
@@ -761,7 +904,9 @@ public sealed partial class VendorBuyListWindow : Window
     private ushort GetCurrencyIconId(uint currencyItemId)
     {
         if (_currencyIconIds.TryGetValue(currencyItemId, out var iconId))
+        {
             return iconId;
+        }
 
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         iconId = currencyItemId != 0 && itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)
@@ -774,10 +919,14 @@ public sealed partial class VendorBuyListWindow : Window
     private string GetCurrencyName(uint currencyItemId, string fallbackName)
     {
         if (!string.IsNullOrWhiteSpace(fallbackName))
+        {
             return fallbackName;
+        }
 
         if (_currencyNames.TryGetValue(currencyItemId, out var currencyName))
+        {
             return currencyName;
+        }
 
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         currencyName = currencyItemId != 0 && itemSheet != null && itemSheet.TryGetRow(currencyItemId, out var item)

@@ -8,12 +8,16 @@ public static unsafe class HousingManager
     {
         var housingManager = SeHousingManager.Instance();
         if (housingManager == null)
+        {
             return false;
+        }
 
         ref var housingTerritory = ref housingManager->CurrentTerritory;
         if (housingTerritory == null)
+        {
             return false;
-        
+        }
+
         return true;
     }
 }

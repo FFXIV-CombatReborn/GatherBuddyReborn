@@ -3,16 +3,10 @@ using System.Globalization;
 
 namespace GatherBuddy.Time;
 
-public readonly struct TimeInterval : IEquatable<TimeInterval>
+public readonly struct TimeInterval(TimeStamp start, TimeStamp end) : IEquatable<TimeInterval>
 {
-    public TimeStamp Start { get; init; }
-    public TimeStamp End   { get; init; }
-
-    public TimeInterval(TimeStamp start, TimeStamp end)
-    {
-        Start = start;
-        End   = end;
-    }
+    public TimeStamp Start { get; init; } = start;
+    public TimeStamp End { get; init; } = end;
 
     public long Duration
         => this == Always ? long.MaxValue : this == Invalid ? 0 : End - Start;
@@ -26,10 +20,12 @@ public readonly struct TimeInterval : IEquatable<TimeInterval>
     public TimeInterval Overlap(TimeInterval rhs)
     {
         if (rhs == Invalid || this == Invalid)
+        {
             return Invalid;
+        }
 
         var newStart = Start.Max(rhs.Start);
-        var newEnd   = End.Min(rhs.End);
+        var newEnd = End.Min(rhs.End);
         return newEnd <= newStart ? Never : new TimeInterval(newStart, newEnd);
     }
 
@@ -39,26 +35,39 @@ public readonly struct TimeInterval : IEquatable<TimeInterval>
     public TimeInterval Merge(TimeInterval rhs)
     {
         if (rhs.Start > End || Start > rhs.End || this == Invalid || rhs == Invalid)
+        {
             return Invalid;
+        }
 
         var newStart = Start.Min(rhs.Start);
-        var newEnd   = End.Max(rhs.End);
+        var newEnd = End.Max(rhs.End);
         return new TimeInterval(newStart, newEnd);
     }
 
     public TimeInterval Extend(long duration)
     {
         if (duration == 0)
+        {
             return this;
+        }
+
         if (this == Always)
+        {
             return Always;
+        }
+
         if (this == Invalid)
+        {
             return Invalid;
+        }
+
         if (this == Never)
+        {
             return Never;
+        }
 
         return duration > 0
-            ? new TimeInterval(Start,            End + duration)
+            ? new TimeInterval(Start, End + duration)
             : new TimeInterval(Start + duration, End);
     }
 
@@ -93,14 +102,20 @@ public readonly struct TimeInterval : IEquatable<TimeInterval>
     public int Compare(TimeInterval rhs)
     {
         if (this == Invalid)
+        {
             return Never.Compare(rhs);
+        }
 
         if (rhs == Invalid)
+        {
             rhs = Never;
+        }
 
         var diff = End - rhs.End;
         if (Math.Abs(diff) > 0)
+        {
             return diff.CompareTo(0);
+        }
 
         var diff2 = Start - rhs.Start;
         return diff2.CompareTo(0);

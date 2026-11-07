@@ -7,7 +7,7 @@ public class AHAutoGigConfig
 {
     public Guid UniqueId { get; set; } = Guid.NewGuid();
     public string PresetName { get; set; }
-    public List<AHBaseGig> Gigs { get; set; } = new();
+    public List<AHBaseGig> Gigs { get; set; } = [];
     public int HitboxSize { get; set; } = 25;
 
     public AHAutoGigConfig(string presetName)

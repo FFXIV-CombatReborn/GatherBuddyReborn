@@ -1,8 +1,8 @@
-using System;
-using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
+using System;
+using System.Numerics;
 
 namespace GatherBuddy.Crafting;
 
@@ -37,9 +37,9 @@ public class RepairNPCNavigator
         _state = NavigationState.Idle;
         _teleportAttempted = false;
         _stateStartTime = DateTime.UtcNow;
-        
+
         GatherBuddy.Log.Information($"[RepairNPCNavigator] Starting navigation to {targetNPC.Name} in territory {targetNPC.TerritoryType}");
-        
+
         if (Dalamud.ClientState.TerritoryType == targetNPC.TerritoryType)
         {
             var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
@@ -53,7 +53,7 @@ public class RepairNPCNavigator
                     return;
                 }
             }
-            
+
             _state = NavigationState.WaitingForZoneLoad;
             _stateStartTime = DateTime.UtcNow;
         }
@@ -66,7 +66,9 @@ public class RepairNPCNavigator
     public void Update()
     {
         if (_targetNPC == null || _state == NavigationState.Idle || IsComplete)
+        {
             return;
+        }
 
         try
         {
@@ -96,7 +98,9 @@ public class RepairNPCNavigator
     private void UpdateTeleporting()
     {
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
             return;
+        }
 
         if (!_teleportAttempted)
         {
@@ -126,13 +130,19 @@ public class RepairNPCNavigator
     private void UpdateWaitingForTeleport()
     {
         if (Lifestream.Enabled && Lifestream.IsBusy())
+        {
             return;
+        }
 
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < TeleportCooldown)
+        {
             return;
+        }
 
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
             return;
+        }
 
         if (Dalamud.ClientState.TerritoryType == _targetNPC!.TerritoryType)
         {
@@ -150,17 +160,25 @@ public class RepairNPCNavigator
     private void UpdateWaitingForZoneLoad()
     {
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
             return;
+        }
 
         var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPos == Vector3.Zero)
+        {
             return;
+        }
 
         if (Lifestream.Enabled && Lifestream.IsBusy())
+        {
             return;
+        }
 
         if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < ZoneLoadWait)
+        {
             return;
+        }
 
         GatherBuddy.Log.Information($"[RepairNPCNavigator] Zone loaded, starting navigation");
         StartVNavmeshNavigation();
@@ -171,7 +189,7 @@ public class RepairNPCNavigator
         try
         {
             GatherBuddy.Log.Information($"[RepairNPCNavigator] Starting VNavmesh navigation to {_targetNPC!.Position}");
-            VNavmesh.SimpleMove.PathfindAndMoveTo(_targetNPC.Position, false);
+            VNavmesh.SimpleMove.PathfindAndMoveTo(_targetNPC!.Position, false);
             _state = NavigationState.Navigating;
             _stateStartTime = DateTime.UtcNow;
         }
@@ -186,7 +204,9 @@ public class RepairNPCNavigator
     {
         var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPos == Vector3.Zero)
+        {
             return;
+        }
 
         if (Dalamud.ClientState.TerritoryType != _targetNPC!.TerritoryType)
         {
@@ -233,11 +253,15 @@ public class RepairNPCNavigator
     {
         var territorySheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>();
         if (territorySheet == null || !territorySheet.TryGetRow(territoryId, out var territory))
+        {
             return 0;
+        }
 
         var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Aetheryte>();
         if (aetheryteSheet == null)
+        {
             return 0;
+        }
 
         foreach (var aetheryte in aetheryteSheet)
         {

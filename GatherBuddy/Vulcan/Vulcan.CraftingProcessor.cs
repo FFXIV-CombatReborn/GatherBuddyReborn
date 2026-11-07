@@ -5,7 +5,7 @@ namespace GatherBuddy.Vulcan;
 
 public static class CraftingProcessor
 {
-    private static readonly List<ISolverDefinition> _solverDefinitions = new();
+    private static readonly List<ISolverDefinition> _solverDefinitions = [];
     private static Solver? _activeSolver;
     private static Solver.Recommendation _nextRecommendation;
     private static string _activeSolverName = "";
@@ -35,7 +35,9 @@ public static class CraftingProcessor
             foreach (var flavor in definition.Flavors(craft))
             {
                 if (includeUnsupported || flavor.UnsupportedReason.Length == 0)
+                {
                     yield return flavor;
+                }
             }
         }
     }
@@ -76,7 +78,9 @@ public static class CraftingProcessor
     public static void OnCraftAdvanced(CraftState craft, StepState step, uint? recipeId)
     {
         if (_activeSolver == null)
+        {
             return;
+        }
 
         _nextRecommendation = _activeSolver.Solve(craft, step);
         CraftingEvents.RaiseSolverRecommendationReady(craft, step, _nextRecommendation, _activeSolverName);
@@ -92,7 +96,9 @@ public static class CraftingProcessor
     public static void RegisterSolver(ISolverDefinition definition)
     {
         if (!_solverDefinitions.Any(s => s.GetType() == definition.GetType()))
+        {
             _solverDefinitions.Add(definition);
+        }
     }
 
     public static void UnregisterSolver(ISolverDefinition definition)

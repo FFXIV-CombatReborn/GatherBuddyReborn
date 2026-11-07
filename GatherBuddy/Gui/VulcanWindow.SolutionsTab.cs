@@ -1,14 +1,13 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Colors;
+using Dalamud.Interface.Textures;
+using GatherBuddy.Crafting;
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Textures;
-using ElliLib.Raii;
-using GatherBuddy.Crafting;
-using GatherBuddy.Vulcan;
-using Lumina.Excel.Sheets;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -17,9 +16,9 @@ public partial class VulcanWindow
 {
     private string _solutionsSearch = string.Empty;
     private string? _selectedSolutionKey = null;
-    private List<CachedRaphaelSolution> _solutionsList = new();
+    private List<CachedRaphaelSolution> _solutionsList = [];
     private DateTime _solutionsLastRefresh = DateTime.MinValue;
-    private readonly Dictionary<uint, (string Name, uint IconId)> _solutionItemCache = new();
+    private readonly Dictionary<uint, (string Name, uint IconId)> _solutionItemCache = [];
 
     private void DrawSolutionsTab()
     {
@@ -42,14 +41,15 @@ public partial class VulcanWindow
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             if ((DateTime.UtcNow - _solutionsLastRefresh).TotalSeconds > 0.5)
             {
-                _solutionsList = GatherBuddy.RaphaelSolveCoordinator
+                _solutionsList = [.. GatherBuddy.RaphaelSolveCoordinator
                     .GetAllCachedSolutions()
-                    .OrderByDescending(s => s.GeneratedAt)
-                    .ToList();
+                    .OrderByDescending(s => s.GeneratedAt)];
                 _solutionsLastRefresh = DateTime.UtcNow;
             }
 
@@ -62,10 +62,15 @@ public partial class VulcanWindow
             using (ImRaii.Disabled(coordinator.PendingSolves <= 0))
             {
                 if (ImGui.Button("Stop Queue", VulcanUiScaling.Scaled(90f, 0f)))
+                {
                     coordinator.CancelAllPendingSolves();
+                }
             }
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            {
                 ImGui.SetTooltip("Cancel queued and active Raphael solves while keeping completed cached solutions.");
+            }
+
             ImGui.SameLine();
             if (ImGui.Button("Clear All", VulcanUiScaling.Scaled(90f, 0f)))
             {
@@ -81,7 +86,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Clears cached solutions each time a new crafting queue starts.\nDisable to reuse solutions across queue runs when your stats haven't changed.");
+            }
 
             var activeColor = coordinator.ActiveSolves > 0 ? ImGuiColors.HealerGreen : ImGuiColors.DalamudGrey;
             var pendingColor = coordinator.PendingSolves > 0 ? ImGuiColors.DalamudOrange : ImGuiColors.DalamudGrey;
@@ -95,10 +102,9 @@ public partial class VulcanWindow
 
             var filtered = string.IsNullOrWhiteSpace(_solutionsSearch)
                 ? _solutionsList
-                : _solutionsList
+                : [.. _solutionsList
                     .Where(s => GetSolutionItemName(s.Request.RecipeId)
-                        .Contains(_solutionsSearch, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                        .Contains(_solutionsSearch, StringComparison.OrdinalIgnoreCase))];
 
             if (filtered.Count == 0)
             {
@@ -149,22 +155,32 @@ public partial class VulcanWindow
                     .GetFromGameIcon(new GameIconLookup(iconId))
                     .GetWrapOrDefault();
                 if (wrap != null)
+                {
                     ImGui.Image(wrap.Handle, iconSize);
+                }
                 else
+                {
                     ImGui.Dummy(iconSize);
+                }
             }
             else
+            {
                 ImGui.Dummy(iconSize);
+            }
 
             ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
             ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize.Y - ImGui.GetTextLineHeight()) / 2f);
 
             if (ImGui.Selectable($"{name}##sol_{solution.Key}", isSelected, ImGuiSelectableFlags.None,
                     new Vector2(contentMaxX - ImGui.GetCursorPosX(), 0)))
+            {
                 _selectedSolutionKey = solution.Key;
+            }
 
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(statsLine);
+            }
         }, itemHeight);
     }
 
@@ -248,9 +264,13 @@ public partial class VulcanWindow
                     .GetFromGameIcon(new GameIconLookup(skillIconId))
                     .GetWrapOrDefault();
                 if (wrap != null)
+                {
                     ImGui.Image(wrap.Handle, actionIconSize);
+                }
                 else
+                {
                     ImGui.Dummy(actionIconSize);
+                }
             }
             else
             {
@@ -268,7 +288,9 @@ public partial class VulcanWindow
     private (string Name, uint IconId) GetSolutionItemInfo(uint recipeId)
     {
         if (_solutionItemCache.TryGetValue(recipeId, out var cached))
+        {
             return cached;
+        }
 
         try
         {

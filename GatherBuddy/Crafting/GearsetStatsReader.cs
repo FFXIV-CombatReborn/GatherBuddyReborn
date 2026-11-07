@@ -1,12 +1,9 @@
-using System;
-using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using static FFXIVClientStructs.FFXIV.Client.Game.InventoryType;
+using GatherBuddy.Vulcan;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
-using GatherBuddy.Vulcan;
+using System;
 
 namespace GatherBuddy.Crafting;
 
@@ -91,33 +88,44 @@ public static unsafe class GearsetStatsReader
 
             var inventoryMgr = InventoryManager.Instance();
             if (inventoryMgr == null)
+            {
                 return null;
+            }
 
             var equippedContainer = inventoryMgr->GetInventoryContainer(InventoryType.EquippedItems);
             if (equippedContainer == null || equippedContainer->Size == 0)
+            {
                 return null;
-            
-            for (int i = 0; i < equippedContainer->Size; i++)
+            }
+
+            for (var i = 0; i < equippedContainer->Size; i++)
             {
                 var inventoryItem = equippedContainer->Items + i;
                 if (inventoryItem->ItemId == 0)
+                {
                     continue;
+                }
 
-                uint actualItemId = inventoryItem->ItemId;
-                bool isHQ = inventoryItem->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality);
+                var actualItemId = inventoryItem->ItemId;
+                var isHQ = inventoryItem->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality);
 
                 if (!itemSheet.TryGetRow(actualItemId, out var item))
+                {
                     continue;
+                }
+
                 var baseStats = new int[StatCount];
                 var meldStats = new int[StatCount];
 
                 AccumulateBaseStats(item, isHQ, baseStats);
 
-                for (int m = 0; m < MateriaSlotCount; m++)
+                for (var m = 0; m < MateriaSlotCount; m++)
                 {
                     var materiaId = inventoryItem->Materia[m];
                     if (materiaId == 0 || !materiaSheet.TryGetRow(materiaId, out var materia))
+                    {
                         continue;
+                    }
 
                     AccumulateMateriaStats(materia, inventoryItem->MateriaGrades[m], meldStats);
                 }
@@ -170,32 +178,40 @@ public static unsafe class GearsetStatsReader
         out int gearsetIndex, out string gearsetName)
     {
         var fallbackIndex = -1;
-        for (int i = 0; i < 100; i++)
+        for (var i = 0; i < 100; i++)
         {
             if (!IsMatchingGearset(gearsetModule, i, jobId))
+            {
                 continue;
+            }
 
             if (fallbackIndex < 0)
+            {
                 fallbackIndex = i;
+            }
 
             var candidateName = gearsetModule->Entries[i].NameString;
             if (string.IsNullOrWhiteSpace(preferredName) || !string.Equals(candidateName, preferredName, StringComparison.Ordinal))
+            {
                 continue;
+            }
 
             gearsetIndex = i;
-            gearsetName  = candidateName;
+            gearsetName = candidateName;
             return true;
         }
 
         gearsetIndex = fallbackIndex;
-        gearsetName  = fallbackIndex >= 0 ? gearsetModule->Entries[fallbackIndex].NameString : string.Empty;
+        gearsetName = fallbackIndex >= 0 ? gearsetModule->Entries[fallbackIndex].NameString : string.Empty;
         return fallbackIndex >= 0;
     }
 
     private static bool IsMatchingGearset(RaptureGearsetModule* gearsetModule, int gearsetIndex, uint jobId)
     {
         if (gearsetIndex < 0 || gearsetIndex >= 100)
+        {
             return false;
+        }
 
         var gearset = gearsetModule->Entries[gearsetIndex];
         return (gearset.Flags & RaptureGearsetModule.GearsetFlag.Exists) != 0 && gearset.ClassJob == jobId;
@@ -214,7 +230,9 @@ public static unsafe class GearsetStatsReader
         }
 
         if (!isHighQuality || item.BaseParamSpecial.Count == 0)
+        {
             return;
+        }
 
         var hqValues = item.BaseParamValueSpecial;
         var hqParamIndex = 0;
@@ -233,7 +251,9 @@ public static unsafe class GearsetStatsReader
     private static void AddStatValue(Span<int> stats, uint paramId, int value)
     {
         if (value == 0 || !TryGetStatIndex(paramId, out var statIndex))
+        {
             return;
+        }
 
         stats[statIndex] += value;
     }
@@ -254,10 +274,14 @@ public static unsafe class GearsetStatsReader
     {
         var uncappedValue = baseValue + meldedValue;
         if (uncappedValue == 0)
+        {
             return 0;
+        }
 
         if (!TryGetItemStatCap(item, paramId, baseValue, out var cap))
+        {
             return uncappedValue;
+        }
 
         return Math.Min(uncappedValue, cap);
     }
@@ -323,11 +347,11 @@ public static unsafe class GearsetStatsReader
         try
         {
             var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
-            
+
             if (currentJob == jobId)
             {
                 var equippedStats = ReadFromCurrentlyEquipped(jobId);
-                
+
                 if (equippedStats != null && equippedStats.Craftsmanship > 0)
                 {
                     return equippedStats;
@@ -336,17 +360,23 @@ public static unsafe class GearsetStatsReader
 
             var gearsetModule = RaptureGearsetModule.Instance();
             if (gearsetModule == null)
+            {
                 return null;
+            }
 
             fixed (RaptureGearsetModule.GearsetEntry* entries = gearsetModule->Entries)
             {
-                for (int i = 0; i < 100; i++)
+                for (var i = 0; i < 100; i++)
                 {
                     if ((entries[i].Flags & RaptureGearsetModule.GearsetFlag.Exists) == 0)
+                    {
                         continue;
+                    }
 
                     if (entries[i].ClassJob != jobId)
+                    {
                         continue;
+                    }
 
                     return CalculateStatsFromGearset(&entries[i], jobId);
                 }
@@ -377,26 +407,33 @@ public static unsafe class GearsetStatsReader
                 return null;
             }
 
-            for (int i = 0; i < GearsetItemCount; i++)
+            for (var i = 0; i < GearsetItemCount; i++)
             {
                 var gearItem = gearset->Items[i];
                 if (gearItem.ItemId == 0)
+                {
                     continue;
+                }
 
-                uint actualItemId = gearItem.ItemId % 1000000;
-                bool isHQ = gearItem.ItemId >= 1000000;
+                var actualItemId = gearItem.ItemId % 1000000;
+                var isHQ = gearItem.ItemId >= 1000000;
                 if (!itemSheet.TryGetRow(actualItemId, out var item))
+                {
                     continue;
+                }
+
                 var baseStats = new int[StatCount];
                 var meldStats = new int[StatCount];
 
                 AccumulateBaseStats(item, isHQ, baseStats);
 
-                for (int m = 0; m < MateriaSlotCount; m++)
+                for (var m = 0; m < MateriaSlotCount; m++)
                 {
                     var materiaId = gearItem.Materia[m];
                     if (materiaId == 0 || !materiaSheet.TryGetRow(materiaId, out var materia))
+                    {
                         continue;
+                    }
 
                     AccumulateMateriaStats(materia, gearItem.MateriaGrades[m], meldStats);
                 }
@@ -444,7 +481,9 @@ public static unsafe class GearsetStatsReader
             };
 
             if (manipulationQuestId == 0)
+            {
                 return false;
+            }
 
             return QuestManager.IsQuestComplete(manipulationQuestId);
         }
@@ -453,32 +492,42 @@ public static unsafe class GearsetStatsReader
             return false;
         }
     }
-    
+
     private static ItemFood? GetItemConsumableProperties(Item item, bool hq)
     {
         if (!item.ItemAction.IsValid)
+        {
             return null;
+        }
+
         var action = item.ItemAction.Value;
         var actionParams = hq ? action.DataHQ : action.Data;
         if (actionParams[0] is not 48 and not 49)
+        {
             return null;
+        }
+
         return Dalamud.GameData.GetExcelSheet<ItemFood>()?.GetRow(actionParams[1]);
     }
-    
+
     public static (int craftsmanship, int control, int cp) CalculateConsumableBonus(uint itemId, bool isHQ, int baseCraftsmanship, int baseControl, int baseCP)
     {
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null || !itemSheet.TryGetRow(itemId, out var item))
+        {
             return (0, 0, 0);
-        
+        }
+
         var food = GetItemConsumableProperties(item, isHQ);
         if (food == null)
+        {
             return (0, 0, 0);
-        
-        int craftBonus = 0;
-        int controlBonus = 0;
-        int cpBonus = 0;
-        
+        }
+
+        var craftBonus = 0;
+        var controlBonus = 0;
+        var cpBonus = 0;
+
         foreach (var p in food.Value.Params)
         {
             if (p.BaseParam.RowId == 70) // Craftsmanship
@@ -486,37 +535,49 @@ public static unsafe class GearsetStatsReader
                 var val = isHQ ? p.ValueHQ : p.Value;
                 var max = isHQ ? p.MaxHQ : p.Max;
                 if (p.IsRelative)
+                {
                     craftBonus = Math.Min(max, baseCraftsmanship * val / 100);
+                }
                 else
+                {
                     craftBonus = val;
+                }
             }
             else if (p.BaseParam.RowId == 71) // Control
             {
                 var val = isHQ ? p.ValueHQ : p.Value;
                 var max = isHQ ? p.MaxHQ : p.Max;
                 if (p.IsRelative)
+                {
                     controlBonus = Math.Min(max, baseControl * val / 100);
+                }
                 else
+                {
                     controlBonus = val;
+                }
             }
             else if (p.BaseParam.RowId == 11) // CP
             {
                 var val = isHQ ? p.ValueHQ : p.Value;
                 var max = isHQ ? p.MaxHQ : p.Max;
                 if (p.IsRelative)
+                {
                     cpBonus = Math.Min(max, baseCP * val / 100);
+                }
                 else
+                {
                     cpBonus = val;
+                }
             }
         }
-        
+
         return (craftBonus, controlBonus, cpBonus);
     }
-    
+
     public static GameStateBuilder.PlayerStats ApplyConsumablesToStats(GameStateBuilder.PlayerStats baseStats, RecipeCraftSettings? settings)
     {
-        var foodId     = settings?.FoodItemId;
-        var foodHQ     = settings?.FoodHQ ?? false;
+        var foodId = settings?.FoodItemId;
+        var foodHQ = settings?.FoodHQ ?? false;
         var medicineId = settings?.MedicineItemId;
         var medicineHQ = settings?.MedicineHQ ?? false;
         return ApplyConsumablesToStats(baseStats, foodId, foodHQ, medicineId, medicineHQ);

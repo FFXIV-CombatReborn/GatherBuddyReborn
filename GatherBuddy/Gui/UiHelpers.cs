@@ -1,16 +1,16 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
+using ElliLib;
+using ElliLib.Table;
+using ElliLib.Text;
+using GatherBuddy.Config;
+using GatherBuddy.Interfaces;
+using GatherBuddy.Time;
 using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility;
-using GatherBuddy.Config;
-using GatherBuddy.Interfaces;
-using GatherBuddy.Time;
-using ElliLib;
-using ElliLib.Table;
-using ElliLib.Text;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -20,7 +20,7 @@ public partial class Interface
     internal static bool DrawLocationInput(IGatherable item, ILocation? current, out ILocation? ret)
     {
         const string noPreferred = "No Preferred Location";
-        var          width       = SetInputWidth * 0.85f;
+        var width = SetInputWidth * 0.85f;
         ret = current;
         if (item.Locations.Count == 1)
         {
@@ -35,13 +35,15 @@ public partial class Interface
         using var combo = ImUtf8.Combo("##Location"u8, text);
         DrawLocationTooltip(current);
         if (!combo)
+        {
             return false;
+        }
 
         var changed = false;
 
         if (ImGui.Selectable(noPreferred, current == null))
         {
-            ret     = null;
+            ret = null;
             changed = true;
         }
 
@@ -51,7 +53,7 @@ public partial class Interface
             using var id = ImUtf8.PushId(idx++);
             if (ImUtf8.Selectable(loc.Name, loc.Id == (current?.Id ?? 0)))
             {
-                ret     = loc;
+                ret = loc;
                 changed = true;
             }
 
@@ -66,17 +68,22 @@ public partial class Interface
         var active = uptime.ToTimeString(GatherBuddy.Time.ServerTime, false, out var timeString);
         var colorId = (active, uptimeDependency) switch
         {
-            (true, true)   => ColorId.DependentAvailableFish.Value(),
-            (true, false)  => ColorId.AvailableItem.Value(),
-            (false, true)  => ColorId.DependentUpcomingFish.Value(),
+            (true, true) => ColorId.DependentAvailableFish.Value(),
+            (true, false) => ColorId.AvailableItem.Value(),
+            (false, true) => ColorId.DependentUpcomingFish.Value(),
             (false, false) => ColorId.UpcomingItem.Value(),
         };
 
         using var color = ImRaii.PushColor(ImGuiCol.Text, colorId);
         if (rightAligned)
+        {
             ImUtf8.TextRightAligned(timeString);
+        }
         else
+        {
             ImUtf8.Text(timeString);
+        }
+
         color.Pop();
 
         DrawTimeIntervalTooltip(uptime, uptimeDependency, item, !char.IsLetter(timeString[0]));
@@ -85,15 +92,21 @@ public partial class Interface
     internal static void DrawTimeIntervalTooltip(TimeInterval uptime, bool uptimeDependency = false, IGatherable? item = null, bool displayNextWindow = true)
     {
         if (!uptimeDependency && !displayNextWindow || !ImGui.IsItemHovered())
+        {
             return;
+        }
 
         using var tt = ImRaii.Tooltip();
 
         if (uptimeDependency)
+        {
             ImUtf8.TextFramed("Uptime Dependency"u8, 0xFF202080);
+        }
 
         if (!displayNextWindow)
+        {
             return;
+        }
 
         if (item is null || GatherBuddy.Config.UpcomingUptimesCount <= 1)
         {
@@ -101,19 +114,21 @@ public partial class Interface
             return;
         }
 
-        var uptimes   = GatherBuddy.UptimeManager.GetUpcomingUptimes(item, GatherBuddy.Config.UpcomingUptimesCount);
+        var uptimes = GatherBuddy.UptimeManager.GetUpcomingUptimes(item, GatherBuddy.Config.UpcomingUptimesCount);
         if (uptimes.Count <= 0)
         {
             ImUtf8.Text($"{uptime.Start}\n{uptime.End}\n{uptime.DurationString()}\n\nLoading next {GatherBuddy.Config.UpcomingUptimesCount} windows...");
             return;
         }
 
-        var cellPadding = new Vector2(10 , 5) * ImGuiHelpers.GlobalScale;
+        var cellPadding = new Vector2(10, 5) * ImGuiHelpers.GlobalScale;
 
         using var style = ImRaii.PushStyle(ImGuiStyleVar.CellPadding, cellPadding);
         using var table = ImRaii.Table("##UpcomingUptimesTable", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.PadOuterX);
         if (!table)
+        {
             return;
+        }
 
         ImGui.TableSetupColumn("Day"u8);
         ImGui.TableSetupColumn("Time"u8);
@@ -123,7 +138,7 @@ public partial class Interface
         ImGui.TableHeadersRow();
 
         DateTime? previousStartDate = null;
-        var       now     = GatherBuddy.Time.ServerTime;
+        var now = GatherBuddy.Time.ServerTime;
 
         foreach (var (i, time) in uptimes.Take(GatherBuddy.Config.UpcomingUptimesCount).Index())
         {
@@ -168,7 +183,9 @@ public partial class Interface
     internal static void HoverTooltip(string text)
     {
         if (!text.StartsWith('\0'))
+        {
             ImUtf8.HoverTooltip(text);
+        }
     }
 
     public static void AlignTextToSize(string text, Vector2 size)
@@ -184,8 +201,8 @@ public partial class Interface
 
     private static void DrawFormatInput(string label, string tooltip, string oldValue, string defaultValue, Action<string> setValue)
     {
-        var       tmp = oldValue;
-        using var id  = ImRaii.PushId(label);
+        var tmp = oldValue;
+        using var id = ImRaii.PushId(label);
 
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 50 * Scale);
         if (ImGui.InputText(string.Empty, ref tmp, 256) && tmp != oldValue)
@@ -210,7 +227,9 @@ public partial class Interface
     private static void DrawStatusLine<T>(Table<T> table, string name)
     {
         if (!GatherBuddy.Config.ShowStatusLine)
+        {
             return;
+        }
 
         ImGui.SameLine();
         using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
@@ -231,14 +250,18 @@ public partial class Interface
                 {
                     GatherBuddy.UptimeManager.ResetModifiedUptimes();
                     foreach (var fish in ExtendedFishList.Where(f => f.Data.HasOverridenData))
+                    {
                         fish.Update();
+                    }
                 }
             }
-            
+
             using (var popup = ImUtf8.PopupContextItem("##Context"u8))
             {
                 if (popup)
+                {
                     if (ImUtf8.MenuItem("Move to Backup"u8))
+                    {
                         try
                         {
                             File.Move(GatherBuddy.GameData.OverrideFile, Path.ChangeExtension(GatherBuddy.GameData.OverrideFile, ".json.bak"),
@@ -248,8 +271,10 @@ public partial class Interface
                         {
                             GatherBuddy.Log.Error($"Could not move fish data override file to backup:\n{ex}");
                         }
+                    }
+                }
             }
-            
+
             if (GatherBuddy.GameData.OverriddenFish > 0)
             {
                 ImGui.SameLine(0, 50 * ImGuiHelpers.GlobalScale);
@@ -261,23 +286,30 @@ public partial class Interface
     private static void DrawClippy()
     {
         const string popupName = "GatherClippy###ClippyPopup";
-        const string text      = "Can't find something?";
+        const string text = "Can't find something?";
         if (GatherBuddy.Config.HideClippy)
+        {
             return;
+        }
 
-        var textSize   = ImGui.CalcTextSize(text).X;
+        var textSize = ImGui.CalcTextSize(text).X;
         var buttonSize = new Vector2(Math.Max(200, textSize) * ImGuiHelpers.GlobalScale, ImGui.GetFrameHeight());
-        var padding    = ImGuiHelpers.ScaledVector2(9, 9);
+        var padding = ImGuiHelpers.ScaledVector2(9, 9);
 
         ImGui.SetCursorPos(ImGui.GetWindowSize() - buttonSize - padding);
         using var child = ImRaii.Child("##clippyChild", buttonSize, false, ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoDecoration);
         if (!child)
+        {
             return;
+        }
 
         using var color = ImRaii.PushColor(ImGuiCol.Button, 0xFFA06020);
 
         if (ImGui.Button(text, buttonSize))
+        {
             ImGui.OpenPopup(popupName);
+        }
+
         if (ImGui.IsItemClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyCtrl && ImGui.GetIO().KeyShift)
         {
             GatherBuddy.Config.HideClippy = true;
@@ -295,7 +327,9 @@ public partial class Interface
         using var popup = ImRaii.Popup(popupName,
             ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.Modal);
         if (!popup)
+        {
             return;
+        }
 
         ImGui.BulletText(
             "You can use text filters like \"Item Name...\" to only show entries that contain the given string. They are case-insensitive and are not stored for your next session.");
@@ -319,6 +353,8 @@ public partial class Interface
 
         ImGui.SetCursorPosY(windowSize.Y - ImGui.GetFrameHeight() - ImGui.GetStyle().WindowPadding.Y);
         if (ImGui.Button("Understood", -Vector2.UnitX))
+        {
             ImGui.CloseCurrentPopup();
+        }
     }
 }

@@ -60,7 +60,9 @@ public static class CraftingTasks
     public static unsafe TaskResult TaskOpenRepairWindow()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (RepairManager.RepairWindowOpen())
         {
@@ -78,7 +80,9 @@ public static class CraftingTasks
     public static unsafe TaskResult TaskInteractWithRepairNPC()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (!RepairManager.RepairNPCNearby(out var npc) || npc == null)
         {
@@ -91,11 +95,13 @@ public static class CraftingTasks
         _nextRetry = DateTime.Now.AddMilliseconds(500);
         return TaskResult.Done;
     }
-    
+
     public static unsafe TaskResult TaskSelectRepairFromMenu()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (RepairManager.RepairWindowOpen())
         {
@@ -104,7 +110,7 @@ public static class CraftingTasks
             return TaskResult.Done;
         }
 
-        if (GenericHelpers.TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var addonSelectIconString) && 
+        if (GenericHelpers.TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var addonSelectIconString) &&
             addonSelectIconString->AtkUnitBase.IsVisible)
         {
             if (!RepairManager.RepairNPCNearby(out var npc) || npc == null)
@@ -119,7 +125,7 @@ public static class CraftingTasks
                 var repairDataList = enpc.ENpcData.ToList();
                 var repairData = repairDataList.FirstOrDefault(x => x.RowId == 720915);
                 var index = repairDataList.IndexOf(repairData);
-                
+
                 GatherBuddy.Log.Debug($"[CraftingTasks] Selecting repair option (index {index}) from menu");
                 Callback.Fire(&addonSelectIconString->AtkUnitBase, true, index);
                 _nextRetry = DateTime.Now.AddMilliseconds(500);
@@ -144,7 +150,9 @@ public static class CraftingTasks
     public static unsafe TaskResult TaskExecuteRepair(bool isSelfRepair = false)
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (!RepairManager.RepairWindowOpen() && !_seenRepairConfirmation && !_waitingForOccupied39)
         {
@@ -187,7 +195,7 @@ public static class CraftingTasks
             }
         }
 
-        if (GenericHelpers.TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addonSelectYesno) && 
+        if (GenericHelpers.TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addonSelectYesno) &&
             GenericHelpers.IsAddonReady(&addonSelectYesno->AtkUnitBase))
         {
             GatherBuddy.Log.Debug("[CraftingTasks] Clicking SelectYesno to confirm repair");
@@ -213,7 +221,9 @@ public static class CraftingTasks
     public static unsafe TaskResult TaskCloseRepairWindow()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (!GenericHelpers.TryGetAddonByName<AddonRepair>("Repair", out var repairAddon) || !repairAddon->AtkUnitBase.IsVisible)
         {
@@ -224,7 +234,9 @@ public static class CraftingTasks
         }
 
         if (_repairCloseStartTime == DateTime.MinValue)
+        {
             _repairCloseStartTime = DateTime.Now;
+        }
 
         if ((DateTime.Now - _repairCloseStartTime).TotalSeconds > 10)
         {
@@ -240,16 +252,20 @@ public static class CraftingTasks
         _nextRetry = DateTime.Now.AddMilliseconds(500);
         return TaskResult.Retry;
     }
-    
+
     public static unsafe TaskResult TaskWaitForRepairAutoClose()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("RepairAuto", out var repairAutoAddon) && repairAutoAddon->IsVisible)
         {
             if (_repairAutoStartTime == DateTime.MinValue)
+            {
                 _repairAutoStartTime = DateTime.Now;
+            }
 
             if ((DateTime.Now - _repairAutoStartTime).TotalSeconds > 10)
             {
@@ -315,7 +331,9 @@ public static class CraftingTasks
     public static unsafe TaskResult TaskExtractAllMateria()
     {
         if (DateTime.Now < _materiaNextRetry)
+        {
             return TaskResult.Retry;
+        }
 
         if (!MateriaManager.IsExtractionUnlocked())
         {

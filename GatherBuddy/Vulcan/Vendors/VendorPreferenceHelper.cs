@@ -58,22 +58,34 @@ public static class VendorPreferenceHelper
     {
         var selectableNpcs = VendorDevExclusions.GetSelectableNpcs(npcs, "resolving preferred vendors");
         if (selectableNpcs.Count == 0)
+        {
             return null;
+        }
 
-        GatherBuddy.Config.VendorRoutePreferences ??= new();
+        GatherBuddy.Config.VendorRoutePreferences ??= [];
         if (GatherBuddy.Config.VendorRoutePreferences.TryGetValue(GetKey(shopType, itemId, currencyId, cost), out var preferredRouteKey))
         {
             var preferredRoute = selectableNpcs.FirstOrDefault(npc => GetRouteKey(npc) == preferredRouteKey);
             if (preferredRoute != null)
+            {
                 return preferredRoute;
+            }
         }
         var preferredNpcId = GetPreferredNpcId(itemId, currencyId, cost);
-        var preferredNpc   = selectableNpcs.FirstOrDefault(npc => npc.NpcId == preferredNpcId);
+        var preferredNpc = selectableNpcs.FirstOrDefault(npc => npc.NpcId == preferredNpcId);
         if (preferredNpc != null)
+        {
             return preferredNpc;
+        }
+
         foreach (var npc in selectableNpcs)
+        {
             if (VendorNpcLocationCache.TryGetFirstLocation(npc.NpcId) != null)
+            {
                 return npc;
+            }
+        }
+
         return selectableNpcs[0];
     }
 }

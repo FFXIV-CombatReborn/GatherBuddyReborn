@@ -1,10 +1,9 @@
-using System;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.Automation;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
-using GatherBuddy.Automation;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace GatherBuddy.AutoGather.AtkReaders;
 
@@ -22,7 +21,7 @@ public unsafe class GatheringReader : AtkReader
         => ReadUInt(2).GetValueOrDefault();
 
     private uint GatherChances
-        => (GatherChancesRaw1 != 0 && GatherChancesRaw1 != 0xFFFFFFFF ? BinaryPrimitives.ReverseEndianness(GatherChancesRaw1) : BinaryPrimitives.ReverseEndianness(GatherChancesRaw2));
+        => GatherChancesRaw1 != 0 && GatherChancesRaw1 != 0xFFFFFFFF ? BinaryPrimitives.ReverseEndianness(GatherChancesRaw1) : BinaryPrimitives.ReverseEndianness(GatherChancesRaw2);
 
     private uint ItemLevelRaw1
         => ReadUInt(3).GetValueOrDefault();
@@ -31,7 +30,7 @@ public unsafe class GatheringReader : AtkReader
         => ReadUInt(4).GetValueOrDefault();
 
     private uint ItemLevel
-        => (ItemLevelRaw1 != 0 && ItemLevelRaw1 != 0xFFFFFFFF ? BinaryPrimitives.ReverseEndianness(ItemLevelRaw1) : BinaryPrimitives.ReverseEndianness(ItemLevelRaw2));
+        => ItemLevelRaw1 != 0 && ItemLevelRaw1 != 0xFFFFFFFF ? BinaryPrimitives.ReverseEndianness(ItemLevelRaw1) : BinaryPrimitives.ReverseEndianness(ItemLevelRaw2);
 
     private IEnumerable<ItemSlotReader> ItemSlotReaders
         => Loop<ItemSlotReader>(5, 11, 8);

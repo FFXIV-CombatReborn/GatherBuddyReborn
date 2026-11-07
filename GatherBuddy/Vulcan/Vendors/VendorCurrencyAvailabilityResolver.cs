@@ -1,6 +1,6 @@
-using System;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.AutoGather.Collectables;
+using System;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
@@ -18,9 +18,9 @@ public enum VendorCurrencyAvailabilitySource
 }
 
 public readonly record struct VendorCurrencyAvailability(
-    uint                             CurrencyItemId,
-    string                           CurrencyName,
-    uint                             AvailableAmount,
+    uint CurrencyItemId,
+    string CurrencyName,
+    uint AvailableAmount,
     VendorCurrencyAvailabilitySource Source
 );
 
@@ -35,10 +35,14 @@ public static class VendorCurrencyAvailabilityResolver
             : currencyName;
 
         if (TryGetInventoryManagerAmount(group, currencyItemId, normalizedCurrencyName, out var availability))
+        {
             return availability;
+        }
 
         if (TryGetCurrencyManagerAmount(currencyItemId, normalizedCurrencyName, out availability))
+        {
             return availability;
+        }
 
         var inventoryAmount = currencyItemId == 0
             ? 0u
@@ -52,7 +56,9 @@ public static class VendorCurrencyAvailabilityResolver
         availability = default;
         var inventoryManager = InventoryManager.Instance();
         if (inventoryManager == null)
+        {
             return false;
+        }
 
         if (group == VendorCurrencyGroup.Gil || currencyItemId == VendorShopResolver.GilCurrencyItemId)
         {
@@ -104,11 +110,15 @@ public static class VendorCurrencyAvailabilityResolver
     {
         availability = default;
         if (currencyItemId == 0)
+        {
             return false;
+        }
 
         var currencyManager = CurrencyManager.Instance();
         if (currencyManager == null || !currencyManager->HasItem(currencyItemId))
+        {
             return false;
+        }
 
         availability = new VendorCurrencyAvailability(currencyItemId, currencyName, currencyManager->GetItemCount(currencyItemId),
             VendorCurrencyAvailabilitySource.CurrencyManager);

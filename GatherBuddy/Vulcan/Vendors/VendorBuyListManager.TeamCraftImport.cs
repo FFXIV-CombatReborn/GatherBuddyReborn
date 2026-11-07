@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
@@ -122,7 +121,9 @@ public sealed partial class VendorBuyListManager
     private static List<TeamCraftVendorImportLine> ParseTeamCraftVendorImport(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
+        {
             return [];
+        }
 
         var parsedLines = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         using var reader = new StringReader(text);
@@ -133,7 +134,9 @@ public sealed partial class VendorBuyListManager
         {
             var trimmedLine = line.Trim();
             if (trimmedLine.Length == 0)
+            {
                 continue;
+            }
 
             if (TryGetTeamCraftSectionHeader(trimmedLine, out var sectionHeader))
             {
@@ -144,21 +147,28 @@ public sealed partial class VendorBuyListManager
             }
 
             if (sawSectionHeader && !inVendorSection)
+            {
                 continue;
+            }
 
             if (!TryParseTeamCraftVendorImportLine(trimmedLine, out var itemName, out var quantity))
+            {
                 continue;
+            }
 
             if (parsedLines.TryGetValue(itemName, out var existingQuantity))
+            {
                 parsedLines[itemName] = SaturatingAdd(existingQuantity, quantity);
+            }
             else
+            {
                 parsedLines[itemName] = quantity;
+            }
         }
 
-        return parsedLines
+        return [.. parsedLines
             .Select(kvp => new TeamCraftVendorImportLine(kvp.Key, kvp.Value))
-            .OrderBy(line => line.ItemName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(line => line.ItemName, StringComparer.OrdinalIgnoreCase)];
     }
 
     private static bool TryGetTeamCraftSectionHeader(string line, out string header)
@@ -166,7 +176,9 @@ public sealed partial class VendorBuyListManager
         header = string.Empty;
         var separatorIndex = line.LastIndexOf(':');
         if (separatorIndex < 0 || separatorIndex != line.Length - 1)
+        {
             return false;
+        }
 
         header = line[..separatorIndex].Trim();
         return header.Length > 0;
@@ -179,10 +191,14 @@ public sealed partial class VendorBuyListManager
 
         var quantitySeparatorIndex = line.IndexOf('x');
         if (quantitySeparatorIndex <= 0)
+        {
             return false;
+        }
 
         if (!uint.TryParse(line[..quantitySeparatorIndex].Trim(), out quantity) || quantity == 0)
+        {
             return false;
+        }
 
         itemName = line[(quantitySeparatorIndex + 1)..].Trim();
         return itemName.Length > 0;
@@ -199,11 +215,15 @@ public sealed partial class VendorBuyListManager
                 "resolving a TeamCraft vendor import item",
                 itemName);
             if (supportedVendors.Count == 0)
+            {
                 continue;
+            }
 
             var preferredVendor = VendorPreferenceHelper.ResolvePreferredNpc(candidate, supportedVendors);
             if (preferredVendor == null)
+            {
                 continue;
+            }
 
             entry = candidate;
             vendor = preferredVendor;
@@ -231,16 +251,18 @@ public sealed partial class VendorBuyListManager
     private static int GetTeamCraftImportPriority(VendorShopEntry entry)
         => entry.ShopType switch
         {
-            VendorShopType.GilShop           => 0,
+            VendorShopType.GilShop => 0,
             VendorShopType.GrandCompanySeals => 1,
-            VendorShopType.SpecialCurrency   => 2,
-            _                                => 3,
+            VendorShopType.SpecialCurrency => 2,
+            _ => 3,
         };
 
     private static string? BuildTeamCraftImportWarning(IReadOnlyList<string> unresolvedItems)
     {
         if (unresolvedItems.Count == 0)
+        {
             return null;
+        }
 
         var displayedItems = unresolvedItems
             .Distinct(StringComparer.OrdinalIgnoreCase)

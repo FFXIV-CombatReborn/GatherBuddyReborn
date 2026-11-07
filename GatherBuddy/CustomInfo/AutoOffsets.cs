@@ -29,7 +29,10 @@ namespace GatherBuddy.CustomInfo
                 var data = MemoryMarshal.Cast<byte, uint>(bytes);
                 var crc = ~0u;
                 for (var i = 0; i < Size / 4 - 1; i++)
+                {
                     crc = BitOperations.Crc32C(crc, data[i]);
+                }
+
                 return ~crc;
             }
         }
@@ -53,21 +56,27 @@ namespace GatherBuddy.CustomInfo
             {
                 using var fs = new FileStream(AutoOffsetsDbPath, FileMode.Open, FileAccess.Read);
                 Span<byte> buffer = stackalloc byte[OffsetEntry.Size];
-                for (;;)
+                for (; ; )
                 {
                     var num = fs.Read(buffer);
                     if (num != OffsetEntry.Size)
+                    {
                         break;
+                    }
 
                     ref var entry = ref MemoryMarshal.AsRef<OffsetEntry>(buffer);
                     if (entry.ComputeCrc32() != entry.Crc32)
+                    {
                         continue;
+                    }
 
                     var node = new Node(entry.NodeId, entry.NodePosition);
                     var offset = entry.Offset;
 
                     if (!CheckSeparation(node, offset))
+                    {
                         continue;
+                    }
 
                     if (OffsetsDict.TryGetValue(node, out var offsets))
                     {
@@ -207,7 +216,9 @@ namespace GatherBuddy.CustomInfo
                         WriteAllOffsetsBackground();
                     }
                     else
+                    {
                         AppendOffsetBackground(node, offset);
+                    }
                 }
             }
             finally
@@ -222,11 +233,13 @@ namespace GatherBuddy.CustomInfo
             offset = default;
 
             if (!OffsetsDict.TryGetValue(node, out var offsets) || offsets.Count == 0)
+            {
                 return false;
+            }
 
             var toPlayer = Vector2.Normalize(player.ToVector2() - nodePosition.ToVector2());
             var count = offsets.Count;
-            
+
             Span<ulong> preferredMask = stackalloc ulong[(count + 64 - 1) / 64];
 
             var preferredCount = 0;
@@ -254,7 +267,10 @@ namespace GatherBuddy.CustomInfo
                 while (index <= offsetIndex)
                 {
                     if ((preferredMask[index / 64] & 1UL << (index % 64)) == 0)
+                    {
                         offsetIndex++;
+                    }
+
                     index++;
                 }
             }
@@ -287,9 +303,15 @@ namespace GatherBuddy.CustomInfo
             const float MaxVerticalSeparation = 2.5f;
 
             if (MathF.Abs(node.Position.Y - offset.Y) > MaxVerticalSeparation)
+            {
                 return false;
+            }
+
             if (Vector2.DistanceSquared(node.Position.ToVector2(), offset.ToVector2()) > MaxHorizontalSeparation * MaxHorizontalSeparation)
+            {
                 return false;
+            }
+
             return true;
         }
 
@@ -322,11 +344,15 @@ namespace GatherBuddy.CustomInfo
             {
                 // Skip if already removed
                 if ((removedMask[removed / 64] & (1UL << (removed % 64))) != 0)
+                {
                     continue;
+                }
 
                 // Skip if priority is stale (point was already re-enqueued with updated distance).
                 if (priority != nearest[removed].dist)
+                {
                     continue;
+                }
 
                 // Mark this point as removed.
                 removedMask[removed / 64] |= 1UL << (removed % 64);
@@ -347,7 +373,9 @@ namespace GatherBuddy.CustomInfo
             for (var i = 0; i < count; i++)
             {
                 if ((removedMask[i / 64] & (1UL << (i % 64))) != 0)
+                {
                     offsets.Remove(QuantizeVector(points[i]));
+                }
             }
             offsets.TrimExcess();
 

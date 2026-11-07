@@ -10,7 +10,7 @@ public static partial class Fish
         data.Apply(44339, Patch.Crossroads) // Icuvlo's Barter
             .Bait(data, 43858)
             .Bite(data, HookSet.Precise, BiteType.Legendary)
-            .Weather(data, 4); 
+            .Weather(data, 4);
         data.Apply(44340, Patch.Crossroads) // Moongripper
             .Bait(data, 43854)
             .Bite(data, HookSet.Precise, BiteType.Legendary)

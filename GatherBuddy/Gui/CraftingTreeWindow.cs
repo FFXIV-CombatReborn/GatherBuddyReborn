@@ -1,16 +1,14 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
+using Dalamud.Interface.Windowing;
+using GatherBuddy.Crafting;
+using GatherBuddy.Vulcan.Vendors;
+using Lumina.Excel;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Textures;
-using Dalamud.Interface.Windowing;
-using ElliLib;
-using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
-using GatherBuddy.Vulcan.Vendors;
-using Lumina.Excel;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Gui;
 
@@ -18,15 +16,15 @@ public class CraftingTreeWindow : Window
 {
     private CraftingListEditor? _editor;
 
-    private static readonly Vector4 ColorRoot     = new(0.95f, 0.85f, 0.45f, 1f);
+    private static readonly Vector4 ColorRoot = new(0.95f, 0.85f, 0.45f, 1f);
     private static readonly Vector4 ColorSubCraft = new(0.45f, 0.90f, 0.95f, 1f);
-    private static readonly Vector4 ColorGather   = new(0.55f, 1.00f, 0.55f, 1f);
-    private static readonly Vector4 ColorFish     = new(0.55f, 0.85f, 1.00f, 1f);
-    private static readonly Vector4 ColorVendor   = new(1.00f, 0.85f, 0.30f, 1f);
-    private static readonly Vector4 ColorScrip    = new(0.85f, 0.55f, 1.00f, 1f);
-    private static readonly Vector4 ColorDrop     = new(1.00f, 0.55f, 0.55f, 1f);
-    private static readonly Vector4 ColorOther    = new(0.70f, 0.70f, 0.70f, 1f);
-    private static readonly Vector4 ColorMuted    = new(0.55f, 0.55f, 0.60f, 1f);
+    private static readonly Vector4 ColorGather = new(0.55f, 1.00f, 0.55f, 1f);
+    private static readonly Vector4 ColorFish = new(0.55f, 0.85f, 1.00f, 1f);
+    private static readonly Vector4 ColorVendor = new(1.00f, 0.85f, 0.30f, 1f);
+    private static readonly Vector4 ColorScrip = new(0.85f, 0.55f, 1.00f, 1f);
+    private static readonly Vector4 ColorDrop = new(1.00f, 0.55f, 0.55f, 1f);
+    private static readonly Vector4 ColorOther = new(0.70f, 0.70f, 0.70f, 1f);
+    private static readonly Vector4 ColorMuted = new(0.55f, 0.55f, 0.60f, 1f);
     private static readonly Vector4 ColorConnector = new(0.55f, 0.55f, 0.62f, 0.9f);
 
     private static float IndentPerLevel => VulcanUiScaling.Scaled(22f);
@@ -42,13 +40,13 @@ public class CraftingTreeWindow : Window
     private CraftingListEditor? _cachedEditor;
     private bool _cachedMobDropInfoInitialized;
 
-    private readonly List<bool> _ancestorHasMoreSiblings = new();
+    private readonly List<bool> _ancestorHasMoreSiblings = [];
     private float _iconColumnScreenX;
 
     public CraftingTreeWindow() : base("Crafting Tree###CraftingTree")
     {
-        Size           = VulcanUiScaling.Scaled(560f, 600f);
-        SizeCondition  = ImGuiCond.FirstUseEver;
+        Size = VulcanUiScaling.Scaled(560f, 600f);
+        SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
         {
             MinimumSize = VulcanUiScaling.Scaled(380f, 240f),
@@ -59,14 +57,19 @@ public class CraftingTreeWindow : Window
     public void SetEditor(CraftingListEditor? editor)
     {
         if (!ReferenceEquals(_editor, editor))
+        {
             InvalidateTree();
+        }
+
         _editor = editor;
     }
 
     public override void PreDraw()
     {
         if (_editor != null)
+        {
             WindowName = $"Crafting Tree — {_editor.ListName}###CraftingTree";
+        }
     }
 
     public override void Draw()
@@ -81,7 +84,9 @@ public class CraftingTreeWindow : Window
         MobDropInfoCache.EnsureInitializeStarted();
 
         if (ShouldRebuild())
+        {
             RebuildTree();
+        }
 
         if (_cachedTree.Count == 0)
         {
@@ -97,21 +102,27 @@ public class CraftingTreeWindow : Window
         _iconColumnScreenX = bodyOriginX + ComputeMaxLabelEndOffset() + IconColumnPadding;
         _ancestorHasMoreSiblings.Clear();
         for (var i = 0; i < _cachedTree.Count; i++)
+        {
             DrawTreeNode(_cachedTree[i], depth: 0, isLast: i == _cachedTree.Count - 1);
+        }
+
         ImGui.EndChild();
     }
 
     private float ComputeMaxLabelEndOffset()
     {
-        var lineHeight    = ImGui.GetTextLineHeight();
-        var disclosureW   = lineHeight;
-        var iconW         = lineHeight;
+        var lineHeight = ImGui.GetTextLineHeight();
+        var disclosureW = lineHeight;
+        var iconW = lineHeight;
         var postDisclosure = PostDisclosureSpacing;
-        var postIcon       = PostIconSpacing;
+        var postIcon = PostIconSpacing;
 
         var max = 0f;
         foreach (var root in _cachedTree)
+        {
             WalkForMaxLabelEnd(root, depth: 0, disclosureW, iconW, postDisclosure, postIcon, ref max);
+        }
+
         return max;
     }
 
@@ -122,12 +133,19 @@ public class CraftingTreeWindow : Window
         var labelW = ImGui.CalcTextSize(label).X;
         var rowEnd = depth * IndentPerLevel + disclosureW + postDisclosure + iconW + postIcon + labelW;
         if (rowEnd > max)
+        {
             max = rowEnd;
+        }
 
         if (!node.Expanded)
+        {
             return;
+        }
+
         foreach (var child in node.Children)
+        {
             WalkForMaxLabelEnd(child, depth + 1, disclosureW, iconW, postDisclosure, postIcon, ref max);
+        }
     }
 
     private void DrawHeader()
@@ -140,23 +158,32 @@ public class CraftingTreeWindow : Window
         ImGui.TextColored(ColorMuted, $"{roots} root(s)  ·  {totalCrafts} sub-craft(s)  ·  {totalGather} gather  ·  {totalVendor} vendor/scrip");
         ImGui.SameLine();
         if (ImGui.SmallButton("Expand All##craftingTreeExpand"))
+        {
             SetExpandedAll(true);
+        }
+
         ImGui.SameLine();
         if (ImGui.SmallButton("Collapse All##craftingTreeCollapse"))
+        {
             SetExpandedAll(false);
+        }
     }
 
     private void SetExpandedAll(bool expanded)
     {
         foreach (var root in _cachedTree)
+        {
             SetExpandedRecursive(root, expanded);
+        }
     }
 
     private static void SetExpandedRecursive(TreeNode node, bool expanded)
     {
         node.Expanded = expanded;
         foreach (var child in node.Children)
+        {
             SetExpandedRecursive(child, expanded);
+        }
     }
 
     private static int SumCrafts(IEnumerable<TreeNode> nodes)
@@ -165,7 +192,10 @@ public class CraftingTreeWindow : Window
         foreach (var node in nodes)
         {
             if (node.IsCraft && !node.IsRoot)
+            {
                 total++;
+            }
+
             total += SumCrafts(node.Children);
         }
         return total;
@@ -177,7 +207,10 @@ public class CraftingTreeWindow : Window
         foreach (var node in nodes)
         {
             if (!node.IsCraft && node.MaterialSource is { } src && Array.IndexOf(sources, src) >= 0)
+            {
                 total++;
+            }
+
             total += SumLeaves(node.Children, sources);
         }
         return total;
@@ -185,13 +218,13 @@ public class CraftingTreeWindow : Window
 
     private void DrawTreeNode(TreeNode node, int depth, bool isLast)
     {
-        var drawList   = ImGui.GetWindowDrawList();
+        var drawList = ImGui.GetWindowDrawList();
         var lineHeight = ImGui.GetTextLineHeight();
-        var rowHeight  = ImGui.GetTextLineHeightWithSpacing();
+        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
         var connectorColor = ImGui.ColorConvertFloat4ToU32(ColorConnector);
 
         var rowOriginScreen = ImGui.GetCursorScreenPos();
-        var rowYTop    = rowOriginScreen.Y;
+        var rowYTop = rowOriginScreen.Y;
         var rowYCenter = rowYTop + lineHeight * 0.5f;
         var rowYBottom = rowYTop + rowHeight;
 
@@ -206,13 +239,15 @@ public class CraftingTreeWindow : Window
 
         if (depth > 0)
         {
-            var parentX  = rowOriginScreen.X + (depth - 1) * IndentPerLevel + IndentPerLevel * 0.5f;
+            var parentX = rowOriginScreen.X + (depth - 1) * IndentPerLevel + IndentPerLevel * 0.5f;
             var myStartX = rowOriginScreen.X + depth * IndentPerLevel;
 
             drawList.AddLine(new Vector2(parentX, rowYTop), new Vector2(parentX, rowYCenter), connectorColor, ConnectorThickness);
             drawList.AddLine(new Vector2(parentX, rowYCenter), new Vector2(myStartX, rowYCenter), connectorColor, ConnectorThickness);
             if (!isLast)
+            {
                 drawList.AddLine(new Vector2(parentX, rowYCenter), new Vector2(parentX, rowYBottom), connectorColor, ConnectorThickness);
+            }
         }
 
         if (depth > 0)
@@ -227,7 +262,10 @@ public class CraftingTreeWindow : Window
             var arrowSize = lineHeight;
             var arrowScreenPos = ImGui.GetCursorScreenPos();
             if (ImGui.InvisibleButton($"##arrow_{node.NodeId}", new Vector2(arrowSize, arrowSize)))
+            {
                 node.Expanded = !node.Expanded;
+            }
+
             DrawDisclosureTriangle(drawList, arrowScreenPos, arrowSize, node.Expanded);
         }
         else
@@ -249,7 +287,7 @@ public class CraftingTreeWindow : Window
         {
             ImGui.SameLine(0, 0);
             var currentX = ImGui.GetCursorScreenPos().X;
-            var gap      = _iconColumnScreenX - currentX;
+            var gap = _iconColumnScreenX - currentX;
             if (gap > 0)
             {
                 ImGui.Dummy(new Vector2(gap, 0));
@@ -267,32 +305,41 @@ public class CraftingTreeWindow : Window
         var hoverMin = new Vector2(labelStart.X - VulcanUiScaling.Scaled(2f), rowYTop);
         var hoverMax = new Vector2(Math.Max(labelMax.X + VulcanUiScaling.Scaled(4f), labelStart.X + VulcanUiScaling.Scaled(8f)), rowYTop + rowHeight);
         if (ImGui.IsMouseHoveringRect(hoverMin, hoverMax) && ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows))
+        {
             DrawNodeTooltip(node);
+        }
 
         if (!node.Expanded || !hasChildren)
+        {
             return;
+        }
 
         if (_ancestorHasMoreSiblings.Count <= depth)
+        {
             _ancestorHasMoreSiblings.Add(false);
+        }
+
         for (var i = 0; i < node.Children.Count; i++)
         {
             _ancestorHasMoreSiblings[depth] = i < node.Children.Count - 1;
             DrawTreeNode(node.Children[i], depth + 1, i == node.Children.Count - 1);
         }
         if (_ancestorHasMoreSiblings.Count > depth)
+        {
             _ancestorHasMoreSiblings.RemoveAt(_ancestorHasMoreSiblings.Count - 1);
+        }
     }
 
     private static void DrawDisclosureTriangle(ImDrawListPtr drawList, Vector2 origin, float size, bool expanded)
     {
         var color = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.88f, 0.95f));
         var center = new Vector2(origin.X + size * 0.5f, origin.Y + size * 0.5f);
-        var arm    = size * 0.28f;
+        var arm = size * 0.28f;
         if (expanded)
         {
-            var p1 = new Vector2(center.X - arm,        center.Y - arm * 0.55f);
-            var p2 = new Vector2(center.X + arm,        center.Y - arm * 0.55f);
-            var p3 = new Vector2(center.X,              center.Y + arm * 0.85f);
+            var p1 = new Vector2(center.X - arm, center.Y - arm * 0.55f);
+            var p2 = new Vector2(center.X + arm, center.Y - arm * 0.55f);
+            var p3 = new Vector2(center.X, center.Y + arm * 0.85f);
             drawList.AddTriangleFilled(p1, p2, p3, color);
         }
         else
@@ -315,29 +362,34 @@ public class CraftingTreeWindow : Window
     {
         var qty = node.Quantity > 0 ? $" × {node.Quantity}" : string.Empty;
         if (node.IsRoot)
+        {
             return ($"[Final] {node.ItemName}{qty}", ColorRoot);
+        }
+
         if (node.IsCraft)
+        {
             return ($"[Sub-craft] {node.ItemName}{qty}", ColorSubCraft);
+        }
 
         var color = node.MaterialSource switch
         {
-            MaterialSource.Gatherable      => ColorGather,
-            MaterialSource.Fish            => ColorFish,
-            MaterialSource.GilVendor       => ColorVendor,
+            MaterialSource.Gatherable => ColorGather,
+            MaterialSource.Fish => ColorFish,
+            MaterialSource.GilVendor => ColorVendor,
             MaterialSource.SpecialCurrency => ColorScrip,
-            MaterialSource.Scrip           => ColorScrip,
-            MaterialSource.Drop            => ColorDrop,
-            _                               => ColorOther,
+            MaterialSource.Scrip => ColorScrip,
+            MaterialSource.Drop => ColorDrop,
+            _ => ColorOther,
         };
         var prefix = node.MaterialSource switch
         {
-            MaterialSource.Gatherable      => "[Gather]",
-            MaterialSource.Fish            => "[Fish]",
-            MaterialSource.GilVendor       => "[Vendor]",
+            MaterialSource.Gatherable => "[Gather]",
+            MaterialSource.Fish => "[Fish]",
+            MaterialSource.GilVendor => "[Vendor]",
             MaterialSource.SpecialCurrency => "[Currency]",
-            MaterialSource.Scrip           => "[Scrip]",
-            MaterialSource.Drop            => "[Drop]",
-            _                               => "[Other]",
+            MaterialSource.Scrip => "[Scrip]",
+            MaterialSource.Drop => "[Drop]",
+            _ => "[Other]",
         };
         return ($"{prefix} {node.ItemName}{qty}", color);
     }
@@ -350,22 +402,33 @@ public class CraftingTreeWindow : Window
         ImGui.TextColored(ColorMuted, $"Need: {node.Quantity}");
 
         if (node.IsCraft && node.RecipeYield > 1 && node.CraftCount > 0)
+        {
             ImGui.TextColored(ColorMuted, $"Crafts: {node.CraftCount} (yields {node.RecipeYield} ea.)");
+        }
 
         if (node.GatherTerritory is { Length: > 0 })
+        {
             ImGui.TextColored(ColorGather, $"Best location: {node.GatherTerritory}");
+        }
 
         if (node.VendorOptions is { Count: > 0 })
         {
             ImGui.TextColored(ColorVendor, "Vendors:");
             foreach (var opt in node.VendorOptions.Take(6))
+            {
                 ImGui.BulletText($"{opt.NpcName} — {opt.Cost} {opt.CurrencyName}");
+            }
+
             if (node.VendorOptions.Count > 6)
+            {
                 ImGui.TextColored(ColorMuted, $"  + {node.VendorOptions.Count - 6} more");
+            }
         }
 
         if (node.IsCraft && node.CrafterClassName is { Length: > 0 })
+        {
             ImGui.TextColored(ColorSubCraft, $"Crafter: {node.CrafterClassName}");
+        }
 
         ImGui.EndTooltip();
     }
@@ -379,19 +442,32 @@ public class CraftingTreeWindow : Window
         }
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId));
         if (icon.TryGetWrap(out var wrap, out _))
+        {
             ImGui.Image(wrap.Handle, new Vector2(size, size));
+        }
         else
+        {
             ImGui.Dummy(new Vector2(size, size));
+        }
     }
 
     private bool ShouldRebuild()
     {
         if (_editor == null)
+        {
             return false;
+        }
+
         if (!ReferenceEquals(_cachedEditor, _editor))
+        {
             return true;
+        }
+
         if (_cachedVersion != _editor.MaterialCacheVersion)
+        {
             return true;
+        }
+
         return _cachedMobDropInfoInitialized != MobDropInfoCache.IsInitialized;
     }
 
@@ -407,7 +483,9 @@ public class CraftingTreeWindow : Window
     {
         _cachedTree = [];
         if (_editor == null)
+        {
             return;
+        }
 
         try
         {
@@ -416,36 +494,45 @@ public class CraftingTreeWindow : Window
 
             var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
             if (itemSheet == null)
+            {
                 return;
+            }
 
             var nextId = 0;
             foreach (var original in plan.OriginalRecipes)
             {
                 if (original.Quantity <= 0)
+                {
                     continue;
+                }
+
                 var recipe = RecipeManager.GetRecipe(original.RecipeId);
                 if (!recipe.HasValue)
+                {
                     continue;
+                }
 
                 var resultItemId = recipe.Value.ItemResult.RowId;
                 if (!itemSheet.TryGetRow(resultItemId, out var resultItem))
+                {
                     continue;
+                }
 
                 var craftCount = original.Quantity;
                 var totalItems = craftCount * (int)recipe.Value.AmountResult;
 
                 var rootNode = new TreeNode
                 {
-                    NodeId       = nextId++,
-                    ItemId       = resultItemId,
-                    IconId       = resultItem.Icon,
-                    ItemName     = resultItem.Name.ExtractText(),
-                    Quantity     = totalItems,
-                    CraftCount   = craftCount,
-                    RecipeYield  = (int)recipe.Value.AmountResult,
-                    IsCraft      = true,
-                    IsRoot       = true,
-                    Expanded     = true,
+                    NodeId = nextId++,
+                    ItemId = resultItemId,
+                    IconId = resultItem.Icon,
+                    ItemName = resultItem.Name.ExtractText(),
+                    Quantity = totalItems,
+                    CraftCount = craftCount,
+                    RecipeYield = (int)recipe.Value.AmountResult,
+                    IsCraft = true,
+                    IsRoot = true,
+                    Expanded = true,
                     CrafterClassName = ResolveCrafterName(recipe.Value),
                 };
                 BuildChildren(rootNode, recipe.Value, craftCount, list, itemSheet, ref nextId, depth: 0);
@@ -458,27 +545,31 @@ public class CraftingTreeWindow : Window
             _cachedTree = [];
         }
 
-        _cachedEditor  = _editor;
+        _cachedEditor = _editor;
         _cachedVersion = _editor?.MaterialCacheVersion ?? -1;
         _cachedMobDropInfoInitialized = MobDropInfoCache.IsInitialized;
     }
 
     private static void BuildChildren(
         TreeNode parent,
-        Recipe   recipe,
-        int      craftCount,
+        Recipe recipe,
+        int craftCount,
         CraftingListDefinition list,
         ExcelSheet<Item> itemSheet,
-        ref int  nextId,
-        int      depth)
+        ref int nextId,
+        int depth)
     {
         if (depth >= MaxRecursionDepth)
+        {
             return;
+        }
 
         foreach (var (ingredientItemId, ingredientPerCraft) in RecipeManager.GetIngredients(recipe))
         {
             if (!itemSheet.TryGetRow(ingredientItemId, out var ingItem))
+            {
                 continue;
+            }
 
             var totalNeeded = ingredientPerCraft * craftCount;
             var subRecipe = ResolveSubRecipe(list, ingredientItemId);
@@ -490,15 +581,15 @@ public class CraftingTreeWindow : Window
                     : totalNeeded;
                 var child = new TreeNode
                 {
-                    NodeId       = nextId++,
-                    ItemId       = ingredientItemId,
-                    IconId       = ingItem.Icon,
-                    ItemName     = ingItem.Name.ExtractText(),
-                    Quantity     = totalNeeded,
-                    CraftCount   = subCraftCount,
-                    RecipeYield  = subRecipeYield,
-                    IsCraft      = true,
-                    Expanded     = depth < 1,
+                    NodeId = nextId++,
+                    ItemId = ingredientItemId,
+                    IconId = ingItem.Icon,
+                    ItemName = ingItem.Name.ExtractText(),
+                    Quantity = totalNeeded,
+                    CraftCount = subCraftCount,
+                    RecipeYield = subRecipeYield,
+                    IsCraft = true,
+                    Expanded = depth < 1,
                     CrafterClassName = ResolveCrafterName(subRecipe.Value),
                 };
                 BuildChildren(child, subRecipe.Value, subCraftCount, list, itemSheet, ref nextId, depth + 1);
@@ -509,16 +600,16 @@ public class CraftingTreeWindow : Window
                 var classification = MaterialSourceClassifier.Classify(ingredientItemId);
                 var leaf = new TreeNode
                 {
-                    NodeId         = nextId++,
-                    ItemId         = ingredientItemId,
-                    IconId         = ingItem.Icon,
-                    ItemName       = ingItem.Name.ExtractText(),
-                    Quantity       = totalNeeded,
-                    IsCraft        = false,
-                    Expanded       = false,
+                    NodeId = nextId++,
+                    ItemId = ingredientItemId,
+                    IconId = ingItem.Icon,
+                    ItemName = ingItem.Name.ExtractText(),
+                    Quantity = totalNeeded,
+                    IsCraft = false,
+                    Expanded = false,
                     MaterialSource = classification,
                     GatherTerritory = ResolveGatherTerritory(ingredientItemId, classification),
-                    VendorOptions   = ResolveVendorOptions(ingredientItemId, classification),
+                    VendorOptions = ResolveVendorOptions(ingredientItemId, classification),
                 };
                 parent.Children.Add(leaf);
             }
@@ -531,7 +622,9 @@ public class CraftingTreeWindow : Window
         {
             var overrideRecipe = RecipeManager.GetRecipe(overrideId);
             if (overrideRecipe.HasValue)
+            {
                 return overrideRecipe;
+            }
         }
         return RecipeManager.GetRecipeForItem(itemId);
     }
@@ -540,7 +633,10 @@ public class CraftingTreeWindow : Window
     {
         var sheet = Dalamud.GameData.GetExcelSheet<ClassJob>();
         if (sheet == null)
+        {
             return string.Empty;
+        }
+
         var jobId = recipe.CraftType.RowId + 8;
         return sheet.TryGetRow(jobId, out var job) ? job.Name.ExtractText() : string.Empty;
     }
@@ -548,20 +644,27 @@ public class CraftingTreeWindow : Window
     private static string ResolveGatherTerritory(uint itemId, MaterialSource source)
     {
         if (source != MaterialSource.Gatherable && source != MaterialSource.Fish)
+        {
             return string.Empty;
+        }
+
         try
         {
             if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
             {
                 var node = gatherable.NodeList.FirstOrDefault();
                 if (node != null)
+                {
                     return node.Territory.Name;
+                }
             }
             if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
             {
                 var spot = fish.FishingSpots.FirstOrDefault();
                 if (spot != null)
+                {
                     return spot.Territory.Name;
+                }
             }
         }
         catch (Exception ex)
@@ -576,7 +679,9 @@ public class CraftingTreeWindow : Window
         if (source != MaterialSource.GilVendor
          && source != MaterialSource.SpecialCurrency
          && source != MaterialSource.Scrip)
+        {
             return [];
+        }
 
         var options = new List<VendorOption>();
         try
@@ -584,19 +689,28 @@ public class CraftingTreeWindow : Window
             foreach (var entry in VendorShopResolver.GilShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
             foreach (var entry in VendorShopResolver.GcShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
             foreach (var entry in VendorShopResolver.SpecialShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
         }
@@ -615,7 +729,9 @@ public class CraftingTreeWindow : Window
             return;
         }
         foreach (var npc in entry.Npcs)
+        {
             options.Add(new VendorOption(npc.Name, entry.Cost, entry.CurrencyName));
+        }
     }
 
     private sealed class TreeNode
@@ -634,7 +750,7 @@ public class CraftingTreeWindow : Window
         public string? CrafterClassName;
         public string? GatherTerritory;
         public List<VendorOption>? VendorOptions;
-        public List<TreeNode> Children { get; } = new();
+        public List<TreeNode> Children { get; } = [];
     }
 
     private readonly record struct VendorOption(string NpcName, uint Cost, string CurrencyName);

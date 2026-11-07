@@ -1,25 +1,23 @@
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
-using ElliLib.Raii;
 using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
-    private string  _newListName         = string.Empty;
-    private bool    _newListEphemeral    = false;
-    private string  _newListFolderPath   = string.Empty;
-    private uint?   _newListRecipeId     = null;
-    private string  _newListRecipeName   = string.Empty;
-    private string  _newFolderName       = string.Empty;
-    private string  _newFolderParentPath = string.Empty;
-    private string  _importListText      = string.Empty;
-    private bool    _importListEphemeral = false;
-    private string? _importListError     = null;
+    private string _newListName = string.Empty;
+    private bool _newListEphemeral = false;
+    private string _newListFolderPath = string.Empty;
+    private uint? _newListRecipeId = null;
+    private string _newListRecipeName = string.Empty;
+    private string _newFolderName = string.Empty;
+    private string _newFolderParentPath = string.Empty;
+    private string _importListText = string.Empty;
+    private bool _importListEphemeral = false;
+    private string? _importListError = null;
 
     private void ResetCreateListPopupState()
     {
@@ -42,7 +40,9 @@ public partial class VulcanWindow
     {
         ImGui.SetNextWindowSize(VulcanUiScaling.Scaled(540f, 260f), ImGuiCond.FirstUseEver);
         if (!ImGui.BeginPopupModal("ImportListPopup", ImGuiWindowFlags.None))
+        {
             return;
+        }
 
         ImGui.TextWrapped("Paste an exported list string below and click Import.");
         ImGui.Spacing();
@@ -58,7 +58,9 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.Checkbox("Ephemeral##importListEphemeral", ref _importListEphemeral);
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -78,10 +80,10 @@ public partial class VulcanWindow
                     }
 
                     OpenCraftingList(imported);
-                    _deferEditorDraw    = true;
-                    _importListText     = string.Empty;
+                    _deferEditorDraw = true;
+                    _importListText = string.Empty;
                     _importListEphemeral = false;
-                    _importListError    = null;
+                    _importListError = null;
                     ImGui.CloseCurrentPopup();
                 }
                 else
@@ -94,9 +96,9 @@ public partial class VulcanWindow
         ImGui.SameLine();
         if (ImGui.Button("Cancel", VulcanUiScaling.Scaled(100f, 0f)))
         {
-            _importListText     = string.Empty;
+            _importListText = string.Empty;
             _importListEphemeral = false;
-            _importListError    = null;
+            _importListError = null;
             ImGui.CloseCurrentPopup();
         }
 
@@ -106,7 +108,9 @@ public partial class VulcanWindow
     private void DrawCreateListPopup()
     {
         if (!ImGui.BeginPopupModal("CreateListPopup", ImGuiWindowFlags.AlwaysAutoResize))
+        {
             return;
+        }
 
         if (!string.IsNullOrEmpty(_newListFolderPath))
         {
@@ -132,7 +136,9 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.Checkbox("Ephemeral##newListEphemeral", ref _newListEphemeral);
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -145,7 +151,9 @@ public partial class VulcanWindow
             {
                 newList.AddRecipe(_newListRecipeId.Value, 1);
                 if (!GatherBuddy.CraftingListManager.SaveList(newList))
+                {
                     GatherBuddy.Log.Warning($"[VulcanWindow] Failed to save list '{newList.Name}' after adding {_newListRecipeName}");
+                }
                 else
                 {
                     RaphaelAssessmentService.QueueWarmupForAddedListRecipe(_newListRecipeId.Value, newList);
@@ -171,7 +179,9 @@ public partial class VulcanWindow
     private void DrawCreateFolderPopup()
     {
         if (!ImGui.BeginPopupModal("CreateFolderPopup", ImGuiWindowFlags.AlwaysAutoResize))
+        {
             return;
+        }
 
         if (!string.IsNullOrEmpty(_newFolderParentPath))
         {
@@ -184,7 +194,9 @@ public partial class VulcanWindow
 
         var isAvailable = GatherBuddy.CraftingListManager.IsFolderNameAvailable(_newFolderName, _newFolderParentPath);
         if (!string.IsNullOrWhiteSpace(_newFolderName) && !isAvailable)
+        {
             ImGui.TextColored(ImGuiColors.DalamudRed, "Folder names must be unique within the current location and cannot contain / or \\.");
+        }
 
         ImGui.Spacing();
         ImGui.Separator();

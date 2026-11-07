@@ -1,5 +1,5 @@
-using System;
 using GatherBuddy.Enums;
+using System;
 
 namespace GatherBuddy.SeFunctions;
 

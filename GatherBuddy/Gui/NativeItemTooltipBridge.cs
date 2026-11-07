@@ -1,13 +1,13 @@
-using System;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using FFXIVClientStructs.FFXIV.Client.Enums;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
+using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.Gui;
@@ -61,7 +61,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     public void EndImGuiFrame()
     {
         if (_requestedThisFrame)
+        {
             return;
+        }
 
         if (!TryCheckNativeTooltipReadiness(out _))
         {
@@ -98,10 +100,14 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
             || _anchorHostAddonAddress != anchorHostAddonAddress
             || _tooltipParentAddonId != parentAddonId;
         if (_tooltipVisible && _tooltipItemId == itemId && !anchorBoundsChanged && !anchorHostChanged && _tooltipExpandRight == expandRight)
+        {
             return;
+        }
 
         if (_tooltipVisible)
+        {
             HideTooltip();
+        }
 
         _anchorNode = anchorNode;
         _anchorHostAddonAddress = anchorHostAddonAddress;
@@ -150,7 +156,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     {
         var itemDetailAddon = (AtkUnitBase*)args.Addon.Address;
         if (itemDetailAddon == null)
+        {
             return;
+        }
 
         TryRepositionItemDetailAddon(itemDetailAddon);
     }
@@ -172,23 +180,35 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     private void TryRepositionItemDetailAddon(AtkUnitBase* itemDetailAddon)
     {
         if (!_tooltipVisible || _tooltipItemId == 0 || itemDetailAddon->RootNode == null)
+        {
             return;
+        }
 
         if (float.IsNaN(_tooltipNativeAnchorMin.X) || float.IsNaN(_tooltipNativeAnchorMin.Y) || float.IsNaN(_tooltipNativeAnchorMax.X) || float.IsNaN(_tooltipNativeAnchorMax.Y))
+        {
             return;
+        }
 
         if (!TryGetItemDetailTargetPosition(itemDetailAddon, out var targetX, out var targetY))
+        {
             return;
+        }
 
         if (itemDetailAddon->X == targetX && itemDetailAddon->Y == targetY)
+        {
             return;
+        }
 
         try
         {
             if (_itemDetailSetPositionPreservingOriginal != null)
+            {
                 _itemDetailSetPositionPreservingOriginal(itemDetailAddon, targetX, targetY, 1);
+            }
             else
+            {
                 itemDetailAddon->SetPosition(targetX, targetY);
+            }
         }
         catch (Exception ex)
         {
@@ -218,9 +238,14 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
 
         var nativePadding = ToNativeUi(new Vector2(4f, 4f));
         if (nativePadding.X <= 0f)
+        {
             nativePadding.X = 1f;
+        }
+
         if (nativePadding.Y <= 0f)
+        {
             nativePadding.Y = 1f;
+        }
 
         var desiredX = _tooltipExpandRight
             ? _tooltipNativeAnchorMin.X
@@ -241,7 +266,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     {
         var now = DateTime.UtcNow;
         if ((now - _lastItemDetailRepositionFailureLog).TotalSeconds < 5)
+        {
             return;
+        }
 
         _lastItemDetailRepositionFailureLog = now;
         GatherBuddy.Log.Debug($"[NativeItemTooltipBridge] {message}");
@@ -283,7 +310,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
         anchorNode = null;
         anchorHostAddonAddress = 0;
         if (!TryCheckNativeTooltipReadiness(out _))
+        {
             return false;
+        }
 
         if (!TryGetHostAddon(out var hostAddon))
         {
@@ -317,9 +346,14 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
         var nativeMax = ToNativeUi(rectMax);
         var size = nativeMax - nativeMin;
         if (size.X < 1f)
+        {
             size.X = 1f;
+        }
+
         if (size.Y < 1f)
+        {
             size.Y = 1f;
+        }
 
         _tooltipNativeAnchorMin = nativeMin;
         _tooltipNativeAnchorMax = nativeMin + size;
@@ -364,7 +398,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     {
         var now = DateTime.UtcNow;
         if ((now - _lastHostFailureLog).TotalSeconds < 5)
+        {
             return;
+        }
 
         _lastHostFailureLog = now;
         message ??= $"Host addon {HostAddonName} is unavailable; skipping native item tooltip.";
@@ -374,10 +410,14 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     private bool IsCurrentHostAnchorValid()
     {
         if (_anchorNode == null || _anchorHostAddonAddress == 0 || _tooltipParentAddonId == 0)
+        {
             return false;
+        }
 
         if (!TryGetHostAddon(out var hostAddon))
+        {
             return false;
+        }
 
         return (nint)hostAddon == _anchorHostAddonAddress
             && hostAddon->Id == _tooltipParentAddonId
@@ -388,7 +428,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     {
         var scale = AtkUnitBase.GetGlobalUIScale();
         if (scale <= 0f)
+        {
             scale = 1f;
+        }
 
         return position / scale;
     }
@@ -401,7 +443,9 @@ internal sealed unsafe class NativeItemTooltipBridge : IDisposable
     private static void TooltipPositionCallback(float* screenX, float* screenY, AtkResNode* node)
     {
         if (screenX == null || screenY == null || node == null)
+        {
             return;
+        }
 
         var bridge = GatherBuddy.NativeItemTooltipBridge;
         if (bridge == null || bridge._anchorNode == null || node != bridge._anchorNode)

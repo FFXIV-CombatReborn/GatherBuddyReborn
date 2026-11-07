@@ -1,36 +1,38 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using GatherBuddy.Alarms;
+﻿using GatherBuddy.Alarms;
 using GatherBuddy.GatherGroup;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Text;
 
 namespace GatherBuddy.GatherHelper;
 
 public class GatherWindowPreset
 {
-    public List<IGatherable> Items       { get; init; } = new();
-    public string            Name        { get; set; }  = string.Empty;
-    public string            Description { get; set; }  = string.Empty;
-    public bool              Enabled     { get; set; }  = false;
+    public List<IGatherable> Items { get; init; } = [];
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool Enabled { get; set; } = false;
 
     public GatherWindowPreset Clone()
         => new()
         {
-            Name        = Name,
+            Name = Name,
             Description = Description,
-            Enabled     = false,
-            Items       = Items.ToList(),
+            Enabled = false,
+            Items = [.. Items],
         };
 
     public bool Add(IGatherable item)
     {
         if (Items.Contains(item))
+        {
             return false;
+        }
 
         Items.Add(item);
         return true;
@@ -43,24 +45,24 @@ public class GatherWindowPreset
     {
         public const byte CurrentVersion = 1;
 
-        public uint[]       ItemIds;
+        public uint[] ItemIds;
         public ObjectType[] ItemTypes;
-        public string       Name;
-        public string       Description;
-        public bool         Enabled;
+        public string Name;
+        public string Description;
+        public bool Enabled;
 
         public Config(GatherWindowPreset preset)
         {
-            ItemIds     = preset.Items.Select(i => i.ItemId).ToArray();
-            ItemTypes   = preset.Items.Select(i => i.Type).ToArray();
-            Name        = preset.Name;
+            ItemIds = [.. preset.Items.Select(i => i.ItemId)];
+            ItemTypes = [.. preset.Items.Select(i => i.Type)];
+            Name = preset.Name;
             Description = preset.Description;
-            Enabled     = preset.Enabled;
+            Enabled = preset.Enabled;
         }
 
         internal string ToBase64()
         {
-            var json  = JsonConvert.SerializeObject(this);
+            var json = JsonConvert.SerializeObject(this);
             var bytes = Encoding.UTF8.GetBytes(json).Prepend(CurrentVersion).ToArray();
             return Functions.CompressedBase64(bytes);
         }
@@ -73,12 +75,16 @@ public class GatherWindowPreset
             {
                 var bytes = Functions.DecompressedBase64(data);
                 if (bytes.Length == 0 || bytes[0] != CurrentVersion)
+                {
                     return false;
+                }
 
                 var json = Encoding.UTF8.GetString(bytes.AsSpan()[1..]);
                 cfg = JsonConvert.DeserializeObject<Config>(json);
                 if (cfg.ItemIds == null || cfg.ItemTypes == null || cfg.Name == null || cfg.Description == null)
+                {
                     return false;
+                }
 
                 return true;
             }
@@ -93,24 +99,28 @@ public class GatherWindowPreset
     {
         ret = new GatherWindowPreset()
         {
-            Name        = cfg.Name,
+            Name = cfg.Name,
             Description = cfg.Description,
-            Enabled     = cfg.Enabled,
+            Enabled = cfg.Enabled,
         };
         var maxLength = Math.Min(cfg.ItemIds.Length, cfg.ItemTypes.Length);
-        var changes   = cfg.ItemIds.Length != cfg.ItemTypes.Length;
+        var changes = cfg.ItemIds.Length != cfg.ItemTypes.Length;
         for (var i = 0; i < maxLength; ++i)
         {
             IGatherable? gatherable = cfg.ItemTypes[i] switch
             {
                 ObjectType.Gatherable => GatherBuddy.GameData.Gatherables.TryGetValue(cfg.ItemIds[i], out var item) ? item : null,
-                ObjectType.Fish       => GatherBuddy.GameData.Fishes.TryGetValue(cfg.ItemIds[i], out var item) ? item : null,
-                _                     => null,
+                ObjectType.Fish => GatherBuddy.GameData.Fishes.TryGetValue(cfg.ItemIds[i], out var item) ? item : null,
+                _ => null,
             };
             if (gatherable == null)
+            {
                 changes = true;
+            }
             else if (!ret.Add(gatherable))
+            {
                 changes = true;
+            }
         }
 
         return changes;
@@ -122,19 +132,23 @@ public class GatherWindowPreset
 
     public GatherWindowPreset(TimedGroup group)
     {
-        Name        = group.Name;
+        Name = group.Name;
         Description = group.Description;
-        Items       = new List<IGatherable>(group.Nodes.Count);
+        Items = [with(group.Nodes.Count)];
         foreach (var item in group.Nodes.Select(n => n.Item))
+        {
             Add(item);
+        }
     }
 
     public GatherWindowPreset(AlarmGroup group)
     {
-        Name        = group.Name;
+        Name = group.Name;
         Description = group.Description;
-        Items       = new List<IGatherable>(group.Alarms.Count);
+        Items = [with(group.Alarms.Count)];
         foreach (var item in group.Alarms.Select(n => n.Item))
+        {
             Add(item);
+        }
     }
 }

@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -14,6 +10,10 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 
 namespace GatherBuddy.Crafting;
 
@@ -56,10 +56,10 @@ internal unsafe class RetainerTaskExecutor
     private Phase _phase = Phase.InteractBell;
     private DateTime _nextRetry = DateTime.MinValue;
 
-    private List<RetainerEntry> _retainersToVisit = new();
+    private readonly List<RetainerEntry> _retainersToVisit = [];
     private int _retainerVisitIndex = 0;
 
-    private List<WithdrawTarget> _currentRetainerItems = new();
+    private List<WithdrawTarget> _currentRetainerItems = [];
     private int _currentItemIndex = 0;
     private bool _lookingForHQ = false;
     private int _foundSlotQty = 0;
@@ -75,7 +75,7 @@ internal unsafe class RetainerTaskExecutor
     private bool _withdrawalPlanBuilt;
 
     public bool IsComplete => _phase == Phase.Complete;
-    public bool IsAborted  => _phase == Phase.Aborted;
+    public bool IsAborted => _phase == Phase.Aborted;
 
     public RetainerTaskExecutor(
         Dictionary<uint, int> materials,
@@ -93,7 +93,9 @@ internal unsafe class RetainerTaskExecutor
         var perRetainerPlan = new Dictionary<ulong, Dictionary<uint, (int NeedHQ, int NeedNQ)>>();
         var retainerIds = RetainerItemQuery.GetOwnedRetainerIds();
         if (retainerIds.Count == 0)
+        {
             retainerIds = GetRetainerIdsFromManager();
+        }
 
         if (retainerIds.Count == 0)
         {
@@ -119,14 +121,16 @@ internal unsafe class RetainerTaskExecutor
                 var inventoryMgr = InventoryManager.Instance();
                 if (inventoryMgr != null)
                 {
-                    inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true,  false, false);
+                    inBagHQ = (int)inventoryMgr->GetInventoryItemCount(itemId, true, false, false);
                     inBagNQ = (int)inventoryMgr->GetInventoryItemCount(itemId, false, false, false);
                 }
                 remainingDemand = demand.ConsumeSplit(inBagNQ, inBagHQ, out _, out _);
             }
 
             if (remainingDemand.Total <= 0)
+            {
                 continue;
+            }
 
             foreach (var retainerId in retainerIds)
             {
@@ -144,19 +148,29 @@ internal unsafe class RetainerTaskExecutor
                 var updatedDemand = remainingDemand.ConsumeSplit(retainerNQ, retainerHQ, out var toTakeNQ, out var toTakeHQ);
 
                 if (toTakeHQ <= 0 && toTakeNQ <= 0)
+                {
                     continue;
+                }
 
                 if (!perRetainerPlan.ContainsKey(retainerId))
-                    perRetainerPlan[retainerId] = new();
+                {
+                    perRetainerPlan[retainerId] = [];
+                }
 
                 if (perRetainerPlan[retainerId].TryGetValue(itemId, out var existing))
+                {
                     perRetainerPlan[retainerId][itemId] = (existing.NeedHQ + toTakeHQ, existing.NeedNQ + toTakeNQ);
+                }
                 else
+                {
                     perRetainerPlan[retainerId][itemId] = (toTakeHQ, toTakeNQ);
+                }
 
                 remainingDemand = updatedDemand;
                 if (remainingDemand.Total <= 0)
+                {
                     break;
+                }
             }
         }
 
@@ -178,13 +192,19 @@ internal unsafe class RetainerTaskExecutor
         {
             var retainer = retainerMgr->GetRetainerBySortedIndex(i);
             if (retainer == null || retainer->RetainerId == 0)
+            {
                 continue;
+            }
 
             if (!_perRetainerPlan.TryGetValue(retainer->RetainerId, out var items))
+            {
                 continue;
+            }
 
             if (!items.Values.Any(v => v.NeedHQ > 0 || v.NeedNQ > 0))
+            {
                 continue;
+            }
 
             _retainersToVisit.Add(new RetainerEntry(i, retainer->RetainerId));
         }
@@ -194,43 +214,47 @@ internal unsafe class RetainerTaskExecutor
         {
             var items = _perRetainerPlan[r.RetainerId];
             foreach (var (itemId, amounts) in items)
+            {
                 GatherBuddy.Log.Debug($"[RetainerTaskExecutor]   Retainer {r.SortedIndex} ({r.RetainerId}): item {itemId} HQ={amounts.NeedHQ} NQ={amounts.NeedNQ}");
+            }
         }
 
         return _retainersToVisit.Count > 0;
     }
 
-    private Dictionary<ulong, Dictionary<uint, (int NeedHQ, int NeedNQ)>> _perRetainerPlan = new();
+    private Dictionary<ulong, Dictionary<uint, (int NeedHQ, int NeedNQ)>> _perRetainerPlan = [];
 
     public CraftingTasks.TaskResult Tick()
     {
         if (DateTime.Now < _nextRetry)
+        {
             return CraftingTasks.TaskResult.Retry;
+        }
 
         return _phase switch
         {
-            Phase.InteractBell           => TickInteractBell(),
-            Phase.WaitOccupied           => TickWaitOccupied(),
-            Phase.WaitRetainerList       => TickWaitRetainerList(),
-            Phase.SelectRetainer         => TickSelectRetainer(),
-            Phase.WaitRetainerMenu       => TickWaitRetainerMenu(),
-            Phase.SelectEntrustWithdraw  => TickSelectEntrustWithdraw(),
-            Phase.WaitInventory          => TickWaitInventory(),
-            Phase.WithdrawNextItem       => TickWithdrawNextItem(),
-            Phase.FindItemSlot           => TickFindItemSlot(),
+            Phase.InteractBell => TickInteractBell(),
+            Phase.WaitOccupied => TickWaitOccupied(),
+            Phase.WaitRetainerList => TickWaitRetainerList(),
+            Phase.SelectRetainer => TickSelectRetainer(),
+            Phase.WaitRetainerMenu => TickWaitRetainerMenu(),
+            Phase.SelectEntrustWithdraw => TickSelectEntrustWithdraw(),
+            Phase.WaitInventory => TickWaitInventory(),
+            Phase.WithdrawNextItem => TickWithdrawNextItem(),
+            Phase.FindItemSlot => TickFindItemSlot(),
             Phase.DispatchRetrieveCommand => TickDispatchRetrieveCommand(),
-            Phase.WaitNumericInput       => TickWaitNumericInput(),
-            Phase.InputNumericValue      => TickInputNumericValue(),
-            Phase.WaitWithdrawComplete   => TickWaitWithdrawComplete(),
+            Phase.WaitNumericInput => TickWaitNumericInput(),
+            Phase.InputNumericValue => TickInputNumericValue(),
+            Phase.WaitWithdrawComplete => TickWaitWithdrawComplete(),
             Phase.CloseRetainerInventory => TickCloseRetainerInventory(),
-            Phase.WaitInventoryClosed    => TickWaitInventoryClosed(),
-            Phase.SelectQuit             => TickSelectQuit(),
-            Phase.WaitQuit               => TickWaitQuit(),
-            Phase.CloseRetainerList      => TickCloseRetainerList(),
-            Phase.WaitListClosed         => TickWaitListClosed(),
-            Phase.Complete               => CraftingTasks.TaskResult.Done,
-            Phase.Aborted                => CraftingTasks.TaskResult.Done,
-            _                            => CraftingTasks.TaskResult.Done
+            Phase.WaitInventoryClosed => TickWaitInventoryClosed(),
+            Phase.SelectQuit => TickSelectQuit(),
+            Phase.WaitQuit => TickWaitQuit(),
+            Phase.CloseRetainerList => TickCloseRetainerList(),
+            Phase.WaitListClosed => TickWaitListClosed(),
+            Phase.Complete => CraftingTasks.TaskResult.Done,
+            Phase.Aborted => CraftingTasks.TaskResult.Done,
+            _ => CraftingTasks.TaskResult.Done
         };
     }
 
@@ -470,7 +494,7 @@ internal unsafe class RetainerTaskExecutor
     private CraftingTasks.TaskResult TickFindItemSlot()
     {
         var target = _currentRetainerItems[_currentItemIndex];
-        var itemId  = target.ItemId;
+        var itemId = target.ItemId;
 
         var inventories = new[]
         {
@@ -489,15 +513,26 @@ internal unsafe class RetainerTaskExecutor
         foreach (var inv in inventories)
         {
             var container = inventoryManager->GetInventoryContainer(inv);
-            if (container == null) continue;
+            if (container == null)
+            {
+                continue;
+            }
 
-            for (int i = 0; i < container->Size; i++)
+            for (var i = 0; i < container->Size; i++)
             {
                 var slot = container->GetInventorySlot(i);
-                if (slot == null || slot->ItemId != itemId) continue;
-                bool slotIsHQ = slot->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality);
-                if (slotIsHQ != _lookingForHQ) continue;
-                int wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
+                if (slot == null || slot->ItemId != itemId)
+                {
+                    continue;
+                }
+
+                var slotIsHQ = slot->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality);
+                if (slotIsHQ != _lookingForHQ)
+                {
+                    continue;
+                }
+
+                var wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
 
                 _foundSlotQty = (int)slot->Quantity;
                 _foundSlotInventory = inv;
@@ -539,13 +574,15 @@ internal unsafe class RetainerTaskExecutor
         }
 
         var target = _currentRetainerItems[_currentItemIndex];
-        int wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
+        var wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
 
         if (_foundSlotRequiresQuantityInput)
         {
             GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Dispatching RetrieveQuantity for item {target.ItemId} from {_foundSlotInventory} slot {_foundSlotIndex} (want={wantQty}, slot={_foundSlotQty})");
             if (!RetainerItemCommandDispatcher.TryRetrieveQuantity(_foundSlotInventory, _foundSlotIndex))
+            {
                 return HandleRetrieveDispatchFailure("RetrieveQuantity");
+            }
 
             _addonRetryCount = 0;
             _phase = Phase.WaitNumericInput;
@@ -555,10 +592,19 @@ internal unsafe class RetainerTaskExecutor
 
         GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Dispatching Retrieve for item {target.ItemId} from {_foundSlotInventory} slot {_foundSlotIndex} (want={wantQty}, slot={_foundSlotQty})");
         if (!RetainerItemCommandDispatcher.TryRetrieve(_foundSlotInventory, _foundSlotIndex))
+        {
             return HandleRetrieveDispatchFailure("Retrieve");
+        }
 
-        if (_lookingForHQ) target.RemainingHQ -= _foundSlotQty;
-        else               target.RemainingNQ -= _foundSlotQty;
+        if (_lookingForHQ)
+        {
+            target.RemainingHQ -= _foundSlotQty;
+        }
+        else
+        {
+            target.RemainingNQ -= _foundSlotQty;
+        }
+
         _currentRetainerItems[_currentItemIndex] = target;
         _addonRetryCount = 0;
         _phase = Phase.WaitWithdrawComplete;
@@ -599,15 +645,22 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        var target  = _currentRetainerItems[_currentItemIndex];
-        int wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
-        int value   = Math.Min(wantQty, _foundSlotQty);
+        var target = _currentRetainerItems[_currentItemIndex];
+        var wantQty = _lookingForHQ ? target.RemainingHQ : target.RemainingNQ;
+        var value = Math.Min(wantQty, _foundSlotQty);
 
         GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Inputting quantity {value} (want={wantQty}, slot={_foundSlotQty})");
         Callback.Fire(input, true, value);
 
-        if (_lookingForHQ) target.RemainingHQ -= value;
-        else               target.RemainingNQ -= value;
+        if (_lookingForHQ)
+        {
+            target.RemainingHQ -= value;
+        }
+        else
+        {
+            target.RemainingNQ -= value;
+        }
+
         _currentRetainerItems[_currentItemIndex] = target;
 
         _phase = Phase.WaitWithdrawComplete;
@@ -683,7 +736,8 @@ internal unsafe class RetainerTaskExecutor
     private CraftingTasks.TaskResult TickCloseRetainerInventory()
     {
         var agentModule = AgentModule.Instance();
-        if (agentModule == null) { _phase = Phase.SelectQuit; return CraftingTasks.TaskResult.Retry; }
+        if (agentModule == null)
+        { _phase = Phase.SelectQuit; return CraftingTasks.TaskResult.Retry; }
 
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent != null && retainerAgent->IsAgentActive())
@@ -702,7 +756,8 @@ internal unsafe class RetainerTaskExecutor
     private CraftingTasks.TaskResult TickWaitInventoryClosed()
     {
         var agentModule = AgentModule.Instance();
-        if (agentModule == null) { _phase = Phase.SelectQuit; return CraftingTasks.TaskResult.Retry; }
+        if (agentModule == null)
+        { _phase = Phase.SelectQuit; return CraftingTasks.TaskResult.Retry; }
         var retainerAgent = agentModule->GetAgentByInternalId(AgentId.Retainer);
         if (retainerAgent == null || !retainerAgent->IsAgentActive())
         {
@@ -741,14 +796,16 @@ internal unsafe class RetainerTaskExecutor
             return CraftingTasks.TaskResult.Retry;
         }
 
-        var quitText  = GetAddonText(2383);
+        var quitText = GetAddonText(2383);
         var entryCount = menu->PopupMenu.PopupMenu.EntryCount;
 
-        for (int i = 0; i < entryCount; i++)
+        for (var i = 0; i < entryCount; i++)
         {
             var label = MemoryHelper.ReadSeStringNullTerminated((nint)menu->PopupMenu.PopupMenu.EntryNames[i].Value).TextValue;
             if (!label.Contains(quitText, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             new AddonMaster.SelectString((nint)menu).Entries[i].Select();
             _retainerVisitIndex++;
@@ -864,12 +921,16 @@ internal unsafe class RetainerTaskExecutor
     {
         var list = new List<WithdrawTarget>();
         if (!_perRetainerPlan.TryGetValue(retainerId, out var items))
+        {
             return list;
+        }
 
         foreach (var (itemId, amounts) in items.OrderByDescending(kv => kv.Value.NeedHQ > 0 ? 1 : 0))
         {
             if (amounts.NeedHQ > 0 || amounts.NeedNQ > 0)
+            {
                 list.Add(new WithdrawTarget(itemId, amounts.NeedHQ, amounts.NeedNQ));
+            }
         }
 
         GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Built item list for retainer {retainerId}: {list.Count} item(s)");
@@ -881,19 +942,25 @@ internal unsafe class RetainerTaskExecutor
         var retainerIds = new HashSet<ulong>();
         var retainerMgr = RetainerManager.Instance();
         if (retainerMgr == null)
+        {
             return retainerIds;
+        }
 
         for (uint i = 0; i < retainerMgr->GetRetainerCount(); i++)
         {
             var retainer = retainerMgr->GetRetainerBySortedIndex(i);
             if (retainer == null || retainer->RetainerId == 0)
+            {
                 continue;
+            }
 
             retainerIds.Add(retainer->RetainerId);
         }
 
         if (retainerIds.Count > 0)
+        {
             GatherBuddy.Log.Debug($"[RetainerTaskExecutor] Falling back to RetainerManager ids for {retainerIds.Count} retainer(s)");
+        }
 
         return retainerIds;
     }
@@ -901,24 +968,33 @@ internal unsafe class RetainerTaskExecutor
     public static IGameObject? FindNearestBellForNavigation()
     {
         var player = Dalamud.Objects.LocalPlayer;
-        if (player == null) return null;
+        if (player == null)
+        {
+            return null;
+        }
 
         var bellName = GetBellName();
         IGameObject? nearest = null;
-        float nearestDistance = float.MaxValue;
+        var nearestDistance = float.MaxValue;
 
         foreach (var obj in Dalamud.Objects)
         {
             if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
+            {
                 continue;
+            }
 
             var name = obj.Name.TextValue;
             if (!name.Equals(bellName, StringComparison.OrdinalIgnoreCase) &&
                 !name.Equals("リテイナーベル", StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             if (!obj.IsTargetable)
+            {
                 continue;
+            }
 
             var distance = Vector3.Distance(obj.Position, player.Position);
             if (distance < nearestDistance)
@@ -934,26 +1010,37 @@ internal unsafe class RetainerTaskExecutor
     private static IGameObject? FindNearestBell()
     {
         var player = Dalamud.Objects.LocalPlayer;
-        if (player == null) return null;
+        if (player == null)
+        {
+            return null;
+        }
 
         var bellName = GetBellName();
 
         foreach (var obj in Dalamud.Objects)
         {
             if (obj.ObjectKind != ObjectKind.HousingEventObject && obj.ObjectKind != ObjectKind.EventObj)
+            {
                 continue;
+            }
 
             var name = obj.Name.TextValue;
             if (!name.Equals(bellName, StringComparison.OrdinalIgnoreCase) &&
                 !name.Equals("リテイナーベル", StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
-            float maxDist = obj.ObjectKind == ObjectKind.HousingEventObject ? 6.5f : 4.75f;
+            var maxDist = obj.ObjectKind == ObjectKind.HousingEventObject ? 6.5f : 4.75f;
             if (Vector3.Distance(obj.Position, player.Position) > maxDist)
+            {
                 continue;
+            }
 
             if (!obj.IsTargetable)
+            {
                 continue;
+            }
 
             return obj;
         }
@@ -967,7 +1054,9 @@ internal unsafe class RetainerTaskExecutor
         {
             var sheet = Dalamud.GameData.GetExcelSheet<EObjName>();
             if (sheet != null && sheet.TryGetRow(2000401, out var row))
+            {
                 return row.Singular.ExtractText();
+            }
         }
         catch { }
         return "Summoning Bell";
@@ -979,7 +1068,9 @@ internal unsafe class RetainerTaskExecutor
         {
             var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Addon>();
             if (sheet != null && sheet.TryGetRow(rowId, out var row))
+            {
                 return row.Text.ExtractText();
+            }
         }
         catch { }
         return string.Empty;
@@ -1001,13 +1092,17 @@ internal unsafe class RetainerTaskExecutor
         {
             var recipe = RecipeManager.GetRecipe(queueItem.RecipeId);
             if (recipe == null)
+            {
                 continue;
+            }
 
             var qualityPolicy = queueItem.QualityPolicy ?? CraftingQualityPolicyResolver.Resolve(recipe.Value, queueItem.CraftSettings);
             foreach (var (itemId, _) in RecipeManager.GetIngredients(recipe.Value))
             {
                 if (!targets.ContainsKey(itemId))
+                {
                     continue;
+                }
 
                 targets[itemId] = targets[itemId].Add(qualityPolicy.GetDemand(itemId).Scale(Math.Max(1, queueItem.Quantity)));
             }
@@ -1023,7 +1118,9 @@ internal unsafe class RetainerTaskExecutor
             }
 
             if (target.Total > totalNeeded)
+            {
                 targets[itemId] = target.ConsumeUnknownQuality(target.Total - totalNeeded, out _);
+            }
         }
 
         return targets;

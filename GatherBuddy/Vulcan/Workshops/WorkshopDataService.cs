@@ -1,9 +1,7 @@
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Vulcan.Workshops;
 
@@ -126,7 +124,9 @@ internal static class WorkshopDataService
     public static IReadOnlyList<WorkshopProjectNode> GetProjects()
     {
         if (_cachedProjects != null)
+        {
             return _cachedProjects;
+        }
 
         _recipeLookup = BuildRecipeLookup();
         _cachedProjects = LoadProjects(_recipeLookup);
@@ -172,7 +172,9 @@ internal static class WorkshopDataService
         foreach (var sequence in sequenceSheet)
         {
             if (sequence.RowId == 0 || sequence.ResultItem.RowId == 0)
+            {
                 continue;
+            }
 
             var projectName = GetProjectName(sequence);
             var projectIconId = GetProjectIconId(sequence);
@@ -231,7 +233,9 @@ internal static class WorkshopDataService
             }
 
             if (projectRequirements.Count == 0)
+            {
                 continue;
+            }
 
             var projectNode = new WorkshopProjectNode(
                 sequence.RowId,
@@ -260,7 +264,9 @@ internal static class WorkshopDataService
         foreach (var recipe in recipeSheet)
         {
             if (recipe.RowId == 0 || recipe.ItemResult.RowId == 0 || lookup.ContainsKey(recipe.ItemResult.RowId))
+            {
                 continue;
+            }
 
             lookup[recipe.ItemResult.RowId] = (recipe.RowId, Math.Max(1, (int)recipe.AmountResult));
         }
@@ -274,7 +280,9 @@ internal static class WorkshopDataService
         {
             var part = sequence.CompanyCraftPart[i].Value;
             if (part.RowId > 0)
+            {
                 yield return part;
+            }
         }
     }
 
@@ -284,7 +292,9 @@ internal static class WorkshopDataService
         {
             var process = part.CompanyCraftProcess[i].Value;
             if (process.RowId > 0)
+            {
                 yield return process;
+            }
         }
     }
 
@@ -295,11 +305,15 @@ internal static class WorkshopDataService
         {
             var supplyItem = process.SupplyItem[i].Value;
             if (supplyItem.RowId == 0 || supplyItem.Item.RowId == 0)
+            {
                 continue;
+            }
 
             var requiredQuantity = process.SetsRequired[i] * process.SetQuantity[i];
             if (requiredQuantity <= 0)
+            {
                 continue;
+            }
 
             yield return (supplyItem.Item.RowId, requiredQuantity);
         }
@@ -308,7 +322,7 @@ internal static class WorkshopDataService
     private static List<WorkshopSupplyRequirement> BuildRequirements(
         IEnumerable<(uint ItemId, int Quantity)> rawRequirements,
         Dictionary<uint, (uint RecipeId, int AmountResult)> recipeLookup)
-        => rawRequirements
+        => [.. rawRequirements
             .Where(requirement => requirement.ItemId > 0 && requirement.Quantity > 0)
             .GroupBy(requirement => requirement.ItemId)
             .Select(group =>
@@ -328,8 +342,7 @@ internal static class WorkshopDataService
 
                 return new WorkshopSupplyRequirement(group.Key, itemName, iconId, requiredQuantity, null, 0);
             })
-            .OrderBy(requirement => requirement.ItemName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(requirement => requirement.ItemName, StringComparer.OrdinalIgnoreCase)];
 
     private static string GetProjectName(CompanyCraftSequence sequence)
     {
@@ -359,7 +372,9 @@ internal static class WorkshopDataService
     {
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet != null && itemSheet.TryGetRow(itemId, out var item))
+        {
             return (item.Name.ExtractText(), (uint)item.Icon);
+        }
 
         GatherBuddy.Log.Debug($"[WorkshopDataService] Missing item metadata for workshop supply item {itemId}");
         return ($"Item {itemId}", 0);

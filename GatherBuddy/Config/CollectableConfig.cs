@@ -1,5 +1,5 @@
-using System;
 using GatherBuddy.AutoGather.Collectables.Data;
+using System;
 
 namespace GatherBuddy.Config;
 

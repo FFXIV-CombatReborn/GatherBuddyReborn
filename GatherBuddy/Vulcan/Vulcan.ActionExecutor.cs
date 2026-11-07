@@ -18,10 +18,14 @@ public static class ActionExecutor
     public static bool CanExecute(VulcanSkill action, CraftState craft, StepState step)
     {
         if (!Simulator.CanUseAction(craft, step, action))
+        {
             return false;
+        }
 
         if (_instance == null)
+        {
             return true;
+        }
 
         return _instance.CanExecuteAction(action, craft, step);
     }

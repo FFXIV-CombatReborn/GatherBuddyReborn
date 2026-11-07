@@ -9,7 +9,7 @@ public class CosmicMission
         => (ushort)Data.RowId;
 
     public WKSMissionUnit Data;
-    public string         Name;
+    public string Name;
 
     public CosmicMission(WKSMissionUnit data)
     {

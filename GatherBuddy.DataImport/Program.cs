@@ -1,34 +1,34 @@
-﻿using System;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
-using System.Globalization;
+﻿using GatherBuddy.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using GatherBuddy.Models;
+using System.Globalization;
 
 namespace GatherBuddy.DataImport
 {
-    class Program
+    internal class Program
     {
         private const string OutputPath = "../../../../GatherBuddyReborn/GatherBuddy/CustomInfo";
         private const string FishRecordsFile = "fish_records.json";
-        private const int SpotCap = 50; 
+        private const int SpotCap = 50;
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             if (args.Length == 0)
+            {
                 throw new ArgumentException("Please provide the path to the input JSON file.");
+            }
 
             var input = args[0];
             if (!File.Exists(input))
+            {
                 throw new FileNotFoundException("Input file not found.", input);
+            }
 
             var output = Path.Combine(OutputPath, FishRecordsFile);
 
             var oldFishRecords = File.Exists(output)
-                ? JsonConvert.DeserializeObject<List<SimpleFishRecord>>(File.ReadAllText(output)) ?? new List<SimpleFishRecord>()
-                : new List<SimpleFishRecord>();
+                ? JsonConvert.DeserializeObject<List<SimpleFishRecord>>(File.ReadAllText(output)) ?? []
+                : [];
 
             var newContent = File.ReadAllText(input);
             var (newEntries, newZeroSortCount) = DeserializeNewData(newContent);
@@ -58,13 +58,14 @@ namespace GatherBuddy.DataImport
 
                     newForSpot = DedupeByPosition(newForSpot);
 
-                    newForSpot = newForSpot
+                    newForSpot = [.. newForSpot
                         .OrderByDescending(e => e.SortTimestamp)
-                        .Take(SpotCap)
-                        .ToList();
+                        .Take(SpotCap)];
 
                     if (newForSpot.Count == SpotCap)
+                    {
                         return newForSpot;
+                    }
 
                     var oldForSpot = g
                         .Where(e => !e.IsNew)
@@ -72,10 +73,9 @@ namespace GatherBuddy.DataImport
 
                     oldForSpot = DedupeByPosition(oldForSpot);
 
-                    oldForSpot = oldForSpot
+                    oldForSpot = [.. oldForSpot
                         .OrderByDescending(e => e.SortTimestamp)
-                        .Take(SpotCap - newForSpot.Count)
-                        .ToList();
+                        .Take(SpotCap - newForSpot.Count)];
 
                     return newForSpot.Concat(oldForSpot);
                 })
@@ -130,7 +130,7 @@ namespace GatherBuddy.DataImport
 
             if (content.StartsWith("["))
             {
-                var list = JsonConvert.DeserializeObject<List<SimpleFishRecord>>(content) ?? new List<SimpleFishRecord>();
+                var list = JsonConvert.DeserializeObject<List<SimpleFishRecord>>(content) ?? [];
                 var entries = list
                     .Select(r => new FishEntry
                     {
@@ -152,18 +152,24 @@ namespace GatherBuddy.DataImport
             {
                 line = line.Trim();
                 if (line.Length == 0)
+                {
                     continue;
+                }
 
                 var obj = JObject.Parse(line);
-                var item = obj["Item"] as JObject;
-                if (item == null)
+                if (obj["Item"] is not JObject item)
+                {
                     continue;
+                }
 
                 var entry = MapDynamoItemToEntry(item);
                 if (entry != null)
                 {
                     if (entry.SortTimestamp == 0)
+                    {
                         zeroSort++;
+                    }
+
                     listResult.Add(entry);
                 }
             }
@@ -180,12 +186,17 @@ namespace GatherBuddy.DataImport
             string? GetS(string name) => item[name]?["S"]?.ToString();
             string? GetN(string name) => item[name]?["N"]?.ToString();
 
-            Guid id = Guid.Empty;
+            var id = Guid.Empty;
             var idStr = GetS("Id");
             if (!string.IsNullOrEmpty(idStr))
-                Guid.TryParse(idStr, out id);
+            {
+                _ = Guid.TryParse(idStr, out id);
+            }
+
             if (id == Guid.Empty)
+            {
                 id = Guid.NewGuid();
+            }
 
             ushort GetUShort(string name)
             {
@@ -225,23 +236,31 @@ namespace GatherBuddy.DataImport
 
             var fishingSpot = GetUShort("FishingSpot");
             if (fishingSpot == 0)
+            {
                 return null;
+            }
 
             var dynTimestamp = 0;
             var tsNum = GetN("Timestamp");
             if (!string.IsNullOrEmpty(tsNum) && int.TryParse(tsNum, out var parsedTs) && parsedTs > 0)
+            {
                 dynTimestamp = parsedTs;
+            }
 
             var sortTs = 0;
             var processed = GetS("processed_at");
             if (!string.IsNullOrEmpty(processed))
             {
                 if (DateTime.TryParseExact(processed, "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dt))
+                {
                     sortTs = (int)new DateTimeOffset(dt).ToUnixTimeSeconds();
+                }
             }
 
             if (sortTs == 0)
+            {
                 sortTs = dynTimestamp > 0 ? dynTimestamp : 1;
+            }
 
             var record = new SimpleFishRecord
             {
@@ -280,7 +299,9 @@ namespace GatherBuddy.DataImport
                 if (dict.TryGetValue(key, out var existing))
                 {
                     if (e.SortTimestamp > existing.SortTimestamp)
+                    {
                         dict[key] = e;
+                    }
                 }
                 else
                 {
@@ -288,10 +309,10 @@ namespace GatherBuddy.DataImport
                 }
             }
 
-            return dict.Values.ToList();
+            return [.. dict.Values];
         }
 
-        class FishEntry
+        private class FishEntry
         {
             public SimpleFishRecord Record { get; set; } = null!;
             public int SortTimestamp { get; set; }

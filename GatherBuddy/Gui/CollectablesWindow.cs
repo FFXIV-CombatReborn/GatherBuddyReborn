@@ -1,15 +1,14 @@
-using System.Collections.Generic;
-using System;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Windowing;
 using GatherBuddy.AutoGather.Collectables;
-using GatherBuddy.AutoGather.Collectables.Data;
 using GatherBuddy.Config;
 using GatherBuddy.Helpers;
 using GatherBuddy.Vulcan.Vendors;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -89,35 +88,51 @@ public sealed class CollectablesWindow : Window
     {
         var turnInsAvailable = CollectableTurnInRequirements.IsAvailable;
         if (ImGui.Button("Setup Guide", VulcanUiScaling.Scaled(120f, 0f)))
+        {
             ImGui.OpenPopup(SetupGuidePopupId);
+        }
+
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Explain how to build and assign collectables purchase lists using Vulcan Vendors and Vendor Buy Lists.");
+        }
 
         ImGui.SameLine();
         if (manager.IsRunning)
         {
             if (ImGui.Button("Stop Collectables Run", VulcanUiScaling.Scaled(180f, 0f)))
+            {
                 manager.Stop();
+            }
         }
         else
         {
             using var disabledRunButton = ImRaii.Disabled(!turnInsAvailable);
             if (ImGui.Button("Run Turn-Ins Now", VulcanUiScaling.Scaled(180f, 0f)) && turnInsAvailable)
+            {
                 manager.Start(CollectableRunSource.Manual);
+            }
+
             if (ImGui.IsItemHovered(turnInsAvailable ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled))
+            {
                 ImGui.SetTooltip(turnInsAvailable
                     ? "Runs collectable turn-ins immediately."
                     : CollectableTurnInRequirements.UnavailableHelpText);
+            }
         }
 
         ImGuiEx.PluginAvailabilityIndicator(RequiredCollectablePlugins, "Requires one of these plugins:", all: false);
 
         if (ImGui.Button("Open Vulcan", VulcanUiScaling.Scaled(120f, 0f)))
+        {
             GatherBuddy.VulcanWindow?.RestoreWindow();
+        }
 
         ImGui.SameLine();
         if (ImGui.Button("Open Vendor Buy Lists", VulcanUiScaling.Scaled(170f, 0f)))
+        {
             GatherBuddy.VendorBuyListWindow?.Open();
+        }
     }
 
     private static void DrawAutomationSettings(CollectableManager manager, CollectableConfig config)
@@ -137,16 +152,20 @@ public sealed class CollectablesWindow : Window
             {
                 config.AutoTurnInHardFailReason = string.Empty;
                 if (!manager.IsRunning && string.Equals(manager.StatusText, previousHardFailReason, StringComparison.Ordinal))
+                {
                     manager.ClearStatus();
+                }
             }
             GatherBuddy.Config.Save();
         }
         var autoTurnInHovered = ImGui.IsItemHovered(turnInsAvailable || autoTurnIn ? ImGuiHoveredFlags.None : ImGuiHoveredFlags.AllowWhenDisabled);
         ImGuiEx.PluginAvailabilityIndicator(RequiredCollectablePlugins, "Requires one of these plugins:", all: false);
         if (autoTurnInHovered)
+        {
             ImGui.SetTooltip(turnInsAvailable
                 ? "Lets Auto-Gather and Vulcan queues run collectable turn-ins automatically."
                 : CollectableTurnInRequirements.UnavailableHelpText);
+        }
 
         if (!turnInsAvailable)
         {
@@ -168,7 +187,9 @@ public sealed class CollectablesWindow : Window
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Runs the selected buy list after turn-ins, or during scrip-cap recovery if space must be cleared.");
+        }
 
         var returnHome = HomeNavigationHelper.ShouldReturnHomeAfterCollectables();
         if (ImGui.Checkbox("Return home after Vulcan queue turn-ins", ref returnHome))
@@ -177,7 +198,9 @@ public sealed class CollectablesWindow : Window
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("After a queue collectables interruption, return home before crafting resumes.");
+        }
 
         ImGui.Spacing();
         var useInventoryFullThreshold = config.UseInventoryFullThreshold;
@@ -237,7 +260,9 @@ public sealed class CollectablesWindow : Window
                     && route.Location.MapRowId == selectedRoute.Location.MapRowId
                     && Vector3.DistanceSquared(route.Location.Position, selectedRoute.Location.Position) < 0.01f;
                 if (!ImGui.Selectable(route.DisplayName, isSelected))
+                {
                     continue;
+                }
 
                 GatherBuddy.Config.CollectableConfig.PreferredTurnInRoute = CollectableTurnInRouteResolver.ToPreference(route);
                 GatherBuddy.Config.Save();
@@ -257,17 +282,24 @@ public sealed class CollectablesWindow : Window
     {
         ImGui.SetNextWindowSize(VulcanUiScaling.Scaled(640f, 430f), ImGuiCond.Appearing);
         if (!ImGui.BeginPopup(SetupGuidePopupId, ImGuiWindowFlags.NoResize))
+        {
             return;
+        }
 
         ImGui.TextColored(ImGuiColors.ParsedGold, "Collectables Setup Guide");
         DrawWrappedText("Use Vulcan's Vendors tab to build the scrip purchase list, then assign that list here so collectables runs know what to buy after turn-ins.");
         ImGui.Spacing();
 
         if (ImGui.Button("Open Vulcan", VulcanUiScaling.Scaled(120f, 0f)))
+        {
             GatherBuddy.VulcanWindow?.RestoreWindow();
+        }
+
         ImGui.SameLine();
         if (ImGui.Button("Open Vendor Buy Lists", VulcanUiScaling.Scaled(170f, 0f)))
+        {
             GatherBuddy.VendorBuyListWindow?.Open();
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -295,7 +327,9 @@ public sealed class CollectablesWindow : Window
         ImGui.Spacing();
 
         if (ImGui.Button("Close", VulcanUiScaling.Scaled(100f, 0f)))
+        {
             ImGui.CloseCurrentPopup();
+        }
 
         ImGui.EndPopup();
     }
@@ -315,7 +349,9 @@ public sealed class CollectablesWindow : Window
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Keeps at least this many of each scrip when collectables buy lists spend scrips.");
+        }
 
         ImGui.Spacing();
 
@@ -331,7 +367,9 @@ public sealed class CollectablesWindow : Window
             id => config.GatheringPurchaseListId = id,
             manager);
         if (selectedGatheringList != null)
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, GetPurchaseListSummary(manager, selectedGatheringList));
+        }
 
         using (var disabled = ImRaii.Disabled(manager.ActiveList == null || manager.ActiveList.Id == config.GatheringPurchaseListId))
         {
@@ -349,7 +387,9 @@ public sealed class CollectablesWindow : Window
             id => config.CraftingPurchaseListId = id,
             manager);
         if (selectedCraftingList != null)
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, GetPurchaseListSummary(manager, selectedCraftingList));
+        }
 
         using var disabledCrafting = ImRaii.Disabled(manager.ActiveList == null || manager.ActiveList.Id == config.CraftingPurchaseListId);
         if (ImGui.Button("Use Active Vendor List for Crafting", VulcanUiScaling.Scaled(250f, 0f)) && manager.ActiveList != null)
@@ -365,7 +405,9 @@ public sealed class CollectablesWindow : Window
         var previewLabel = selectedList?.Name ?? "No list selected";
         ImGui.SetNextItemWidth(-1);
         if (!ImGui.BeginCombo(label, previewLabel))
+        {
             return;
+        }
 
         if (ImGui.Selectable("No list selected", selectedListId == Guid.Empty))
         {
@@ -377,7 +419,9 @@ public sealed class CollectablesWindow : Window
         {
             var isSelected = list.Id == selectedListId;
             if (!ImGui.Selectable(list.Name, isSelected))
+            {
                 continue;
+            }
 
             setter(list.Id);
             GatherBuddy.Config.Save();
@@ -401,7 +445,10 @@ public sealed class CollectablesWindow : Window
         var stateColor = manager.IsRunning ? ImGuiColors.ParsedGold : ImGuiColors.DalamudGrey3;
         DrawWrappedColoredText(stateColor, string.IsNullOrWhiteSpace(manager.StatusText) ? "Idle" : manager.StatusText);
         if (!CollectableTurnInRequirements.IsAvailable)
+        {
             DrawWrappedColoredText(ImGuiColors.DalamudYellow, CollectableTurnInRequirements.UnavailableHelpText);
+        }
+
         CollectableInventoryHelper.InitializeAsync();
         if (!CollectableInventoryHelper.IsTurnInItemMetadataReady)
         {
@@ -417,13 +464,19 @@ public sealed class CollectablesWindow : Window
                 $"Collectables: {thresholdState.CollectableCount} · Inventory: {thresholdState.UsedSlots}/{thresholdState.TotalSlots}");
         }
         if (!GatherBuddy.Config.CollectableConfig.BuyAfterEachCollect)
+        {
             return;
+        }
 
         if (selectedGatheringList == null)
+        {
             DrawWrappedColoredText(ImGuiColors.DalamudYellow, "Select a gathering purchase list for Auto-Gather and gathering manual turn-ins.");
+        }
 
         if (selectedCraftingList == null)
+        {
             DrawWrappedColoredText(ImGuiColors.DalamudYellow, "Select a crafting purchase list for Vulcan and crafting manual turn-ins.");
+        }
     }
 
     private static void DrawWrappedColoredText(Vector4 color, string text)

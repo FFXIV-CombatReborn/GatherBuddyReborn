@@ -1,14 +1,14 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Colors;
+using Dalamud.Interface.Textures;
+using ElliLib.Raii;
+using GatherBuddy.Crafting;
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Textures;
-using GatherBuddy.Crafting;
-using GatherBuddy.Vulcan;
-using ElliLib.Raii;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Gui;
 
@@ -27,7 +27,7 @@ public partial class VulcanWindow
     private int _editingMacroMinCraft;
     private int _editingMacroMinCtrl;
     private int _editingMacroMinCP;
-    private readonly Dictionary<uint, uint> _skillIconCache = new();
+    private readonly Dictionary<uint, uint> _skillIconCache = [];
 
     private void DrawMacrosTab()
     {
@@ -50,7 +50,9 @@ public partial class VulcanWindow
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             var skipUnusable = GatherBuddy.Config.SkipMacroStepIfUnable;
             if (ImGui.Checkbox("Skip step if unable##skipUnusable", ref skipUnusable))
@@ -70,7 +72,7 @@ public partial class VulcanWindow
             ImGui.Separator();
             ImGui.Spacing();
 
-            var avail     = ImGui.GetContentRegionAvail();
+            var avail = ImGui.GetContentRegionAvail();
             var leftWidth = VulcanUiScaling.Scaled(270f);
 
             using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
@@ -90,9 +92,14 @@ public partial class VulcanWindow
                     ? macroLibrary.GetMacroByStringId(_selectedMacroId)
                     : null;
                 if (selectedMacro != null)
+                {
                     DrawMacroDetail(selectedMacro, macroLibrary);
+                }
                 else
+                {
                     DrawImportPanel();
+                }
+
                 ImGui.EndChild();
             }
         }
@@ -123,6 +130,7 @@ public partial class VulcanWindow
             }
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(
                 "Opens Teamcraft community rotations in Browsingway overlay.\n\n" +
                 "SETUP REQUIRED:\n" +
@@ -133,6 +141,7 @@ public partial class VulcanWindow
                 "5. Close config and click this button\n\n" +
                 "Alternatively, browse https://ffxivteamcraft.com/community-rotations\n" +
                 "in your web browser.");
+        }
 
         ImGui.SameLine();
         if (ImGui.Button("Hide Overlay##hideTC", VulcanUiScaling.Scaled(120f, 0f)))
@@ -172,7 +181,9 @@ public partial class VulcanWindow
         using (ImRaii.Disabled(string.IsNullOrWhiteSpace(_inGameMacroText)))
         {
             if (ImGui.Button("Parse & Preview##parseBtn", VulcanUiScaling.Scaled(150f, 0f)))
+            {
                 ParseInGameMacro();
+            }
         }
 
         if (_inGameMacroError != null)
@@ -206,22 +217,22 @@ public partial class VulcanWindow
         ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(90f));
         ImGui.InputInt("CP##previewMinCP", ref _previewMinCP);
         _previewMinCraft = Math.Max(0, _previewMinCraft);
-        _previewMinCtrl  = Math.Max(0, _previewMinCtrl);
-        _previewMinCP    = Math.Max(0, _previewMinCP);
+        _previewMinCtrl = Math.Max(0, _previewMinCtrl);
+        _previewMinCP = Math.Max(0, _previewMinCP);
 
         ImGui.Spacing();
         if (ImGui.Button("Import##importInGameBtn", VulcanUiScaling.Scaled(120f, 0f)))
         {
             macro.MinCraftsmanship = _previewMinCraft;
-            macro.MinControl       = _previewMinCtrl;
-            macro.MinCP            = _previewMinCP;
+            macro.MinControl = _previewMinCtrl;
+            macro.MinCP = _previewMinCP;
             ImportInGameMacro(macro);
         }
         ImGui.SameLine();
         if (ImGui.Button("Cancel##cancelInGameBtn", VulcanUiScaling.Scaled(90f, 0f)))
         {
             _previewInGameMacro = null;
-            _inGameMacroError   = null;
+            _inGameMacroError = null;
         }
     }
 
@@ -234,7 +245,7 @@ public partial class VulcanWindow
         {
             var macroName = string.IsNullOrWhiteSpace(_inGameMacroName) ? null : _inGameMacroName;
             var macro = MacroParser.ParseInGameMacro(_inGameMacroText, macroName);
-            
+
             if (macro == null || macro.Actions.Count == 0)
             {
                 _inGameMacroError = "Failed to parse macro. Ensure it contains recognizable crafting action names or a supported Artisan JSON export.";
@@ -242,9 +253,9 @@ public partial class VulcanWindow
             else
             {
                 _previewInGameMacro = macro;
-                _previewMinCraft    = macro.MinCraftsmanship;
-                _previewMinCtrl     = macro.MinControl;
-                _previewMinCP       = macro.MinCP;
+                _previewMinCraft = macro.MinCraftsmanship;
+                _previewMinCtrl = macro.MinControl;
+                _previewMinCP = macro.MinCP;
             }
         }
         catch (Exception ex)
@@ -260,14 +271,14 @@ public partial class VulcanWindow
         {
             var macroLibrary = CraftingGameInterop.UserMacroLibrary;
             macroLibrary.AddMacro(macro, 0);
-            
+
             GatherBuddy.Log.Information($"Imported in-game macro: {macro.Name}");
-            
-            _selectedMacroId    = macro.Id;
+
+            _selectedMacroId = macro.Id;
             _previewInGameMacro = null;
-            _inGameMacroText    = string.Empty;
-            _inGameMacroName    = string.Empty;
-            _inGameMacroError   = null;
+            _inGameMacroText = string.Empty;
+            _inGameMacroName = string.Empty;
+            _inGameMacroError = null;
         }
         catch (Exception ex)
         {
@@ -287,7 +298,7 @@ public partial class VulcanWindow
         ImGui.Spacing();
 
         var macroLibrary = CraftingGameInterop.UserMacroLibrary;
-        var allMacros    = macroLibrary.GetAllMacros();
+        var allMacros = macroLibrary.GetAllMacros();
 
         if (allMacros.Count == 0)
         {
@@ -299,10 +310,9 @@ public partial class VulcanWindow
 
         var filtered = string.IsNullOrWhiteSpace(_macroSearch)
             ? allMacros
-            : allMacros
+            : [.. allMacros
                 .Where(m => m.Name.Contains(_macroSearch, StringComparison.OrdinalIgnoreCase)
-                         || (m.Author?.Contains(_macroSearch, StringComparison.OrdinalIgnoreCase) ?? false))
-                .ToList();
+                         || (m.Author?.Contains(_macroSearch, StringComparison.OrdinalIgnoreCase) ?? false))];
 
         if (filtered.Count == 0)
         {
@@ -310,13 +320,13 @@ public partial class VulcanWindow
             return;
         }
 
-        var iconSize    = VulcanUiScaling.Scaled(28f, 28f);
-        var itemHeight  = iconSize.Y + ImGui.GetStyle().ItemSpacing.Y;
+        var iconSize = VulcanUiScaling.Scaled(28f, 28f);
+        var itemHeight = iconSize.Y + ImGui.GetStyle().ItemSpacing.Y;
         var contentMaxX = ImGui.GetContentRegionMax().X;
 
         foreach (var macro in filtered)
         {
-            var isSelected  = _selectedMacroId == macro.Id;
+            var isSelected = _selectedMacroId == macro.Id;
             var firstIconId = macro.Actions.Count > 0 ? GetSkillIconId(macro.Actions[0]) : 0u;
 
             if (firstIconId > 0)
@@ -325,9 +335,13 @@ public partial class VulcanWindow
                     .GetFromGameIcon(new GameIconLookup(firstIconId))
                     .GetWrapOrDefault();
                 if (wrap != null)
+                {
                     ImGui.Image(wrap.Handle, iconSize);
+                }
                 else
+                {
                     ImGui.Dummy(iconSize);
+                }
             }
             else
             {
@@ -343,13 +357,17 @@ public partial class VulcanWindow
 
             if (ImGui.Selectable($"{displayName}##sel_{macro.Id}", isSelected, ImGuiSelectableFlags.None,
                     new Vector2(contentMaxX - ImGui.GetCursorPosX(), 0)))
+            {
                 _selectedMacroId = isSelected ? null : macro.Id;
+            }
 
             var statsLine = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
                 ? $"{macro.Actions.Count} actions  |  Min: {macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP}"
                 : $"{macro.Actions.Count} actions";
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip(statsLine);
+            }
         }
     }
 
@@ -360,7 +378,9 @@ public partial class VulcanWindow
         var closeW = ImGui.CalcTextSize("X").X + ImGui.GetStyle().FramePadding.X * 2 + VulcanUiScaling.Scaled(4f);
         ImGui.SetCursorPosX(ImGui.GetContentRegionMax().X - closeW);
         if (ImGui.SmallButton("X##closeDetail"))
+        {
             _selectedMacroId = null;
+        }
 
         ImGui.Spacing();
 
@@ -389,10 +409,10 @@ public partial class VulcanWindow
 
         if (_editingMacroStatsId != macro.Id)
         {
-            _editingMacroStatsId  = macro.Id;
+            _editingMacroStatsId = macro.Id;
             _editingMacroMinCraft = macro.MinCraftsmanship;
-            _editingMacroMinCtrl  = macro.MinControl;
-            _editingMacroMinCP    = macro.MinCP;
+            _editingMacroMinCtrl = macro.MinControl;
+            _editingMacroMinCP = macro.MinCP;
         }
 
         ImGui.TextColored(ImGuiColors.DalamudYellow, "Minimum Stats");
@@ -406,14 +426,14 @@ public partial class VulcanWindow
         ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(90f));
         ImGui.InputInt("CP##editMinCP", ref _editingMacroMinCP);
         _editingMacroMinCraft = Math.Max(0, _editingMacroMinCraft);
-        _editingMacroMinCtrl  = Math.Max(0, _editingMacroMinCtrl);
-        _editingMacroMinCP    = Math.Max(0, _editingMacroMinCP);
+        _editingMacroMinCtrl = Math.Max(0, _editingMacroMinCtrl);
+        _editingMacroMinCP = Math.Max(0, _editingMacroMinCP);
         ImGui.SameLine();
         if (ImGui.SmallButton("Save##saveStats"))
         {
             macro.MinCraftsmanship = _editingMacroMinCraft;
-            macro.MinControl       = _editingMacroMinCtrl;
-            macro.MinCP            = _editingMacroMinCP;
+            macro.MinControl = _editingMacroMinCtrl;
+            macro.MinCP = _editingMacroMinCP;
             MacroValidator.InvalidateByMacroId(macro.Id);
             macroLibrary.Save();
             GatherBuddy.Log.Debug($"[MacrosTab] Saved min stats for macro '{macro.Name}'");
@@ -422,7 +442,9 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.TextColored(ImGuiColors.DalamudGrey, $"Created: {macro.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm}");
         if (!string.IsNullOrEmpty(macro.TeamcraftUrl))
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey, $"URL: {macro.TeamcraftUrl}");
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -432,14 +454,14 @@ public partial class VulcanWindow
         ImGui.Spacing();
 
         var actionIconSize = VulcanUiScaling.Scaled(24f, 24f);
-        var remainH        = ImGui.GetContentRegionAvail().Y - VulcanUiScaling.Scaled(32f);
+        var remainH = ImGui.GetContentRegionAvail().Y - VulcanUiScaling.Scaled(32f);
         ImGui.BeginChild("##macroActions", new Vector2(-1, remainH), false);
 
         for (var i = 0; i < macro.Actions.Count; i++)
         {
-            var actionId  = macro.Actions[i];
+            var actionId = macro.Actions[i];
             var skillName = ((VulcanSkill)actionId).ToString();
-            var iconId    = GetSkillIconId(actionId);
+            var iconId = GetSkillIconId(actionId);
 
             if (iconId > 0)
             {
@@ -447,9 +469,13 @@ public partial class VulcanWindow
                     .GetFromGameIcon(new GameIconLookup(iconId))
                     .GetWrapOrDefault();
                 if (wrap != null)
+                {
                     ImGui.Image(wrap.Handle, actionIconSize);
+                }
                 else
+                {
                     ImGui.Dummy(actionIconSize);
+                }
             }
             else
             {
@@ -476,8 +502,10 @@ public partial class VulcanWindow
     private uint GetSkillIconId(uint skillId)
     {
         if (_skillIconCache.TryGetValue(skillId, out var cached))
+        {
             return cached;
-        
+        }
+
         uint iconId = 0;
         try
         {
@@ -485,20 +513,24 @@ public partial class VulcanWindow
             {
                 var sheet = Dalamud.GameData.GetExcelSheet<CraftAction>();
                 if (sheet != null && sheet.TryGetRow(skillId, out var row))
+                {
                     iconId = row.Icon;
+                }
             }
             else if (skillId > 0)
             {
                 var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Action>();
                 if (sheet != null && sheet.TryGetRow(skillId, out var row))
+                {
                     iconId = row.Icon;
+                }
             }
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Debug($"[MacrosTab] Failed to get icon for skill {skillId}: {ex.Message}");
         }
-        
+
         _skillIconCache[skillId] = iconId;
         return iconId;
     }

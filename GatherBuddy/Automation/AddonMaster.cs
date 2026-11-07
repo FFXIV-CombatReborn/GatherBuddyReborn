@@ -1,14 +1,11 @@
-using System;
 using Dalamud.Game.Text.SeStringHandling;
-using Dalamud.Memory;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Automation;
 
 namespace GatherBuddy.Automation;
 
-public unsafe abstract class AddonMasterBase<T> where T : unmanaged
+public abstract unsafe class AddonMasterBase<T> where T : unmanaged
 {
     protected AddonMasterBase(nint addon)
     {
@@ -26,7 +23,9 @@ public unsafe abstract class AddonMasterBase<T> where T : unmanaged
     protected bool ClickButtonIfEnabled(AtkComponentButton* button)
     {
         if (button == null)
+        {
             return false;
+        }
 
         if (button->IsEnabled && button->AtkComponentBase.OwnerNode->AtkResNode.IsVisible())
         {
@@ -40,11 +39,13 @@ public unsafe abstract class AddonMasterBase<T> where T : unmanaged
 
     protected AtkEvent CreateAtkEvent(byte flags = 0)
     {
-        var evt = new AtkEvent();
-        evt.Listener = (AtkEventListener*)Base;
-        evt.Target = &AtkStage.Instance()->AtkEventTarget;
-        evt.Param = 0;
-        evt.NextEvent = null;
+        var evt = new AtkEvent
+        {
+            Listener = (AtkEventListener*)Base,
+            Target = &AtkStage.Instance()->AtkEventTarget,
+            Param = 0,
+            NextEvent = null
+        };
         return evt;
     }
 }
@@ -56,7 +57,13 @@ public static unsafe class AddonMaster
         public SelectYesno(nint addon) : base(addon) { }
         public SelectYesno(void* addon) : base(addon) { }
 
-        public string TextLegacy => Addon->PromptText != null ? System.Text.RegularExpressions.Regex.Replace(MemoryHelper.ReadSeString(&Addon->PromptText->NodeText).TextValue, @"\s+", " ").Trim() : string.Empty;
+        public string TextLegacy
+        {
+            get
+            {
+                return Addon->PromptText != null ? System.Text.RegularExpressions.Regex.Replace(Addon->PromptText->NodeText.AsDalamudSeString().TextValue, @"\s+", " ").Trim() : string.Empty;
+            }
+        }
 
         public void Yes()
         {
@@ -101,16 +108,10 @@ public static unsafe class AddonMaster
             }
         }
 
-        public struct Entry
+        public readonly struct Entry(AddonMaster.SelectString parent, int index)
         {
-            private readonly SelectString _parent;
-            public int Index { get; init; }
-
-            public Entry(SelectString parent, int index)
-            {
-                _parent = parent;
-                Index = index;
-            }
+            private readonly SelectString _parent = parent;
+            public int Index { get; init; } = index;
 
             public void Select()
             {
@@ -166,9 +167,11 @@ public static unsafe class AddonMaster
         public void Commence()
         {
             if (Addon->CommenceButton != null && Addon->CommenceButton->IsEnabled && Addon->CommenceButton->AtkComponentBase.OwnerNode->AtkResNode.IsVisible())
+            {
                 Callback.Fire(Base, true, 8);
+            }
         }
-        
+
         public void Withdraw() => ClickButtonIfEnabled(Addon->WithdrawButton);
         public void Wait() => ClickButtonIfEnabled(Addon->WaitButton);
     }
@@ -178,7 +181,7 @@ public static unsafe class AddonMaster
         public PurifyResult(nint addon) : base(addon) { }
         public PurifyResult(void* addon) : base(addon) { }
 
-        public SeString BannerSeString => MemoryHelper.ReadSeString(&Base->GetTextNodeById(2)->NodeText);
+        public SeString BannerSeString => Base->GetTextNodeById(2)->NodeText.AsDalamudSeString();
         public string BannerText => BannerSeString.ToString();
         public AtkComponentButton* AutomaticButton => Addon->GetComponentButtonById(19);
         public AtkComponentButton* CloseButton => Addon->GetComponentButtonById(20);

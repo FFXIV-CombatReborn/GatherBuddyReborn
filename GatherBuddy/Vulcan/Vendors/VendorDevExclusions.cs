@@ -20,17 +20,23 @@ public static class VendorDevExclusions
         1046491u,
         1049034u,
     ];
-    private static readonly HashSet<string> ExcludedRouteKeys = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> ExcludedRouteKeys = [with(StringComparer.Ordinal)];
 
     public static IReadOnlyList<VendorNpc> GetSelectableNpcs(IReadOnlyList<VendorNpc> npcs, string context, string? itemName = null)
     {
         if (npcs.Count == 0 || !HasExclusions)
+        {
             return npcs;
+        }
 
         var selectableNpcs = new List<VendorNpc>(npcs.Count);
         foreach (var npc in npcs)
+        {
             if (!TryGetExclusionReason(npc, out _))
+            {
                 selectableNpcs.Add(npc);
+            }
+        }
 
         return selectableNpcs;
     }

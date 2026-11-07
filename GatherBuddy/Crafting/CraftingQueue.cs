@@ -1,7 +1,6 @@
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
-using Lumina.Excel.Sheets;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.Crafting;
 
@@ -88,7 +87,7 @@ public class CraftingListItem
     public uint RecipeId { get; set; }
     public int Quantity { get; set; }
     public ListItemOptions Options { get; set; } = new();
-    public Dictionary<uint, int> IngredientPreferences { get; set; } = new();
+    public Dictionary<uint, int> IngredientPreferences { get; set; } = [];
     public CraftingListConsumableOverrides ConsumableOverrides { get; set; } = new();
     public bool IsOriginalRecipe { get; set; } = false;
     public RecipeCraftSettings? CraftSettings { get; set; }
@@ -103,9 +102,9 @@ public class CraftingListItem
 
 public class CraftingListQueue
 {
-    public List<CraftingListItem> Recipes { get; set; } = new();
-    public List<CraftingListItem> OriginalRecipes { get; set; } = new();
-    public List<uint> ExpandedList { get; set; } = new();
+    public List<CraftingListItem> Recipes { get; set; } = [];
+    public List<CraftingListItem> OriginalRecipes { get; set; } = [];
+    public List<uint> ExpandedList { get; set; } = [];
 
     public void BuildExpandedList()
     {
@@ -140,7 +139,7 @@ public class CraftingListQueue
         {
             SkipIfEnough = skipIfEnough,
             SkipFinalIfEnough = skipFinalIfEnough,
-            Recipes = items
+            Recipes = [.. items
                 .Select(item => new CraftingListItem(item.RecipeId, item.Quantity)
                 {
                     Options = new ListItemOptions
@@ -148,8 +147,7 @@ public class CraftingListQueue
                         Skipping = item.Options.Skipping,
                         NQOnly = item.Options.NQOnly,
                     },
-                })
-                .ToList(),
+                })],
         };
 
         var plan = list.CreatePlan();

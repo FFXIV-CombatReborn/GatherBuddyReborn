@@ -1,19 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
 using ElliLib;
 using ElliLib.Table;
-using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using GatherBuddy.Crafting;
+using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -36,9 +33,13 @@ public partial class VulcanWindow
         {
             Recipe = recipe;
             if (lazyLoad)
+            {
                 UpdateBasicInfo();
+            }
             else
+            {
                 Update();
+            }
         }
 
         private void UpdateBasicInfo()
@@ -63,11 +64,13 @@ public partial class VulcanWindow
             {
                 var job = classJobSheet.GetRow(JobId);
                 if (job.RowId > 0)
+                {
                     JobAbbreviation = job.Abbreviation.ExtractText();
+                }
             }
 
             _isFullyLoaded = false;
-            
+
             UpdateCraftedStatus();
         }
 
@@ -106,11 +109,13 @@ public partial class VulcanWindow
             {
                 var job = classJobSheet.GetRow(JobId);
                 if (job.RowId > 0)
+                {
                     JobAbbreviation = job.Abbreviation.ExtractText();
+                }
             }
 
             _isFullyLoaded = true;
-            
+
             UpdateCraftedStatus();
         }
 
@@ -135,21 +140,27 @@ public partial class VulcanWindow
                 ImGui.Spacing();
 
                 var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
-                
+
                 foreach (var (itemId, needed) in directIngredients)
                 {
                     if (itemSheet == null || !itemSheet.TryGetRow(itemId, out var item))
+                    {
                         continue;
+                    }
 
                     var have = GetInventoryCount(itemId);
                     var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(item.Icon));
-                    
+
                     using var itemStyle = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing / 2);
-                    
+
                     if (icon.TryGetWrap(out var wrap, out _))
+                    {
                         ImGui.Image(wrap.Handle, iconSize * 0.75f);
+                    }
                     else
+                    {
                         ImGui.Dummy(iconSize * 0.75f);
+                    }
 
                     ImGui.SameLine();
 
@@ -165,28 +176,39 @@ public partial class VulcanWindow
             {
                 ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "No materials required");
             }
-            
+
             var settings = GatherBuddy.RecipeBrowserSettings.Get(Recipe.RowId);
             if (settings != null && settings.HasAnySettings())
             {
                 ImGui.Spacing();
                 ImGui.Separator();
                 ImGui.Spacing();
-                
+
                 ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1.0f), "Configured Settings:");
                 ImGui.Spacing();
-                
+
                 var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
                 if (itemSheet != null)
                 {
                     if (settings.FoodItemId.HasValue && itemSheet.TryGetRow(settings.FoodItemId.Value, out var food))
+                    {
                         ImGui.Text($"Food: {food.Name.ExtractText()}");
+                    }
+
                     if (settings.MedicineItemId.HasValue && itemSheet.TryGetRow(settings.MedicineItemId.Value, out var medicine))
+                    {
                         ImGui.Text($"Medicine: {medicine.Name.ExtractText()}");
+                    }
+
                     if (settings.ManualItemId.HasValue && itemSheet.TryGetRow(settings.ManualItemId.Value, out var manual))
+                    {
                         ImGui.Text($"Manual: {manual.Name.ExtractText()}");
+                    }
+
                     if (settings.SquadronManualItemId.HasValue && itemSheet.TryGetRow(settings.SquadronManualItemId.Value, out var sqManual))
+                    {
                         ImGui.Text($"Squadron Manual: {sqManual.Name.ExtractText()}");
+                    }
                 }
             }
         }
@@ -197,7 +219,9 @@ public partial class VulcanWindow
             {
                 var inventory = InventoryManager.Instance();
                 if (inventory == null)
+                {
                     return 0;
+                }
 
                 var baseItemId = itemId >= 1_000_000 ? itemId - 1_000_000 : itemId;
                 var hqItemId = baseItemId + 1_000_000;
@@ -213,16 +237,22 @@ public partial class VulcanWindow
                 {
                     var container = inventory->GetInventoryContainer(invType);
                     if (container == null)
+                    {
                         continue;
+                    }
 
                     for (var i = 0; i < container->Size; i++)
                     {
                         var item = container->GetInventorySlot(i);
                         if (item == null || item->ItemId == 0)
+                        {
                             continue;
+                        }
 
                         if (item->ItemId == baseItemId || item->ItemId == hqItemId)
+                        {
                             total += (int)item->Quantity;
+                        }
                     }
                 }
 
@@ -261,7 +291,7 @@ public partial class VulcanWindow
         }
 
         public RecipeTable()
-            : base("##RecipeTable", _extendedRecipeList ?? new List<ExtendedRecipe>(), _nameColumn, _jobColumn, _levelColumn, _craftedColumn)
+            : base("##RecipeTable", _extendedRecipeList ?? [], _nameColumn, _jobColumn, _levelColumn, _craftedColumn)
         {
             Sortable = true;
             Flags |= ImGuiTableFlags.Hideable | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
@@ -294,14 +324,18 @@ public partial class VulcanWindow
             public override void DrawColumn(ExtendedRecipe item, int id)
             {
                 using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ItemSpacing / 2);
-                
+
                 if (item.Icon.TryGetWrap(out var wrap, out _))
+                {
                     ImGui.Image(wrap.Handle, LineIconSize);
+                }
                 else
+                {
                     ImGui.Dummy(LineIconSize);
-                
+                }
+
                 ImGui.SameLine();
-                
+
                 var hasSettings = GatherBuddy.RecipeBrowserSettings.Has(item.Recipe.RowId);
                 if (hasSettings)
                 {
@@ -309,21 +343,21 @@ public partial class VulcanWindow
                     ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1), FontAwesomeIcon.Cog.ToIconString());
                     ImGui.SameLine();
                 }
-                
+
                 var selected = ImGui.Selectable(item.Name);
                 var hovered = ImGui.IsItemHovered();
 
                 var isPopupOpen = GatherBuddy.ControllerSupport != null
                     ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"RecipeContextMenu##{item.Recipe.RowId}", Dalamud.GamepadState)
                     : ImGui.BeginPopupContextItem($"RecipeContextMenu##{item.Recipe.RowId}");
-                
+
                 if (isPopupOpen)
                 {
                     if (ImGui.MenuItem("Configure Craft Settings"))
                     {
                         _craftSettingsPopup.Open(item.Recipe.RowId, item.Name);
                     }
-                    
+
                     if (ImGui.MenuItem("Show Recipe Properties (Debug)"))
                     {
                         GatherBuddy.Log.Information($"=== Recipe Properties for {item.Name} ===");
@@ -349,16 +383,16 @@ public partial class VulcanWindow
                         GatherBuddy.Log.Information($"Item.Rarity: {resultItem.Rarity}");
                         LogRecipeNotebookDivisionInfo(item.Recipe);
                     }
-                    
+
                     ImGui.Separator();
-                    
+
                     var lists = GatherBuddy.CraftingListManager.Lists;
-                    
+
                     if (lists.Count > 0)
                     {
                         ImGui.TextColored(new Vector4(1.0f, 0.9f, 0.6f, 1.0f), $"Add {item.Name} to list:");
                         ImGui.Separator();
-                        
+
                         foreach (var list in lists)
                         {
                             if (ImGui.MenuItem(list.Name))
@@ -370,14 +404,14 @@ public partial class VulcanWindow
                                 GatherBuddy.Log.Information($"Added {item.Name} to crafting list '{list.Name}'");
                             }
                         }
-                        
+
                     }
                     else
                     {
                         ImGui.TextDisabled("No crafting lists available");
                         ImGui.TextDisabled("Create one in the Crafting Lists tab");
                     }
-                    
+
                     ImGui.EndPopup();
                 }
 
@@ -398,20 +432,28 @@ public partial class VulcanWindow
                 if (!string.IsNullOrWhiteSpace(_recipeSearchText))
                 {
                     if (!item.Name.Contains(_recipeSearchText, StringComparison.OrdinalIgnoreCase))
+                    {
                         return false;
+                    }
                 }
 
                 if (_selectedJobFilters.Count > 0)
                 {
                     if (!_selectedJobFilters.Contains(item.JobId))
+                    {
                         return false;
+                    }
                 }
 
                 if (item.Level < _minLevel || item.Level > _maxLevel)
+                {
                     return false;
+                }
 
                 if (!PassesRecipeTypeFilters(item.Recipe))
+                {
                     return false;
+                }
 
                 return true;
             }
@@ -478,7 +520,10 @@ public partial class VulcanWindow
             public override int Compare(ExtendedRecipe lhs, ExtendedRecipe rhs)
             {
                 if (lhs.IsCrafted != rhs.IsCrafted)
+                {
                     return rhs.IsCrafted.CompareTo(lhs.IsCrafted);
+                }
+
                 return 0;
             }
         }

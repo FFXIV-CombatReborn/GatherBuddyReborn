@@ -1,15 +1,15 @@
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.Crafting;
 
 public class CraftingListManager
 {
-    private List<CraftingListDefinition> _lists = new();
-    private readonly HashSet<string> _folders = new(StringComparer.OrdinalIgnoreCase);
+    private List<CraftingListDefinition> _lists = [];
+    private readonly HashSet<string> _folders = [with(StringComparer.OrdinalIgnoreCase)];
 
     public IReadOnlyList<CraftingListDefinition> Lists => _lists.AsReadOnly();
     public bool HasFolders => GetKnownFolderPaths().Count != 0;
@@ -38,7 +38,9 @@ public class CraftingListManager
         }
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         if (!string.IsNullOrEmpty(normalizedFolderPath))
+        {
             EnsureFolderPath(normalizedFolderPath);
+        }
 
         var rng = new Random();
         var proposedId = rng.Next(100, 50000);
@@ -55,7 +57,7 @@ public class CraftingListManager
             Order = GetNextOrderForFolder(normalizedFolderPath),
             Ephemeral = ephemeral
         };
-        
+
         _lists.Add(list);
         Save();
         return list;
@@ -88,11 +90,11 @@ public class CraftingListManager
         var existing = GetListByID(list.ID);
         if (existing != null)
         {
-            existing.Name        = list.Name;
+            existing.Name = list.Name;
             existing.Description = list.Description;
-            existing.FolderPath  = NormalizeFolderPath(list.FolderPath);
+            existing.FolderPath = NormalizeFolderPath(list.FolderPath);
             existing.Order = list.Order;
-            existing.Recipes     = list.Recipes;
+            existing.Recipes = list.Recipes;
             existing.SkipIfEnough = list.SkipIfEnough;
             existing.Materia = list.Materia;
             existing.Repair = list.Repair;
@@ -127,11 +129,15 @@ public class CraftingListManager
         foreach (var folderPath in GetKnownFolderPaths())
         {
             if (!folderPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             var remainder = folderPath[prefix.Length..];
             if (remainder.Length == 0)
+            {
                 continue;
+            }
 
             var separator = remainder.IndexOf('/');
             folders.Add(separator >= 0
@@ -153,9 +159,14 @@ public class CraftingListManager
     {
         var trimmedName = name.Trim();
         if (string.IsNullOrWhiteSpace(trimmedName))
+        {
             return false;
+        }
+
         if (trimmedName.Contains('/') || trimmedName.Contains('\\'))
+        {
             return false;
+        }
 
         var normalizedParent = NormalizeFolderPath(parentFolderPath);
         var newFolderPath = string.IsNullOrEmpty(normalizedParent)
@@ -197,7 +208,10 @@ public class CraftingListManager
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         if (string.IsNullOrEmpty(normalizedFolderPath))
+        {
             return false;
+        }
+
         if (!CanDeleteFolder(normalizedFolderPath))
         {
             GatherBuddy.Log.Debug($"[CraftingListManager] Refused to delete non-empty folder '{normalizedFolderPath}'");
@@ -222,10 +236,14 @@ public class CraftingListManager
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         var previousFolderPath = NormalizeFolderPath(existing.FolderPath);
         if (!string.IsNullOrEmpty(normalizedFolderPath))
+        {
             EnsureFolderPath(normalizedFolderPath);
+        }
 
         if (existing.FolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase))
+        {
             return true;
+        }
 
         existing.FolderPath = normalizedFolderPath;
         existing.Order = GetNextOrderForFolder(normalizedFolderPath, existing.ID);
@@ -247,7 +265,9 @@ public class CraftingListManager
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         var previousFolderPath = NormalizeFolderPath(existing.FolderPath);
         if (!string.IsNullOrEmpty(normalizedFolderPath))
+        {
             EnsureFolderPath(normalizedFolderPath);
+        }
 
         var reorderedLists = GetListsInFolder(normalizedFolderPath)
             .Where(entry => entry.ID != existing.ID)
@@ -256,7 +276,9 @@ public class CraftingListManager
         existing.FolderPath = normalizedFolderPath;
         NormalizeFolderOrders(normalizedFolderPath, reorderedLists);
         if (!previousFolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase))
+        {
             NormalizeFolderOrders(previousFolderPath);
+        }
 
         GatherBuddy.Log.Debug($"[CraftingListManager] Moved list '{existing.Name}' to the end of folder '{normalizedFolderPath}'");
         Save();
@@ -280,7 +302,9 @@ public class CraftingListManager
         }
 
         if (existing.ID == target.ID)
+        {
             return false;
+        }
 
         var sourceFolderPath = NormalizeFolderPath(existing.FolderPath);
         var destinationFolderPath = NormalizeFolderPath(target.FolderPath);
@@ -299,7 +323,9 @@ public class CraftingListManager
         reorderedLists.Insert(insertIndex, existing);
         NormalizeFolderOrders(destinationFolderPath, reorderedLists);
         if (!sourceFolderPath.Equals(destinationFolderPath, StringComparison.OrdinalIgnoreCase))
+        {
             NormalizeFolderOrders(sourceFolderPath);
+        }
 
         GatherBuddy.Log.Debug($"[CraftingListManager] Reordered list '{existing.Name}' {(placeAfter ? "after" : "before")} '{target.Name}' in folder '{destinationFolderPath}'");
         Save();
@@ -319,7 +345,9 @@ public class CraftingListManager
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         if (string.IsNullOrEmpty(normalizedFolderPath))
+        {
             return string.Empty;
+        }
 
         var separator = normalizedFolderPath.LastIndexOf('/');
         return separator < 0
@@ -340,11 +368,16 @@ public class CraftingListManager
             foreach (var list in _lists)
             {
                 if (CanonicalizeOriginalItemQualitySettings(list))
+                {
                     canonicalizedLists++;
+                }
             }
 
             if (canonicalizedLists > 0)
+            {
                 GatherBuddy.Log.Debug($"[CraftingListManager] Canonicalized original-item ingredient prefs in {canonicalizedLists} list(s) before save");
+            }
+
             GatherBuddy.Config.CraftingFolders = GetKnownFolderPaths();
             GatherBuddy.Config.CraftingLists = JsonConvert.SerializeObject(_lists);
             GatherBuddy.Config.Save();
@@ -362,18 +395,21 @@ public class CraftingListManager
         {
             _folders.Clear();
             foreach (var folderPath in GatherBuddy.Config.CraftingFolders ?? [])
+            {
                 AddFolderAndAncestors(_folders, folderPath);
+            }
+
             if (string.IsNullOrEmpty(GatherBuddy.Config.CraftingLists))
             {
-                _lists = new();
+                _lists = [];
                 return;
             }
 
-            _lists = JsonConvert.DeserializeObject<List<CraftingListDefinition>>(GatherBuddy.Config.CraftingLists) ?? new();
-            
+            _lists = JsonConvert.DeserializeObject<List<CraftingListDefinition>>(GatherBuddy.Config.CraftingLists) ?? [];
+
             var needsSave = false;
             var baseTime = DateTime.UtcNow.AddDays(-_lists.Count);
-            for (int i = 0; i < _lists.Count; i++)
+            for (var i = 0; i < _lists.Count; i++)
             {
                 var normalizedFolderPath = NormalizeFolderPath(_lists[i].FolderPath);
                 if (_lists[i].FolderPath != normalizedFolderPath)
@@ -388,30 +424,39 @@ public class CraftingListManager
                     needsSave = true;
                 }
                 if (_lists[i].Order < 0)
+                {
                     needsSave = true;
+                }
+
                 if (CanonicalizeOriginalItemQualitySettings(_lists[i]))
+                {
                     needsSave = true;
+                }
             }
             foreach (var folderLists in _lists.GroupBy(list => NormalizeFolderPath(list.FolderPath), StringComparer.OrdinalIgnoreCase))
             {
                 if (!folderLists.Any(list => list.Order < 0))
+                {
                     continue;
+                }
 
                 var nextOrder = 0;
                 foreach (var list in folderLists)
+                {
                     list.Order = nextOrder++;
+                }
             }
             if (needsSave)
             {
                 GatherBuddy.Log.Debug($"[CraftingListManager] Migrated {_lists.Count} lists with CreatedAt timestamps");
                 Save();
             }
-            
+
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Error($"[CraftingListManager] Error loading lists: {ex.Message}");
-            _lists = new();
+            _lists = [];
         }
     }
 
@@ -428,7 +473,7 @@ public class CraftingListManager
             AddFolderAndAncestors(folders, list.FolderPath);
         }
 
-        return folders.ToList();
+        return [.. folders];
     }
 
     private void EnsureFolderPath(string folderPath)
@@ -440,7 +485,9 @@ public class CraftingListManager
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         if (string.IsNullOrEmpty(normalizedFolderPath))
+        {
             return;
+        }
 
         var parts = normalizedFolderPath.Split('/');
         var current = string.Empty;
@@ -475,15 +522,20 @@ public class CraftingListManager
     private void NormalizeFolderOrders(string? folderPath, IReadOnlyList<CraftingListDefinition>? orderedLists = null)
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
-        var lists = orderedLists?.ToList() ?? GetListsInFolder(normalizedFolderPath).ToList();
+        var lists = orderedLists?.ToList() ?? [.. GetListsInFolder(normalizedFolderPath)];
         for (var i = 0; i < lists.Count; i++)
+        {
             lists[i].Order = i;
+        }
     }
 
     public string? ExportList(int id)
     {
         var list = GetListByID(id);
-        if (list == null) return null;
+        if (list == null)
+        {
+            return null;
+        }
 
         var copy = JsonConvert.DeserializeObject<CraftingListDefinition>(JsonConvert.SerializeObject(list))!;
         CanonicalizeOriginalItemQualitySettings(copy);
@@ -517,9 +569,14 @@ public class CraftingListManager
     {
         var list = GetListByID(id);
         if (list == null)
+        {
             return (null, "The selected list no longer exists.");
+        }
+
         if (list.Recipes.Count == 0)
+        {
             return (null, "The selected list contains no recipes.");
+        }
 
         const string baseUrl = "https://ffxivteamcraft.com/import/";
         var orderedItemIds = new List<uint>();
@@ -549,13 +606,19 @@ public class CraftingListManager
 
             var exportedQuantity = (long)item.Quantity * recipe.Value.AmountResult;
             if (!exportedItemQuantities.TryAdd(resultItemId, exportedQuantity))
+            {
                 exportedItemQuantities[resultItemId] += exportedQuantity;
+            }
             else
+            {
                 orderedItemIds.Add(resultItemId);
+            }
         }
 
         if (orderedItemIds.Count == 0)
+        {
             return (null, "The selected list has no TeamCraft-exportable recipes.");
+        }
 
         var payload = string.Join(";", orderedItemIds.Select(itemId => $"{itemId},null,{exportedItemQuantities[itemId]}"));
         var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
@@ -570,24 +633,29 @@ public class CraftingListManager
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(base64.Trim()));
             var source = JsonConvert.DeserializeObject<CraftingListDefinition>(json);
             if (source == null)
+            {
                 return (null, "Failed to deserialize list data.");
+            }
+
             if (source.Recipes.Count == 0)
+            {
                 return (null, "The exported list contains no recipes.");
+            }
 
             var name = string.IsNullOrWhiteSpace(source.Name) ? "Imported List" : source.Name;
             var newList = CreateNewList(name);
-            newList.Recipes               = source.Recipes;
-            newList.Consumables           = source.Consumables;
-            newList.PrecraftOptions           = source.PrecraftOptions;
-            newList.PrecraftCraftSettings     = source.PrecraftCraftSettings;
-            newList.PrecraftRecipeOverrides   = source.PrecraftRecipeOverrides;
+            newList.Recipes = source.Recipes;
+            newList.Consumables = source.Consumables;
+            newList.PrecraftOptions = source.PrecraftOptions;
+            newList.PrecraftCraftSettings = source.PrecraftCraftSettings;
+            newList.PrecraftRecipeOverrides = source.PrecraftRecipeOverrides;
             newList.DefaultPrecraftSolverOverride = source.DefaultPrecraftSolverOverride;
             newList.DefaultFinalSolverOverride = source.DefaultFinalSolverOverride;
-            newList.SkipIfEnough          = source.SkipIfEnough;
-            newList.QuickSynthAll         = source.QuickSynthAll;
+            newList.SkipIfEnough = source.SkipIfEnough;
+            newList.QuickSynthAll = source.QuickSynthAll;
             newList.QuickSynthAllPreferNQ = source.QuickSynthAllPreferNQ;
             newList.QuickSynthAllPrecraftsOnly = source.QuickSynthAllPrecraftsOnly;
-            newList.UseAllHQ              = source.UseAllHQ;
+            newList.UseAllHQ = source.UseAllHQ;
             CanonicalizeOriginalItemQualitySettings(newList);
             Save();
 
@@ -617,14 +685,16 @@ public class CraftingListManager
             }
 
             if (item.IngredientPreferences.Count == 0)
+            {
                 continue;
+            }
 
             var hasCanonicalQualitySettings = item.CraftSettings?.UseAllNQ == true
                 || item.CraftSettings?.IngredientPreferences.Count > 0;
             if (!hasCanonicalQualitySettings)
             {
                 item.CraftSettings ??= new RecipeCraftSettings();
-                item.CraftSettings.IngredientPreferences = new Dictionary<uint, int>(item.IngredientPreferences);
+                item.CraftSettings.IngredientPreferences = [with(item.IngredientPreferences)];
                 changed = true;
             }
 

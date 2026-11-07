@@ -1,10 +1,10 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Colors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface;
-using Dalamud.Interface.Colors;
 
 namespace GatherBuddy.Gui;
 
@@ -47,45 +47,45 @@ public static class ImGuiEx
 
     public static void PluginAvailabilityIndicator(IEnumerable<RequiredPluginInfo> pluginInfos, string? prependText = null, bool all = true)
     {
-        prependText ??= all 
-            ? "The following plugins are required to be installed and enabled:" 
+        prependText ??= all
+            ? "The following plugins are required to be installed and enabled:"
             : "One of the following plugins is required to be installed and enabled";
-        
+
         bool pass;
         if (all)
         {
-            pass = pluginInfos.All(info => Dalamud.PluginInterface.InstalledPlugins.Any(x => 
+            pass = pluginInfos.All(info => Dalamud.PluginInterface.InstalledPlugins.Any(x =>
                 x.IsLoaded && x.InternalName == info.InternalName && (info.MinVersion == null || x.Version >= info.MinVersion)));
         }
         else
         {
-            pass = pluginInfos.Any(info => Dalamud.PluginInterface.InstalledPlugins.Any(x => 
+            pass = pluginInfos.Any(info => Dalamud.PluginInterface.InstalledPlugins.Any(x =>
                 x.IsLoaded && x.InternalName == info.InternalName && (info.MinVersion == null || x.Version >= info.MinVersion)));
         }
 
         ImGui.SameLine();
         ImGui.PushFont(UiBuilder.IconFont);
-        ImGui.TextColored(pass ? ImGuiColors.ParsedGreen : ImGuiColors.DalamudRed, 
+        ImGui.TextColored(pass ? ImGuiColors.ParsedGreen : ImGuiColors.DalamudRed,
             pass ? FontAwesomeIcon.Check.ToIconString() : "\uf00d");
         ImGui.PopFont();
-        
+
         if (ImGui.IsItemHovered())
         {
             ImGui.BeginTooltip();
             ImGui.PushTextWrapPos(ImGui.GetFontSize() * 35f);
             ImGui.TextUnformatted(prependText);
             ImGui.PopTextWrapPos();
-            
+
             foreach (var info in pluginInfos)
             {
-                var plugin = Dalamud.PluginInterface.InstalledPlugins.FirstOrDefault(x => 
+                var plugin = Dalamud.PluginInterface.InstalledPlugins.FirstOrDefault(x =>
                     x.IsLoaded && x.InternalName == info.InternalName);
-                    
+
                 if (plugin != null)
                 {
                     if (info.MinVersion == null || plugin.Version >= info.MinVersion)
                     {
-                        ImGui.TextColored(ImGuiColors.ParsedGreen, 
+                        ImGui.TextColored(ImGuiColors.ParsedGreen,
                             $"- {info.VanityName ?? info.InternalName}" + (info.MinVersion == null ? "" : $" {info.MinVersion}+"));
                     }
                     else
@@ -99,7 +99,7 @@ public static class ImGuiEx
                 }
                 else
                 {
-                    ImGui.TextColored(ImGuiColors.DalamudRed, 
+                    ImGui.TextColored(ImGuiColors.DalamudRed,
                         $"- {info.VanityName ?? info.InternalName} " + (info.MinVersion == null ? "" : $"{info.MinVersion}+ "));
                     ImGui.SameLine(0, 0);
                     ImGui.TextUnformatted("(not installed)");
@@ -112,28 +112,32 @@ public static class ImGuiEx
     public static void InfoMarker(string helpText, Vector4? color = null, string? symbolOverride = null, bool sameLine = true, bool preserveCursor = false)
     {
         if (preserveCursor && sameLine)
+        {
             ImGui.SameLine(0, 0);
+        }
         else if (sameLine)
+        {
             ImGui.SameLine();
-            
+        }
+
         var cursor = ImGui.GetCursorPos();
         ImGui.PushFont(UiBuilder.IconFont);
-        
+
         if (preserveCursor)
         {
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() - 
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() -
                 ImGui.CalcTextSize(symbolOverride ?? FontAwesomeIcon.InfoCircle.ToIconString()).X);
         }
-        
-        ImGui.TextColored(color ?? ImGuiColors.DalamudGrey3, 
+
+        ImGui.TextColored(color ?? ImGuiColors.DalamudGrey3,
             symbolOverride ?? FontAwesomeIcon.InfoCircle.ToIconString());
         ImGui.PopFont();
-        
+
         if (preserveCursor)
         {
             ImGui.SetCursorPos(cursor);
         }
-        
+
         if (ImGui.IsItemHovered())
         {
             ImGui.BeginTooltip();

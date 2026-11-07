@@ -1,27 +1,25 @@
+using Dalamud.Game;
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Memory;
+using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.AutoGather.Helpers;
+using GatherBuddy.Automation;
+using GatherBuddy.Plugin;
+using GatherBuddy.SeFunctions;
+using Lumina.Excel;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Dalamud.Game;
-using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Objects.Enums;
-using Dalamud.Game.ClientState.Objects.Types;
-using Dalamud.Memory;
-using Dalamud.Utility;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Client.UI;
-using FFXIVClientStructs.FFXIV.Client.UI.Agent;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Automation;
-using GatherBuddy.AutoGather.Helpers;
-using GatherBuddy.Plugin;
-using GatherBuddy.SeFunctions;
-using GatherBuddy.Utility;
-using Lumina.Excel;
-using Lumina.Excel.Sheets;
 using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using MapType = FFXIVClientStructs.FFXIV.Client.UI.Agent.MapType;
 using PlayerState = FFXIVClientStructs.FFXIV.Client.Game.UI.PlayerState;
@@ -100,7 +98,10 @@ public class VendorNavigator
     private static float GetPathfindTolerance(IGameObject? liveNpc, NavigationDestinationMode destinationMode)
     {
         if (liveNpc == null || destinationMode != NavigationDestinationMode.TargetInteractionRange)
+        {
             return 0f;
+        }
+
         return VendorApproachCompletionDistance;
     }
     private enum State
@@ -125,25 +126,32 @@ public class VendorNavigator
     {
         aetheryteId = 0;
         if (!TryGetHousingDistrict(targetTerritoryId, out var district))
+        {
             return false;
+        }
 
         aetheryteId = district switch
         {
-            HousingDistrict.Mist         => 8u,
+            HousingDistrict.Mist => 8u,
             HousingDistrict.LavenderBeds => 2u,
-            HousingDistrict.Goblet       => 9u,
-            HousingDistrict.Empyreum     => 70u,
-            HousingDistrict.Shirogane    => 111u,
-            _                            => 0u,
+            HousingDistrict.Goblet => 9u,
+            HousingDistrict.Empyreum => 70u,
+            HousingDistrict.Shirogane => 111u,
+            _ => 0u,
         };
 
         if (aetheryteId == 0)
+        {
             return true;
+        }
 
         if (!Teleporter.IsAttuned(aetheryteId))
         {
             if (logRouteDiagnostics)
+            {
                 GatherBuddy.Log.Debug($"[VendorNavigator] Housing route for territory {targetTerritoryId} requires unattuned aetheryte {aetheryteId}");
+            }
+
             aetheryteId = 0;
         }
         else if (logRouteDiagnostics)
@@ -158,12 +166,17 @@ public class VendorNavigator
     {
         aetheryteId = 0;
         if (targetTerritoryId != FirmamentTerritoryId)
+        {
             return false;
+        }
 
         if (!Lifestream.SupportsFirmamentTeleport)
         {
             if (logRouteDiagnostics)
+            {
                 GatherBuddy.Log.Debug($"[VendorNavigator] Firmament route for territory {targetTerritoryId} requires Lifestream Firmament entry support.");
+            }
+
             return true;
         }
 
@@ -171,7 +184,10 @@ public class VendorNavigator
         if (!Teleporter.IsAttuned(aetheryteId))
         {
             if (logRouteDiagnostics)
+            {
                 GatherBuddy.Log.Debug($"[VendorNavigator] Firmament route for territory {targetTerritoryId} requires unattuned aetheryte {aetheryteId}");
+            }
+
             aetheryteId = 0;
         }
         else if (logRouteDiagnostics)
@@ -185,14 +201,20 @@ public class VendorNavigator
     private bool HandlePendingFirmamentEntry()
     {
         if (!_pendingFirmamentEntry || !Lifestream.SupportsFirmamentTeleport)
+        {
             return false;
+        }
 
         if (_pendingAethernetParentTerritoryId != 0
          && Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+        {
             return true;
+        }
 
         if (!CanIssueTeleportRequest())
+        {
             return true;
+        }
 
         if (Lifestream.ActiveAetheryteId != FirmamentAetheryteId)
         {
@@ -217,39 +239,55 @@ public class VendorNavigator
     private static bool TryFindNearestShardInTerritory(uint territoryId, Vector3 npcPosition, out string shardName, out float shardDistanceToVendor, out float shardDistanceToPlayer)
     {
         if (TryGetHousingDistrict(territoryId, out var housingDistrict))
+        {
             return TryFindNearestResidentialShard(housingDistrict, npcPosition, out shardName, out shardDistanceToVendor, out shardDistanceToPlayer);
+        }
+
         if (TryFindNearestCustomAethernetShardInTerritory(territoryId, npcPosition, out shardName, out shardDistanceToVendor, out shardDistanceToPlayer))
+        {
             return true;
-        shardName             = string.Empty;
+        }
+
+        shardName = string.Empty;
         shardDistanceToVendor = float.MaxValue;
         shardDistanceToPlayer = float.MaxValue;
 
         var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
         if (aetheryteSheet == null)
+        {
             return false;
+        }
 
-        var npcXZ    = new Vector2(npcPosition.X, npcPosition.Z);
-        var player   = Dalamud.Objects.LocalPlayer;
+        var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
+        var player = Dalamud.Objects.LocalPlayer;
         var playerXZ = player != null ? new Vector2(player.Position.X, player.Position.Z) : Vector2.Zero;
 
         foreach (var shard in aetheryteSheet)
         {
             if (shard.IsAetheryte || shard.Territory.RowId != territoryId || shard.AethernetName.RowId == 0)
+            {
                 continue;
+            }
 
             var currentShardName = shard.AethernetName.Value.Name.ExtractText();
             if (string.IsNullOrWhiteSpace(currentShardName))
+            {
                 continue;
+            }
 
             var shardXZ = GetAetheryteXZ(shard);
             if (!shardXZ.HasValue)
+            {
                 continue;
+            }
 
             var distanceToVendor = Vector2.Distance(npcXZ, shardXZ.Value);
             if (distanceToVendor >= shardDistanceToVendor)
+            {
                 continue;
+            }
 
-            shardName             = currentShardName;
+            shardName = currentShardName;
             shardDistanceToVendor = distanceToVendor;
             shardDistanceToPlayer = player != null ? Vector2.Distance(playerXZ, shardXZ.Value) : float.MaxValue;
         }
@@ -259,40 +297,50 @@ public class VendorNavigator
 
     private static bool TryFindNearestCustomAethernetShardInTerritory(uint territoryId, Vector3 npcPosition, out string shardName, out float shardDistanceToVendor, out float shardDistanceToPlayer)
     {
-        shardName             = string.Empty;
+        shardName = string.Empty;
         shardDistanceToVendor = float.MaxValue;
         shardDistanceToPlayer = float.MaxValue;
 
         var destinations = territoryId switch
         {
             FirmamentTerritoryId => FirmamentAethernetDestinations,
-            _                    => Array.Empty<CustomAethernetDestination>(),
+            _ => [],
         };
         if (destinations.Length == 0)
+        {
             return false;
+        }
 
         var placeNameSheet = Dalamud.GameData.GetExcelSheet<PlaceName>();
         if (placeNameSheet == null)
+        {
             return false;
+        }
 
-        var npcXZ    = new Vector2(npcPosition.X, npcPosition.Z);
-        var player   = Dalamud.Objects.LocalPlayer;
+        var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
+        var player = Dalamud.Objects.LocalPlayer;
         var playerXZ = player != null ? new Vector2(player.Position.X, player.Position.Z) : Vector2.Zero;
 
         foreach (var destination in destinations)
         {
             if (!placeNameSheet.TryGetRow(destination.PlaceNameId, out var placeName))
+            {
                 continue;
+            }
 
             var currentShardName = placeName.Name.ExtractText();
             if (string.IsNullOrWhiteSpace(currentShardName))
+            {
                 continue;
+            }
 
             var distanceToVendor = Vector2.Distance(npcXZ, destination.Position);
             if (distanceToVendor >= shardDistanceToVendor)
+            {
                 continue;
+            }
 
-            shardName             = currentShardName;
+            shardName = currentShardName;
             shardDistanceToVendor = distanceToVendor;
             shardDistanceToPlayer = player != null ? Vector2.Distance(playerXZ, destination.Position) : float.MaxValue;
         }
@@ -302,19 +350,21 @@ public class VendorNavigator
 
     private static bool TryFindNearestResidentialShard(HousingDistrict district, Vector3 npcPosition, out string shardName, out float shardDistanceToVendor, out float shardDistanceToPlayer)
     {
-        shardName             = string.Empty;
+        shardName = string.Empty;
         shardDistanceToVendor = float.MaxValue;
         shardDistanceToPlayer = float.MaxValue;
 
         var housingAethernetSheet = Dalamud.GameData.GetExcelSheet<HousingAethernet>();
-        var mapSheet              = Dalamud.GameData.GetExcelSheet<Map>();
+        var mapSheet = Dalamud.GameData.GetExcelSheet<Map>();
         if (housingAethernetSheet == null || mapSheet == null)
+        {
             return false;
+        }
 
         var territoryCandidates = GetHousingDistrictTerritoryCandidates(district);
-        var player              = Dalamud.Objects.LocalPlayer;
-        var playerXZ            = player != null ? new Vector2(player.Position.X, player.Position.Z) : Vector2.Zero;
-        var npcXZ               = new Vector2(npcPosition.X, npcPosition.Z);
+        var player = Dalamud.Objects.LocalPlayer;
+        var playerXZ = player != null ? new Vector2(player.Position.X, player.Position.Z) : Vector2.Zero;
+        var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
         foreach (var territoryCandidate in territoryCandidates)
         {
             var housingShards = housingAethernetSheet
@@ -322,36 +372,49 @@ public class VendorNavigator
                 .OrderBy(a => a.Order)
                 .ToList();
             if (housingShards.Count == 0)
+            {
                 continue;
+            }
 
             var subdivisionModifier = GetHousingSubdivisionModifier(district);
-            var subdivisionStart    = housingShards.Count / 2;
+            var subdivisionStart = housingShards.Count / 2;
             for (var index = 0; index < housingShards.Count; index++)
             {
                 var housingShard = housingShards[index];
                 var currentShardName = housingShard.PlaceName.Value.Name.ExtractText();
                 if (string.IsNullOrWhiteSpace(currentShardName))
+                {
                     continue;
+                }
 
                 var shardXZ = GetHousingAetheryteXZ(housingShard, territoryCandidate, mapSheet);
                 if (!shardXZ.HasValue)
+                {
                     continue;
+                }
+
                 var shardPosition = shardXZ.Value;
 
                 if (index >= subdivisionStart)
+                {
                     shardPosition += subdivisionModifier;
+                }
 
                 var distanceToVendor = Vector2.Distance(npcXZ, shardPosition);
                 if (distanceToVendor >= shardDistanceToVendor)
+                {
                     continue;
+                }
 
-                shardName             = currentShardName;
+                shardName = currentShardName;
                 shardDistanceToVendor = distanceToVendor;
                 shardDistanceToPlayer = player != null ? Vector2.Distance(playerXZ, shardPosition) : float.MaxValue;
             }
 
             if (shardName.Length > 0)
+            {
                 return true;
+            }
         }
 
         GatherBuddy.Log.Debug($"[VendorNavigator] No residential shard candidate found for housing district {district}");
@@ -388,12 +451,12 @@ public class VendorNavigator
     private static uint[] GetHousingDistrictTerritoryCandidates(HousingDistrict district)
         => district switch
         {
-            HousingDistrict.Mist         => [339u, 136u],
+            HousingDistrict.Mist => [339u, 136u],
             HousingDistrict.LavenderBeds => [340u],
-            HousingDistrict.Goblet       => [341u],
-            HousingDistrict.Empyreum     => [979u, 649u],
-            HousingDistrict.Shirogane    => [641u],
-            _                            => Array.Empty<uint>(),
+            HousingDistrict.Goblet => [341u],
+            HousingDistrict.Empyreum => [979u, 649u],
+            HousingDistrict.Shirogane => [641u],
+            _ => [],
         };
 
     private static Vector2 GetHousingSubdivisionModifier(HousingDistrict district)
@@ -405,17 +468,24 @@ public class VendorNavigator
     {
         var map = mapSheet.FirstOrDefault(m => m.TerritoryType.RowId == territoryId);
         if (map.RowId == 0)
+        {
             return null;
+        }
+
         var markerSheet = Dalamud.GameData.GetSubrowExcelSheet<MapMarker>();
         if (markerSheet == null)
+        {
             return null;
+        }
 
         foreach (var markerRow in markerSheet)
         {
             foreach (var marker in markerRow)
             {
                 if (marker.DataType != 4 || marker.DataKey.RowId != housingShard.PlaceName.RowId)
+                {
                     continue;
+                }
 
                 var x = (marker.X - 1024f) / (map.SizeFactor / 100f);
                 var z = (marker.Y - 1024f) / (map.SizeFactor / 100f);
@@ -429,7 +499,9 @@ public class VendorNavigator
     internal static bool IsEquivalentTerritory(uint currentTerritoryId, uint targetTerritoryId)
     {
         if (currentTerritoryId == targetTerritoryId)
+        {
             return true;
+        }
 
         return TryGetHousingDistrict(currentTerritoryId, out var currentDistrict)
             && TryGetHousingDistrict(targetTerritoryId, out var targetDistrict)
@@ -441,22 +513,22 @@ public class VendorNavigator
         && TryGetHousingDistrict(targetTerritoryId, out var targetDistrict)
         && currentDistrict == targetDistrict;
 
-    private const float  LiveNpcInteractionDistance         = 5.0f;
-    private const float  CachedInteractionDistance          = 5.0f;
-    private const float  AetheryteSourceInteractionDistance = 15.0f;
-    private const float  AetheryteSourceHorizontalInteractionDistance = 11.0f;
-    private const float  AethernetShardInteractionDistance  = 4.6f;
-    private const float  LocalAethernetDestinationProximityThreshold = 10.0f;
-    private const float  LocalAethernetEstimatedInteractionCost      = 10.0f;
-    private const float  LocalAethernetMinimumSavings                = 15.0f;
-    private const float  RepathDistanceThreshold    = 1.5f;
-    private const double RepathCooldown             = 0.75;
-    private const double TeleportCooldown           = 3.0;
+    private const float LiveNpcInteractionDistance = 5.0f;
+    private const float CachedInteractionDistance = 5.0f;
+    private const float AetheryteSourceInteractionDistance = 15.0f;
+    private const float AetheryteSourceHorizontalInteractionDistance = 11.0f;
+    private const float AethernetShardInteractionDistance = 4.6f;
+    private const float LocalAethernetDestinationProximityThreshold = 10.0f;
+    private const float LocalAethernetEstimatedInteractionCost = 10.0f;
+    private const float LocalAethernetMinimumSavings = 15.0f;
+    private const float RepathDistanceThreshold = 1.5f;
+    private const double RepathCooldown = 0.75;
+    private const double TeleportCooldown = 3.0;
     private const double TeleportWaitDiagnosticsDelay = 15.0;
     private const double TeleportWaitDiagnosticsCooldown = 5.0;
-    private const double ZoneLoadWait               = 5.0;
-    private const double MountRetryCooldown         = 2.0;
-    private const double LandingRetryCooldown       = 1.0;
+    private const double ZoneLoadWait = 5.0;
+    private const double MountRetryCooldown = 2.0;
+    private const double LandingRetryCooldown = 1.0;
     private const double VendorApproachDiagnosticsCooldown = 5.0;
     private const double VendorGroundApproachStabilizationSeconds = 2.0;
     private const double VendorGroundProgressTimeout = 2.0;
@@ -464,25 +536,25 @@ public class VendorNavigator
     private const double VendorGroundInteractionRangeStallTimeout = 0.75;
     private const double VendorGroundInteractionRangeFallbackTimeout = 1.0;
     private const double VendorInteractionRangeFallbackDurationSeconds = 3.0;
-    private const float  VendorGroundProgressMinimumMovement = 1.0f;
-    private const float  VendorGroundProgressMinimumDistanceGain = 0.75f;
-    private const float  VendorLandingDistance      = 25.0f;
-    private const float  VendorGroundApproachDistance = 25.0f;
-    private const float  VendorDirectLiveNpcApproachDistance = 20.0f;
-    private const float  VendorStagingPointArrivalDistance = 2.5f;
-    private const float  VendorApproachCompletionDistance = 1.5f;
-    private const float  VendorApproachFloorSearchHeight  = 10.0f;
-    private const float  VendorApproachMeshSearchRadius   = 3.0f;
-    private const float  VendorFallbackFloorSearchRadius  = 2.0f;
-    private const float  VendorApproachMaxHorizontalDrift = 2.5f;
-    private const float  VendorStagingMaxHorizontalDrift  = 4.0f;
-    private const float  VendorApproachMaxVerticalDrift   = 4.0f;
-    private const float  VendorInteractionMaxVerticalDistance = 2.0f;
-    private const float  VendorApproachDistanceStep       = 0.5f;
-    private const float  VendorApproachMinimumStandOff    = 0.35f;
-    private const float  VendorCloseCombinedLandingDistanceMinimum = 4.0f;
-    private const float  VendorCloseCombinedLandingDistanceMaximum = 12.0f;
-    private const float  VendorCloseCombinedLandingDistanceBuffer  = 2.0f;
+    private const float VendorGroundProgressMinimumMovement = 1.0f;
+    private const float VendorGroundProgressMinimumDistanceGain = 0.75f;
+    private const float VendorLandingDistance = 25.0f;
+    private const float VendorGroundApproachDistance = 25.0f;
+    private const float VendorDirectLiveNpcApproachDistance = 20.0f;
+    private const float VendorStagingPointArrivalDistance = 2.5f;
+    private const float VendorApproachCompletionDistance = 1.5f;
+    private const float VendorApproachFloorSearchHeight = 10.0f;
+    private const float VendorApproachMeshSearchRadius = 3.0f;
+    private const float VendorFallbackFloorSearchRadius = 2.0f;
+    private const float VendorApproachMaxHorizontalDrift = 2.5f;
+    private const float VendorStagingMaxHorizontalDrift = 4.0f;
+    private const float VendorApproachMaxVerticalDrift = 4.0f;
+    private const float VendorInteractionMaxVerticalDistance = 2.0f;
+    private const float VendorApproachDistanceStep = 0.5f;
+    private const float VendorApproachMinimumStandOff = 0.35f;
+    private const float VendorCloseCombinedLandingDistanceMinimum = 4.0f;
+    private const float VendorCloseCombinedLandingDistanceMaximum = 12.0f;
+    private const float VendorCloseCombinedLandingDistanceBuffer = 2.0f;
 
     private static readonly float[] VendorApproachCandidateAngles =
     [
@@ -520,69 +592,69 @@ public class VendorNavigator
         7.5f,
     ];
 
-    private State              _state = State.Idle;
+    private State _state = State.Idle;
     private VendorNpcLocation? _target;
-    private DateTime           _stateStartTime;
-    private DateTime           _teleportWaitStartTime;
-    private DateTime           _lastRepathTime;
-    private bool               _teleportAttempted;
-    private string?            _pendingAethernetName;
-    private bool               _pendingAethernetNeedsSourceApproach;
-    private bool               _pendingHousingEntry;
-    private bool               _pendingFirmamentEntry;
-    private string?            _pendingHousingShardTeleportName;
-    private float              _pendingHousingShardDistanceToVendor;
-    private uint               _pendingAethernetParentTerritoryId;
-    private Vector3            _navigationDestination;
-    private float              _navigationDestinationTolerance;
-    private bool               _hasNavigationDestination;
-    private bool               _usingLiveNpcDestination;
+    private DateTime _stateStartTime;
+    private DateTime _teleportWaitStartTime;
+    private DateTime _lastRepathTime;
+    private bool _teleportAttempted;
+    private string? _pendingAethernetName;
+    private bool _pendingAethernetNeedsSourceApproach;
+    private bool _pendingHousingEntry;
+    private bool _pendingFirmamentEntry;
+    private string? _pendingHousingShardTeleportName;
+    private float _pendingHousingShardDistanceToVendor;
+    private uint _pendingAethernetParentTerritoryId;
+    private Vector3 _navigationDestination;
+    private float _navigationDestinationTolerance;
+    private bool _hasNavigationDestination;
+    private bool _usingLiveNpcDestination;
     private CancellationTokenSource? _pathCancellationTokenSource;
-    private Task<List<Vector3>>?     _pathTask;
-    private DateTime                 _lastMountAttemptTime;
-    private DateTime                 _lastLandingAttemptTime;
-    private DateTime                 _lastHousingEntryActionTime;
-    private DateTime                 _lastHousingEntryStatusLogTime;
-    private bool                     _pathUsesFlight;
-    private bool                     _pathUsesCombinedApproach;
-    private bool                     _mountingUp;
-    private bool                     _waitingForMount;
-    private int                      _landingWaypointCount;
-    private bool                     _attemptedHousingShardTeleport;
-    private uint                     _forcedHousingEntryOriginTerritoryId;
-    private bool                     _awaitingForcedHousingOriginExit;
-    private string?                  _lastApproachDiagnosticsSummary;
-    private DateTime                 _lastApproachDiagnosticsLogTime;
-    private string?                  _lastFallbackDiagnosticsSummary;
-    private DateTime                 _lastFallbackDiagnosticsLogTime;
-    private DateTime                 _forceGroundApproachUntil;
-    private Vector3                  _lastGroundProgressPosition;
-    private float                    _lastGroundProgressDistance = float.MaxValue;
-    private DateTime                 _lastGroundProgressTime;
-    private Vector3                  _lastGroundRetryPosition;
-    private DateTime                 _lastGroundRetryTime;
-    private int                      _groundRetryCount;
-    private DateTime                 _forceInteractionRangeApproachUntil;
-    private DateTime                 _lastTeleportWaitDiagnosticsLogTime;
+    private Task<List<Vector3>>? _pathTask;
+    private DateTime _lastMountAttemptTime;
+    private DateTime _lastLandingAttemptTime;
+    private DateTime _lastHousingEntryActionTime;
+    private DateTime _lastHousingEntryStatusLogTime;
+    private bool _pathUsesFlight;
+    private bool _pathUsesCombinedApproach;
+    private bool _mountingUp;
+    private bool _waitingForMount;
+    private int _landingWaypointCount;
+    private bool _attemptedHousingShardTeleport;
+    private uint _forcedHousingEntryOriginTerritoryId;
+    private bool _awaitingForcedHousingOriginExit;
+    private string? _lastApproachDiagnosticsSummary;
+    private DateTime _lastApproachDiagnosticsLogTime;
+    private string? _lastFallbackDiagnosticsSummary;
+    private DateTime _lastFallbackDiagnosticsLogTime;
+    private DateTime _forceGroundApproachUntil;
+    private Vector3 _lastGroundProgressPosition;
+    private float _lastGroundProgressDistance = float.MaxValue;
+    private DateTime _lastGroundProgressTime;
+    private Vector3 _lastGroundRetryPosition;
+    private DateTime _lastGroundRetryTime;
+    private int _groundRetryCount;
+    private DateTime _forceInteractionRangeApproachUntil;
+    private DateTime _lastTeleportWaitDiagnosticsLogTime;
 
-    public bool               IsReadyToPurchase => _state == State.ReadyToPurchase;
-    public bool               IsFailed          => _state == State.Failed;
-    public bool               IsActive          => _state is not (State.Idle or State.ReadyToPurchase or State.Failed);
-    public VendorNpcLocation? CurrentTarget     => _target;
+    public bool IsReadyToPurchase => _state == State.ReadyToPurchase;
+    public bool IsFailed => _state == State.Failed;
+    public bool IsActive => _state is not (State.Idle or State.ReadyToPurchase or State.Failed);
+    public VendorNpcLocation? CurrentTarget => _target;
 
-    public void PlaceMapMarker(VendorNpcLocation target)
+    public static void PlaceMapMarker(VendorNpcLocation target)
         => PlaceMapFlag(target);
 
     public void StartNavigation(VendorNpcLocation target, bool continueCurrentVendorInteraction = false)
     {
         Stop();
-        _target            = target;
+        _target = target;
         _teleportAttempted = false;
-        _stateStartTime    = DateTime.UtcNow;
+        _stateStartTime = DateTime.UtcNow;
         _forcedHousingEntryOriginTerritoryId = 0;
-        _awaitingForcedHousingOriginExit     = false;
-        _teleportWaitStartTime               = DateTime.MinValue;
-        _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
+        _awaitingForcedHousingOriginExit = false;
+        _teleportWaitStartTime = DateTime.MinValue;
+        _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
 
         GatherBuddy.Log.Information($"[VendorNavigator] Starting navigation to {target.NpcName} (territory {target.TerritoryId})");
 
@@ -593,7 +665,7 @@ public class VendorNavigator
         if (!continueCurrentVendorInteraction && shouldForceFreshHousingEntry)
         {
             _forcedHousingEntryOriginTerritoryId = Dalamud.ClientState.TerritoryType;
-            _awaitingForcedHousingOriginExit     = true;
+            _awaitingForcedHousingOriginExit = true;
             GatherBuddy.Log.Debug($"[VendorNavigator] Starting inside housing district {Dalamud.ClientState.TerritoryType} for housing target {target.TerritoryId}, forcing a fresh city entry route");
             _state = State.Teleporting;
             return;
@@ -604,8 +676,11 @@ public class VendorNavigator
         {
             var liveNpc = FindLiveNpcObject();
             if (liveNpc != null)
+            {
                 TryTargetLiveNpc(liveNpc);
-            var destination = GetDesiredNavigationDestination(liveNpc, out var usingLiveNpc, out var destinationMode, out _);
+            }
+
+            var destination = GetDesiredNavigationDestination(liveNpc, out _, out var destinationMode, out _);
             if (destinationMode != NavigationDestinationMode.SafeStagingPoint
              && HasReachedNavigationDestination(playerPos, liveNpc, destination, destinationMode))
             {
@@ -615,7 +690,9 @@ public class VendorNavigator
             }
 
             if (TryPrepareCurrentTerritoryAethernetShortcut(playerPos, liveNpc))
+            {
                 return;
+            }
 
             _state = State.WaitingForZoneLoad;
         }
@@ -635,16 +712,26 @@ public class VendorNavigator
     public void Update()
     {
         if (_target == null || _state is State.Idle or State.ReadyToPurchase or State.Failed)
+        {
             return;
+        }
 
         try
         {
             switch (_state)
             {
-                case State.Teleporting:        UpdateTeleporting();        break;
-                case State.WaitingForTeleport: UpdateWaitingForTeleport(); break;
-                case State.WaitingForZoneLoad: UpdateWaitingForZoneLoad(); break;
-                case State.Navigating:         UpdateNavigating();         break;
+                case State.Teleporting:
+                    UpdateTeleporting();
+                    break;
+                case State.WaitingForTeleport:
+                    UpdateWaitingForTeleport();
+                    break;
+                case State.WaitingForZoneLoad:
+                    UpdateWaitingForZoneLoad();
+                    break;
+                case State.Navigating:
+                    UpdateNavigating();
+                    break;
             }
         }
         catch (Exception ex)
@@ -657,44 +744,44 @@ public class VendorNavigator
     public void Stop()
     {
         StopPathing();
-        _state                              = State.Idle;
-        _target                             = null;
-        _pendingAethernetName               = null;
+        _state = State.Idle;
+        _target = null;
+        _pendingAethernetName = null;
         _pendingAethernetNeedsSourceApproach = false;
-        _pendingHousingEntry                = false;
-        _pendingFirmamentEntry              = false;
-        _pendingHousingShardTeleportName    = null;
+        _pendingHousingEntry = false;
+        _pendingFirmamentEntry = false;
+        _pendingHousingShardTeleportName = null;
         _pendingHousingShardDistanceToVendor = 0f;
-        _pendingAethernetParentTerritoryId  = 0;
-        _navigationDestination              = Vector3.Zero;
-        _navigationDestinationTolerance     = 0f;
-        _hasNavigationDestination           = false;
-        _usingLiveNpcDestination            = false;
-        _lastRepathTime                     = DateTime.MinValue;
-        _lastMountAttemptTime               = DateTime.MinValue;
-        _lastLandingAttemptTime             = DateTime.MinValue;
-        _lastHousingEntryActionTime         = DateTime.MinValue;
-        _lastHousingEntryStatusLogTime      = DateTime.MinValue;
-        _pathUsesFlight                     = false;
-        _pathUsesCombinedApproach           = false;
-        _mountingUp                         = false;
-        _waitingForMount                    = false;
-        _landingWaypointCount               = 0;
-        _attemptedHousingShardTeleport       = false;
+        _pendingAethernetParentTerritoryId = 0;
+        _navigationDestination = Vector3.Zero;
+        _navigationDestinationTolerance = 0f;
+        _hasNavigationDestination = false;
+        _usingLiveNpcDestination = false;
+        _lastRepathTime = DateTime.MinValue;
+        _lastMountAttemptTime = DateTime.MinValue;
+        _lastLandingAttemptTime = DateTime.MinValue;
+        _lastHousingEntryActionTime = DateTime.MinValue;
+        _lastHousingEntryStatusLogTime = DateTime.MinValue;
+        _pathUsesFlight = false;
+        _pathUsesCombinedApproach = false;
+        _mountingUp = false;
+        _waitingForMount = false;
+        _landingWaypointCount = 0;
+        _attemptedHousingShardTeleport = false;
         _forcedHousingEntryOriginTerritoryId = 0;
-        _awaitingForcedHousingOriginExit     = false;
-        _lastApproachDiagnosticsSummary      = null;
-        _lastApproachDiagnosticsLogTime      = DateTime.MinValue;
-        _forceGroundApproachUntil            = DateTime.MinValue;
-        _lastGroundProgressPosition          = Vector3.Zero;
-        _lastGroundProgressDistance          = float.MaxValue;
-        _lastGroundProgressTime              = DateTime.MinValue;
-        _lastGroundRetryPosition             = Vector3.Zero;
-        _lastGroundRetryTime                 = DateTime.MinValue;
-        _groundRetryCount                    = 0;
-        _forceInteractionRangeApproachUntil  = DateTime.MinValue;
-        _teleportWaitStartTime               = DateTime.MinValue;
-        _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
+        _awaitingForcedHousingOriginExit = false;
+        _lastApproachDiagnosticsSummary = null;
+        _lastApproachDiagnosticsLogTime = DateTime.MinValue;
+        _forceGroundApproachUntil = DateTime.MinValue;
+        _lastGroundProgressPosition = Vector3.Zero;
+        _lastGroundProgressDistance = float.MaxValue;
+        _lastGroundProgressTime = DateTime.MinValue;
+        _lastGroundRetryPosition = Vector3.Zero;
+        _lastGroundRetryTime = DateTime.MinValue;
+        _groundRetryCount = 0;
+        _forceInteractionRangeApproachUntil = DateTime.MinValue;
+        _teleportWaitStartTime = DateTime.MinValue;
+        _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
     }
 
     private static unsafe void PlaceMapFlag(VendorNpcLocation target)
@@ -702,17 +789,33 @@ public class VendorNavigator
         try
         {
             var agentMap = AgentMap.Instance();
-            if (agentMap == null) return;
+            if (agentMap == null)
+            {
+                return;
+            }
 
             var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
-            if (territorySheet == null || !territorySheet.TryGetRow(target.TerritoryId, out var territory)) return;
+            if (territorySheet == null || !territorySheet.TryGetRow(target.TerritoryId, out var territory))
+            {
+                return;
+            }
+
             var mapSheet = Dalamud.GameData.GetExcelSheet<Map>();
             Map? map = null;
             if (target.MapRowId != 0 && mapSheet != null && mapSheet.TryGetRow(target.MapRowId, out var selectedMap))
+            {
                 map = selectedMap;
+            }
             else
+            {
                 map = territory.Map.ValueNullable;
-            if (map == null) return;
+            }
+
+            if (map == null)
+            {
+                return;
+            }
+
             var mapRowId = map.Value.RowId;
 
 
@@ -729,19 +832,32 @@ public class VendorNavigator
     private void UpdateTeleporting()
     {
         if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
             return;
-        if (!CanIssueTeleportRequest())
-            return;
+        }
 
-        if (_teleportAttempted) return;
+        if (!CanIssueTeleportRequest())
+        {
+            return;
+        }
+
+        if (_teleportAttempted)
+        {
+            return;
+        }
 
         var (aetheryteId, aethernetName, requiresHousingEntry, requiresFirmamentEntry) = FindBestRoute(_target!.TerritoryId, _target.Position, true);
         if (aetheryteId == 0)
         {
             if (TryGetHousingDistrict(_target.TerritoryId, out _))
+            {
                 GatherBuddy.Log.Error($"[VendorNavigator] Housing route unavailable for territory {_target.TerritoryId}; the required city aetheryte may be unattuned.");
+            }
             else if (_target.TerritoryId == FirmamentTerritoryId)
+            {
                 GatherBuddy.Log.Error($"[VendorNavigator] Firmament route unavailable for territory {_target.TerritoryId}; Lifestream may be unavailable or the Foundation aetheryte may be unattuned.");
+            }
+
             GatherBuddy.Log.Error($"[VendorNavigator] No route found to {_target.NpcName} in territory {_target.TerritoryId} (source={_target.Source}, map={_target.MapRowId}, position={_target.Position})");
             GatherBuddy.Log.Error($"[VendorNavigator] No route found to territory {_target.TerritoryId}");
             _state = State.Failed;
@@ -769,16 +885,16 @@ public class VendorNavigator
 
         if (Teleporter.Teleport(aetheryteId))
         {
-            _teleportAttempted                  = true;
-            _pendingAethernetName               = aethernetName;
+            _teleportAttempted = true;
+            _pendingAethernetName = aethernetName;
             _pendingAethernetNeedsSourceApproach = false;
-            _pendingHousingEntry                = requiresHousingEntry;
-            _pendingFirmamentEntry              = requiresFirmamentEntry;
-            _pendingAethernetParentTerritoryId  = parentTerritoryId;
-            _stateStartTime       = DateTime.UtcNow;
+            _pendingHousingEntry = requiresHousingEntry;
+            _pendingFirmamentEntry = requiresFirmamentEntry;
+            _pendingAethernetParentTerritoryId = parentTerritoryId;
+            _stateStartTime = DateTime.UtcNow;
             _teleportWaitStartTime = _stateStartTime;
             _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
-            _state                = State.WaitingForTeleport;
+            _state = State.WaitingForTeleport;
             var followUp = aethernetName != null
                 ? $", then aethernet to '{aethernetName}'"
                 : requiresHousingEntry
@@ -797,10 +913,22 @@ public class VendorNavigator
 
     private void UpdateWaitingForTeleport()
     {
-        if ((_pendingAethernetName != null || _pendingFirmamentEntry) && Lifestream.Enabled && Lifestream.IsBusy()) return;
-        if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < TeleportCooldown) return;
+        if ((_pendingAethernetName != null || _pendingFirmamentEntry) && Lifestream.Enabled && Lifestream.IsBusy())
+        {
+            return;
+        }
+
+        if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < TeleportCooldown)
+        {
+            return;
+        }
+
         LogLongTeleportWaitIfNeeded();
-        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51]) return;
+        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
+            return;
+        }
+
         if (!GenericHelpers.IsScreenReady())
         {
             LogHousingEntryStatus("[VendorNavigator] Waiting for screen ready before continuing teleport/aethernet travel");
@@ -819,24 +947,31 @@ public class VendorNavigator
         if (_pendingAethernetName != null
          && _pendingAethernetNeedsSourceApproach
          && HandlePendingLocalAethernetTeleport())
+        {
             return;
-
+        }
 
         if (_pendingAethernetName != null && Lifestream.Enabled && !Lifestream.IsBusy())
         {
             // Only fire once we've confirmed arrival in the parent (city) territory
             if (_pendingAethernetParentTerritoryId != 0 &&
                 Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+            {
                 return;
+            }
+
             if (!CanIssueTeleportRequest())
+            {
                 return;
+            }
+
             if (Lifestream.AethernetTeleport(_pendingAethernetName))
             {
-                _pendingAethernetName              = null;
+                _pendingAethernetName = null;
                 _pendingAethernetNeedsSourceApproach = false;
                 _pendingAethernetParentTerritoryId = 0;
-                _stateStartTime                    = DateTime.UtcNow;
-                _teleportWaitStartTime             = _stateStartTime;
+                _stateStartTime = DateTime.UtcNow;
+                _teleportWaitStartTime = _stateStartTime;
                 _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             }
             else
@@ -856,15 +991,18 @@ public class VendorNavigator
             _forcedHousingEntryOriginTerritoryId = 0;
             _teleportWaitStartTime = DateTime.MinValue;
             _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
-            _state                = State.WaitingForZoneLoad;
-            _stateStartTime       = DateTime.UtcNow;
+            _state = State.WaitingForZoneLoad;
+            _stateStartTime = DateTime.UtcNow;
             return;
         }
         if (_pendingHousingEntry)
         {
             if (_pendingAethernetParentTerritoryId != 0 &&
                 Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+            {
                 return;
+            }
+
             TryAdvanceHousingEntry();
             return;
         }
@@ -872,28 +1010,52 @@ public class VendorNavigator
         {
             if (_pendingAethernetParentTerritoryId != 0
              && Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+            {
                 return;
+            }
+
             if (HandlePendingFirmamentEntry())
+            {
                 return;
+            }
         }
 
     }
 
     private void UpdateWaitingForZoneLoad()
     {
-        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51]) return;
+        if (Dalamud.Conditions[ConditionFlag.BetweenAreas] || Dalamud.Conditions[ConditionFlag.BetweenAreas51])
+        {
+            return;
+        }
+
         if (!GenericHelpers.IsScreenReady())
         {
             LogHousingEntryStatus("[VendorNavigator] Waiting for screen ready before starting post-teleport vendor navigation");
             return;
         }
         var pos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        if (pos == Vector3.Zero) return;
-        if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < ZoneLoadWait) return;
-        if (!VNavmesh.Nav.IsReady()) return;
+        if (pos == Vector3.Zero)
+        {
+            return;
+        }
+
+        if ((DateTime.UtcNow - _stateStartTime).TotalSeconds < ZoneLoadWait)
+        {
+            return;
+        }
+
+        if (!VNavmesh.Nav.IsReady())
+        {
+            return;
+        }
+
         var liveNpc = FindLiveNpcObject();
         if (liveNpc != null)
+        {
             TryTargetLiveNpc(liveNpc);
+        }
+
         var destination = GetDesiredNavigationDestination(liveNpc, out var usingLiveNpc, out var destinationMode, out var navigationReason);
 
         if (destinationMode != NavigationDestinationMode.SafeStagingPoint
@@ -905,7 +1067,9 @@ public class VendorNavigator
         }
 
         if (HandlePendingHousingShardTeleport())
+        {
             return;
+        }
 
         if (!_attemptedHousingShardTeleport
          && _target != null
@@ -920,18 +1084,23 @@ public class VendorNavigator
             }
             else
             {
-                _attemptedHousingShardTeleport      = true;
-                _pendingHousingShardTeleportName    = shardName;
+                _attemptedHousingShardTeleport = true;
+                _pendingHousingShardTeleportName = shardName;
                 _pendingHousingShardDistanceToVendor = shardDistanceToVendor;
                 if (HandlePendingHousingShardTeleport())
+                {
                     return;
-                _pendingHousingShardTeleportName     = null;
+                }
+
+                _pendingHousingShardTeleportName = null;
                 _pendingHousingShardDistanceToVendor = 0f;
             }
         }
 
         if (TryPrepareCurrentTerritoryAethernetShortcut(pos, liveNpc))
+        {
             return;
+        }
 
         StartVNavmesh(destination, usingLiveNpc, destinationMode);
     }
@@ -939,7 +1108,9 @@ public class VendorNavigator
     private bool HandlePendingHousingShardTeleport()
     {
         if (_pendingHousingShardTeleportName == null)
+        {
             return false;
+        }
 
         if (!TryGetNearestAethernetSource(out var sourceAetheryte, out var sourceHorizontalDistance, out var sourceDistance) || sourceAetheryte == null)
         {
@@ -952,10 +1123,14 @@ public class VendorNavigator
         if (!IsWithinAethernetSourceInteractionRange(sourceAetheryte, sourceHorizontalDistance, sourceDistance))
         {
             if (VNavmesh.Path.IsRunning() || VNavmesh.SimpleMove.PathfindInProgress())
+            {
                 return true;
+            }
 
             if (!CanIssueHousingEntryAction())
+            {
                 return true;
+            }
 
             var started = VNavmesh.SimpleMove.PathfindAndMoveTo(sourceAetheryte.Position, false);
             if (started)
@@ -969,10 +1144,14 @@ public class VendorNavigator
         }
 
         if (VNavmesh.Path.IsRunning())
+        {
             VNavmesh.Path.Stop();
+        }
 
         if (Lifestream.Enabled && Lifestream.IsBusy())
+        {
             return true;
+        }
 
         if (!IsLifestreamAethernetSourceReady(sourceAetheryte, out var housingShardSourceState))
         {
@@ -981,17 +1160,19 @@ public class VendorNavigator
         }
 
         if (!CanIssueHousingEntryAction())
+        {
             return true;
+        }
 
         if (Lifestream.AethernetTeleport(_pendingHousingShardTeleportName))
         {
             GatherBuddy.Log.Debug($"[VendorNavigator] Using housing shard '{_pendingHousingShardTeleportName}' ({_pendingHousingShardDistanceToVendor:F1}m from vendor, horizontal={sourceHorizontalDistance:F1}m, distance={sourceDistance:F1}m from source aetheryte '{sourceAetheryte.Name.TextValue}', kind={sourceAetheryte.ObjectKind}, baseId={sourceAetheryte.BaseId})");
-            _pendingHousingShardTeleportName     = null;
+            _pendingHousingShardTeleportName = null;
             _pendingHousingShardDistanceToVendor = 0f;
-            _lastHousingEntryActionTime          = DateTime.UtcNow;
-            _stateStartTime                      = DateTime.UtcNow;
-            _teleportWaitStartTime               = _stateStartTime;
-            _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
+            _lastHousingEntryActionTime = DateTime.UtcNow;
+            _stateStartTime = DateTime.UtcNow;
+            _teleportWaitStartTime = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
             return true;
         }
 
@@ -1002,11 +1183,15 @@ public class VendorNavigator
     private bool HandlePendingLocalAethernetTeleport()
     {
         if (_pendingAethernetName == null || !Lifestream.Enabled)
+        {
             return false;
+        }
 
         if (_pendingAethernetParentTerritoryId != 0
          && Dalamud.ClientState.TerritoryType != _pendingAethernetParentTerritoryId)
+        {
             return true;
+        }
 
         if (!TryGetNearestAethernetSource(out var sourceAetheryte, out var sourceHorizontalDistance, out var sourceDistance) || sourceAetheryte == null)
         {
@@ -1019,10 +1204,14 @@ public class VendorNavigator
         if (!IsWithinAethernetSourceInteractionRange(sourceAetheryte, sourceHorizontalDistance, sourceDistance))
         {
             if (VNavmesh.Path.IsRunning() || VNavmesh.SimpleMove.PathfindInProgress())
+            {
                 return true;
+            }
 
             if (!CanIssueTeleportRequest())
+            {
                 return true;
+            }
 
             var started = VNavmesh.SimpleMove.PathfindAndMoveTo(sourceAetheryte.Position, false);
             if (started)
@@ -1035,10 +1224,14 @@ public class VendorNavigator
         }
 
         if (VNavmesh.Path.IsRunning())
+        {
             VNavmesh.Path.Stop();
+        }
 
         if (Lifestream.IsBusy() || !CanIssueTeleportRequest())
+        {
             return true;
+        }
 
         if (!IsLifestreamAethernetSourceReady(sourceAetheryte, out var localAethernetSourceState))
         {
@@ -1047,12 +1240,12 @@ public class VendorNavigator
         }
         if (Lifestream.AethernetTeleport(_pendingAethernetName))
         {
-            _pendingAethernetName                = null;
+            _pendingAethernetName = null;
             _pendingAethernetNeedsSourceApproach = false;
-            _pendingAethernetParentTerritoryId   = 0;
-            _stateStartTime                      = DateTime.UtcNow;
-            _teleportWaitStartTime               = _stateStartTime;
-            _lastTeleportWaitDiagnosticsLogTime  = DateTime.MinValue;
+            _pendingAethernetParentTerritoryId = 0;
+            _stateStartTime = DateTime.UtcNow;
+            _teleportWaitStartTime = _stateStartTime;
+            _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
         }
         else
         {
@@ -1065,10 +1258,14 @@ public class VendorNavigator
     private bool TryPrepareCurrentTerritoryAethernetShortcut(Vector3 playerPosition, IGameObject? liveNpc)
     {
         if (_target == null || !Lifestream.Enabled)
+        {
             return false;
+        }
 
         if (TryGetHousingDistrict(_target.TerritoryId, out _))
+        {
             return false;
+        }
 
         if (liveNpc != null && ShouldUseLiveNpcDestination(liveNpc))
         {
@@ -1079,22 +1276,31 @@ public class VendorNavigator
 
         var directDistanceToVendor = GetHorizontalDistance(playerPosition, _target.Position);
         if (!TryFindNearestShardInTerritory(_target.TerritoryId, _target.Position, out var shardName, out var shardDistanceToVendor, out var shardDistanceToPlayer))
+        {
             return false;
+        }
 
         if (shardDistanceToPlayer <= LocalAethernetDestinationProximityThreshold)
+        {
             return false;
+        }
 
-        var sourceDistance         = AetheryteSourceInteractionDistance;
         var sourceApproachDistance = AetheryteSourceInteractionDistance;
-        if (TryGetNearestAethernetSource(out var sourceAetheryte, out var sourceHorizontalDistance, out sourceDistance) && sourceAetheryte != null)
+
+        if (TryGetNearestAethernetSource(out var sourceAetheryte, out var sourceHorizontalDistance, out var sourceDistance) && sourceAetheryte != null)
+        {
             sourceApproachDistance = GetAethernetSourceApproachDistance(sourceAetheryte, sourceHorizontalDistance, sourceDistance);
+        }
+
         var alreadyAtSource = sourceApproachDistance <= 2f;
         var estimatedInteractionCost = alreadyAtSource ? 0f : LocalAethernetEstimatedInteractionCost;
-        var requiredSavings          = alreadyAtSource ? 0f : LocalAethernetMinimumSavings;
+        var requiredSavings = alreadyAtSource ? 0f : LocalAethernetMinimumSavings;
         var estimatedShortcutDistance = sourceApproachDistance + shardDistanceToVendor + estimatedInteractionCost;
-        var estimatedSavings          = directDistanceToVendor - estimatedShortcutDistance;
+        var estimatedSavings = directDistanceToVendor - estimatedShortcutDistance;
         if (estimatedSavings < requiredSavings)
+        {
             return false;
+        }
 
         QueueLocalAethernetTeleport(shardName, _target.TerritoryId);
         GatherBuddy.Log.Debug($"[VendorNavigator] Using local aethernet to '{shardName}' for {_target.NpcName}: direct={directDistanceToVendor:F1}m, sourceApproach={sourceApproachDistance:F1}m, post-teleport={shardDistanceToVendor:F1}m, interactionCost={estimatedInteractionCost:F1}m, estimatedSavings={estimatedSavings:F1}m");
@@ -1103,45 +1309,52 @@ public class VendorNavigator
 
     private void QueueLocalAethernetTeleport(string aethernetName, uint parentTerritoryId)
     {
-        _teleportAttempted                  = true;
-        _pendingAethernetName               = aethernetName;
+        _teleportAttempted = true;
+        _pendingAethernetName = aethernetName;
         _pendingAethernetNeedsSourceApproach = true;
-        _pendingHousingEntry                = false;
-        _pendingFirmamentEntry              = false;
-        _pendingHousingShardTeleportName    = null;
+        _pendingHousingEntry = false;
+        _pendingFirmamentEntry = false;
+        _pendingHousingShardTeleportName = null;
         _pendingHousingShardDistanceToVendor = 0f;
-        _pendingAethernetParentTerritoryId  = parentTerritoryId;
-        _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
-        _teleportWaitStartTime              = DateTime.UtcNow;
+        _pendingAethernetParentTerritoryId = parentTerritoryId;
+        _stateStartTime = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
+        _teleportWaitStartTime = DateTime.UtcNow;
         _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
-        _state                              = State.WaitingForTeleport;
+        _state = State.WaitingForTeleport;
     }
 
     private void QueueFirmamentEntry(uint parentTerritoryId)
     {
-        _teleportAttempted                  = true;
-        _pendingAethernetName               = null;
+        _teleportAttempted = true;
+        _pendingAethernetName = null;
         _pendingAethernetNeedsSourceApproach = false;
-        _pendingHousingEntry                = false;
-        _pendingFirmamentEntry              = true;
-        _pendingHousingShardTeleportName    = null;
+        _pendingHousingEntry = false;
+        _pendingFirmamentEntry = true;
+        _pendingHousingShardTeleportName = null;
         _pendingHousingShardDistanceToVendor = 0f;
-        _pendingAethernetParentTerritoryId  = parentTerritoryId;
-        _stateStartTime                     = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
-        _teleportWaitStartTime              = DateTime.UtcNow;
+        _pendingAethernetParentTerritoryId = parentTerritoryId;
+        _stateStartTime = DateTime.UtcNow - TimeSpan.FromSeconds(TeleportCooldown);
+        _teleportWaitStartTime = DateTime.UtcNow;
         _lastTeleportWaitDiagnosticsLogTime = DateTime.MinValue;
-        _state                              = State.WaitingForTeleport;
+        _state = State.WaitingForTeleport;
     }
     private void LogLongTeleportWaitIfNeeded()
     {
         if (_teleportWaitStartTime == DateTime.MinValue)
+        {
             return;
+        }
 
         var waitSeconds = (DateTime.UtcNow - _teleportWaitStartTime).TotalSeconds;
         if (waitSeconds < TeleportWaitDiagnosticsDelay)
+        {
             return;
+        }
+
         if ((DateTime.UtcNow - _lastTeleportWaitDiagnosticsLogTime).TotalSeconds < TeleportWaitDiagnosticsCooldown)
+        {
             return;
+        }
 
         _lastTeleportWaitDiagnosticsLogTime = DateTime.UtcNow;
         var lifestreamBusy = Lifestream.Enabled && Lifestream.IsBusy();
@@ -1162,14 +1375,14 @@ public class VendorNavigator
 
         StopPathing();
 
-        _state                    = State.Navigating;
-        _navigationDestination    = destination;
+        _state = State.Navigating;
+        _navigationDestination = destination;
         _hasNavigationDestination = true;
-        _usingLiveNpcDestination  = usingLiveNpc;
+        _usingLiveNpcDestination = usingLiveNpc;
         _navigationDestinationTolerance = 0f;
-        _lastRepathTime           = DateTime.UtcNow;
-        _waitingForMount          = false;
-        _landingWaypointCount     = 0;
+        _lastRepathTime = DateTime.UtcNow;
+        _waitingForMount = false;
+        _landingWaypointCount = 0;
 
         var forceGroundApproach = IsGroundApproachStabilizing();
         var liveNpc = FindLiveNpcObject();
@@ -1195,7 +1408,9 @@ public class VendorNavigator
         if (!Dalamud.Conditions[ConditionFlag.Mounted] && canMount)
         {
             if (CanRetryMountAttempt())
+            {
                 TryMountUp();
+            }
 
             if (!GatherBuddy.Config.AutoGatherConfig.MoveWhileMounting)
             {
@@ -1212,7 +1427,7 @@ public class VendorNavigator
          && !Dalamud.Conditions[ConditionFlag.Diving]
          && destinationMode == NavigationDestinationMode.SafeStagingPoint)
         {
-            _pathUsesCombinedApproach   = true;
+            _pathUsesCombinedApproach = true;
             _pathCancellationTokenSource = new CancellationTokenSource();
             _pathTask = FindCombinedVendorPath(player.Position, combinedPathTarget, landingDistance, Dalamud.Conditions[ConditionFlag.InFlight], _pathCancellationTokenSource.Token);
             return;
@@ -1232,19 +1447,25 @@ public class VendorNavigator
     private void UpdateNavigating()
     {
         var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        if (playerPos == Vector3.Zero) return;
+        if (playerPos == Vector3.Zero)
+        {
+            return;
+        }
 
         if (!IsEquivalentTerritory(Dalamud.ClientState.TerritoryType, _target!.TerritoryId))
         {
             GatherBuddy.Log.Warning("[VendorNavigator] Unexpected territory change during navigation");
-            _state             = State.Teleporting;
+            _state = State.Teleporting;
             _teleportAttempted = false;
             return;
         }
 
         var liveNpc = FindLiveNpcObject();
         if (liveNpc != null)
+        {
             TryTargetLiveNpc(liveNpc);
+        }
+
         var destination = GetDesiredNavigationDestination(liveNpc, out var usingLiveNpc, out var destinationMode, out var navigationReason);
         var dist = GetTargetDistance(playerPos, liveNpc);
         if (usingLiveNpc
@@ -1254,7 +1475,10 @@ public class VendorNavigator
          && !Dalamud.Conditions[ConditionFlag.Diving])
         {
             if (CanRetryLandingAttempt())
+            {
                 TryLand();
+            }
+
             return;
         }
 
@@ -1266,7 +1490,9 @@ public class VendorNavigator
                 if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving] || Dalamud.Conditions[ConditionFlag.Mounted])
                 {
                     if (CanRetryLandingAttempt())
+                    {
                         TryLand();
+                    }
                 }
                 else
                 {
@@ -1284,10 +1510,16 @@ public class VendorNavigator
             if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving])
             {
                 if (VNavmesh.Path.IsRunning() || _pathTask != null)
+                {
                     return;
+                }
+
                 StopPathing();
                 if (CanRetryLandingAttempt())
+                {
                     TryLand();
+                }
+
                 return;
             }
 
@@ -1303,36 +1535,51 @@ public class VendorNavigator
             return;
         }
         if (HandleMovementMode(playerPos, destination, usingLiveNpc, destinationMode))
+        {
             return;
+        }
+
         if (TryRecoverStalledGroundApproach(playerPos, liveNpc, destination, usingLiveNpc, destinationMode, navigationReason))
+        {
             return;
+        }
 
         HandlePathfinding();
         if (_state != State.Navigating || _waitingForMount)
+        {
             return;
+        }
 
         if (!VNavmesh.Path.IsRunning() && _pathTask == null)
+        {
             StartVNavmesh(destination, usingLiveNpc, destinationMode);
+        }
     }
 
     private IGameObject? FindLiveNpcObject()
     {
         if (_target == null || !IsEquivalentTerritory(Dalamud.ClientState.TerritoryType, _target.TerritoryId))
+        {
             return null;
+        }
 
         IGameObject? bestObject = null;
         var bestDistance = float.MaxValue;
         foreach (var obj in Dalamud.Objects)
         {
             if (obj.ObjectKind != ObjectKind.EventNpc || obj.BaseId != _target.NpcId || !obj.IsTargetable)
+            {
                 continue;
+            }
 
             var distance = Vector3.DistanceSquared(obj.Position, _target.Position);
             if (distance >= bestDistance)
+            {
                 continue;
+            }
 
             bestDistance = distance;
-            bestObject   = obj;
+            bestObject = obj;
         }
 
         return bestObject;
@@ -1342,29 +1589,36 @@ public class VendorNavigator
     {
         var targetSystem = TargetSystem.Instance();
         if (targetSystem == null)
+        {
             return;
+        }
 
         var target = (GameObjectStruct*)liveNpc.Address;
         if (targetSystem->Target == target)
+        {
             return;
+        }
 
         targetSystem->Target = target;
     }
 
     private Vector3 GetDesiredNavigationDestination(IGameObject? liveNpc, out bool usingLiveNpc, out NavigationDestinationMode destinationMode, out string navigationReason)
     {
-        usingLiveNpc   = ShouldUseLiveNpcDestination(liveNpc);
+        usingLiveNpc = ShouldUseLiveNpcDestination(liveNpc);
         destinationMode = NavigationDestinationMode.TargetInteractionRange;
         Vector3 destination;
         var isAirborne = Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving];
         var hasStagingDestination = false;
         Vector3 stagingDestination = default;
-        string stagingNavigationReason = string.Empty;
+        var stagingNavigationReason = string.Empty;
         var shouldUseCloseRangeLiveNpcApproach = ShouldUseCloseRangeLiveNpcApproach(liveNpc, usingLiveNpc);
         var useAirborneDirectLiveNpcNavigation = false;
         Vector3 airborneDirectLiveNpcDestination = default;
         if (!usingLiveNpc && liveNpc != null && isAirborne)
+        {
             hasStagingDestination = TryGetVendorStagingDestination(liveNpc, out stagingDestination, out stagingNavigationReason);
+        }
+
         if (isAirborne && hasStagingDestination && shouldUseCloseRangeLiveNpcApproach && liveNpc != null)
         {
             airborneDirectLiveNpcDestination = ResolveLiveNpcFallbackDestination(liveNpc, out var usesProjectedDestination);
@@ -1434,11 +1688,15 @@ public class VendorNavigator
     private bool ShouldUseLiveNpcDestination(IGameObject? liveNpc)
     {
         if (liveNpc == null)
+        {
             return false;
+        }
 
         var playerPosition = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPosition == Vector3.Zero)
+        {
             return false;
+        }
 
         if (_usingLiveNpcDestination
          && !_pathUsesFlight
@@ -1448,7 +1706,9 @@ public class VendorNavigator
          && !Dalamud.Conditions[ConditionFlag.InFlight]
          && !Dalamud.Conditions[ConditionFlag.Diving]
          && GetHorizontalDistance(playerPosition, liveNpc.Position) <= VendorDirectLiveNpcApproachDistance)
+        {
             return true;
+        }
 
         return !IsFlightVendorApproachActive(liveNpc.Position);
     }
@@ -1464,10 +1724,14 @@ public class VendorNavigator
          || _waitingForMount
          || Dalamud.Conditions[ConditionFlag.InFlight]
          || Dalamud.Conditions[ConditionFlag.Diving])
+        {
             return true;
+        }
 
         if (IsGroundApproachStabilizing())
+        {
             return false;
+        }
 
         return ShouldFly(destination)
             && (CanMountForDestination(destination) || Dalamud.Conditions[ConditionFlag.Mounted]);
@@ -1476,12 +1740,19 @@ public class VendorNavigator
     private bool ShouldRepath(Vector3 destination, bool usingLiveNpc, NavigationDestinationMode destinationMode)
     {
         if (!_hasNavigationDestination)
+        {
             return true;
+        }
 
         if (_usingLiveNpcDestination != usingLiveNpc)
+        {
             return true;
+        }
+
         if (!_waitingForMount && _pathUsesFlight != ShouldUseFlightPath(destination, usingLiveNpc, destinationMode))
+        {
             return true;
+        }
 
         return Vector3.DistanceSquared(_navigationDestination, destination) >= RepathDistanceThreshold * RepathDistanceThreshold
             && (DateTime.UtcNow - _lastRepathTime).TotalSeconds >= RepathCooldown;
@@ -1490,7 +1761,7 @@ public class VendorNavigator
     private bool IsWithinArrivalDistance(Vector3 playerPosition, IGameObject? liveNpc)
         => GetTargetDistance(playerPosition, liveNpc) <= (liveNpc != null ? LiveNpcInteractionDistance : CachedInteractionDistance);
 
-    private bool IsWithinLiveNpcInteractionWindow(Vector3 playerPosition, IGameObject liveNpc)
+    private static bool IsWithinLiveNpcInteractionWindow(Vector3 playerPosition, IGameObject liveNpc)
         => GetHorizontalDistance(playerPosition, liveNpc.Position) <= LiveNpcInteractionDistance
         && GetVerticalDistance(playerPosition, liveNpc.Position) <= VendorInteractionMaxVerticalDistance;
 
@@ -1526,7 +1797,10 @@ public class VendorNavigator
                 return true;
             }
             if (CanRetryMountAttempt())
+            {
                 TryMountUp();
+            }
+
             return true;
         }
 
@@ -1573,19 +1847,26 @@ public class VendorNavigator
             {
                 VNavmesh.Path.Stop();
                 if (remainingPath.Count > 0)
+                {
                     VNavmesh.Path.MoveTo(remainingPath, false);
+                }
 
-                _pathUsesFlight           = false;
+                _pathUsesFlight = false;
                 _pathUsesCombinedApproach = false;
-                _landingWaypointCount     = 0;
+                _landingWaypointCount = 0;
                 _forceGroundApproachUntil = DateTime.UtcNow.AddSeconds(VendorGroundApproachStabilizationSeconds);
                 if (CanRetryLandingAttempt())
+                {
                     TryLand();
+                }
+
                 return;
             }
         }
         if (_pathTask == null || !_pathTask.IsCompleted)
+        {
             return;
+        }
 
         List<Vector3> path;
         try
@@ -1614,8 +1895,8 @@ public class VendorNavigator
                 var player = Dalamud.Objects.LocalPlayer;
                 if (player != null)
                 {
-                    _pathUsesCombinedApproach   = false;
-                    _landingWaypointCount       = 0;
+                    _pathUsesCombinedApproach = false;
+                    _landingWaypointCount = 0;
                     _pathCancellationTokenSource = new CancellationTokenSource();
                     _pathTask = VNavmesh.Nav.PathfindCancelable(player.Position, _navigationDestination, true, _pathCancellationTokenSource.Token);
                     GatherBuddy.Log.Debug($"[VendorNavigator] Combined pathfinding failed for {_navigationDestination}, falling back to direct flight path");
@@ -1641,7 +1922,9 @@ public class VendorNavigator
         }
 
         if (VNavmesh.Path.IsRunning())
+        {
             RemovePassedWaypoints(path);
+        }
 
         if (path.Count == 0)
         {
@@ -1656,17 +1939,19 @@ public class VendorNavigator
     private void StopPathing()
     {
         if (VNavmesh.Path.IsRunning())
+        {
             VNavmesh.Path.Stop();
+        }
 
-        _landingWaypointCount     = 0;
+        _landingWaypointCount = 0;
         _pathUsesCombinedApproach = false;
-        _pathUsesFlight           = false;
-        _mountingUp               = false;
-        _waitingForMount          = false;
+        _pathUsesFlight = false;
+        _mountingUp = false;
+        _waitingForMount = false;
         _navigationDestinationTolerance = 0f;
         ClearGroundApproachProgress();
-        if (_pathCancellationTokenSource != null)
-            _pathCancellationTokenSource.Cancel();
+        _pathCancellationTokenSource?.Cancel();
+
         ClearPathTask();
     }
 
@@ -1680,26 +1965,44 @@ public class VendorNavigator
     private unsafe bool TryAdvanceHousingEntry()
     {
         if (_target == null || !TryGetHousingDistrict(_target.TerritoryId, out _))
+        {
             return false;
+        }
 
         if (!GenericHelpers.IsScreenReady())
+        {
             return false;
+        }
 
         if (TryConfirmHousingTravel())
+        {
             return true;
+        }
 
         if (TryConfirmHousingWardSelection())
+        {
             return true;
+        }
 
         if (TrySelectHousingAetheryteMenuEntry(GoToWardMenuEntries))
+        {
             return true;
+        }
+
         if (TrySelectHousingAetheryteMenuEntry(ResidentialDistrictMenuEntries))
+        {
             return true;
+        }
 
         if (TryInteractWithHousingEntryAetheryte())
+        {
             return true;
+        }
+
         if (TryMoveToHousingEntryAetheryte())
+        {
             return true;
+        }
 
         LogHousingEntryStatus("[VendorNavigator] Waiting for city aetheryte/menu state to enter the housing ward");
 
@@ -1712,10 +2015,14 @@ public class VendorNavigator
          || !addon->AtkUnitBase.IsVisible
          || addon->YesButton == null
          || !MatchesAnyText(ReadSelectYesnoPrompt(addon), HousingTravelConfirmationTexts))
+        {
             return false;
+        }
 
         if (!CanIssueHousingEntryAction())
+        {
             return false;
+        }
 
         new AddonMaster.SelectYesno((nint)addon).Yes();
         _lastHousingEntryActionTime = DateTime.UtcNow;
@@ -1725,14 +2032,20 @@ public class VendorNavigator
     private unsafe bool TryConfirmHousingWardSelection()
     {
         if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("HousingSelectBlock", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var button = addon->GetComponentButtonById(34);
         if (button == null || !button->IsEnabled || button->AtkComponentBase.OwnerNode == null || !button->AtkComponentBase.OwnerNode->AtkResNode.IsVisible())
+        {
             return false;
+        }
 
         if (!CanIssueHousingEntryAction())
+        {
             return false;
+        }
 
         ClickButton(addon, button);
         _lastHousingEntryActionTime = DateTime.UtcNow;
@@ -1742,16 +2055,22 @@ public class VendorNavigator
     private unsafe bool TrySelectHousingAetheryteMenuEntry(IReadOnlyList<string> entries)
     {
         if (!GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var addon) || !addon->AtkUnitBase.IsVisible)
+        {
             return false;
+        }
 
         for (var index = 0; index < addon->PopupMenu.PopupMenu.EntryCount; index++)
         {
             var label = MemoryHelper.ReadSeStringNullTerminated((nint)addon->PopupMenu.PopupMenu.EntryNames[index].Value).TextValue.Trim();
             if (!MatchesAnyText(label, entries))
+            {
                 continue;
+            }
 
             if (!CanIssueHousingEntryAction())
+            {
                 return false;
+            }
 
             new AddonMaster.SelectString((nint)addon).Entries[index].Select();
             _lastHousingEntryActionTime = DateTime.UtcNow;
@@ -1767,16 +2086,25 @@ public class VendorNavigator
          || aetheryte == null
          || horizontalDistance >= 11f
          || distance >= 15f)
+        {
             return false;
+        }
 
         if (!CanIssueHousingEntryAction())
+        {
             return false;
+        }
 
         var targetSystem = TargetSystem.Instance();
         if (targetSystem == null)
+        {
             return false;
+        }
+
         if (VNavmesh.Path.IsRunning())
+        {
             VNavmesh.Path.Stop();
+        }
 
         targetSystem->Target = (GameObjectStruct*)aetheryte.Address;
         targetSystem->OpenObjectInteraction((GameObjectStruct*)aetheryte.Address);
@@ -1793,13 +2121,19 @@ public class VendorNavigator
         }
 
         if (horizontalDistance < 11f && distance < 15f)
+        {
             return false;
+        }
 
         if (VNavmesh.Path.IsRunning() || VNavmesh.SimpleMove.PathfindInProgress())
+        {
             return true;
+        }
 
         if (!CanIssueHousingEntryAction())
+        {
             return false;
+        }
 
         var started = VNavmesh.SimpleMove.PathfindAndMoveTo(aetheryte.Position, false);
         if (started)
@@ -1812,15 +2146,17 @@ public class VendorNavigator
         return false;
     }
 
-    private bool TryGetNearestHousingEntryAetheryte(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
+    private static bool TryGetNearestHousingEntryAetheryte(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
     {
-        aetheryte          = null;
+        aetheryte = null;
         horizontalDistance = float.MaxValue;
-        distance           = float.MaxValue;
+        distance = float.MaxValue;
 
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
+        }
 
         var nearest = Dalamud.Objects
             .Where(obj => obj.ObjectKind == ObjectKind.Aetheryte && obj.IsTargetable)
@@ -1829,23 +2165,27 @@ public class VendorNavigator
             .FirstOrDefault();
 
         if (nearest.Object == null)
+        {
             return false;
+        }
 
-        aetheryte          = nearest.Object;
+        aetheryte = nearest.Object;
         horizontalDistance = nearest.HorizontalDistance;
-        distance           = nearest.Distance;
+        distance = nearest.Distance;
         return true;
     }
 
-    private bool TryGetNearestAethernetSource(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
+    private static bool TryGetNearestAethernetSource(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
     {
-        aetheryte          = null;
+        aetheryte = null;
         horizontalDistance = float.MaxValue;
-        distance           = float.MaxValue;
+        distance = float.MaxValue;
 
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
+        }
 
         var nearest = Dalamud.Objects
             .Where(IsAethernetSource)
@@ -1854,11 +2194,13 @@ public class VendorNavigator
             .FirstOrDefault();
 
         if (nearest.Object == null)
+        {
             return false;
+        }
 
-        aetheryte          = nearest.Object;
+        aetheryte = nearest.Object;
         horizontalDistance = nearest.HorizontalDistance;
-        distance           = nearest.Distance;
+        distance = nearest.Distance;
         return true;
     }
 
@@ -1886,7 +2228,6 @@ public class VendorNavigator
     private static bool IsAethernetSource(IGameObject obj)
         => obj.IsTargetable
         && (obj.ObjectKind == ObjectKind.Aetheryte
-         || IsKnownAethernetShardDataId(obj.DataId)
          || IsKnownAethernetShardDataId(obj.BaseId));
 
     private static bool IsKnownAethernetShardDataId(uint dataId)
@@ -1894,8 +2235,8 @@ public class VendorNavigator
 
     private static bool IsLifestreamAethernetSourceReady(IGameObject source, out string state)
     {
-        var activeAetheryteId            = Lifestream.ActiveAetheryteId;
-        var activeCustomAetheryteId      = Lifestream.ActiveCustomAetheryteId;
+        var activeAetheryteId = Lifestream.ActiveAetheryteId;
+        var activeCustomAetheryteId = Lifestream.ActiveCustomAetheryteId;
         var activeResidentialAetheryteId = Lifestream.ActiveResidentialAetheryteId;
 
         var sourceRecognized = source.ObjectKind == ObjectKind.EventObj
@@ -1909,11 +2250,13 @@ public class VendorNavigator
     private static HashSet<uint> GetKnownAethernetShardDataIds()
     {
         if (_knownAethernetShardDataIds != null)
+        {
             return _knownAethernetShardDataIds;
+        }
 
         var shardNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var dataIds    = new HashSet<uint>(KnownAethernetShardSeedDataIds);
-        var sheet      = Dalamud.GameData.GetExcelSheet<EObjName>();
+        var dataIds = new HashSet<uint>(KnownAethernetShardSeedDataIds);
+        var sheet = Dalamud.GameData.GetExcelSheet<EObjName>();
 
         CollectAethernetShardSeedNames(sheet, shardNames);
         CollectMatchingAethernetShardDataIds(sheet, shardNames, dataIds);
@@ -1936,29 +2279,39 @@ public class VendorNavigator
     private static void CollectAethernetShardSeedNames(ExcelSheet<EObjName>? sheet, HashSet<string> shardNames)
     {
         if (sheet == null)
+        {
             return;
+        }
 
         foreach (var rowId in KnownAethernetShardSeedDataIds)
         {
             if (!sheet.TryGetRow(rowId, out var row))
+            {
                 continue;
+            }
 
             var name = row.Singular.ExtractText().Trim();
             if (!string.IsNullOrWhiteSpace(name))
+            {
                 shardNames.Add(name);
+            }
         }
     }
 
     private static void CollectMatchingAethernetShardDataIds(ExcelSheet<EObjName>? sheet, HashSet<string> shardNames, HashSet<uint> dataIds)
     {
         if (sheet == null || shardNames.Count == 0)
+        {
             return;
+        }
 
         foreach (var row in sheet)
         {
             var name = row.Singular.ExtractText().Trim();
             if (!string.IsNullOrWhiteSpace(name) && shardNames.Contains(name))
+            {
                 dataIds.Add(row.RowId);
+            }
         }
     }
 
@@ -1968,7 +2321,9 @@ public class VendorNavigator
     private void LogHousingEntryStatus(string message)
     {
         if ((DateTime.UtcNow - _lastHousingEntryStatusLogTime).TotalSeconds < 2)
+        {
             return;
+        }
 
         _lastHousingEntryStatusLogTime = DateTime.UtcNow;
         GatherBuddy.Log.Debug(message);
@@ -1987,11 +2342,15 @@ public class VendorNavigator
     {
         var buttonNode = button->AtkComponentBase.OwnerNode;
         if (addon == null || buttonNode == null)
+        {
             return;
+        }
 
         var eventPointer = buttonNode->AtkResNode.AtkEventManager.Event;
         if (eventPointer == null)
+        {
             return;
+        }
 
         var atkEvent = (AtkEvent*)eventPointer;
         addon->ReceiveEvent(atkEvent->State.EventType, (int)atkEvent->Param, eventPointer);
@@ -2000,23 +2359,31 @@ public class VendorNavigator
     private bool ShouldUseFlightPath(Vector3 destination, bool usingLiveNpc, NavigationDestinationMode destinationMode)
     {
         if (IsGroundApproachStabilizing())
+        {
             return false;
+        }
+
         var allowAirborneLiveNpcInteractionRange = usingLiveNpc
             && destinationMode == NavigationDestinationMode.TargetInteractionRange
             && (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving]);
         if (usingLiveNpc && destinationMode != NavigationDestinationMode.FinalApproachPoint && !allowAirborneLiveNpcInteractionRange)
+        {
             return false;
+        }
+
         var shouldFly = ShouldFly(destination);
         shouldFly &= CanMountForDestination(destination) || Dalamud.Conditions[ConditionFlag.Mounted];
         shouldFly |= Dalamud.Conditions[ConditionFlag.Diving];
         return shouldFly;
     }
 
-    private bool CanMountForDestination(Vector3 destination)
+    private static bool CanMountForDestination(Vector3 destination)
     {
         var playerPosition = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         if (playerPosition == Vector3.Zero)
+        {
             return false;
+        }
 
         var playerXZ = new Vector2(playerPosition.X, playerPosition.Z);
         var targetXZ = new Vector2(destination.X, destination.Z);
@@ -2028,7 +2395,9 @@ public class VendorNavigator
         const uint MountRouletteGeneralActionId = 9;
         var actionManager = ActionManager.Instance();
         if (actionManager == null)
+        {
             return false;
+        }
 
         var mountId = GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId;
         var success = false;
@@ -2042,7 +2411,10 @@ public class VendorNavigator
         }
 
         if (success)
+        {
             _lastMountAttemptTime = DateTime.UtcNow;
+        }
+
         return success;
     }
 
@@ -2050,11 +2422,16 @@ public class VendorNavigator
     {
         var actionManager = ActionManager.Instance();
         if (actionManager == null || actionManager->GetActionStatus(ActionType.GeneralAction, 23) != 0)
+        {
             return false;
+        }
 
         var success = actionManager->UseAction(ActionType.GeneralAction, 23);
         if (success)
+        {
             _lastLandingAttemptTime = DateTime.UtcNow;
+        }
+
         return success;
     }
 
@@ -2073,7 +2450,9 @@ public class VendorNavigator
     private static float GetVendorLandingDistance(IGameObject? liveNpc, Vector3 destination, NavigationDestinationMode destinationMode)
     {
         if (liveNpc == null || destinationMode != NavigationDestinationMode.SafeStagingPoint)
+        {
             return VendorLandingDistance;
+        }
 
         var liveNpcDistance = GetHorizontalDistance(destination, liveNpc.Position);
         return liveNpcDistance < VendorLandingCandidateDistances[0]
@@ -2090,22 +2469,32 @@ public class VendorNavigator
     private static unsafe bool ShouldFly(Vector3 destination)
     {
         if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving])
+        {
             return true;
+        }
 
         var player = Dalamud.Objects.LocalPlayer;
         if (GatherBuddy.Config.AutoGatherConfig.ForceWalking || player == null)
+        {
             return false;
+        }
 
         if (Diadem.IsInside)
+        {
             return Vector3.Distance(player.Position, destination) >= GatherBuddy.Config.AutoGatherConfig.MountUpDistance;
+        }
 
         var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
         if (territorySheet == null || !territorySheet.TryGetRow(Dalamud.ClientState.TerritoryType, out var territory))
+        {
             return false;
+        }
 
         var playerState = PlayerState.Instance();
         if (playerState == null)
+        {
             return false;
+        }
 
         var aetherCurrentComp = territory.AetherCurrentCompFlgSet.RowId;
         return aetherCurrentComp != 0
@@ -2123,7 +2512,7 @@ public class VendorNavigator
     {
         usesProjectedDestination = false;
         var pointOnFloor = VNavmesh.Query.Mesh.PointOnFloor;
-        Vector3? snapped = pointOnFloor != null
+        var snapped = pointOnFloor != null
             ? pointOnFloor(liveNpc.Position, true, VendorFallbackFloorSearchRadius)
             : null;
         var snapSource = "PointOnFloor";
@@ -2158,7 +2547,9 @@ public class VendorNavigator
     {
         if (summary == _lastFallbackDiagnosticsSummary
          && (DateTime.UtcNow - _lastFallbackDiagnosticsLogTime).TotalSeconds < VendorApproachDiagnosticsCooldown)
+        {
             return;
+        }
 
         _lastFallbackDiagnosticsSummary = summary;
         _lastFallbackDiagnosticsLogTime = DateTime.UtcNow;
@@ -2168,7 +2559,9 @@ public class VendorNavigator
     private bool ShouldUseCloseRangeLiveNpcApproach(IGameObject? liveNpc, bool usingLiveNpc)
     {
         if (usingLiveNpc || liveNpc == null)
+        {
             return false;
+        }
 
         var playerPosition = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
         return playerPosition != Vector3.Zero
@@ -2186,7 +2579,7 @@ public class VendorNavigator
     {
         if (liveNpc == null)
         {
-            destination      = default;
+            destination = default;
             navigationReason = "cached vendor location";
             return false;
         }
@@ -2257,28 +2650,32 @@ public class VendorNavigator
     private static float[] GetVendorApproachCandidateDistances(IGameObject liveNpc)
     {
         var interactionLimit = LiveNpcInteractionDistance - 0.25f;
-        var hitboxRadius     = MathF.Max(liveNpc.HitboxRadius, 0.5f);
-        var firstDistance    = MathF.Min(interactionLimit, hitboxRadius + VendorApproachMinimumStandOff);
-        var distances        = new List<float>();
+        var hitboxRadius = MathF.Max(liveNpc.HitboxRadius, 0.5f);
+        var firstDistance = MathF.Min(interactionLimit, hitboxRadius + VendorApproachMinimumStandOff);
+        var distances = new List<float>();
 
         for (var distance = firstDistance; distance < interactionLimit; distance += VendorApproachDistanceStep)
+        {
             distances.Add(distance);
+        }
 
         distances.Add(interactionLimit);
-        return distances
-            .Distinct()
-            .ToArray();
+        return [.. distances.Distinct()];
     }
 
     private void LogApproachDiagnostics(IGameObject liveNpc, string navigationReason, IReadOnlyList<string> diagnostics)
     {
         if (diagnostics.Count == 0 || _target == null)
+        {
             return;
+        }
 
         var summary = $"{navigationReason}|{string.Join("; ", diagnostics)}";
         if (summary == _lastApproachDiagnosticsSummary
          && (DateTime.UtcNow - _lastApproachDiagnosticsLogTime).TotalSeconds < VendorApproachDiagnosticsCooldown)
+        {
             return;
+        }
 
         _lastApproachDiagnosticsSummary = summary;
         _lastApproachDiagnosticsLogTime = DateTime.UtcNow;
@@ -2288,12 +2685,12 @@ public class VendorNavigator
     private bool TryFindVendorApproachDestination(IGameObject liveNpc, IReadOnlyList<float> distances, float minimumDistance, float maximumDistance, float maximumDrift, bool preferPlayerSide, out Vector3 destination, out string diagnosticsSummary)
     {
         var npcPosition = liveNpc.Position;
-        var forward     = GetFacingDirection(liveNpc.Rotation);
+        var forward = GetFacingDirection(liveNpc.Rotation);
         var playerPosition = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        var bestScore   = float.NegativeInfinity;
+        var bestScore = float.NegativeInfinity;
         var bestForwardDot = float.NegativeInfinity;
-        var bestDistance   = 0f;
-        var bestCandidate  = Vector3.Zero;
+        var bestDistance = 0f;
+        var bestCandidate = Vector3.Zero;
         var validCandidates = 0;
         var projectionFailures = 0;
         string? firstProjectionFailure = null;
@@ -2312,19 +2709,23 @@ public class VendorNavigator
 
                 validCandidates++;
                 var npcDistance = GetHorizontalDistance(projected, npcPosition);
-                var forwardDot  = GetForwardDot(projected, npcPosition, forward);
-                var playerDot   = GetPlayerDot(projected, npcPosition, playerPosition);
-                var score       = ScoreVendorApproachCandidate(npcDistance, forwardDot, playerDot, preferPlayerSide);
+                var forwardDot = GetForwardDot(projected, npcPosition, forward);
+                var playerDot = GetPlayerDot(projected, npcPosition, playerPosition);
+                var score = ScoreVendorApproachCandidate(npcDistance, forwardDot, playerDot, preferPlayerSide);
                 if (_hasNavigationDestination && GetHorizontalDistance(projected, _navigationDestination) <= 1.0f)
+                {
                     score += 0.5f;
+                }
 
                 if (!(score > bestScore))
+                {
                     continue;
+                }
 
-                bestScore      = score;
+                bestScore = score;
                 bestForwardDot = forwardDot;
-                bestDistance   = npcDistance;
-                bestCandidate  = projected;
+                bestDistance = npcDistance;
+                bestCandidate = projected;
             }
         }
 
@@ -2345,15 +2746,15 @@ public class VendorNavigator
             ? $"projectionFailures={projectionFailureCount} (first: {firstProjectionFailure})"
             : "no valid approach candidates";
 
-    private bool TryProjectVendorApproachCandidate(Vector3 candidate, Vector3 npcPosition, float minimumDistance, float maximumDistance, float maximumDrift, out Vector3 projected, out string failureReason)
+    private static bool TryProjectVendorApproachCandidate(Vector3 candidate, Vector3 npcPosition, float minimumDistance, float maximumDistance, float maximumDrift, out Vector3 projected, out string failureReason)
     {
-        projected     = default;
+        projected = default;
         failureReason = string.Empty;
 
         try
         {
             var pointOnFloor = VNavmesh.Query.Mesh.PointOnFloor;
-            Vector3? snapped = pointOnFloor != null
+            var snapped = pointOnFloor != null
                 ? pointOnFloor(candidate, true, VendorApproachFloorSearchHeight)
                 : null;
             snapped ??= VNavmesh.Query.Mesh.NearestPoint(candidate, VendorApproachMeshSearchRadius, VendorApproachFloorSearchHeight);
@@ -2434,7 +2835,10 @@ public class VendorNavigator
             }
         }
         if (stalledSeconds < VendorGroundInteractionRangeFallbackTimeout)
+        {
             return false;
+        }
+
         if (liveNpc != null
          && destinationMode != NavigationDestinationMode.TargetInteractionRange
          && _forceInteractionRangeApproachUntil < now)
@@ -2447,13 +2851,15 @@ public class VendorNavigator
         }
         if (stalledSeconds < VendorGroundProgressTimeout
          || (now - _lastGroundRetryTime).TotalSeconds < VendorGroundProgressRetryCooldown)
+        {
             return false;
+        }
 
         _groundRetryCount = _lastGroundRetryPosition != Vector3.Zero && GetHorizontalDistance(playerPosition, _lastGroundRetryPosition) <= 3f
             ? _groundRetryCount + 1
             : 1;
         _lastGroundRetryPosition = playerPosition;
-        _lastGroundRetryTime     = now;
+        _lastGroundRetryTime = now;
         GatherBuddy.Log.Debug($"[VendorNavigator] Ground approach stalled for {_target?.NpcName ?? "vendor"} at {destinationDistance:F1}m from the approach point, restarting path using {navigationReason} (retry {_groundRetryCount})");
         UpdateGroundApproachProgress(playerPosition, destination);
         StartVNavmesh(destination, usingLiveNpc, destinationMode);
@@ -2464,25 +2870,29 @@ public class VendorNavigator
     {
         _lastGroundProgressPosition = playerPosition;
         _lastGroundProgressDistance = GetHorizontalDistance(playerPosition, destination);
-        _lastGroundProgressTime     = DateTime.UtcNow;
+        _lastGroundProgressTime = DateTime.UtcNow;
     }
 
     private void ClearGroundApproachProgress()
     {
         _lastGroundProgressPosition = Vector3.Zero;
         _lastGroundProgressDistance = float.MaxValue;
-        _lastGroundProgressTime     = DateTime.MinValue;
+        _lastGroundProgressTime = DateTime.MinValue;
     }
 
     private static float GetPlayerDot(Vector3 position, Vector3 npcPosition, Vector3 playerPosition)
     {
         var playerOffset = new Vector2(playerPosition.X - npcPosition.X, playerPosition.Z - npcPosition.Z);
         if (playerOffset.LengthSquared() < 0.01f)
+        {
             return 0f;
+        }
 
         var candidateOffset = new Vector2(position.X - npcPosition.X, position.Z - npcPosition.Z);
         if (candidateOffset.LengthSquared() < 0.01f)
+        {
             return 0f;
+        }
 
         return Vector2.Dot(Vector2.Normalize(candidateOffset), Vector2.Normalize(playerOffset));
     }
@@ -2491,7 +2901,10 @@ public class VendorNavigator
     {
         var score = forwardDot * (preferPlayerSide ? 2.5f : 3.5f) - npcDistance * 0.05f;
         if (preferPlayerSide)
+        {
             score += playerDot * 4.0f;
+        }
+
         return score;
     }
 
@@ -2518,7 +2931,9 @@ public class VendorNavigator
     {
         var horizontalOffset = new Vector2(position.X - npcPosition.X, position.Z - npcPosition.Z);
         if (horizontalOffset.LengthSquared() < 0.01f)
+        {
             return float.NegativeInfinity;
+        }
 
         return Vector2.Dot(Vector2.Normalize(horizontalOffset), new Vector2(forward.X, forward.Z));
     }
@@ -2529,26 +2944,39 @@ public class VendorNavigator
             ? VNavmesh.Query.Mesh.PointOnFloor(player, false, 5f)
             : player;
         if (pointOnFloor == null)
+        {
             return [];
+        }
 
         var groundPath = await VNavmesh.Nav.PathfindCancelable(pointOnFloor.Value, target, false, token);
         if (groundPath.Count == 0)
+        {
             return [];
+        }
+
         if (groundPath.Count == 1)
+        {
             return groundPath;
+        }
 
         var intersectionIndex = FindIntersection(groundPath, target, landingDistance);
         var landingWaypoint = GetPointAtRadius(groundPath[intersectionIndex], groundPath[intersectionIndex + 1], target, landingDistance);
         var meshLandingWaypoint = VNavmesh.Query.Mesh.NearestPoint(landingWaypoint, landingDistance, 10f);
         if (meshLandingWaypoint == null || MathF.Abs(target.Y - meshLandingWaypoint.Value.Y) > 10f)
+        {
             return [];
+        }
 
         var flyPath = await VNavmesh.Nav.PathfindCancelable(player, meshLandingWaypoint.Value, true, token);
         if (flyPath.Count == 0)
+        {
             return [];
+        }
 
         if (flyPath.Count > 1 && Vector3.DistanceSquared(flyPath[^1], flyPath[^2]) < 0.01f)
+        {
             flyPath.RemoveAt(flyPath.Count - 1);
+        }
 
         landingWaypoint = flyPath[^1];
         flyPath.AddRange(groundPath.Skip(intersectionIndex + 1));
@@ -2561,7 +2989,9 @@ public class VendorNavigator
             for (var index = waypoints.Count - 2; index > 0; index--)
             {
                 if (Vector3.DistanceSquared(waypoints[index], destination) > radiusSquared)
+                {
                     return index;
+                }
             }
 
             return 0;
@@ -2576,7 +3006,9 @@ public class VendorNavigator
             var c = Vector2.Dot(relative, relative) - radius * radius;
             var discriminant = b * b - 4 * a * c;
             if (discriminant < 0)
+            {
                 return first;
+            }
 
             discriminant = MathF.Sqrt(discriminant);
             var firstT = (-b - discriminant) / (2 * a);
@@ -2589,13 +3021,17 @@ public class VendorNavigator
     private static void RemovePassedWaypoints(List<Vector3> path)
     {
         if (path.Count == 0 || Dalamud.Objects.LocalPlayer == null)
+        {
             return;
+        }
 
         var playerPosition = Dalamud.Objects.LocalPlayer.Position;
-        var target         = path[^1];
-        var forward        = new Vector3(target.X - playerPosition.X, 0f, target.Z - playerPosition.Z);
+        var target = path[^1];
+        var forward = new Vector3(target.X - playerPosition.X, 0f, target.Z - playerPosition.Z);
         if (forward.LengthSquared() < 1f)
+        {
             return;
+        }
 
         forward = Vector3.Normalize(forward);
         var removeCount = 0;
@@ -2603,13 +3039,17 @@ public class VendorNavigator
         {
             var next = new Vector3(path[removeCount].X - playerPosition.X, 0f, path[removeCount].Z - playerPosition.Z);
             if (Vector3.Dot(forward, next) > 0)
+            {
                 break;
+            }
 
             removeCount++;
         }
 
         if (removeCount > 0)
+        {
             path.RemoveRange(0, removeCount);
+        }
     }
 
     internal static uint GetPrimaryRouteAetheryteId(uint targetTerritoryId, Vector3 npcPosition)
@@ -2618,18 +3058,30 @@ public class VendorNavigator
         bool logRouteDiagnostics)
     {
         if (TryFindHousingRoute(targetTerritoryId, out var housingAetheryteId, logRouteDiagnostics))
+        {
             return (housingAetheryteId, null, housingAetheryteId != 0, false);
-        if (TryFindFirmamentRoute(targetTerritoryId, out var firmamentAetheryteId, logRouteDiagnostics))
-            return (firmamentAetheryteId, null, false, firmamentAetheryteId != 0);
-        var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
-        if (aetheryteSheet == null) return (0, null, false, false);
-        if (TryFindNearestDirectAetheryteInTerritory(aetheryteSheet, targetTerritoryId, npcPosition, out var directAetheryteId, logRouteDiagnostics))
-            return (directAetheryteId, null, false, false);
+        }
 
-        var bestDist              = float.MaxValue;
-        uint bestAetheryteId      = 0;
-        string? bestShardName     = null;
-        uint fallbackAetheryteId  = 0;
+        if (TryFindFirmamentRoute(targetTerritoryId, out var firmamentAetheryteId, logRouteDiagnostics))
+        {
+            return (firmamentAetheryteId, null, false, firmamentAetheryteId != 0);
+        }
+
+        var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Aetheryte>();
+        if (aetheryteSheet == null)
+        {
+            return (0, null, false, false);
+        }
+
+        if (TryFindNearestDirectAetheryteInTerritory(aetheryteSheet, targetTerritoryId, npcPosition, out var directAetheryteId, logRouteDiagnostics))
+        {
+            return (directAetheryteId, null, false, false);
+        }
+
+        var bestDist = float.MaxValue;
+        uint bestAetheryteId = 0;
+        string? bestShardName = null;
+        uint fallbackAetheryteId = 0;
         string? fallbackShardName = null;
 
         var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
@@ -2637,12 +3089,17 @@ public class VendorNavigator
         foreach (var shard in aetheryteSheet)
         {
             if (shard.IsAetheryte || shard.Territory.RowId != targetTerritoryId || shard.AethernetName.RowId == 0)
+            {
                 continue;
+            }
 
             var shardName = shard.AethernetName.Value.Name.ExtractText();
-            if (string.IsNullOrWhiteSpace(shardName)) continue;
+            if (string.IsNullOrWhiteSpace(shardName))
+            {
+                continue;
+            }
 
-            var group   = shard.AethernetGroup;
+            var group = shard.AethernetGroup;
             uint mainId = 0;
             foreach (var mainA in aetheryteSheet)
             {
@@ -2652,28 +3109,37 @@ public class VendorNavigator
                     break;
                 }
             }
-            if (mainId == 0) continue;
+            if (mainId == 0)
+            {
+                continue;
+            }
 
             if (fallbackAetheryteId == 0)
             {
                 fallbackAetheryteId = mainId;
-                fallbackShardName   = shardName;
+                fallbackShardName = shardName;
             }
 
             var shardXZ = GetAetheryteXZ(shard);
-            if (!shardXZ.HasValue) continue;
+            if (!shardXZ.HasValue)
+            {
+                continue;
+            }
 
             var dist = Vector2.Distance(npcXZ, shardXZ.Value);
             if (dist < bestDist)
             {
-                bestDist         = dist;
-                bestAetheryteId  = mainId;
-                bestShardName    = shardName;
+                bestDist = dist;
+                bestAetheryteId = mainId;
+                bestShardName = shardName;
             }
         }
 
         if (bestAetheryteId != 0)
+        {
             return (bestAetheryteId, bestShardName, false, false);
+        }
+
         return (fallbackAetheryteId, fallbackShardName, false, false);
     }
 
@@ -2681,9 +3147,12 @@ public class VendorNavigator
     private static Vector2? GetAetheryteXZ(Aetheryte shard)
     {
 
-        var mapSheet    = Dalamud.GameData.GetExcelSheet<Map>();
+        var mapSheet = Dalamud.GameData.GetExcelSheet<Map>();
         var markerSheet = Dalamud.GameData.GetSubrowExcelSheet<MapMarker>();
-        if (mapSheet == null || markerSheet == null) return null;
+        if (mapSheet == null || markerSheet == null)
+        {
+            return null;
+        }
 
         var territoryId = shard.Territory.RowId;
         var scale = 100f;
@@ -2699,7 +3168,9 @@ public class VendorNavigator
         var markerDataType = shard.IsAetheryte ? 3u : 4u;
         var markerKey = shard.IsAetheryte ? shard.RowId : shard.AethernetName.RowId;
         if (markerKey == 0)
+        {
             return null;
+        }
 
         foreach (var markerRow in markerSheet)
         {
@@ -2730,7 +3201,9 @@ public class VendorNavigator
         foreach (var aetheryte in aetheryteSheet)
         {
             if (!aetheryte.IsAetheryte || aetheryte.Territory.RowId != territoryId || !Teleporter.IsAttuned(aetheryte.RowId))
+            {
                 continue;
+            }
 
             candidateCount++;
             if (fallbackAetheryteId == 0)
@@ -2741,11 +3214,15 @@ public class VendorNavigator
 
             var aetheryteXZ = GetAetheryteXZ(aetheryte);
             if (!aetheryteXZ.HasValue)
+            {
                 continue;
+            }
 
             var distanceToVendor = Vector2.Distance(npcXZ, aetheryteXZ.Value);
             if (distanceToVendor >= selectedDistance)
+            {
                 continue;
+            }
 
             aetheryteId = aetheryte.RowId;
             selectedName = aetheryte.PlaceName.Value.Name.ExtractText();
@@ -2755,16 +3232,24 @@ public class VendorNavigator
         if (aetheryteId != 0)
         {
             if (logRouteDiagnostics)
+            {
                 GatherBuddy.Log.Debug($@"[VendorNavigator] Using direct aetheryte '{selectedName ?? aetheryteId.ToString()}' ({aetheryteId}) for territory {territoryId}: vendorDistance={selectedDistance:F1}m, candidates={candidateCount}");
+            }
+
             return true;
         }
 
         if (fallbackAetheryteId == 0)
+        {
             return false;
+        }
 
         aetheryteId = fallbackAetheryteId;
         if (logRouteDiagnostics)
+        {
             GatherBuddy.Log.Debug($@"[VendorNavigator] Using fallback direct aetheryte '{fallbackName ?? fallbackAetheryteId.ToString()}' ({fallbackAetheryteId}) for territory {territoryId} because no direct map position was available among {candidateCount} candidates");
+        }
+
         return true;
     }
 }

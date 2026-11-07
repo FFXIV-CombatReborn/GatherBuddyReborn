@@ -1,7 +1,7 @@
-using System.Collections.Generic;
-using System.Linq;
 using GatherBuddy.AutoHookIntegration.Models;
 using GatherBuddy.Classes;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.AutoHookIntegration;
 
@@ -11,7 +11,7 @@ public class AutoHookSpearfishingPresetBuilder
     {
         var preset = new AHAutoGigConfig(presetName);
         var addedFish = new HashSet<uint>();
-        
+
         foreach (var fish in fishList.Where(f => f.IsSpearFish))
         {
             if (addedFish.Add(fish.ItemId))
@@ -26,7 +26,7 @@ public class AutoHookSpearfishingPresetBuilder
                 preset.Gigs.Add(gig);
             }
         }
-        
+
         return preset;
     }
 }

@@ -1,9 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Plugin.Services;
 using GatherBuddy.Classes;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy;
 
@@ -19,8 +18,8 @@ public class OceanTimeline
         => area switch
         {
             OceanArea.Aldenard => Aldenard,
-            OceanArea.Othard   => Othard,
-            _                  => [],
+            OceanArea.Othard => Othard,
+            _ => [],
         };
 
     public OceanRoute this[OceanArea area, int idx]
@@ -29,7 +28,7 @@ public class OceanTimeline
     public OceanTimeline(IDataManager gameData, IReadOnlyList<OceanRoute> routes)
     {
         var timelineSheet = gameData.GetExcelSheet<IKDRouteTable>()!;
-        Aldenard = timelineSheet.Select(r => routes[(int)r.Route.RowId - 1]).ToArray();
-        Othard   = timelineSheet.Select(r => routes[(int)r.Unknown0 - 1]).ToArray();
+        Aldenard = [.. timelineSheet.Select(r => routes[(int)r.Route.RowId - 1])];
+        Othard = [.. timelineSheet.Select(r => routes[(int)r.Unknown0 - 1])];
     }
 }

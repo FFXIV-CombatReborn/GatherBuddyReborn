@@ -1,10 +1,9 @@
-using System;
-using System.Collections.Generic;
 using GatherBuddy.AutoGather;
-using GatherBuddy.AutoHookIntegration.Models;
 using GatherBuddy.Classes;
 using GatherBuddy.FishTimer;
 using GatherBuddy.Plugin;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.AutoHookIntegration;
 
@@ -27,22 +26,22 @@ public class AutoHookService
         {
             var presets = AutoHookPresetBuilder.BuildPresetsFromFish(presetName, fishList, gbrPreset);
             GatherBuddy.Log.Debug($"[AutoHook Integration] Built {presets.Count} preset(s), starting export...");
-            
+
             foreach (var preset in presets)
             {
                 var exportString = AutoHookExporter.ExportPreset(preset);
-                GatherBuddy.Log.Debug($"[AutoHook Integration] Export string for '{preset.PresetName}' created, length: {exportString?.Length ?? 0}");
-                
+                GatherBuddy.Log.Debug($"[AutoHook Integration] Export string for '{preset.PresetName}' created, length: {exportString.Length}");
+
                 AutoHook.ImportAndSelectPreset?.Invoke(exportString);
             }
-            
+
             if (selectPreset)
             {
                 var firstPresetName = presets[0].PresetName;
                 AutoHook.SetPreset?.Invoke(firstPresetName);
                 GatherBuddy.Log.Debug($"[AutoHook Integration] Selected preset '{firstPresetName}'");
             }
-            
+
             if (presets.Count > 1)
             {
                 GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported {presets.Count} presets: '{presets[0].PresetName}' and '{presets[1].PresetName}'");
@@ -51,14 +50,17 @@ public class AutoHookService
             {
                 GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported preset '{presets[0].PresetName}' to AutoHook");
             }
-            
+
             return true;
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Error($"[AutoHook Integration] Failed to export preset: {ex.Message}");
             if (ex.InnerException != null)
+            {
                 GatherBuddy.Log.Error($"[AutoHook Integration] Inner exception: {ex.InnerException.Message}");
+            }
+
             GatherBuddy.Log.Error($"[AutoHook Integration] Stack trace: {ex.StackTrace}");
             return false;
         }
@@ -76,9 +78,9 @@ public class AutoHookService
         {
             var preset = AutoHookPresetBuilder.BuildPresetFromRecords(presetName, records);
             var exportString = AutoHookExporter.ExportPreset(preset);
-            
+
             AutoHook.ImportAndSelectPreset?.Invoke(exportString);
-            
+
             GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported preset '{presetName}' to AutoHook from records");
             return true;
         }
@@ -95,7 +97,7 @@ public class AutoHookService
         {
             var preset = AutoHookPresetBuilder.BuildPresetFromFish(presetName, fishList, gbrPreset);
             var exportString = AutoHookExporter.ExportPreset(preset);
-            
+
             GatherBuddy.Log.Information($"[AutoHook Integration] Preset '{presetName}' exported to string");
             return exportString;
         }
@@ -112,7 +114,7 @@ public class AutoHookService
         {
             var preset = AutoHookPresetBuilder.BuildPresetFromRecords(presetName, records);
             var exportString = AutoHookExporter.ExportPreset(preset);
-            
+
             GatherBuddy.Log.Information($"[AutoHook Integration] Preset '{presetName}' exported from records to string");
             return exportString;
         }
@@ -135,9 +137,9 @@ public class AutoHookService
         {
             var preset = AutoHookSpearfishingPresetBuilder.BuildSpearfishingPreset(presetName, fishList);
             var exportString = AutoHookSpearfishingExporter.ExportPreset(preset);
-            
+
             AutoHook.ImportAndSelectPreset?.Invoke(exportString);
-            
+
             GatherBuddy.Log.Information($"[AutoHook Integration] Successfully exported spearfishing preset '{presetName}' to AutoHook");
             return true;
         }
@@ -145,7 +147,10 @@ public class AutoHookService
         {
             GatherBuddy.Log.Error($"[AutoHook Integration] Failed to export spearfishing preset: {ex.Message}");
             if (ex.InnerException != null)
+            {
                 GatherBuddy.Log.Error($"[AutoHook Integration] Inner exception: {ex.InnerException.Message}");
+            }
+
             GatherBuddy.Log.Error($"[AutoHook Integration] Stack trace: {ex.StackTrace}");
             return false;
         }

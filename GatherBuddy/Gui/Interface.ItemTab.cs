@@ -1,16 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using ElliLib;
+using ElliLib.Table;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using ElliLib;
-using ElliLib.Table;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -42,8 +42,8 @@ public partial class Interface
         {
             if (ImGuiHelpers.GlobalScale != _globalScale)
             {
-                _globalScale         = ImGuiHelpers.GlobalScale;
-                _nameColumnWidth     = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _globalScale = ImGuiHelpers.GlobalScale;
+                _nameColumnWidth = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
                 _gatheredColumnWidth = TextWidth(_gatheredColumn.Label) / Scale + Table.ArrowWidth;
                 _levelingColumnWidth = TextWidth(_levelingColumn.Label) / Scale + Table.ArrowWidth;
                 _nextUptimeColumnWidth = Math.Max(TextWidth("99:99 Minutes") / Scale,
@@ -55,13 +55,13 @@ public partial class Interface
                     Enum.GetNames<GatheringType>().Where(s => s != "Spearfishing").Max(TextWidth) / Scale);
                 _typeColumnWidth = Math.Max(TextWidth(_typeColumn.Label) / Scale + Table.ArrowWidth,
                     Enum.GetNames<NodeType>().Max(TextWidth) / Scale);
-                _expansionColumnWidth   = TextWidth(_expansionColumn.Label) / Scale + Table.ArrowWidth;
-                _folkloreColumnWidth    = Items.Max(i => TextWidth(i.Folklore)) / Scale;
-                _uptimeColumnWidth      = Items.Max(i => TextWidth(i.Uptimes)) / Scale;
-                _bestNodeColumnWidth    = GatherBuddy.GameData.GatheringNodes.Values.Max(a => TextWidth(a.Name)) / Scale;
-                _bestZoneColumnWidth    = GatherBuddy.GameData.Territories.Values.Max(a => TextWidth(a.Name)) / Scale;
-                _itemIdColumnWidth      = Math.Max(TextWidth("999999") / Scale, TextWidth(_itemIdColumn.Label) / Scale + Table.ArrowWidth);
-                _gatheringIdColumnWidth = Math.Max(TextWidth("99999") / Scale,  TextWidth(_gatheringIdColumn.Label) / Scale + Table.ArrowWidth);
+                _expansionColumnWidth = TextWidth(_expansionColumn.Label) / Scale + Table.ArrowWidth;
+                _folkloreColumnWidth = Items.Max(i => TextWidth(i.Folklore)) / Scale;
+                _uptimeColumnWidth = Items.Max(i => TextWidth(i.Uptimes)) / Scale;
+                _bestNodeColumnWidth = GatherBuddy.GameData.GatheringNodes.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _bestZoneColumnWidth = GatherBuddy.GameData.Territories.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _itemIdColumnWidth = Math.Max(TextWidth("999999") / Scale, TextWidth(_itemIdColumn.Label) / Scale + Table.ArrowWidth);
+                _gatheringIdColumnWidth = Math.Max(TextWidth("99999") / Scale, TextWidth(_gatheringIdColumn.Label) / Scale + Table.ArrowWidth);
             }
         }
 
@@ -95,7 +95,9 @@ public partial class Interface
             {
                 var tmp = enable ? FilterValue | value : FilterValue & ~value;
                 if (tmp == FilterValue)
+                {
                     return;
+                }
 
                 GatherBuddy.Config.ShowLevelingItems = tmp;
                 GatherBuddy.Config.Save();
@@ -128,37 +130,37 @@ public partial class Interface
             }
         }
 
-        private static readonly NameColumn        _nameColumn        = new() { Label = "Item Name..." };
-        private static readonly GatheredColumn    _gatheredColumn    = new() { Label = "Log" };
-        private static readonly LevelingColumn    _levelingColumn    = new() { Label = "Leveling" };
-        private static readonly NextUptimeColumn  _nextUptimeColumn  = new() { Label = "Next Uptime" };
-        private static readonly AetheryteColumn   _aetheryteColumn   = new() { Label = "Aetheryte" };
-        private static readonly LevelColumn       _levelColumn       = new() { Label = "Lvl" };
-        private static readonly JobColumn         _jobColumn         = new() { Label = "Gathering" };
-        private static readonly TypeColumn        _typeColumn        = new() { Label = "Node Type" };
-        private static readonly ExpansionColumn   _expansionColumn   = new() { Label = "Exp." };
-        private static readonly FolkloreColumn    _folkloreColumn    = new() { Label = "Folklore" };
-        private static readonly UptimesColumn     _uptimesColumn     = new() { Label = "Uptimes" };
-        private static readonly BestNodeColumn    _bestNodeColumn    = new() { Label = "Best Node" };
-        private static readonly BestZoneColumn    _bestZoneColumn    = new() { Label = "Best Zone" };
-        private static readonly ItemIdColumn      _itemIdColumn      = new() { Label = "Item Id" };
+        private static readonly NameColumn _nameColumn = new() { Label = "Item Name..." };
+        private static readonly GatheredColumn _gatheredColumn = new() { Label = "Log" };
+        private static readonly LevelingColumn _levelingColumn = new() { Label = "Leveling" };
+        private static readonly NextUptimeColumn _nextUptimeColumn = new() { Label = "Next Uptime" };
+        private static readonly AetheryteColumn _aetheryteColumn = new() { Label = "Aetheryte" };
+        private static readonly LevelColumn _levelColumn = new() { Label = "Lvl" };
+        private static readonly JobColumn _jobColumn = new() { Label = "Gathering" };
+        private static readonly TypeColumn _typeColumn = new() { Label = "Node Type" };
+        private static readonly ExpansionColumn _expansionColumn = new() { Label = "Exp." };
+        private static readonly FolkloreColumn _folkloreColumn = new() { Label = "Folklore" };
+        private static readonly UptimesColumn _uptimesColumn = new() { Label = "Uptimes" };
+        private static readonly BestNodeColumn _bestNodeColumn = new() { Label = "Best Node" };
+        private static readonly BestZoneColumn _bestZoneColumn = new() { Label = "Best Zone" };
+        private static readonly ItemIdColumn _itemIdColumn = new() { Label = "Item Id" };
         private static readonly GatheringIdColumn _gatheringIdColumn = new() { Label = "G. Id" };
 
         private class ItemFilterColumn : ColumnFlags<ItemFilter, ExtendedGatherable>
         {
-            private ItemFilter[] FlagValues = Array.Empty<ItemFilter>();
-            private string[]     FlagNames  = Array.Empty<string>();
+            private ItemFilter[] FlagValues = [];
+            private string[] FlagNames = [];
 
             protected void SetFlags(params ItemFilter[] flags)
             {
                 FlagValues = flags;
-                AllFlags   = FlagValues.Aggregate((f, g) => f | g);
+                AllFlags = FlagValues.Aggregate((f, g) => f | g);
             }
 
             protected void SetFlagsAndNames(params ItemFilter[] flags)
             {
                 SetFlags(flags);
-                SetNames(flags.Select(f => f.ToString()).ToArray());
+                SetNames([.. flags.Select(f => f.ToString())]);
             }
 
             protected void SetNames(params string[] names)
@@ -177,7 +179,9 @@ public partial class Interface
             {
                 var tmp = v ? FilterValue | f : FilterValue & ~f;
                 if (tmp == FilterValue)
+                {
                     return;
+                }
 
                 GatherBuddy.Config.ShowItems = tmp;
                 GatherBuddy.Config.Save();
@@ -201,25 +205,35 @@ public partial class Interface
                 var comboOpen = ImGui.BeginCombo(FilterLabel, Label, ImGuiComboFlags.NoArrowButton);
 
                 if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
                     return SetAllOptions(true) || changed;
+                }
 
                 if (!all && ImGui.IsItemHovered())
+                {
                     ImGui.SetTooltip("Right-click to clear filters.");
+                }
 
                 if (!comboOpen)
+                {
                     return changed;
+                }
 
                 color.Pop();
 
                 var enableAll = all;
                 if (ImGui.Checkbox("Enable All", ref enableAll))
+                {
                     changed = SetAllOptions(enableAll) || changed;
+                }
 
                 foreach (var (key, label) in Options)
                 {
                     var enabled = !DisabledValues.Contains(key);
                     if (!ImGui.Checkbox(label, ref enabled))
+                    {
                         continue;
+                    }
 
                     changed = SetOptionEnabled(key, enabled) || changed;
                 }
@@ -236,7 +250,9 @@ public partial class Interface
                 var validOptions = Options.Select(option => option.Key).ToHashSet();
                 var removed = DisabledValues.RemoveAll(value => !validOptions.Contains(value));
                 if (removed == 0)
+                {
                     return false;
+                }
 
                 GatherBuddy.Config.Save();
                 return true;
@@ -247,7 +263,9 @@ public partial class Interface
                 if (enabled)
                 {
                     if (DisabledValues.Count == 0)
+                    {
                         return false;
+                    }
 
                     DisabledValues.Clear();
                     GatherBuddy.Config.Save();
@@ -258,14 +276,18 @@ public partial class Interface
                 foreach (var (key, _) in Options)
                 {
                     if (DisabledValues.Contains(key))
+                    {
                         continue;
+                    }
 
                     DisabledValues.Add(key);
                     changed = true;
                 }
 
                 if (!changed)
+                {
                     return false;
+                }
 
                 GatherBuddy.Config.Save();
                 return true;
@@ -276,12 +298,16 @@ public partial class Interface
                 if (enabled)
                 {
                     if (!DisabledValues.Remove(key))
+                    {
                         return false;
+                    }
                 }
                 else
                 {
                     if (DisabledValues.Contains(key))
+                    {
                         return false;
+                    }
 
                     DisabledValues.Add(key);
                 }
@@ -312,7 +338,9 @@ public partial class Interface
                 _plugin.Interface.CreateContextMenu(item.Data);
 
                 if (selected)
+                {
                     _plugin.Executor.GatherItem(item.Data);
+                }
             }
         }
 
@@ -336,8 +364,8 @@ public partial class Interface
 
             public GatheredColumn()
             {
-                Flags    |= ImGuiTableColumnFlags.NoReorder;
-                AllFlags =  GatheredFilter.All;
+                Flags |= ImGuiTableColumnFlags.NoReorder;
+                AllFlags = GatheredFilter.All;
             }
 
             protected override IReadOnlyList<GatheredFilter> Values
@@ -353,7 +381,9 @@ public partial class Interface
             {
                 var tmp = enable ? FilterValue | value : FilterValue & ~value;
                 if (tmp == FilterValue)
+                {
                     return;
+                }
 
                 GatherBuddy.Config.ShowGatheredItems = tmp;
                 GatherBuddy.Config.Save();
@@ -370,29 +400,29 @@ public partial class Interface
                 switch (item.GatheredState)
                 {
                     case ExtendedGatherable.LogState.Gathered:
-                    {
-                        using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
-                        ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
-                        break;
-                    }
+                        {
+                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
+                            ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
+                            break;
+                        }
                     case ExtendedGatherable.LogState.Ungathered:
-                    {
-                        using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
-                        ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
-                        break;
-                    }
+                        {
+                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
+                            ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
+                            break;
+                        }
                     case ExtendedGatherable.LogState.NotTracked:
-                    {
-                        using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF808080);
-                        ImGuiUtil.Center(FontAwesomeIcon.Minus.ToIconString());
-                        break;
-                    }
+                        {
+                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF808080);
+                            ImGuiUtil.Center(FontAwesomeIcon.Minus.ToIconString());
+                            break;
+                        }
                     default:
-                    {
-                        using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFFA00000);
-                        ImGuiUtil.Center(FontAwesomeIcon.Question.ToIconString());
-                        break;
-                    }
+                        {
+                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFFA00000);
+                            ImGuiUtil.Center(FontAwesomeIcon.Question.ToIconString());
+                            break;
+                        }
                 }
             }
 
@@ -401,10 +431,10 @@ public partial class Interface
                 item.UpdateGatheredStatus();
                 return item.GatheredState switch
                 {
-                    ExtendedGatherable.LogState.Gathered   => FilterValue.HasFlag(GatheredFilter.AlreadyGathered),
+                    ExtendedGatherable.LogState.Gathered => FilterValue.HasFlag(GatheredFilter.AlreadyGathered),
                     ExtendedGatherable.LogState.Ungathered => FilterValue.HasFlag(GatheredFilter.Ungathered),
                     ExtendedGatherable.LogState.NotTracked => FilterValue.HasFlag(GatheredFilter.NotTracked),
-                    _                                      => FilterValue.HasFlag(GatheredFilter.UnknownLogState),
+                    _ => FilterValue.HasFlag(GatheredFilter.UnknownLogState),
                 };
             }
 
@@ -416,10 +446,10 @@ public partial class Interface
                 static int Rank(ExtendedGatherable.LogState gatheredState)
                     => gatheredState switch
                     {
-                        ExtendedGatherable.LogState.Gathered   => 3,
+                        ExtendedGatherable.LogState.Gathered => 3,
                         ExtendedGatherable.LogState.Ungathered => 2,
                         ExtendedGatherable.LogState.NotTracked => 1,
-                        _                                      => 0,
+                        _ => 0,
                     };
 
                 return Rank(lhs.GatheredState).CompareTo(Rank(rhs.GatheredState));
@@ -471,7 +501,10 @@ public partial class Interface
                 }
 
                 if (ImGui.Selectable(aetheryte.Name))
+                {
                     Executor.TeleportToAetheryte(aetheryte);
+                }
+
                 HoverTooltip(item.Aetherytes);
             }
 
@@ -479,7 +512,9 @@ public partial class Interface
             {
                 var name = item.Aetherytes;
                 if (FilterValue.Length == 0)
+                {
                     return true;
+                }
 
                 return FilterRegex?.IsMatch(name) ?? name.Contains(FilterValue, StringComparison.InvariantCultureIgnoreCase);
             }
@@ -505,7 +540,9 @@ public partial class Interface
             {
                 var diff = lhs.Data.Level - rhs.Data.Level;
                 if (diff != 0)
+                {
                     return diff;
+                }
 
                 return lhs.Data.Stars - rhs.Data.Stars;
             }
@@ -529,14 +566,14 @@ public partial class Interface
             {
                 return item.Data.GatheringType switch
                 {
-                    GatheringType.Mining     => FilterValue.HasFlag(ItemFilter.Mining),
-                    GatheringType.Quarrying  => FilterValue.HasFlag(ItemFilter.Quarrying),
-                    GatheringType.Logging    => FilterValue.HasFlag(ItemFilter.Logging),
+                    GatheringType.Mining => FilterValue.HasFlag(ItemFilter.Mining),
+                    GatheringType.Quarrying => FilterValue.HasFlag(ItemFilter.Quarrying),
+                    GatheringType.Logging => FilterValue.HasFlag(ItemFilter.Logging),
                     GatheringType.Harvesting => FilterValue.HasFlag(ItemFilter.Harvesting),
-                    GatheringType.Botanist   => (FilterValue & (ItemFilter.Logging | ItemFilter.Harvesting)) != 0,
-                    GatheringType.Miner      => (FilterValue & (ItemFilter.Mining | ItemFilter.Quarrying)) != 0,
-                    GatheringType.Multiple   => (FilterValue & AllFlags) != 0,
-                    _                        => false,
+                    GatheringType.Botanist => (FilterValue & (ItemFilter.Logging | ItemFilter.Harvesting)) != 0,
+                    GatheringType.Miner => (FilterValue & (ItemFilter.Mining | ItemFilter.Quarrying)) != 0,
+                    GatheringType.Multiple => (FilterValue & AllFlags) != 0,
+                    _ => false,
                 };
             }
         }
@@ -559,12 +596,12 @@ public partial class Interface
             {
                 return item.Data.NodeType switch
                 {
-                    NodeType.Regular   => FilterValue.HasFlag(ItemFilter.Regular),
+                    NodeType.Regular => FilterValue.HasFlag(ItemFilter.Regular),
                     NodeType.Unspoiled => FilterValue.HasFlag(ItemFilter.Unspoiled),
                     NodeType.Ephemeral => FilterValue.HasFlag(ItemFilter.Ephemeral),
                     NodeType.Legendary => FilterValue.HasFlag(ItemFilter.Legendary),
-                    NodeType.Clouded   => FilterValue.HasFlag(ItemFilter.Clouded),
-                    _                  => false,
+                    NodeType.Clouded => FilterValue.HasFlag(ItemFilter.Clouded),
+                    _ => false,
                 };
             }
         }
@@ -639,7 +676,10 @@ public partial class Interface
             public override void DrawColumn(ExtendedGatherable item, int _)
             {
                 if (ImGui.Selectable(ToName(item)))
+                {
                     _plugin.Executor.GatherLocation(item.Uptime.Item1);
+                }
+
                 HoverTooltip(item.NodeNames);
             }
 
@@ -647,7 +687,9 @@ public partial class Interface
             {
                 var name = item.NodeNames;
                 if (FilterValue.Length == 0)
+                {
                     return true;
+                }
 
                 return FilterRegex?.IsMatch(name) ?? name.Contains(FilterValue, StringComparison.InvariantCultureIgnoreCase);
             }
@@ -664,7 +706,10 @@ public partial class Interface
             public override void DrawColumn(ExtendedGatherable item, int _)
             {
                 if (ImGui.Selectable(ToName(item)))
+                {
                     Executor.TeleportToTerritory(item.Uptime.Item1.Territory);
+                }
+
                 HoverTooltip(item.Territories);
             }
 
@@ -672,7 +717,9 @@ public partial class Interface
             {
                 var name = item.Territories;
                 if (FilterValue.Length == 0)
+                {
                     return true;
+                }
 
                 return FilterRegex?.IsMatch(name) ?? name.Contains(FilterValue, StringComparison.InvariantCultureIgnoreCase);
             }
@@ -722,12 +769,14 @@ public partial class Interface
         private static int GetLevelFilterKey(Gatherable gatherable)
             => gatherable.Stars > 0
                 ? 10_000 + (gatherable.Level << 3) + gatherable.Stars
-                : ((Math.Max(gatherable.Level, 1) - 1) / 5) * 5 + 1;
+                : (Math.Max(gatherable.Level, 1) - 1) / 5 * 5 + 1;
 
         private static string GetLevelFilterLabel(Gatherable gatherable)
         {
             if (gatherable.Stars > 0)
+            {
                 return gatherable.LevelString();
+            }
 
             var rangeStart = GetLevelFilterKey(gatherable);
             return $"{rangeStart}-{rangeStart + 4}";
@@ -750,9 +799,9 @@ public partial class Interface
                 _levelColumn, _jobColumn, _typeColumn, _expansionColumn, _folkloreColumn, _uptimesColumn, _bestNodeColumn, _bestZoneColumn,
                 _itemIdColumn, _gatheringIdColumn)
         {
-            Sortable                               =  true;
+            Sortable = true;
             GatherBuddy.UptimeManager.UptimeChange += OnUptimeChange;
-            Flags                                  |= ImGuiTableFlags.Hideable | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Resizable;
+            Flags |= ImGuiTableFlags.Hideable | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Resizable;
         }
 
 
@@ -764,7 +813,9 @@ public partial class Interface
         private void OnUptimeChange(IGatherable item)
         {
             if (item.Type != ObjectType.Gatherable)
+            {
                 return;
+            }
 
             FilterDirty = true;
         }
@@ -774,12 +825,14 @@ public partial class Interface
 
     private void DrawItemTab()
     {
-        using var id  = ImRaii.PushId("Gatherables");
+        using var id = ImRaii.PushId("Gatherables");
         using var tab = ImRaii.TabItem("Gatherables");
         ImGuiUtil.HoverTooltip("Breaking rocks with a pickaxe or felling trees counts as gathering, why do you ask?\n"
           + "Find all information about botanist and miner items you could ever need.");
         if (!tab)
+        {
             return;
+        }
 
         _itemTable.ExtraHeight = (GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0)
           + ImGui.GetFrameHeightWithSpacing();

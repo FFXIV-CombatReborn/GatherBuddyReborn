@@ -1,13 +1,13 @@
-using System;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
+using ElliLib;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
-using ElliLib;
+using System;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -18,23 +18,23 @@ public partial class Interface
     {
         public readonly Vector4 LastWeatherTint = new(1f, 0.5f, 0.5f, 1f);
 
-        private uint                     _currentTerritory;
-        public  Structs.Weather          LastWeather    = Structs.Weather.Invalid;
-        public  Structs.Weather          CurrentWeather = Structs.Weather.Invalid;
-        public  Structs.Weather          NextWeather    = Structs.Weather.Invalid;
-        public  ISharedImmediateTexture? LastWeatherIcon;
-        public  ISharedImmediateTexture? CurrentWeatherIcon;
-        public  ISharedImmediateTexture? NextWeatherIcon;
-        public  Vector2                  AlarmButtonSize = Vector2.Zero;
+        private uint _currentTerritory;
+        public Structs.Weather LastWeather = Structs.Weather.Invalid;
+        public Structs.Weather CurrentWeather = Structs.Weather.Invalid;
+        public Structs.Weather NextWeather = Structs.Weather.Invalid;
+        public ISharedImmediateTexture? LastWeatherIcon;
+        public ISharedImmediateTexture? CurrentWeatherIcon;
+        public ISharedImmediateTexture? NextWeatherIcon;
+        public Vector2 AlarmButtonSize = Vector2.Zero;
 
         private void NullWeather()
         {
-            LastWeatherIcon    = null;
+            LastWeatherIcon = null;
             CurrentWeatherIcon = null;
-            NextWeatherIcon    = null;
-            LastWeather        = Structs.Weather.Invalid;
-            CurrentWeather     = Structs.Weather.Invalid;
-            NextWeather        = Structs.Weather.Invalid;
+            NextWeatherIcon = null;
+            LastWeather = Structs.Weather.Invalid;
+            CurrentWeather = Structs.Weather.Invalid;
+            NextWeather = Structs.Weather.Invalid;
         }
 
         private void UpdateWeather()
@@ -48,9 +48,9 @@ public partial class Interface
                 (LastWeather, CurrentWeather, NextWeather) = GatherBuddy.WeatherManager.FindLastCurrentNextWeather(_currentTerritory);
                 if (LastWeather.Id != 0)
                 {
-                    LastWeatherIcon    = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(LastWeather.Icon);
+                    LastWeatherIcon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(LastWeather.Icon);
                     CurrentWeatherIcon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(CurrentWeather.Icon);
-                    NextWeatherIcon    = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(NextWeather.Icon);
+                    NextWeatherIcon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(NextWeather.Icon);
                 }
                 else
                 {
@@ -68,7 +68,9 @@ public partial class Interface
         public void UpdateCurrentTerritory()
         {
             if (_currentTerritory == Dalamud.ClientState.TerritoryType)
+            {
                 return;
+            }
 
             _currentTerritory = Dalamud.ClientState.TerritoryType;
             UpdateWeather();
@@ -93,12 +95,18 @@ public partial class Interface
             $"Click to /gather this alarm.\n{loc.Name} - {loc.ClosestAetheryte?.Name ?? "None"}\n{time.Start.LocalTime}\n{time.End.LocalTime}";
 
         if (!ImGuiUtil.DrawDisabledButton(text, _headerCache.AlarmButtonSize, desc, false))
+        {
             return;
+        }
 
         if (which)
+        {
             _plugin.Executor.GatherItemByName("alarm");
+        }
         else
+        {
             _plugin.Executor.GatherFishByName("alarm");
+        }
     }
 
     private void DrawLastItemAlarm()
@@ -170,9 +178,9 @@ public partial class Interface
             using var tt = ImRaii.Tooltip();
             ImGui.TextUnformatted("If this does not correspond to your in-game Eorzea Time, verify that your windows system time is accurate.");
             ImGui.TextUnformatted($"Next Aldenard Ocean Routes:");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow)}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow.AddHours(2))}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard,                              TimeStamp.UtcNow.AddHours(4))}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow)}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow.AddHours(2))}");
+            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow.AddHours(4))}");
             ImGui.TextUnformatted($"Next Othard Ocean Routes:");
             ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow)}");
             ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow.AddHours(2))}");
@@ -214,14 +222,14 @@ public partial class Interface
 
     private void DrawTimeRow()
     {
-        var now       = GatherBuddy.Time.ServerTime;
+        var now = GatherBuddy.Time.ServerTime;
         var nextHourS = (now.SyncToEorzeaHour().AddEorzeaHours(1) - GatherBuddy.Time.ServerTime) / RealTime.MillisecondsPerSecond;
         var nextHourM = nextHourS / RealTime.SecondsPerMinute;
 
         var nextWeatherS = (now.SyncToEorzeaWeather().AddEorzeaHours(8) - GatherBuddy.Time.ServerTime) / RealTime.MillisecondsPerSecond;
         var nextWeatherM = nextWeatherS / RealTime.SecondsPerMinute;
 
-        nextHourS    -= nextHourM * RealTime.SecondsPerMinute;
+        nextHourS -= nextHourM * RealTime.SecondsPerMinute;
         nextWeatherS -= nextWeatherM * RealTime.SecondsPerMinute;
 
         var nextWeatherString = $"  {nextWeatherM:D2}:{nextWeatherS:D2} Min.  ";

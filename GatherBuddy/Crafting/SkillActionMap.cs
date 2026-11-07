@@ -1,36 +1,42 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.Crafting;
 
 public static class SkillActionMap
 {
-    private static Dictionary<uint, VulcanSkill> _actionToSkill = new();
-    private static Dictionary<int, uint[]> _skillToAction = new();
+    private static readonly Dictionary<uint, VulcanSkill> _actionToSkill = [];
+    private static readonly Dictionary<int, uint[]> _skillToAction = [];
 
     public static VulcanSkill ActionToSkill(uint actionId) => _actionToSkill.GetValueOrDefault(actionId);
 
     public static uint ActionId(this VulcanSkill skill, uint jobId)
     {
         if (!_skillToAction.TryGetValue((int)skill, out var actionIds))
+        {
             return 0;
-        
+        }
+
         var jobIndex = jobId - 8;
         if (jobIndex < 0 || jobIndex >= 8)
+        {
             return 0;
-        
+        }
+
         return actionIds[jobIndex];
     }
 
     static SkillActionMap()
     {
-        foreach (VulcanSkill skill in (VulcanSkill[])Enum.GetValues(typeof(VulcanSkill)))
+        foreach (var skill in (VulcanSkill[])Enum.GetValues(typeof(VulcanSkill)))
         {
             if (skill == VulcanSkill.None)
+            {
                 continue;
+            }
+
             AssignActionIDs(skill);
         }
     }
@@ -39,25 +45,31 @@ public static class SkillActionMap
     {
         var baseActionId = (uint)skill;
         if (baseActionId == 0 || baseActionId >= 200000)
+        {
             return;
+        }
 
         try
         {
             var isCraftAction = baseActionId >= 100000;
             var actionIds = new uint[8];
-            string skillName = null;
+            string? skillName = null;
 
             if (isCraftAction)
             {
                 var craftActionsSheet = Dalamud.GameData.GetExcelSheet<CraftAction>();
                 if (craftActionsSheet == null || !craftActionsSheet.TryGetRow(baseActionId, out var craftRow))
+                {
                     return;
-                
+                }
+
                 skillName = craftRow.Name.ToString().Trim();
                 if (string.IsNullOrEmpty(skillName))
+                {
                     return;
+                }
 
-                for (int jobIdx = 0; jobIdx < 8; jobIdx++)
+                for (var jobIdx = 0; jobIdx < 8; jobIdx++)
                 {
                     var classJobCategory = jobIdx + 9;
                     uint convertedId = 0;
@@ -71,20 +83,26 @@ public static class SkillActionMap
                     }
                     actionIds[jobIdx] = convertedId;
                     if (convertedId != 0)
+                    {
                         _actionToSkill[convertedId] = skill;
+                    }
                 }
             }
             else
             {
                 var actionSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Action>();
                 if (actionSheet == null || !actionSheet.TryGetRow(baseActionId, out var actionRow))
+                {
                     return;
-                
+                }
+
                 skillName = actionRow.Name.ToString();
                 if (string.IsNullOrEmpty(skillName))
+                {
                     return;
+                }
 
-                for (int jobIdx = 0; jobIdx < 8; jobIdx++)
+                for (var jobIdx = 0; jobIdx < 8; jobIdx++)
                 {
                     var classJobId = jobIdx + 8;
                     uint convertedId = 0;
@@ -98,7 +116,9 @@ public static class SkillActionMap
                     }
                     actionIds[jobIdx] = convertedId;
                     if (convertedId != 0)
+                    {
                         _actionToSkill[convertedId] = skill;
+                    }
                 }
             }
 

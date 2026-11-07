@@ -1,3 +1,7 @@
+using GatherBuddy.Plugin;
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -7,10 +11,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
-using Newtonsoft.Json;
-using GatherBuddy.Vulcan;
 
 namespace GatherBuddy.Crafting;
 
@@ -19,7 +19,7 @@ public class RaphaelSolveCoordinator
     private readonly RaphaelSolveCoordinatorConfig _config;
     private readonly ConcurrentDictionary<string, CachedRaphaelSolution> _cachedSolutions = new();
     private readonly ConcurrentDictionary<string, SolveTask> _inProgressTasks = new();
-    private readonly object _queueLock = new();
+    private readonly Lock _queueLock = new();
     private Queue<RaphaelSolveRequest> _urgentQueue = new();
     private Queue<RaphaelSolveRequest> _backgroundQueue = new();
     private int _activeSolveCount = 0;
@@ -73,12 +73,16 @@ public class RaphaelSolveCoordinator
     private static void TryKillRaphaelProcess(Process? process, uint recipeId, string reason)
     {
         if (process == null)
+        {
             return;
+        }
 
         try
         {
             if (process.HasExited)
+            {
                 return;
+            }
 
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Killing Raphael process for recipe {recipeId} due to {reason}");
             process.Kill();
@@ -96,7 +100,9 @@ public class RaphaelSolveCoordinator
         {
             var file = Functions.ObtainSaveFile(CacheFileName);
             if (file == null)
+            {
                 return;
+            }
 
             var toSave = _cachedSolutions.Values
                 .Where(s => !s.IsFailed)
@@ -117,18 +123,25 @@ public class RaphaelSolveCoordinator
         {
             var file = Functions.ObtainSaveFile(CacheFileName);
             if (file == null || !file.Exists)
+            {
                 return;
+            }
 
             var solutions = JsonConvert.DeserializeObject<List<CachedRaphaelSolution>>(File.ReadAllText(file.FullName));
             if (solutions == null)
+            {
                 return;
+            }
 
             var cutoff = DateTime.UtcNow.AddDays(-_config.SolutionCacheMaxAgeDays);
             var loaded = 0;
             foreach (var solution in solutions)
             {
                 if (solution.IsFailed || solution.GeneratedAt < cutoff)
+                {
                     continue;
+                }
+
                 _cachedSolutions.TryAdd(solution.Key, solution);
                 loaded++;
             }
@@ -147,10 +160,15 @@ public class RaphaelSolveCoordinator
     public bool EnqueueOrPromoteRequest(RaphaelSolveRequest request, RaphaelSolvePriority priority = RaphaelSolvePriority.Urgent)
     {
         if (!_config.RaphaelEnabled)
+        {
             return false;
+        }
+
         var (enqueued, promoted) = EnqueuePreparedRequests(new[] { request }, priority);
         if (enqueued + promoted <= 0)
+        {
             return false;
+        }
 
         ProcessPendingQueue();
         return true;
@@ -260,12 +278,16 @@ public class RaphaelSolveCoordinator
         {
             var stats = recipeStats.FirstOrDefault(s => s.RecipeId == item.RecipeId);
             if (stats.RecipeId == 0)
+            {
                 continue;
-            
+            }
+
             var recipe = RecipeManager.GetRecipe(item.RecipeId);
             if (recipe == null)
+            {
                 continue;
-            
+            }
+
             var initialQuality = CalculateInitialQuality(item, recipe.Value);
 
             var request = new RaphaelSolveRequest(
@@ -367,7 +389,10 @@ public class RaphaelSolveCoordinator
     public void ClearIfAutoEnabled()
     {
         if (!_config.AutoClearSolutionCache)
+        {
             return;
+        }
+
         GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Auto-clearing solution cache on queue start ({_cachedSolutions.Count} solutions)");
         _cachedSolutions.Clear();
     }
@@ -375,7 +400,10 @@ public class RaphaelSolveCoordinator
     public void ReenqueueIfMissing(RaphaelSolveRequest request)
     {
         if (!_config.RaphaelEnabled || IsKnown(request))
+        {
             return;
+        }
+
         GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Re-enqueueing missing solution for recipe {request.RecipeId}");
         EnqueueOrPromoteRequest(request, RaphaelSolvePriority.Urgent);
     }
@@ -410,7 +438,9 @@ public class RaphaelSolveCoordinator
 
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Cancelled Raphael queue: {cancelledQueuedCount} queued, {cancelledActiveCount} active");
         if (cancelledQueuedCount > 0 || cancelledActiveCount > 0)
+        {
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Queue stop requested while {_cachedSolutions.Count} cached solutions remain available");
+        }
     }
 
     public bool RemoveCachedSolution(RaphaelSolveRequest request)
@@ -427,13 +457,17 @@ public class RaphaelSolveCoordinator
     private int GetQueuedSolveCount()
     {
         lock (_queueLock)
+        {
             return _urgentQueue.Count + _backgroundQueue.Count;
+        }
     }
 
     private (int Urgent, int Background) GetQueuedCounts()
     {
         lock (_queueLock)
+        {
             return (_urgentQueue.Count, _backgroundQueue.Count);
+        }
     }
 
     private (int Enqueued, int Promoted) EnqueuePreparedRequests(IEnumerable<RaphaelSolveRequest> requests, RaphaelSolvePriority priority)
@@ -492,7 +526,9 @@ public class RaphaelSolveCoordinator
     private static bool TryRemoveQueuedRequestLocked(ref Queue<RaphaelSolveRequest> queue, string key)
     {
         if (queue.Count == 0)
+        {
             return false;
+        }
 
         var removed = false;
         var retained = new Queue<RaphaelSolveRequest>(queue.Count);
@@ -547,14 +583,17 @@ public class RaphaelSolveCoordinator
             uniqueCrafts.TryAdd(key, request);
         }
 
-        return uniqueCrafts.Values.ToList();
+        return [.. uniqueCrafts.Values];
     }
 
     private static int CalculateInitialQuality(CraftingListItem item, Recipe recipe)
     {
         item.QualityPolicy ??= CraftingQualityPolicyResolver.Resolve(recipe, item.CraftSettings);
         if (item.IngredientPreferences.Count == 0)
+        {
             item.IngredientPreferences = item.QualityPolicy.BuildGuaranteedHQPreferences();
+        }
+
         return item.QualityPolicy.CalculateGuaranteedInitialQuality(recipe);
     }
 
@@ -579,7 +618,9 @@ public class RaphaelSolveCoordinator
             }
 
             if (request == null || priority == null)
+            {
                 break;
+            }
 
             var (urgentQueued, backgroundQueued) = GetQueuedCounts();
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Processing {priority} queue: {urgentQueued} urgent, {backgroundQueued} background remaining, {_activeSolveCount}/{_config.MaxConcurrentRaphaelProcesses} active");
@@ -641,7 +682,7 @@ public class RaphaelSolveCoordinator
         {
             var raphaelPath = GetRaphaelCliPath();
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Raphael executable path: {raphaelPath}");
-            
+
             if (string.IsNullOrEmpty(raphaelPath))
             {
                 cacheEntry.IsFailed = true;
@@ -650,7 +691,7 @@ public class RaphaelSolveCoordinator
                 GatherBuddy.Log.Error("[RaphaelSolveCoordinator] FAIL: raphael-cli.exe path could not be resolved - plugin directory is unavailable");
                 return;
             }
-            
+
             if (!File.Exists(raphaelPath))
             {
                 cacheEntry.IsFailed = true;
@@ -662,7 +703,7 @@ public class RaphaelSolveCoordinator
 
             var args = BuildRaphaelArguments(request);
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Raphael arguments: {args}");
-            
+
             process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -701,7 +742,7 @@ public class RaphaelSolveCoordinator
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Parsing Raphael output for recipe {request.RecipeId}...");
             var actionIds = ParseRaphaelOutput(output);
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Parsed {actionIds.Count} action IDs");
-            
+
             if (actionIds.Count == 0)
             {
                 cacheEntry.IsFailed = true;
@@ -712,7 +753,7 @@ public class RaphaelSolveCoordinator
                 return;
             }
 
-        cacheEntry.ActionIds = actionIds;
+            cacheEntry.ActionIds = actionIds;
             _cachedSolutions[key] = cacheEntry;
             GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] SUCCESS: Raphael solved recipe {request.RecipeId} with {actionIds.Count} actions");
             Save();
@@ -754,16 +795,24 @@ public class RaphaelSolveCoordinator
         args.Append($"--stats {request.Craftsmanship} {request.Control} {request.CP} ");
 
         if (request.Manipulation)
+        {
             args.Append("--manipulation ");
+        }
 
         if (request.InitialQuality > 0)
+        {
             args.Append($"--initial {request.InitialQuality} ");
+        }
 
         if (_config.RaphaelBackloadProgress)
+        {
             args.Append("--backload-progress ");
+        }
 
         if (_config.RaphaelAllowSpecialistActions && request.Specialist)
+        {
             args.Append("--heart-and-soul --quick-innovation ");
+        }
 
         args.Append("--output-variables action_ids");
 
@@ -775,7 +824,9 @@ public class RaphaelSolveCoordinator
         var actionIds = new List<uint>();
 
         if (string.IsNullOrWhiteSpace(output))
+        {
             return actionIds;
+        }
 
         try
         {
@@ -785,7 +836,9 @@ public class RaphaelSolveCoordinator
             foreach (var part in parts)
             {
                 if (uint.TryParse(part.Trim(), out var actionId))
+                {
                     actionIds.Add(actionId);
+                }
             }
         }
         catch (Exception ex)
@@ -802,7 +855,9 @@ public class RaphaelSolveCoordinator
         {
             var pluginDir = Path.GetDirectoryName(Dalamud.PluginInterface?.AssemblyLocation?.FullName ?? "");
             if (string.IsNullOrEmpty(pluginDir))
+            {
                 return string.Empty;
+            }
 
             return Path.Combine(pluginDir, "raphael-cli.exe");
         }

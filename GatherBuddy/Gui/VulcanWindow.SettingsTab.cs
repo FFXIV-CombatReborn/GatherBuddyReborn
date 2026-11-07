@@ -1,14 +1,10 @@
-﻿using System;
-using System.Linq;
-using System.Numerics;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
-using ElliLib.Raii;
 using ElliLib.Widgets;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Config;
 using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
+using System;
+using System.Linq;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -36,7 +32,9 @@ public partial class VulcanWindow
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             var coordinator = GatherBuddy.RaphaelSolveCoordinator;
             var raphaelConfig = GatherBuddy.Config.RaphaelSolverConfig;
@@ -99,7 +97,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Delay in milliseconds between each crafting action (0 = instant, max 1000ms)");
+            }
 
             var ctxMenuEntries = GatherBuddy.Config.VulcanContextMenuEntries;
             if (ImGui.Checkbox("Context Menu Entries (Vs in context menus)", ref ctxMenuEntries))
@@ -108,7 +108,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Show Vulcan-related entries (Open in Vulcan, Add to Crafting List, Add to Vendor Buy List) in the in-game right-click menu.");
+            }
 
             var showRecipeBrowserTooltips = GatherBuddy.Config.ShowRecipeBrowserTooltips;
             if (ImGui.Checkbox("Show Recipe Browser Item Tooltips", ref showRecipeBrowserTooltips))
@@ -117,7 +119,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Show the native item tooltip when hovering recipe results in the Recipes tab.");
+            }
 
             if (Widget.ModifiableKeySelector("Hotkey to Open Recipes Tab",
                     "Set a hotkey to open Vulcan directly to the Recipes tab.",
@@ -164,7 +168,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Timeout in minutes per Raphael solve. If exceeded, the solution is marked as failed and the craft will be skipped.");
+            }
 
             ImGui.Text("  Cache Max Age (days): ");
             ImGui.SameLine();
@@ -176,7 +182,9 @@ public partial class VulcanWindow
                 GatherBuddy.Config.Save();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Solutions older than this many days are discarded on plugin load.");
+            }
 
             ImGui.Spacing();
             var backloadProgress = raphaelConfig.RaphaelBackloadProgress;
@@ -187,7 +195,9 @@ public partial class VulcanWindow
                 coordinator.Clear();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Only use progress-increasing actions at the end of the rotation.\nMay decrease achievable quality. Disable for maximum quality output.\nChanging this clears the solution cache.");
+            }
 
             var allowSpecialist = raphaelConfig.RaphaelAllowSpecialistActions;
             if (ImGui.Checkbox("  Allow Specialist Actions###RaphaelAllowSpecialist", ref allowSpecialist))
@@ -197,7 +207,9 @@ public partial class VulcanWindow
                 coordinator.Clear();
             }
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("When disabled (default), Raphael generates non-specialist rotations even if you are a specialist.\nEnable only if you want Raphael to use specialist actions.\nChanging this clears the solution cache.");
+            }
 
             var activeColor = coordinator.ActiveSolves > 0 ? ImGuiColors.HealerGreen : ImGuiColors.DalamudGrey;
             ImGui.TextColored(activeColor, $"  Active Solves: {coordinator.ActiveSolves}/{raphaelConfig.MaxConcurrentRaphaelProcesses}");
@@ -227,7 +239,9 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Automatically repair equipment between crafts when needed");
+        }
 
         var threshold = config.RepairThreshold;
         ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
@@ -237,7 +251,9 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Repair when minimum equipment condition drops below this percentage");
+        }
 
         var prioritizeNPC = config.PrioritizeNPCRepair;
         if (ImGui.Checkbox("Prioritize NPC Repair", ref prioritizeNPC))
@@ -246,27 +262,31 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Use NPC repair if available and you have enough gil, otherwise use self-repair");
-        
+        }
+
         if (config.PrioritizeNPCRepair)
         {
             ImGui.Spacing();
             ImGui.Text("Preferred Repair NPC:");
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip("Select a repair NPC to travel to when repair is needed");
-            
+            }
+
             ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(300f));
             var currentNPC = config.PreferredRepairNPC;
-            var displayText = currentNPC != null 
+            var displayText = currentNPC != null
                 ? $"{currentNPC.Name} ({GetTerritoryName(currentNPC.TerritoryType)})"
                 : "Current Zone NPCs";
-            
+
             if (ImGui.BeginCombo("##PreferredRepairNPC", displayText))
             {
                 ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(280f));
                 ImGui.InputTextWithHint("##RepairNPCSearch", "Search NPCs...", ref _repairNPCSearchInput, 256);
                 ImGui.Separator();
-                
+
                 if (ImGui.Selectable("Current Zone NPCs", currentNPC == null))
                 {
                     config.PreferredRepairNPC = null;
@@ -274,8 +294,10 @@ public partial class VulcanWindow
                     GatherBuddy.Config.Save();
                 }
                 if (ImGui.IsItemHovered())
+                {
                     ImGui.SetTooltip("Use any repair NPC in the current zone");
-                
+                }
+
                 var repairNPCs = Crafting.RepairNPCHelper.RepairNPCs;
                 if (repairNPCs.Count == 0)
                 {
@@ -286,10 +308,10 @@ public partial class VulcanWindow
                     var searchLower = _repairNPCSearchInput.ToLowerInvariant();
                     var filteredNPCs = string.IsNullOrWhiteSpace(_repairNPCSearchInput)
                         ? repairNPCs
-                        : repairNPCs.Where(npc => 
+                        : [.. repairNPCs.Where(npc =>
                             npc.Name.ToLowerInvariant().Contains(searchLower) ||
-                            GetTerritoryName(npc.TerritoryType).ToLowerInvariant().Contains(searchLower)).ToList();
-                    
+                            GetTerritoryName(npc.TerritoryType).ToLowerInvariant().Contains(searchLower))];
+
                     if (filteredNPCs.Count == 0)
                     {
                         ImGui.TextDisabled("No NPCs match your search...");
@@ -300,7 +322,7 @@ public partial class VulcanWindow
                         {
                             var territoryName = GetTerritoryName(npc.TerritoryType);
                             var npcLabel = $"{npc.Name} - {territoryName}";
-                            
+
                             if (ImGui.Selectable(npcLabel, currentNPC?.DataId == npc.DataId))
                             {
                                 config.PreferredRepairNPC = npc;
@@ -310,12 +332,12 @@ public partial class VulcanWindow
                         }
                     }
                 }
-                
+
                 ImGui.EndCombo();
             }
         }
     }
-    
+
     private void DrawVulcanMateriaConfig()
     {
         var config = GatherBuddy.Config.VulcanMateriaConfig;
@@ -327,7 +349,9 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Automatically extract materia from fully spiritbonded equipment between crafts");
+        }
     }
 
     private void DrawVulcanRetainerBellConfig()
@@ -341,6 +365,8 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Automatically navigate to the nearest retainer bell when starting retainer restock");
+        }
     }
 }

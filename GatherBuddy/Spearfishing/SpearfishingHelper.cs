@@ -1,11 +1,11 @@
-﻿using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Linq;
-using Dalamud.Game.ClientState.Objects.Enums;
+﻿using Dalamud.Game.ClientState.Objects.Enums;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using GatherBuddy.Enums;
 using GatherBuddy.SeFunctions;
 using Lumina.Excel.Sheets;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using SpearfishSize = GatherBuddy.Enums.SpearfishSize;
 
@@ -16,7 +16,7 @@ public partial class SpearfishingHelper
     public readonly Dictionary<uint, FishingSpot> SpearfishingSpots;
 
     private FishingSpot? _currentSpot;
-    private bool         _isOpen;
+    private bool _isOpen;
 
     public SpearfishingHelper(GameData gameData)
         : base("SpearfishingHelper", WindowFlags, true)
@@ -29,19 +29,21 @@ public partial class SpearfishingHelper
             .ToFrozenDictionary(fs => fs.SpearfishingSpotData!.Value.GatheringPointBase.RowId, fs => fs);
 
         // Now we correspond all gathering nodes to their associated fishing spot.
-        SpearfishingSpots = new Dictionary<uint, FishingSpot>(baseNodes.Count);
+        SpearfishingSpots = [with(baseNodes.Count)];
         foreach (var point in points)
         {
             if (!baseNodes.TryGetValue(point.GatheringPointBase.RowId, out var node))
+            {
                 continue;
+            }
 
             SpearfishingSpots.Add(point.RowId, node);
         }
 
-        IsOpen              = GatherBuddy.Config.ShowSpearfishHelper;
-        RespectCloseHotkey  = false;
+        IsOpen = GatherBuddy.Config.ShowSpearfishHelper;
+        RespectCloseHotkey = false;
         DisableWindowSounds = true;
-        Namespace           = "SpearfishingHelper";
+        Namespace = "SpearfishingHelper";
     }
 
     // We should always have to target a spearfishing spot when opening the window.
@@ -49,10 +51,14 @@ public partial class SpearfishingHelper
     private FishingSpot? GetTargetFishingSpot()
     {
         if (Dalamud.Targets.Target == null)
+        {
             return null;
+        }
 
         if (Dalamud.Targets.Target.ObjectKind != ObjectKind.GatheringPoint)
+        {
             return null;
+        }
 
         var id = Dalamud.Targets.Target.BaseId;
         return SpearfishingSpots.GetValueOrDefault(id);
@@ -65,7 +71,9 @@ public partial class SpearfishingHelper
         const string unknown = "Unknown Fish";
 
         if (spot == null)
+        {
             return unknown;
+        }
 
         var fishes = spot.Items.Where(f =>
                 (f.Speed == info.SpearfishSpeed || f.Speed == SpearfishSpeed.Unknown)

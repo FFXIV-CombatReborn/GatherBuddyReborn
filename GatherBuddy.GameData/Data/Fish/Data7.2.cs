@@ -46,7 +46,7 @@ public static partial class Fish
             .Weather(data, 2)
             .Lure(Enums.Lure.Ambitious)
             .Bite(data, HookSet.Powerful, BiteType.Legendary);
-        
+
         // Cosmic Exploration
         // Weeping Pool  Lunch Emergency
         data.Apply(45693, Patch.SeekersOfEternity) // Astacus Lamentorum

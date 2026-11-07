@@ -1,3 +1,25 @@
+using Dalamud.Game;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Interface.Windowing;
+using Dalamud.Plugin;
+using Dalamud.Plugin.Services;
+using ElliCon.Core;
+using ElliLib.Classes;
+using ElliLib.Log;
+using GatherBuddy.Alarms;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Config;
+using GatherBuddy.Crafting;
+using GatherBuddy.CustomInfo;
+using GatherBuddy.FishTimer;
+using GatherBuddy.GatherHelper;
+using GatherBuddy.Gui;
+using GatherBuddy.Marketboard;
+using GatherBuddy.Plugin;
+using GatherBuddy.SeFunctions;
+using GatherBuddy.Spearfishing;
+using GatherBuddy.Weather;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -5,36 +27,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
-using Dalamud;
-using Dalamud.Game.ClientState.Objects.Enums;
-using Dalamud.Game;
-using Dalamud.Interface.Internal;
-using Dalamud.Interface.Windowing;
-using Dalamud.Plugin;
-using Dalamud.Plugin.Services;
-using GatherBuddy.Alarms;
-using GatherBuddy.Config;
-using GatherBuddy.CustomInfo;
-using GatherBuddy.Data;
-using GatherBuddy.Enums;
-using GatherBuddy.FishTimer;
-using GatherBuddy.GatherHelper;
-using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Crafting;
-using GatherBuddy.Gui;
-using GatherBuddy.Marketboard;
-using GatherBuddy.Plugin;
-using GatherBuddy.SeFunctions;
-using GatherBuddy.Spearfishing;
-using GatherBuddy.Weather;
 using SigScannerWrapper = GatherBuddy.SeFunctions.SigScannerWrapper;
-using ElliLib;
-using ElliLib.Classes;
-using ElliLib.Log;
-using GatherBuddy.AutoGather;
-using Dalamud.IoC;
-using Dalamud.Game.ClientState.Objects.SubKinds;
-using ElliCon.Core;
 
 namespace GatherBuddy;
 
@@ -42,16 +35,16 @@ public partial class GatherBuddy : IDalamudPlugin
 {
     public const string InternalName = "GatherBuddyReborn";
 
-    public string Name
+    public static string Name
         => InternalName;
 
     public static string Version = string.Empty;
 
-    public static Configuration  Config   { get; private set; } = null!;
-    public static GameData       GameData { get; private set; } = null!;
-    public static Logger         Log      { get; private set; } = null!;
+    public static Configuration Config { get; private set; } = null!;
+    public static GameData GameData { get; private set; } = null!;
+    public static Logger Log { get; private set; } = null!;
     public static ClientLanguage Language { get; private set; } = ClientLanguage.English;
-    public static SeTime         Time     { get; private set; } = null!;
+    public static SeTime Time { get; private set; } = null!;
 #if DEBUG
     public static bool DebugMode { get; private set; } = true;
 #else
@@ -63,14 +56,14 @@ public partial class GatherBuddy : IDalamudPlugin
         Timeout = TimeSpan.FromMilliseconds(1500),
     };
 
-    public static WeatherManager        WeatherManager  { get; private set; } = null!;
-    public static UptimeManager         UptimeManager   { get; private set; } = null!;
-    public static FishLog               FishLog         { get; private set; } = null!;
-    public static EventFramework        EventFramework  { get; private set; } = null!;
-    public static CurrentBait           CurrentBait     { get; private set; } = null!;
-    public static SeTugType             TugType         { get; private set; } = null!;
-    public static WaymarkManager        WaymarkManager  { get; private set; } = null!;
-    public static AutoGather.AutoGather AutoGather      { get; private set; } = null!;
+    public static WeatherManager WeatherManager { get; private set; } = null!;
+    public static UptimeManager UptimeManager { get; private set; } = null!;
+    public static FishLog FishLog { get; private set; } = null!;
+    public static EventFramework EventFramework { get; private set; } = null!;
+    public static CurrentBait CurrentBait { get; private set; } = null!;
+    public static SeTugType TugType { get; private set; } = null!;
+    public static WaymarkManager WaymarkManager { get; private set; } = null!;
+    public static AutoGather.AutoGather AutoGather { get; private set; } = null!;
     public static AutoHookIntegration.BiteTimerService BiteTimerService { get; private set; } = null!;
     public static AutoGather.Collectables.CollectableManager CollectableManager { get; private set; } = null!;
     public static Crafting.CraftingListManager CraftingListManager { get; private set; } = null!;
@@ -83,28 +76,28 @@ public partial class GatherBuddy : IDalamudPlugin
     public static Gui.VendorBuyListWindow? VendorBuyListWindow { get; private set; }
     public static Gui.CollectablesWindow? CollectablesWindow { get; private set; }
     internal static Gui.NativeItemTooltipBridge? NativeItemTooltipBridge { get; private set; }
-    public static ControllerSupportManager?      ControllerSupport      { get; private set; }
-    public static MarketboardService?             MarketboardService     { get; private set; }
-    public static Vulcan.Vendors.VendorNavigator  VendorNavigator        { get; private set; } = null!;
+    public static ControllerSupportManager? ControllerSupport { get; private set; }
+    public static MarketboardService? MarketboardService { get; private set; }
+    public static Vulcan.Vendors.VendorNavigator VendorNavigator { get; private set; } = null!;
     public static Vulcan.Vendors.VendorPurchaseManager VendorPurchaseManager { get; private set; } = null!;
     public static Vulcan.Vendors.VendorBuyListManager VendorBuyListManager { get; private set; } = null!;
 
     internal readonly GatherGroup.GatherGroupManager GatherGroupManager;
-    internal readonly LocationManager                LocationManager;
-    internal readonly AlarmManager                   AlarmManager;
-    internal readonly GatherWindowManager            GatherWindowManager;
-    internal readonly AutoGatherListsManager         AutoGatherListsManager;
-    internal readonly WindowSystem                   WindowSystem;
-    internal readonly Interface                      Interface;
-    internal readonly Executor                       Executor;
-    internal readonly ContextMenu                    ContextMenu;
-    internal readonly FishRecorder                   FishRecorder;
-    internal VulcanWindow?                           _vulcanWindow;
-    internal Gui.CraftingStatusWindow?               _craftingStatusWindow;
-    internal Gui.CraftingMaterialsWindow?            _craftingMaterialsWindow;
-    internal Gui.CraftingTreeWindow?                 _craftingTreeWindow;
-    internal Gui.VendorBuyListWindow?                _vendorBuyListWindow;
-    internal Gui.CollectablesWindow?                 _collectablesWindow;
+    internal readonly LocationManager LocationManager;
+    internal readonly AlarmManager AlarmManager;
+    internal readonly GatherWindowManager GatherWindowManager;
+    internal readonly AutoGatherListsManager AutoGatherListsManager;
+    internal readonly WindowSystem WindowSystem;
+    internal readonly Interface Interface;
+    internal readonly Executor Executor;
+    internal readonly ContextMenu ContextMenu;
+    internal readonly FishRecorder FishRecorder;
+    internal VulcanWindow? _vulcanWindow;
+    internal Gui.CraftingStatusWindow? _craftingStatusWindow;
+    internal Gui.CraftingMaterialsWindow? _craftingMaterialsWindow;
+    internal Gui.CraftingTreeWindow? _craftingTreeWindow;
+    internal Gui.VendorBuyListWindow? _vendorBuyListWindow;
+    internal Gui.CollectablesWindow? _collectablesWindow;
 
     internal readonly GatherBuddyIpc Ipc;
     //    internal readonly WotsitIpc Wotsit;
@@ -115,35 +108,37 @@ public partial class GatherBuddy : IDalamudPlugin
         {
             Dalamud.Initialize(pluginInterface);
             Icons.Init(Dalamud.GameData, Dalamud.Textures);
-            Log     = new Logger();
+            Log = new Logger();
             Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
             Backup.CreateAutomaticBackup(Log, pluginInterface.ConfigDirectory, GatherBuddyBackupFiles());
-            Config   = Configuration.Load();
+            Config = Configuration.Load();
             Language = Dalamud.ClientState.ClientLanguage;
             GameData = new GameData(Dalamud.GameData, Log, WorldData.WorldLocationsByNodeId, "fish_overrides.json");
-            Time     = new SeTime();
+            Time = new SeTime();
 
             WaymarkManager = new WaymarkManager();
 
-            WeatherManager         = new WeatherManager(GameData);
-            UptimeManager          = new UptimeManager(GameData);
-            var sigScannerWrapper  = new SigScannerWrapper(Dalamud.Interop);
-            try { FishLog = new FishLog(sigScannerWrapper, Dalamud.GameData); }
+            WeatherManager = new WeatherManager(GameData);
+            UptimeManager = new UptimeManager(GameData);
+            var sigScannerWrapper = new SigScannerWrapper(Dalamud.Interop);
+            try
+            { FishLog = new FishLog(sigScannerWrapper, Dalamud.GameData); }
             catch (Exception e) { Log.Warning($"Failed to initialize FishLog: {e.Message}"); FishLog = null!; }
-            EventFramework         = new EventFramework();
-            CurrentBait           = new CurrentBait();
-            try { TugType = new SeTugType(sigScannerWrapper); }
+            EventFramework = new EventFramework();
+            CurrentBait = new CurrentBait();
+            try
+            { TugType = new SeTugType(sigScannerWrapper); }
             catch (Exception e) { Log.Warning($"Failed to initialize TugType: {e.Message}"); TugType = null!; }
-            Executor               = new Executor(this);
-            ContextMenu            = new ContextMenu(this, Dalamud.ContextMenu, Executor);
-            GatherGroupManager     = GatherGroup.GatherGroupManager.Load();
-            LocationManager        = LocationManager.Load();
-            AlarmManager           = AlarmManager.Load();
+            Executor = new Executor(this);
+            ContextMenu = new ContextMenu(this, Dalamud.ContextMenu, Executor);
+            GatherGroupManager = GatherGroup.GatherGroupManager.Load();
+            LocationManager = LocationManager.Load();
+            AlarmManager = AlarmManager.Load();
             AutoGatherListsManager = AutoGatherListsManager.Load();
-            GatherWindowManager    = GatherWindowManager.Load(AlarmManager);
+            GatherWindowManager = GatherWindowManager.Load(AlarmManager);
             AlarmManager.ForceEnable();
-            CraftingListManager   = new Crafting.CraftingListManager();
-            MarketboardService    = new MarketboardService();
+            CraftingListManager = new Crafting.CraftingListManager();
+            MarketboardService = new MarketboardService();
             RaphaelSolveCoordinator = new Crafting.RaphaelSolveCoordinator(Config.RaphaelSolverConfig);
             RecipeBrowserSettings = new Crafting.RecipeBrowserSettings();
             RecipeBrowserSettings.Load();
@@ -153,7 +148,7 @@ public partial class GatherBuddy : IDalamudPlugin
             CraftingGameInterop.Initialize();
             CraftingGatherBridge.Initialize(this);
             CraftingGameInterop.CraftFinished += (recipe, cancelled) => CraftingGatherBridge.OnCraftFinished(recipe, cancelled);
-            
+
             Task.Run(() =>
             {
                 try
@@ -171,12 +166,12 @@ public partial class GatherBuddy : IDalamudPlugin
             FishRecorder = new FishRecorder(Dalamud.Interop);
             FishRecorder.Enable();
             BiteTimerService = new AutoHookIntegration.BiteTimerService(pluginInterface.ConfigDirectory.FullName);
-            AutoGather   = new AutoGather.AutoGather(this);
+            AutoGather = new AutoGather.AutoGather(this);
             CollectableManager = new AutoGather.Collectables.CollectableManager(Dalamud.Framework, Dalamud.Conditions, Config);
             global::GatherBuddy.AutoGather.Collectables.CollectableInventoryHelper.InitializeAsync();
             CraftingGatherBridge.BindCollectableManager(CollectableManager);
             WindowSystem = new WindowSystem(Name);
-            Interface    = new Interface(this);
+            Interface = new Interface(this);
             _vulcanWindow = new VulcanWindow();
             VulcanWindow = _vulcanWindow;
             _craftingStatusWindow = new Gui.CraftingStatusWindow();
@@ -200,10 +195,10 @@ public partial class GatherBuddy : IDalamudPlugin
             WindowSystem.AddWindow(_craftingTreeWindow);
             WindowSystem.AddWindow(_vendorBuyListWindow);
             WindowSystem.AddWindow(_collectablesWindow);
-            Dalamud.PluginInterface.UiBuilder.Draw         += DrawUi;
+            Dalamud.PluginInterface.UiBuilder.Draw += DrawUi;
             Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.Toggle;
-            Dalamud.PluginInterface.UiBuilder.OpenMainUi   += Interface.Toggle;
-            Dalamud.Framework.Update                       += Update;
+            Dalamud.PluginInterface.UiBuilder.OpenMainUi += Interface.Toggle;
+            Dalamud.Framework.Update += Update;
 
             try
             {
@@ -214,13 +209,13 @@ public partial class GatherBuddy : IDalamudPlugin
                     Dalamud.Log
                 );
                 ControllerSupport.EnableInputBlocking();
-                
+
                 // Register both windows as managed by ElliCon
                 ControllerSupport.RegisterBlockingWindow("Vulcan - Crafting###VulcanWindow");
                 ControllerSupport.RegisterBlockingWindow("Crafting Status###GatherBuddyCraftingStatus");
                 ControllerSupport.RegisterBlockingWindow(Gui.VendorBuyListWindow.WindowId);
                 ControllerSupport.RegisterBlockingWindow(Gui.CollectablesWindow.WindowId);
-                
+
                 // Start in normal mode (blocks everything when windows are focused)
                 ControllerSupport.SetBlockingMode(true, true, true);
             }
@@ -253,7 +248,7 @@ public partial class GatherBuddy : IDalamudPlugin
         }
     }
 
-    private void CheckForOGGB()
+    private static void CheckForOGGB()
     {
         var plugins = Dalamud.PluginInterface.InstalledPlugins;
         foreach (var plugin in plugins)
@@ -268,7 +263,7 @@ public partial class GatherBuddy : IDalamudPlugin
         }
     }
 
-    private int      LastObjectsLength;
+    private int LastObjectsLength;
     private DateTime LastObjectsScan = DateTime.Now;
 
     private unsafe void Update(IFramework framework)
@@ -292,12 +287,15 @@ public partial class GatherBuddy : IDalamudPlugin
                 else if (obj is IPlayerCharacter player)
                 {
                     var character = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)player.Address;
-                    if (character == null) continue;
+                    if (character == null)
+                    {
+                        continue;
+                    }
 
                     // Only add offsets if player is gathering and is not flying
                     // (I've seen glitches where the flying character would gather, let's exclude those)
                     if (character->Mode == FFXIVClientStructs.FFXIV.Client.Game.Character.CharacterModes.Gathering
-                        && character->MovementState != FFXIVClientStructs.FFXIV.Client.Game.Character.MovementStateOptions.Flying)
+                        && character->MoveController.MovementState != FFXIVClientStructs.FFXIV.Client.Game.Character.MovementStateOptions.Flying)
                     {
                         var target = player.TargetObject;
                         if (target != null && target.ObjectKind == ObjectKind.GatheringPoint)
@@ -337,10 +335,13 @@ public partial class GatherBuddy : IDalamudPlugin
         Config?.SaveIfDirty(force: true);
         MarketboardService?.Dispose();
         RaphaelSolveCoordinator?.Save();
-        if (Dalamud.Framework != null)
-            Dalamud.Framework.Update -= Update;
+        Dalamud.Framework?.Update -= Update;
+
         if (WindowSystem != null)
+        {
             Dalamud.PluginInterface.UiBuilder.Draw -= DrawUi;
+        }
+
         if (Interface != null)
         {
             Dalamud.PluginInterface.UiBuilder.OpenConfigUi -= Interface.Toggle;
@@ -372,7 +373,7 @@ public partial class GatherBuddy : IDalamudPlugin
     {
         var list = Directory.Exists(Dalamud.PluginInterface.GetPluginConfigDirectory())
             ? Dalamud.PluginInterface.ConfigDirectory.EnumerateFiles("*.*").ToList()
-            : new List<FileInfo>();
+            : [];
         list.Add(Dalamud.PluginInterface.ConfigFile);
         return list;
     }

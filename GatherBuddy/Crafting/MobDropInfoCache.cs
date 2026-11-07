@@ -1,15 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Text.Json;
-using System.Threading.Tasks;
-using GatherBuddy.Plugin;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using LuminaSupplemental.Excel.Model;
 using LuminaSupplemental.Excel.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace GatherBuddy.Crafting;
 
@@ -44,7 +43,7 @@ public sealed record MobDropMobInfo(
 public sealed record MobDropItemInfo(
     IReadOnlyList<MobDropMobInfo> Mobs)
 {
-    public static MobDropItemInfo Empty { get; } = new(Array.Empty<MobDropMobInfo>());
+    public static MobDropItemInfo Empty { get; } = new([]);
     public bool HasData => Mobs.Count > 0;
     public int MobCount => Mobs.Count;
     public int ZoneCount => Mobs
@@ -62,13 +61,13 @@ public static class MobDropInfoCache
     private const string UnknownZoneName = "Unknown zone";
     private const string OverrideResourceName = "GatherBuddy.CustomInfo.mob_drop_overrides.json";
 
-    private static Dictionary<uint, MobDropItemInfo> _dropsByItemId = new();
-    private static HashSet<uint> _dropItemIds = new();
+    private static Dictionary<uint, MobDropItemInfo> _dropsByItemId = [];
+    private static HashSet<uint> _dropItemIds = [];
     private static readonly JsonSerializerOptions OverrideSerializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,
     };
-    private static readonly object _initializeLock = new();
+    private static readonly Lock _initializeLock = new();
     private static volatile bool _initialized;
     private static volatile bool _initializing;
     private readonly record struct MobDropLinkKey(uint ItemId, uint BNpcNameId);
@@ -102,7 +101,10 @@ public static class MobDropInfoCache
     {
         EnsureInitializeStarted();
         if (!_initialized)
+        {
             return MobDropItemInfo.Empty;
+        }
+
         return _dropsByItemId.TryGetValue(itemId, out var dropInfo)
             ? dropInfo
             : MobDropItemInfo.Empty;
@@ -117,11 +119,17 @@ public static class MobDropInfoCache
     public static void EnsureInitializeStarted()
     {
         if (_initialized || _initializing)
+        {
             return;
+        }
+
         lock (_initializeLock)
         {
             if (_initialized || _initializing)
+            {
                 return;
+            }
+
             _initializing = true;
         }
         Task.Run(BuildSafe);
@@ -167,13 +175,18 @@ public static class MobDropInfoCache
             language) ?? [];
 
         if (mobDrops.Count == 0)
+        {
             return;
+        }
 
         var bNpcNameSheet = Dalamud.GameData.GetExcelSheet<BNpcName>();
         var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
         var mapSheet = Dalamud.GameData.GetExcelSheet<Map>();
         if (bNpcNameSheet == null || territorySheet == null || mapSheet == null)
+        {
             return;
+        }
+
         var overrides = LoadOverrides();
 
         var spawnsByName = BuildSpawnIndex(mobSpawns, overrides.Spawns);
@@ -189,7 +202,10 @@ public static class MobDropInfoCache
         {
             var dropKey = new MobDropLinkKey(drop.ItemId, drop.BNpcNameId);
             if (removedDrops.Contains(dropKey))
+            {
                 continue;
+            }
+
             AddDropInfo(
                 drop.ItemId,
                 drop.BNpcNameId,
@@ -254,9 +270,15 @@ public static class MobDropInfoCache
     {
         var spawnsByName = new Dictionary<uint, List<MobDropSpawnPoint>>();
         foreach (var spawn in mobSpawns)
+        {
             AddSpawn(spawnsByName, spawn.BNpcNameId, spawn.TerritoryTypeId, spawn.Position);
+        }
+
         foreach (var spawn in overrideSpawns)
+        {
             AddSpawn(spawnsByName, spawn.BNpcNameId, spawn.TerritoryTypeId, new Vector3(spawn.MapX, spawn.MapY, 0f));
+        }
+
         return spawnsByName;
     }
 
@@ -267,9 +289,15 @@ public static class MobDropInfoCache
         Vector3 position)
     {
         if (bNpcNameId == 0 || territoryTypeId == 0)
+        {
             return;
+        }
+
         if (!spawnsByName.TryGetValue(bNpcNameId, out var list))
-            spawnsByName[bNpcNameId] = list = new List<MobDropSpawnPoint>();
+        {
+            spawnsByName[bNpcNameId] = list = [];
+        }
+
         list.Add(new MobDropSpawnPoint(territoryTypeId, position));
     }
 
@@ -285,26 +313,40 @@ public static class MobDropInfoCache
         HashSet<MobDropLinkKey> addedMobKeys)
     {
         if (itemId == 0 || bNpcNameId == 0)
+        {
             return;
+        }
+
         if (!bNpcNameSheet.TryGetRow(bNpcNameId, out var bNpcName))
+        {
             return;
+        }
 
         var mobName = bNpcName.Singular.ExtractText();
         if (string.IsNullOrWhiteSpace(mobName))
+        {
             return;
+        }
 
         var dropKey = new MobDropLinkKey(itemId, bNpcNameId);
         dropItemIds.Add(itemId);
         if (!addedMobKeys.Add(dropKey))
+        {
             return;
+        }
 
         spawnsByName.TryGetValue(bNpcNameId, out var spawns);
         var zones = BuildZonesForMob(spawns, territorySheet, mapSheet);
         if (zones.Count == 0)
+        {
             return;
+        }
 
         if (!dropsByItemId.TryGetValue(itemId, out var mobList))
-            dropsByItemId[itemId] = mobList = new List<MobDropMobInfo>();
+        {
+            dropsByItemId[itemId] = mobList = [];
+        }
+
         mobList.Add(new MobDropMobInfo(bNpcNameId, mobName, zones));
     }
 
@@ -314,6 +356,7 @@ public static class MobDropInfoCache
         ExcelSheet<Map> mapSheet)
     {
         if (spawns == null || spawns.Count == 0)
+        {
             return
             [
                 new MobDropZoneInfo(UnknownZoneName, 0u,
@@ -321,6 +364,7 @@ public static class MobDropInfoCache
                     new MobDropClusterInfo(1, 0, 0u, 0u, 0f, 0f),
                 ]),
             ];
+        }
 
         var zones = new List<MobDropZoneInfo>();
         foreach (var territoryGroup in spawns
@@ -329,7 +373,10 @@ public static class MobDropInfoCache
         {
             var territoryTypeId = territoryGroup.Key;
             if (!ShouldDisplayTerritory(territoryTypeId, territorySheet))
+            {
                 continue;
+            }
+
             var zoneName = ResolveZoneName(territoryTypeId, territorySheet);
             var mapRowId = 0u;
             Map? mapRow = null;
@@ -354,14 +401,24 @@ public static class MobDropInfoCache
         ExcelSheet<TerritoryType> territorySheet)
     {
         if (territoryTypeId == 0)
+        {
             return true;
+        }
+
         if (!territorySheet.TryGetRow(territoryTypeId, out var territory))
+        {
             return true;
+        }
+
         if (territory.ContentFinderCondition.RowId != 0)
+        {
             return false;
+        }
 
         if (territory.QuestBattle.RowId != 0)
+        {
             return false;
+        }
 
         return true;
     }
@@ -402,7 +459,10 @@ public static class MobDropInfoCache
         }
 
         if (clusters.Count == 0)
+        {
             clusters.Add(new MobDropClusterInfo(1, positions.Count, territoryTypeId, mapRow?.RowId ?? 0u, 0f, 0f));
+        }
+
         return clusters;
     }
 
@@ -422,7 +482,10 @@ public static class MobDropInfoCache
             {
                 var distanceSquared = DistanceSquared2D(centroids[i], position);
                 if (distanceSquared > ClusterMergeDistanceSquared || distanceSquared >= bestDistanceSquared)
+                {
                     continue;
+                }
+
                 bestIndex = i;
                 bestDistanceSquared = distanceSquared;
             }
@@ -438,32 +501,41 @@ public static class MobDropInfoCache
             centroids[bestIndex] = AveragePosition(clusters[bestIndex]);
         }
 
-        return clusters
+        return [.. clusters
             .Select((points, index) => (Points: points, Centroid: centroids[index]))
             .OrderByDescending(cluster => cluster.Points.Count)
             .ThenBy(cluster => cluster.Centroid.X)
             .ThenBy(cluster => cluster.Centroid.Y)
-            .Select(cluster => cluster.Points)
-            .ToList();
+            .Select(cluster => cluster.Points)];
     }
 
     private static Vector2 AveragePosition(IReadOnlyList<Vector2> points)
     {
         if (points.Count == 0)
+        {
             return Vector2.Zero;
+        }
 
         var total = Vector2.Zero;
         for (var i = 0; i < points.Count; i++)
+        {
             total += points[i];
+        }
+
         return total / points.Count;
     }
 
     private static Vector2 GetRepresentativePoint(IReadOnlyList<Vector2> points)
     {
         if (points.Count == 0)
+        {
             return Vector2.Zero;
+        }
+
         if (points.Count == 1)
+        {
             return points[0];
+        }
 
         var bestPoint = points[0];
         var bestScore = double.PositiveInfinity;
@@ -471,9 +543,15 @@ public static class MobDropInfoCache
         {
             var score = 0d;
             for (var j = 0; j < points.Count; j++)
+            {
                 score += DistanceSquared2D(points[i], points[j]);
+            }
+
             if (score >= bestScore)
+            {
                 continue;
+            }
+
             bestScore = score;
             bestPoint = points[i];
         }
@@ -485,18 +563,23 @@ public static class MobDropInfoCache
     {
         var deltaX = left.X - right.X;
         var deltaY = left.Y - right.Y;
-        return (deltaX * deltaX) + (deltaY * deltaY);
+        return deltaX * deltaX + deltaY * deltaY;
     }
 
     private static string ResolveZoneName(uint territoryTypeId, ExcelSheet<TerritoryType> territorySheet)
     {
         if (territoryTypeId == 0)
+        {
             return UnknownZoneName;
+        }
+
         if (territorySheet.TryGetRow(territoryTypeId, out var territory))
         {
             var zoneName = territory.PlaceName.ValueNullable?.Name.ExtractText() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(zoneName))
+            {
                 return zoneName;
+            }
         }
 
         return $"Territory {territoryTypeId}";
@@ -505,15 +588,22 @@ public static class MobDropInfoCache
     private static NormalizedSpawnPoint? NormalizeSpawnPosition(Vector3 position, Map? mapRow)
     {
         if (IsLikelyValidMapCoordinate(position.X) && IsLikelyValidMapCoordinate(position.Y))
+        {
             return new NormalizedSpawnPoint(new Vector2(position.X, position.Y));
+        }
 
         if (!mapRow.HasValue)
+        {
             return null;
+        }
 
         var mapX = ConvertWorldCoordToMapCoord(position.X, mapRow.Value.SizeFactor, mapRow.Value.OffsetX);
         var mapY = ConvertWorldCoordToMapCoord(position.Z, mapRow.Value.SizeFactor, mapRow.Value.OffsetY);
         if (!IsLikelyValidMapCoordinate(mapX) || !IsLikelyValidMapCoordinate(mapY))
+        {
             return null;
+        }
+
         return new NormalizedSpawnPoint(new Vector2(mapX, mapY));
     }
 
@@ -525,7 +615,7 @@ public static class MobDropInfoCache
         const double factor = 0.019999999552965164d;
         return sizeFactor == 0
             ? 0f
-            : (float)((factor * offset) + (2048.0d / sizeFactor) + (factor * worldCoord) + 1.0d);
+            : (float)(factor * offset + 2048.0d / sizeFactor + factor * worldCoord + 1.0d);
     }
 
     private readonly record struct NormalizedSpawnPoint(Vector2 Coordinates);

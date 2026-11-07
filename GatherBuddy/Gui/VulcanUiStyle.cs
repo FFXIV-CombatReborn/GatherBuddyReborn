@@ -1,6 +1,6 @@
+using Dalamud.Bindings.ImGui;
 using System;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
 
 namespace GatherBuddy.Gui;
 
@@ -64,7 +64,9 @@ internal static class VulcanUiStyle
                 _styleCount = 0;
             }
             if (_colorCount <= 0)
+            {
                 return;
+            }
 
             ImGui.PopStyleColor(_colorCount);
             _colorCount = 0;

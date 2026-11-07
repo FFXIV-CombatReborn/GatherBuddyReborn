@@ -1,19 +1,18 @@
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using FFXIVClientStructs.FFXIV.Client.Game.Event;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using GatherBuddy.Automation;
+using Lumina.Excel;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Objects.Types;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.FFXIV.Client.Game.Event;
-using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Client.Game.Object;
-using FFXIVClientStructs.FFXIV.Client.UI;
-using FFXIVClientStructs.FFXIV.Client.UI.Agent;
-using GatherBuddy.Automation;
-using GatherBuddy.Plugin;
-using Lumina.Excel;
-using Lumina.Excel.Sheets;
 using DalamudObjectKind = global::Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
@@ -34,13 +33,14 @@ public static class VendorInteractionHelper
         typeof(PreHandler),
         typeof(CustomTalk),
     ];
+    private static readonly int CustomTalkScriptTypeHash = RowRef.CreateTypeHash(CustomTalkScriptTypes);
     private readonly record struct ShopMenuSelectionKey(uint NpcId, VendorMenuShopType ShopType, uint ShopId);
     private sealed class ShopMenuSelectionState(IReadOnlyList<int> menuIndices)
     {
         public IReadOnlyList<int> MenuIndices { get; } = menuIndices;
         public int NextStepIndex { get; set; }
     }
-    private static readonly Dictionary<ShopMenuSelectionKey, ShopMenuSelectionState> ShopMenuSelectionStates = new();
+    private static readonly Dictionary<ShopMenuSelectionKey, ShopMenuSelectionState> ShopMenuSelectionStates = [];
 
     public static bool IsReadyToLeaveVendor()
         => GetVendorExitBlocker() == null;
@@ -48,80 +48,134 @@ public static class VendorInteractionHelper
     public static unsafe string? GetVendorExitBlocker()
     {
         if (IsAddonVisible("Shop"))
+        {
             return "Shop addon still open";
+        }
+
         if (IsAddonVisible("InclusionShop"))
+        {
             return "InclusionShop addon still open";
+        }
+
         if (IsAddonVisible("GrandCompanyExchange"))
+        {
             return "GrandCompanyExchange addon still open";
+        }
 
         if (IsAddonVisible("ShopExchangeItemDialog"))
+        {
             return "ShopExchangeItemDialog still open";
+        }
 
         if (IsAddonVisible("ShopExchangeCurrencyDialog"))
+        {
             return "ShopExchangeCurrencyDialog still open";
+        }
 
         if (IsAddonVisible("ShopExchangeCurrency"))
+        {
             return "ShopExchangeCurrency still open";
+        }
 
         if (IsAddonVisible("ShopExchangeItem"))
+        {
             return "ShopExchangeItem still open";
+        }
 
         if (IsAddonVisible("SelectString"))
+        {
             return "SelectString still open";
+        }
 
         if (IsAddonVisible("SelectIconString"))
+        {
             return "SelectIconString still open";
+        }
 
         if (IsAddonVisible("Talk"))
+        {
             return "Talk dialog still open";
+        }
 
         if (IsAddonVisible("SelectYesno"))
+        {
             return "SelectYesno still open";
+        }
 
         if (!GenericHelpers.IsScreenReady())
+        {
             return "screen not ready";
+        }
 
         if (global::GatherBuddy.Helpers.Player.IsAnimationLocked)
+        {
             return "player animation locked";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Occupied])
+        {
             return "Occupied";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Occupied39])
+        {
             return "Occupied39";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.OccupiedInEvent])
+        {
             return "OccupiedInEvent";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.OccupiedInQuestEvent])
+        {
             return "OccupiedInQuestEvent";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.OccupiedSummoningBell])
+        {
             return "OccupiedSummoningBell";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.BeingMoved])
+        {
             return "BeingMoved";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Casting])
+        {
             return "Casting";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Casting87])
+        {
             return "Casting87";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Jumping])
+        {
             return "Jumping";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Jumping61])
+        {
             return "Jumping61";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.LoggingOut])
+        {
             return "LoggingOut";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.Unconscious])
+        {
             return "Unconscious";
+        }
 
         if (Dalamud.Conditions[ConditionFlag.MountOrOrnamentTransition])
+        {
             return "MountOrOrnamentTransition";
+        }
 
         return null;
     }
@@ -129,15 +183,20 @@ public static class VendorInteractionHelper
     public static unsafe bool TryCloseGilShop()
     {
         if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("Shop", out var shop) || !shop->IsVisible)
+        {
             return false;
+        }
+
         shop->FireCallbackInt(-1);
         return true;
     }
 
     public static unsafe bool TryCloseInclusionShop()
     {
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         addon->Close(true);
         return true;
@@ -145,8 +204,10 @@ public static class VendorInteractionHelper
 
     public static unsafe bool TryCloseGrandCompanyExchange()
     {
-        if (!GenericHelpers.TryGetAddonByName("GrandCompanyExchange", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("GrandCompanyExchange", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         Callback.Fire(addon, true, -1);
         return true;
@@ -154,8 +215,10 @@ public static class VendorInteractionHelper
 
     public static unsafe bool TryCloseShopExchangeItem()
     {
-        if (!GenericHelpers.TryGetAddonByName("ShopExchangeItem", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("ShopExchangeItem", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         addon->Close(true);
         return true;
@@ -163,8 +226,10 @@ public static class VendorInteractionHelper
 
     public static unsafe bool TryCloseShopExchangeCurrency()
     {
-        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrency", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrency", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         addon->Close(true);
         return true;
@@ -172,8 +237,10 @@ public static class VendorInteractionHelper
 
     public static unsafe bool TryCloseShopExchangeItemDialog()
     {
-        if (!GenericHelpers.TryGetAddonByName("ShopExchangeItemDialog", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("ShopExchangeItemDialog", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         addon->Close(true);
         return true;
@@ -181,8 +248,10 @@ public static class VendorInteractionHelper
 
     public static unsafe bool TryCloseShopExchangeCurrencyDialog()
     {
-        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrencyDialog", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrencyDialog", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         addon->Close(true);
         return true;
@@ -191,7 +260,9 @@ public static class VendorInteractionHelper
     {
         var npc = FindLiveNpcObject(target);
         if (npc == null)
+        {
             return false;
+        }
 
         var targetSystem = TargetSystem.Instance();
         if (targetSystem == null)
@@ -208,7 +279,9 @@ public static class VendorInteractionHelper
     public static unsafe bool TryClickTalk()
     {
         if (!GenericHelpers.TryGetAddonByName<AddonTalk>("Talk", out var talk) || !talk->AtkUnitBase.IsVisible)
+        {
             return false;
+        }
 
         new AddonMaster.Talk((nint)talk).Click();
         return true;
@@ -224,9 +297,14 @@ public static class VendorInteractionHelper
         var iconMenuVisible = GenericHelpers.TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var iconMenu) && iconMenu->AtkUnitBase.IsVisible;
         var stringMenuVisible = GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var stringMenu) && stringMenu->AtkUnitBase.IsVisible;
         if (!iconMenuVisible && !stringMenuVisible)
+        {
             return false;
+        }
+
         if (!TryGetOrCreateShopMenuSelectionState(npcId, shopType, shopId, out var selectionState, out error))
+        {
             return false;
+        }
 
         if (selectionState.NextStepIndex >= selectionState.MenuIndices.Count)
         {
@@ -271,14 +349,18 @@ public static class VendorInteractionHelper
 
     private static unsafe bool TryConfirmShopExchangeDialog(string addonName)
     {
-        if (!GenericHelpers.TryGetAddonByName(addonName, out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName(addonName, out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         if (addonName == "ShopExchangeCurrencyDialog")
         {
             var exchangeButton = addon->GetComponentButtonById(17);
             if (exchangeButton != null && TryClickComponentButton(addon, exchangeButton))
+            {
                 return true;
+            }
         }
 
         Callback.Fire(addon, true, 0);
@@ -302,8 +384,10 @@ public static class VendorInteractionHelper
             return false;
         }
 
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var selectPage = stackalloc AtkValue[]
         {
@@ -315,11 +399,15 @@ public static class VendorInteractionHelper
         {
             var node = addon->UldManager.NodeList[index];
             if (node == null || node->Type != (NodeType)1015 || node->NodeId != 7)
+            {
                 continue;
+            }
 
             var componentNode = node->GetAsAtkComponentNode();
             if (componentNode == null || componentNode->Component == null)
+            {
                 continue;
+            }
 
             var dropdown = componentNode->GetAsAtkComponentDropdownList();
             dropdown->SelectItem(pageIndex);
@@ -339,8 +427,10 @@ public static class VendorInteractionHelper
             return false;
         }
 
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var selectSubPage = stackalloc AtkValue[]
         {
@@ -353,17 +443,21 @@ public static class VendorInteractionHelper
     public static unsafe bool TryGetVisibleInclusionShopItemIndex(uint requestedItemId, out int liveItemIndex, out string? error)
     {
         liveItemIndex = -1;
-        error         = null;
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        error = null;
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         return TryGetVisibleInclusionShopItemIndex(addon, requestedItemId, out liveItemIndex, out error);
     }
 
     public static unsafe string DescribeVisibleInclusionShopItems(int maxItems = 12)
     {
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return "unavailable";
+        }
 
         return DescribeVisibleInclusionShopItems(addon, maxItems);
     }
@@ -377,8 +471,10 @@ public static class VendorInteractionHelper
             return false;
         }
 
-        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("InclusionShop", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var selectItem = stackalloc AtkValue[]
         {
@@ -387,10 +483,14 @@ public static class VendorInteractionHelper
             new() { Type = ValueType.UInt, UInt = Math.Max(1u, quantity) },
         };
         if (!TryGetVisibleInclusionShopItemIndex(addon, requestedItemId, out var liveItemIndex, out error))
+        {
             return false;
+        }
 
         if (liveItemIndex != itemIndex)
+        {
             GatherBuddy.Log.Debug($"[VendorInteractionHelper] Remapped InclusionShop item index from stored index {itemIndex} to live index {liveItemIndex} for requested item {requestedItemId}");
+        }
 
         selectItem[1].UInt = (uint)liveItemIndex;
         addon->FireCallback(3, selectItem);
@@ -407,13 +507,13 @@ public static class VendorInteractionHelper
         }
 
         var batchQuantity = (int)Math.Max(1u, quantity);
-        if (GenericHelpers.TryGetAddonByName("ShopExchangeItem", out AtkUnitBase* itemShop) && itemShop->IsVisible)
+        if (GenericHelpers.TryGetAddonByName("ShopExchangeItem", out var itemShop) && itemShop->IsVisible)
         {
             Callback.Fire(itemShop, true, 0, itemIndex, batchQuantity, 0);
             return true;
         }
 
-        if (GenericHelpers.TryGetAddonByName("ShopExchangeCurrency", out AtkUnitBase* currencyShop) && currencyShop->IsVisible)
+        if (GenericHelpers.TryGetAddonByName("ShopExchangeCurrency", out var currencyShop) && currencyShop->IsVisible)
         {
             var liveItemIndex = FindShopExchangeCurrencyItemIndex(currencyShop, requestedItemId);
             if (liveItemIndex < 0)
@@ -423,7 +523,9 @@ public static class VendorInteractionHelper
             }
 
             if (liveItemIndex != itemIndex)
+            {
                 GatherBuddy.Log.Debug($"[VendorInteractionHelper] Remapped ShopExchangeCurrency row from stored index {itemIndex} to live index {liveItemIndex} for requested item {requestedItemId}");
+            }
 
             Callback.Fire(currencyShop, true, 0, liveItemIndex, batchQuantity, 0);
             return true;
@@ -450,8 +552,10 @@ public static class VendorInteractionHelper
         selectedQuantity = 0;
         opensCurrencyExchange = false;
         error = null;
-        if (!GenericHelpers.TryGetAddonByName("GrandCompanyExchange", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("GrandCompanyExchange", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var reader = new VendorGrandCompanyExchangeReader(addon);
         var targetItem = reader.Items.FirstOrDefault(item => item.ItemId == requestedItemId);
@@ -494,8 +598,10 @@ public static class VendorInteractionHelper
             return false;
         }
 
-        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrencyDialog", out AtkUnitBase* addon) || !addon->IsVisible)
+        if (!GenericHelpers.TryGetAddonByName("ShopExchangeCurrencyDialog", out var addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         if (addon->UldManager.NodeListCount <= 8 || addon->UldManager.NodeList[8] == null)
         {
@@ -517,10 +623,14 @@ public static class VendorInteractionHelper
     public static unsafe bool TryConfirmPurchase()
     {
         if (TryConfirmShopExchangeDialog("ShopExchangeItemDialog"))
+        {
             return true;
+        }
 
         if (TryConfirmShopExchangeDialog("ShopExchangeCurrencyDialog"))
+        {
             return true;
+        }
 
         return TryConfirmYesNo();
     }
@@ -530,10 +640,14 @@ public static class VendorInteractionHelper
         if (!GenericHelpers.TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addon)
          || !addon->AtkUnitBase.IsVisible
          || addon->YesButton == null)
+        {
             return false;
+        }
 
         if (TryCheckSelectYesnoConfirmationBox(addon))
+        {
             return true;
+        }
 
         new AddonMaster.SelectYesno((nint)addon).Yes();
         return true;
@@ -542,24 +656,39 @@ public static class VendorInteractionHelper
     public static unsafe bool TryExitVendorInteraction()
     {
         if (TryCloseShopExchangeItemDialog())
+        {
             return true;
+        }
+
         if (TryCloseShopExchangeCurrencyDialog())
+        {
             return true;
+        }
 
         if (TryCloseShopExchangeItem())
+        {
             return true;
+        }
 
         if (TryCloseShopExchangeCurrency())
+        {
             return true;
+        }
 
         if (TryCloseGrandCompanyExchange())
+        {
             return true;
+        }
 
         if (TryCloseInclusionShop())
+        {
             return true;
+        }
 
         if (TryCloseGilShop())
+        {
             return true;
+        }
 
         if (GenericHelpers.TryGetAddonByName<AddonSelectString>("SelectString", out var stringMenu) && stringMenu->AtkUnitBase.IsVisible)
         {
@@ -609,7 +738,9 @@ public static class VendorInteractionHelper
     {
         selectionState.NextStepIndex++;
         if (selectionState.NextStepIndex >= selectionState.MenuIndices.Count)
+        {
             ShopMenuSelectionStates.Remove(new ShopMenuSelectionKey(npcId, shopType, shopId));
+        }
     }
 
     private static bool TryBuildShopMenuSelectionPath(uint npcId, VendorMenuShopType shopType, uint shopId, out List<int> menuIndices)
@@ -617,9 +748,11 @@ public static class VendorInteractionHelper
         menuIndices = [];
         var npcSheet = Dalamud.GameData.GetExcelSheet<ENpcBase>();
         if (npcSheet == null || !npcSheet.TryGetRow(npcId, out var npc))
+        {
             return false;
+        }
 
-        return TryBuildShopMenuSelectionPath(npcId, npc.ENpcData.ToList(), shopType, shopId, out menuIndices);
+        return TryBuildShopMenuSelectionPath(npcId, [.. npc.ENpcData], shopType, shopId, out menuIndices);
     }
 
     private static bool TryBuildShopMenuSelectionPath(uint npcId, IReadOnlyList<RowRef> menuEntries, VendorMenuShopType shopType, uint shopId, out List<int> menuIndices)
@@ -628,11 +761,12 @@ public static class VendorInteractionHelper
         for (var index = 0; index < menuEntries.Count; index++)
         {
             if (!TryBuildShopMenuSelectionPath(npcId, menuEntries[index], shopType, shopId, out var childMenuIndices))
+            {
                 continue;
+            }
 
             var visibleIndex = GetVisibleMenuSelectionIndex(npcId, menuEntries, index, visibleMenuRowIds);
-            menuIndices = new List<int>(childMenuIndices.Count + 1) { visibleIndex };
-            menuIndices.AddRange(childMenuIndices);
+            menuIndices = [visibleIndex, .. childMenuIndices];
             return true;
         }
 
@@ -644,32 +778,47 @@ public static class VendorInteractionHelper
     {
         menuIndices = [];
         if (menuEntry.RowId == 0)
+        {
             return false;
+        }
 
         if (MatchesMenuTarget(npcId, menuEntry, shopType, shopId))
+        {
             return true;
+        }
 
         var preHandlerSheet = Dalamud.GameData.GetExcelSheet<PreHandler>();
         if (menuEntry.Is<PreHandler>() && preHandlerSheet != null && preHandlerSheet.TryGetRow(menuEntry.RowId, out var preHandler))
+        {
             return TryBuildShopMenuSelectionPath(npcId, preHandler.Target, shopType, shopId, out menuIndices);
+        }
 
         var topicSelectSheet = Dalamud.GameData.GetExcelSheet<TopicSelect>();
         if (menuEntry.Is<TopicSelect>() && topicSelectSheet != null && topicSelectSheet.TryGetRow(menuEntry.RowId, out var topicSelect))
-            return TryBuildShopMenuSelectionPath(npcId, topicSelect.Shop.ToList(), shopType, shopId, out menuIndices);
+        {
+            return TryBuildShopMenuSelectionPath(npcId, [.. topicSelect.Shop], shopType, shopId, out menuIndices);
+        }
 
         var customTalkSheet = Dalamud.GameData.GetExcelSheet<CustomTalk>();
         if (menuEntry.Is<CustomTalk>() && customTalkSheet != null && customTalkSheet.TryGetRow(menuEntry.RowId, out var customTalk))
         {
             if (TryBuildShopMenuSelectionPath(npcId, customTalk.SpecialLinks, shopType, shopId, out menuIndices))
+            {
                 return true;
+            }
 
             foreach (var scriptEntry in customTalk.Script)
             {
                 if (!TryResolveCustomTalkScriptArg(scriptEntry.ScriptArg, out var scriptTarget))
+                {
                     continue;
+                }
 
                 if (!TryBuildShopMenuSelectionPath(npcId, scriptTarget, shopType, shopId, out menuIndices))
+                {
                     continue;
+                }
+
                 return true;
             }
         }
@@ -680,44 +829,54 @@ public static class VendorInteractionHelper
     private static bool MatchesMenuTarget(uint npcId, RowRef menuEntry, VendorMenuShopType shopType, uint shopId)
         => shopType switch
         {
-            VendorMenuShopType.GilShop               => menuEntry.RowId == shopId && menuEntry.Is<GilShop>(),
-            VendorMenuShopType.SpecialShop           => MatchesSpecialShopMenuTarget(npcId, menuEntry, shopId),
-            VendorMenuShopType.InclusionShop         => menuEntry.RowId == shopId && menuEntry.Is<InclusionShop>(),
-            VendorMenuShopType.CollectablesShop      => menuEntry.RowId == shopId && menuEntry.Is<CollectablesShop>(),
-            VendorMenuShopType.GrandCompanyShop      => menuEntry.RowId == shopId && menuEntry.Is<GCShop>(),
+            VendorMenuShopType.GilShop => menuEntry.RowId == shopId && menuEntry.Is<GilShop>(),
+            VendorMenuShopType.SpecialShop => MatchesSpecialShopMenuTarget(npcId, menuEntry, shopId),
+            VendorMenuShopType.InclusionShop => menuEntry.RowId == shopId && menuEntry.Is<InclusionShop>(),
+            VendorMenuShopType.CollectablesShop => menuEntry.RowId == shopId && menuEntry.Is<CollectablesShop>(),
+            VendorMenuShopType.GrandCompanyShop => menuEntry.RowId == shopId && menuEntry.Is<GCShop>(),
             VendorMenuShopType.FreeCompanyCreditShop => menuEntry.RowId == shopId && menuEntry.Is<FccShop>(),
-            _                                        => false,
+            _ => false,
         };
 
     private static bool MatchesSpecialShopMenuTarget(uint npcId, RowRef menuEntry, uint shopId)
     {
         if (menuEntry.RowId == shopId && menuEntry.Is<SpecialShop>())
+        {
             return true;
+        }
 
         var fateShopSheet = Dalamud.GameData.GetExcelSheet<FateShop>();
         if (menuEntry.Is<FateShop>())
+        {
             return fateShopSheet != null
                 && fateShopSheet.TryGetRow(menuEntry.RowId, out var fateShop)
                 && fateShop.SpecialShop.Any(specialShop => specialShop.RowId == shopId);
+        }
+
         if (menuEntry.RowId != npcId || fateShopSheet == null || !fateShopSheet.TryGetRow(menuEntry.RowId, out var npcFateShop))
+        {
             return false;
+        }
 
         var matched = npcFateShop.SpecialShop.Any(specialShop => specialShop.RowId == shopId);
         if (matched)
+        {
             GatherBuddy.Log.Debug($"[VendorInteractionHelper] Matched special shop {shopId} via untyped FateShop row {menuEntry.RowId} for vendor {npcId}");
+        }
+
         return matched;
     }
 
     private static string DescribeMenuShopType(VendorMenuShopType shopType)
         => shopType switch
         {
-            VendorMenuShopType.GilShop               => "gil-shop",
-            VendorMenuShopType.SpecialShop           => "special-shop",
-            VendorMenuShopType.InclusionShop         => "inclusion-shop",
-            VendorMenuShopType.CollectablesShop      => "collectables-shop",
-            VendorMenuShopType.GrandCompanyShop      => "grand-company shop",
+            VendorMenuShopType.GilShop => "gil-shop",
+            VendorMenuShopType.SpecialShop => "special-shop",
+            VendorMenuShopType.InclusionShop => "inclusion-shop",
+            VendorMenuShopType.CollectablesShop => "collectables-shop",
+            VendorMenuShopType.GrandCompanyShop => "grand-company shop",
             VendorMenuShopType.FreeCompanyCreditShop => "free-company shop",
-            _                                        => "vendor",
+            _ => "vendor",
         };
 
     private static unsafe bool TryGetVisibleMenuRowIds(uint npcId, IReadOnlyList<RowRef> menuEntries, out List<uint> visibleMenuRowIds)
@@ -728,31 +887,43 @@ public static class VendorInteractionHelper
             .Select(entry => entry.RowId)
             .ToHashSet();
         if (candidateRowIds.Count == 0)
+        {
             return false;
+        }
 
         var eventFramework = EventFramework.Instance();
         if (eventFramework == null)
+        {
             return false;
+        }
 
         var relatedRowIds = new HashSet<uint>();
         foreach (var eventHandler in eventFramework->EventHandlerModule.EventHandlerMap)
         {
             if (eventHandler.Item2.Value == null || !candidateRowIds.Contains(eventHandler.Item1))
+            {
                 continue;
+            }
 
             if (!IsEventHandlerRelatedToNpc(eventHandler.Item2.Value, npcId))
+            {
                 continue;
+            }
 
             relatedRowIds.Add(eventHandler.Item1);
         }
 
         if (relatedRowIds.Count == 0)
+        {
             return false;
+        }
 
         foreach (var menuEntry in menuEntries)
         {
             if (IsSelectableMenuEntry(npcId, menuEntry) && relatedRowIds.Contains(menuEntry.RowId))
+            {
                 visibleMenuRowIds.Add(menuEntry.RowId);
+            }
         }
 
         return visibleMenuRowIds.Count > 0;
@@ -763,26 +934,35 @@ public static class VendorInteractionHelper
         foreach (var eventObject in eventHandler->EventObjects)
         {
             if (eventObject.Value != null && eventObject.Value->BaseId == npcId)
+            {
                 return true;
+            }
         }
 
         return false;
     }
 
-    private static int GetVisibleMenuSelectionIndex(uint npcId, IReadOnlyList<RowRef> menuEntries, int rawIndex, IReadOnlyList<uint>? visibleMenuRowIds)
+    private static int GetVisibleMenuSelectionIndex(uint npcId, IReadOnlyList<RowRef> menuEntries, int rawIndex, List<uint>? visibleMenuRowIds)
     {
         var visibleFallbackIndex = CountSelectableMenuEntriesBefore(npcId, menuEntries, rawIndex);
         if (visibleMenuRowIds == null || visibleMenuRowIds.Count == 0 || rawIndex < 0 || rawIndex >= menuEntries.Count)
+        {
             return visibleFallbackIndex;
+        }
 
         var rowId = menuEntries[rawIndex].RowId;
         for (var index = 0; index < visibleMenuRowIds.Count; index++)
         {
             if (visibleMenuRowIds[index] != rowId)
+            {
                 continue;
+            }
 
             if (index != visibleFallbackIndex)
+            {
                 GatherBuddy.Log.Debug($"[VendorInteractionHelper] Remapped menu row {rowId} from slot-based index {visibleFallbackIndex} to visible index {index}");
+            }
+
             return index;
         }
 
@@ -795,7 +975,9 @@ public static class VendorInteractionHelper
         for (var index = 0; index < exclusiveUpperBound; index++)
         {
             if (IsSelectableMenuEntry(npcId, menuEntries[index]))
+            {
                 count++;
+            }
         }
 
         return count;
@@ -819,11 +1001,19 @@ public static class VendorInteractionHelper
     private static bool IsNpcScopedFateShopMenuEntry(uint npcId, RowRef menuEntry)
     {
         if (menuEntry.RowId == 0)
+        {
             return false;
+        }
+
         if (menuEntry.Is<FateShop>())
+        {
             return true;
+        }
+
         if (menuEntry.RowId != npcId)
+        {
             return false;
+        }
 
         var fateShopSheet = Dalamud.GameData.GetExcelSheet<FateShop>();
         return fateShopSheet != null && fateShopSheet.TryGetRow(menuEntry.RowId, out _);
@@ -833,15 +1023,18 @@ public static class VendorInteractionHelper
     {
         scriptTarget = default;
         if (scriptArg == 0)
+        {
             return false;
+        }
 
-        var typeHash = RowRef.CreateTypeHash(CustomTalkScriptTypes);
+#pragma warning disable CA1857
         scriptTarget = RowRef.GetFirstValidRowOrUntyped(
             Dalamud.GameData.Excel,
             scriptArg,
             CustomTalkScriptTypes,
-            typeHash,
+            CustomTalkScriptTypeHash,
             Dalamud.GameData.GameData.Options.DefaultExcelLanguage);
+#pragma warning restore CA1857
         return scriptTarget.RowId != 0;
     }
 
@@ -852,11 +1045,15 @@ public static class VendorInteractionHelper
         foreach (var obj in Dalamud.Objects)
         {
             if (obj.ObjectKind != DalamudObjectKind.EventNpc || obj.BaseId != target.NpcId || !obj.IsTargetable)
+            {
                 continue;
+            }
 
             var distance = Vector3.DistanceSquared(obj.Position, target.Position);
             if (distance >= bestDistance)
+            {
                 continue;
+            }
 
             bestDistance = distance;
             bestObject = obj;
@@ -875,14 +1072,16 @@ public static class VendorInteractionHelper
     private static unsafe uint ReadAtkUInt(AtkUnitBase* addon, int index)
     {
         if (addon == null || index < 0 || index >= addon->AtkValuesCount)
+        {
             return 0;
+        }
 
         var value = addon->AtkValues[index];
         return value.Type switch
         {
             ValueType.UInt => value.UInt,
-            ValueType.Int  => (uint)Math.Max(0, value.Int),
-            _              => 0,
+            ValueType.Int => (uint)Math.Max(0, value.Int),
+            _ => 0,
         };
     }
 
@@ -890,17 +1089,26 @@ public static class VendorInteractionHelper
     {
         var checkbox = addon->ConfirmCheckBox;
         if (checkbox == null || checkbox->AtkResNode == null || !checkbox->AtkResNode->IsVisible() || checkbox->IsChecked)
+        {
             return false;
+        }
+
         if (!checkbox->IsEnabled)
+        {
             return false;
+        }
 
         var checkboxNode = checkbox->OwnerNode;
         if (checkboxNode == null)
+        {
             return false;
+        }
 
         var eventPointer = checkboxNode->AtkResNode.AtkEventManager.Event;
         if (eventPointer == null)
+        {
             return false;
+        }
 
         var atkEvent = (AtkEvent*)eventPointer;
         var data = stackalloc AtkEventData[1];
@@ -914,7 +1122,9 @@ public static class VendorInteractionHelper
     {
         error = null;
         if (!TryGetGrandCompanyTabButton(baseNodeId, tabIndex, tabType, out _, out var button, out error))
+        {
             return false;
+        }
 
         return button->IsSelected;
     }
@@ -923,10 +1133,14 @@ public static class VendorInteractionHelper
     {
         error = null;
         if (!TryGetGrandCompanyTabButton(baseNodeId, tabIndex, tabType, out var addon, out var button, out error))
+        {
             return false;
+        }
 
         if (button->IsSelected)
+        {
             return true;
+        }
 
         if (!TryClickGrandCompanyTab(addon, button))
         {
@@ -949,7 +1163,9 @@ public static class VendorInteractionHelper
         }
 
         if (!GenericHelpers.TryGetAddonByName("GrandCompanyExchange", out addon) || !addon->IsVisible)
+        {
             return false;
+        }
 
         var tabNode = addon->GetNodeById(baseNodeId + (uint)tabIndex);
         if (tabNode == null || !tabNode->IsVisible())
@@ -960,7 +1176,9 @@ public static class VendorInteractionHelper
 
         button = tabNode->GetAsAtkComponentRadioButton();
         if (button != null)
+        {
             return true;
+        }
 
         error = $"Could not find GrandCompanyExchange {tabType} tab {tabIndex + 1}.";
         return false;
@@ -969,15 +1187,21 @@ public static class VendorInteractionHelper
     private static unsafe bool TryClickGrandCompanyTab(AtkUnitBase* addon, AtkComponentRadioButton* button)
     {
         if (addon == null || button == null || !button->AtkComponentButton.IsEnabled)
+        {
             return false;
+        }
 
         var ownerNode = button->AtkComponentButton.AtkComponentBase.OwnerNode;
         if (ownerNode == null || !ownerNode->AtkResNode.IsVisible())
+        {
             return false;
+        }
 
         var eventPointer = ownerNode->AtkResNode.AtkEventManager.Event;
         if (eventPointer == null)
+        {
             return false;
+        }
 
         var atkEvent = (AtkEvent*)eventPointer;
         addon->ReceiveEvent(atkEvent->State.EventType, (int)atkEvent->Param, eventPointer);
@@ -987,15 +1211,21 @@ public static class VendorInteractionHelper
     private static unsafe bool TryClickComponentButton(AtkUnitBase* addon, AtkComponentButton* button)
     {
         if (addon == null || button == null || !button->IsEnabled)
+        {
             return false;
+        }
 
         var ownerNode = button->AtkComponentBase.OwnerNode;
         if (ownerNode == null || !ownerNode->AtkResNode.IsVisible())
+        {
             return false;
+        }
 
         var eventPointer = ownerNode->AtkResNode.AtkEventManager.Event;
         if (eventPointer == null)
+        {
             return false;
+        }
 
         var atkEvent = (AtkEvent*)eventPointer;
         addon->ReceiveEvent(atkEvent->State.EventType, (int)atkEvent->Param, eventPointer);
@@ -1009,13 +1239,18 @@ public static class VendorInteractionHelper
         {
             var atkValueItemIndex = FindShopExchangeCurrencyItemIndexFromAtkValues(addon, requestedItemId);
             if (atkValueItemIndex >= 0 && atkValueItemIndex != agentShopItemIndex)
+            {
                 GatherBuddy.Log.Debug($@"[VendorInteractionHelper] AgentShop remapped ShopExchangeCurrency row for requested item {requestedItemId} from AtkValues index {atkValueItemIndex} to live agent index {agentShopItemIndex}");
+            }
+
             return agentShopItemIndex;
         }
 
         var fallbackItemIndex = FindShopExchangeCurrencyItemIndexFromAtkValues(addon, requestedItemId);
         if (fallbackItemIndex >= 0)
+        {
             return fallbackItemIndex;
+        }
 
         GatherBuddy.Log.Debug($@"[VendorInteractionHelper] Could not find requested item {requestedItemId} in ShopExchangeCurrency. AgentShop rows: {DescribeAgentShopReceiveItems()}");
         return -1;
@@ -1027,7 +1262,9 @@ public static class VendorInteractionHelper
         for (var index = 0; index < numEntries; index++)
         {
             if (ReadAtkUInt(addon, 1064 + index) == requestedItemId)
+            {
                 return (int)ReadAtkUInt(addon, 1308 + index);
+            }
         }
 
         return -1;
@@ -1036,13 +1273,17 @@ public static class VendorInteractionHelper
     private static unsafe int FindAgentShopItemIndex(uint requestedItemId)
     {
         if (!TryGetAgentShop(out var agentShop))
+        {
             return -1;
+        }
 
         var receiveItems = agentShop->ItemReceiveSpan;
         for (var index = 0; index < receiveItems.Length; index++)
         {
             if (receiveItems[index].ItemId == requestedItemId)
+            {
                 return index;
+            }
         }
 
         return -1;
@@ -1053,7 +1294,9 @@ public static class VendorInteractionHelper
         agentShop = null;
         var agentModule = AgentModule.Instance();
         if (agentModule == null)
+        {
             return false;
+        }
 
         agentShop = (AgentShop*)agentModule->GetAgentByInternalId(AgentId.Shop);
         return agentShop != null && agentShop->ItemReceive != null && agentShop->ItemReceiveCount > 0;
@@ -1062,11 +1305,15 @@ public static class VendorInteractionHelper
     private static unsafe string DescribeAgentShopReceiveItems(int maxItems = 12)
     {
         if (!TryGetAgentShop(out var agentShop))
+        {
             return "unavailable";
+        }
 
         var receiveItems = agentShop->ItemReceiveSpan;
         if (receiveItems.Length == 0)
+        {
             return "empty";
+        }
 
         var count = Math.Min(maxItems, receiveItems.Length);
         var descriptions = new List<string>(count);
@@ -1077,7 +1324,9 @@ public static class VendorInteractionHelper
         }
 
         if (receiveItems.Length > count)
+        {
             descriptions.Add($@"+{receiveItems.Length - count} more");
+        }
 
         return string.Join(", ", descriptions);
     }
@@ -1087,8 +1336,10 @@ public static class VendorInteractionHelper
         var numEntries = (int)ReadAtkUInt(addon, 298);
         for (var index = 0; index < numEntries; index++)
         {
-            if (ReadAtkUInt(addon, 300 + (index * 18)) == requestedItemId)
+            if (ReadAtkUInt(addon, 300 + index * 18) == requestedItemId)
+            {
                 return index;
+            }
         }
 
         return -1;
@@ -1097,9 +1348,11 @@ public static class VendorInteractionHelper
     private static unsafe bool TryGetVisibleInclusionShopItemIndex(AtkUnitBase* addon, uint requestedItemId, out int liveItemIndex, out string? error)
     {
         liveItemIndex = FindInclusionShopItemIndex(addon, requestedItemId);
-        error         = null;
+        error = null;
         if (liveItemIndex >= 0)
+        {
             return true;
+        }
 
         error = $"Could not find requested item {requestedItemId} in the currently visible InclusionShop rows.";
         GatherBuddy.Log.Debug($"[VendorInteractionHelper] {error} Visible rows: {DescribeVisibleInclusionShopItems(addon)}");
@@ -1110,15 +1363,21 @@ public static class VendorInteractionHelper
     {
         var numEntries = (int)ReadAtkUInt(addon, 298);
         if (numEntries <= 0)
+        {
             return "empty";
+        }
 
-        var count        = Math.Min(maxItems, numEntries);
+        var count = Math.Min(maxItems, numEntries);
         var descriptions = new List<string>(count);
         for (var index = 0; index < count; index++)
-            descriptions.Add($"{index}:{ReadAtkUInt(addon, 300 + (index * 18))}");
+        {
+            descriptions.Add($"{index}:{ReadAtkUInt(addon, 300 + index * 18)}");
+        }
 
         if (numEntries > count)
+        {
             descriptions.Add($"+{numEntries - count} more");
+        }
 
         return string.Join(", ", descriptions);
     }

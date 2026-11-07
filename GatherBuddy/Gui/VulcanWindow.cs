@@ -1,22 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Game.ClientState.GamePad;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
-using Dalamud.Interface.Colors;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using ElliLib;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using GatherBuddy.Utility;
-using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
-using ElliLib.Raii;
+using System;
+using System.Numerics;
+using System.Threading.Tasks;
 using Functions = GatherBuddy.Plugin.Functions;
 using ImRaii = ElliLib.Raii.ImRaii;
 
@@ -25,30 +16,30 @@ namespace GatherBuddy.Gui;
 public partial class VulcanWindow : Window, IDisposable
 {
     // Shared state
-    private CraftingListDefinition? _editingList  = null;
-    private CraftingListDefinition? _previewList  = null;
-    private string?                 _previewFolderPath = null;
-    private CraftingListEditor?     _listEditor   = null;
-    private bool                    _deferEditorDraw = false;
-    private bool                    _craftingListsRequestFocus = false;
-    private bool                    _recipesTabRequestFocus    = false;
-    private bool                    _vendorsTabRequestFocus    = false;
-    private uint?                   _pendingRecipeId           = null;
-    private uint?                   _pendingRecipeScrollId     = null;
-    private bool                    _openCreateListPopup = false;
-    private bool                    _openCreateFolderPopup = false;
+    private CraftingListDefinition? _editingList = null;
+    private CraftingListDefinition? _previewList = null;
+    private string? _previewFolderPath = null;
+    private CraftingListEditor? _listEditor = null;
+    private bool _deferEditorDraw = false;
+    private bool _craftingListsRequestFocus = false;
+    private bool _recipesTabRequestFocus = false;
+    private bool _vendorsTabRequestFocus = false;
+    private uint? _pendingRecipeId = null;
+    private uint? _pendingRecipeScrollId = null;
+    private bool _openCreateListPopup = false;
+    private bool _openCreateFolderPopup = false;
 
     private bool? _pendingCollapseState = null;
     private bool _wasFocusedLastFrame = false;
     private DateTime _recipesTabHotkeyAvailableAt = DateTime.MinValue;
-    
+
     // TeamCraft import state
     private static readonly Vector2 LegacyTeamCraftImportWindowSize = new(520f, 310f);
     private static readonly Vector2 DefaultTeamCraftImportWindowSize = VulcanUiScaling.Scaled(520f, 310f);
-    private bool _showTeamCraftImport    = false;
-    private string _teamCraftListName    = string.Empty;
-    private string _teamCraftFinalItems  = string.Empty;
-    private bool _teamCraftEphemeral     = false;
+    private bool _showTeamCraftImport = false;
+    private string _teamCraftListName = string.Empty;
+    private string _teamCraftFinalItems = string.Empty;
+    private bool _teamCraftEphemeral = false;
     private Vector2 _teamCraftImportWindowSize;
     private bool _teamCraftImportWindowSizeDirty;
     private const string ArtisanPluginName = "Artisan";
@@ -56,7 +47,7 @@ public partial class VulcanWindow : Window, IDisposable
     private bool? _pendingArtisanEnabledState = null;
     private DateTime _artisanToggleRequestedAt = DateTime.MinValue;
     private Task? _artisanToggleTask = null;
-    
+
     // Debug tab state
     private uint _debugSelectedJobId = 8;
     private string? _debugLastTestResult;
@@ -74,10 +65,10 @@ public partial class VulcanWindow : Window, IDisposable
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
         _teamCraftImportWindowSize = NormalizeTeamCraftImportWindowSize(GatherBuddy.Config.TeamCraftImportWindowSize);
-        
+
         CraftingGameInterop.CraftFinished += OnCraftFinished;
     }
-    
+
     private void OnCraftFinished(Recipe? recipe, bool cancelled)
     {
         if (!cancelled && recipe != null)
@@ -85,7 +76,7 @@ public partial class VulcanWindow : Window, IDisposable
             _craftedStatusDirty = true;
         }
     }
-    
+
     private void MinimizeWindow()
     {
         _pendingCollapseState = true;
@@ -99,35 +90,35 @@ public partial class VulcanWindow : Window, IDisposable
     public void OpenToMarketboard()
     {
         _pendingCollapseState = false;
-        IsOpen                = true;
-        _mbRequestFocus       = true;
+        IsOpen = true;
+        _mbRequestFocus = true;
     }
 
     public void OpenToMarketboardItem(uint itemId)
     {
         OpenToMarketboard();
-        _mbSelectedItemId   = itemId;
+        _mbSelectedItemId = itemId;
         _mbDetailLastItemId = 0;
     }
     public void OpenToRecipes()
     {
-        _pendingCollapseState   = false;
-        IsOpen                  = true;
+        _pendingCollapseState = false;
+        IsOpen = true;
         _recipesTabRequestFocus = true;
-        _pendingRecipeId        = null;
+        _pendingRecipeId = null;
     }
 
     public void OpenToRecipe(uint recipeId)
     {
         OpenToRecipes();
-        _pendingRecipeId        = recipeId;
+        _pendingRecipeId = recipeId;
         GatherBuddy.Log.Debug($"[VulcanWindow] OpenToRecipe requested for recipe {recipeId}");
     }
 
     public void OpenToVendors()
     {
-        _pendingCollapseState  = false;
-        IsOpen                 = true;
+        _pendingCollapseState = false;
+        IsOpen = true;
         _vendorsTabRequestFocus = true;
     }
 
@@ -135,9 +126,13 @@ public partial class VulcanWindow : Window, IDisposable
     {
         CraftingListDefinition? list;
         if (int.TryParse(argument, out var listId))
+        {
             list = GatherBuddy.CraftingListManager.GetListByID(listId);
+        }
         else
+        {
             list = GatherBuddy.CraftingListManager.GetListByName(argument);
+        }
 
         if (list == null)
         {
@@ -182,8 +177,10 @@ public partial class VulcanWindow : Window, IDisposable
     {
         DisposeListEditor();
         _editingList = list;
-        _listEditor = new CraftingListEditor(list);
-        _listEditor.OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); };
+        _listEditor = new CraftingListEditor(list)
+        {
+            OnStartCrafting = (l) => { StartCraftingList(l); MinimizeWindow(); }
+        };
         GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
         GatherBuddy.CraftingTreeWindow?.SetEditor(_listEditor);
         _deferEditorDraw = true;
@@ -192,7 +189,9 @@ public partial class VulcanWindow : Window, IDisposable
     internal void RefreshOpenCraftingList(int listId)
     {
         if (_editingList?.ID != listId || _listEditor == null)
+        {
             return;
+        }
 
         _listEditor.RefreshFromExternalListChange();
     }
@@ -203,7 +202,9 @@ public partial class VulcanWindow : Window, IDisposable
         var changed = ImGui.InputTextWithHint(id, hint, ref value, maxLength);
         ImGui.SetItemAllowOverlap();
         if (string.IsNullOrEmpty(value))
+        {
             return changed;
+        }
 
         var frameMin = ImGui.GetItemRectMin();
         var frameMax = ImGui.GetItemRectMax();
@@ -236,7 +237,9 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         if (clearHovered)
+        {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        }
 
         var iconColor = clearHovered
             ? ImGui.GetColorU32(ImGuiCol.Text)
@@ -251,7 +254,9 @@ public partial class VulcanWindow : Window, IDisposable
 
         ImGui.SetCursorPos(cursorPos);
         if (!clearClicked)
+        {
             return changed;
+        }
 
         value = string.Empty;
         return true;
@@ -274,7 +279,9 @@ public partial class VulcanWindow : Window, IDisposable
     public override void PreDraw()
     {
         if (!IsOpen)
+        {
             return;
+        }
 
         if (_pendingCollapseState.HasValue)
         {
@@ -283,13 +290,17 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         if (_recipesTabRequestFocus)
+        {
             ImGui.SetNextWindowFocus();
+        }
     }
 
     public override void PreOpenCheck()
     {
         if (_recipesTabHotkeyAvailableAt > DateTime.UtcNow || !Functions.CheckKeyState(GatherBuddy.Config.VulcanRecipesTabHotkey, false))
+        {
             return;
+        }
 
         _recipesTabHotkeyAvailableAt = DateTime.UtcNow.AddMilliseconds(500);
         OpenToRecipes();
@@ -299,7 +310,7 @@ public partial class VulcanWindow : Window, IDisposable
     {
         using var theme = VulcanUiStyle.PushTheme();
         GatherBuddy.ControllerSupport?.TabNavigation.Update(Dalamud.GamepadState, 10);
-        
+
         // Track window focus for controller input blocking
         var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         if (isFocused)
@@ -313,29 +324,29 @@ public partial class VulcanWindow : Window, IDisposable
             GatherBuddy.ControllerSupport?.UpdateFocusedWindow(null);
             _wasFocusedLastFrame = false;
         }
-        
+
         DrawHeader();
         ImGui.Separator();
 
-            using (var tab = ImRaii.TabBar("VulcanTabs###VulcanTabs", ImGuiTabBarFlags.None))
+        using (var tab = ImRaii.TabBar("VulcanTabs###VulcanTabs", ImGuiTabBarFlags.None))
+        {
+            if (tab)
             {
-                if (tab)
-                {
-                    DrawCraftingListsTab();
-                    DrawRecipesTab();
-                    DrawWorkshopsTab();
-                    DrawMacrosTab();
-                    DrawStandardSolverConfigTab();
-                    DrawSolutionsTab();
-                    DrawSettingsTab();
-                    DrawDebugTab();
-                    DrawMarketboardTab();
-                    DrawVendorsTab();
-                }
+                DrawCraftingListsTab();
+                DrawRecipesTab();
+                DrawWorkshopsTab();
+                DrawMacrosTab();
+                DrawStandardSolverConfigTab();
+                DrawSolutionsTab();
+                DrawSettingsTab();
+                DrawDebugTab();
+                DrawMarketboardTab();
+                DrawVendorsTab();
             }
-        
+        }
+
         _craftSettingsPopup.Draw();
-        
+
         GatherBuddy.ControllerSupport?.UpdateEndOfFrame();
     }
 
@@ -363,7 +374,9 @@ public partial class VulcanWindow : Window, IDisposable
         using (ImRaii.Disabled(!artisanInstalled || artisanToggleInProgress || artisanToggleBlocked))
         {
             if (ImGui.SmallButton($"{buttonLabel}##toggleArtisan"))
+            {
                 TryToggleArtisan(!artisanLoaded);
+            }
         }
 
         ImGui.SameLine();
@@ -380,26 +393,33 @@ public partial class VulcanWindow : Window, IDisposable
             }
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Open the shared collectables turn-in and purchase automation window.");
+        }
 
         ImGui.SameLine();
         var hasActiveCraftStatus = GatherBuddy.CraftingStatusWindow?.HasActiveQueue == true;
         using (ImRaii.Disabled(!hasActiveCraftStatus))
         {
             if (ImGui.SmallButton("Craft Status##openCraftStatus"))
+            {
                 GatherBuddy.CraftingStatusWindow?.OpenOrRestore();
+            }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
             ImGui.SetTooltip(hasActiveCraftStatus
                 ? "Reopen or restore the Craft Status window for the active crafting queue."
                 : "No active crafting queue.");
-
+        }
     }
 
     private bool UpdatePendingArtisanToggle(bool artisanInstalled, bool artisanLoaded)
     {
         if (_pendingArtisanEnabledState == null)
+        {
             return false;
+        }
 
         if (!artisanInstalled)
         {
@@ -413,7 +433,10 @@ public partial class VulcanWindow : Window, IDisposable
             var exception = _artisanToggleTask.Exception?.GetBaseException();
             GatherBuddy.Log.Error($"[VulcanWindow] Failed to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan: {exception?.Message ?? "unknown error"}");
             if (exception != null)
+            {
                 GatherBuddy.Log.Debug($"[VulcanWindow] Artisan toggle exception: {exception}");
+            }
+
             Communicator.PrintError($"Failed to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");
             ClearPendingArtisanToggle();
             return false;
@@ -435,7 +458,9 @@ public partial class VulcanWindow : Window, IDisposable
         }
 
         if ((DateTime.UtcNow - _artisanToggleRequestedAt).TotalSeconds <= ArtisanToggleTimeoutSeconds)
+        {
             return true;
+        }
 
         GatherBuddy.Log.Warning($"[VulcanWindow] Timed out waiting for Artisan to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")}.");
         Communicator.PrintError($"Timed out trying to {(_pendingArtisanEnabledState.Value ? "enable" : "disable")} Artisan.");

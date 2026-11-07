@@ -1,6 +1,6 @@
+using GatherBuddy.Crafting;
 using System;
 using System.Collections.Generic;
-using GatherBuddy.Crafting;
 
 namespace GatherBuddy.Vulcan;
 

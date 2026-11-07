@@ -1,21 +1,21 @@
-using System;
-using System.Runtime.InteropServices;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.Classes;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
+using System;
+using System.Runtime.InteropServices;
 using Action = System.Action;
 
 namespace GatherBuddy.SeFunctions;
 
 public unsafe class FishLog
 {
-    public const     uint  SpearFishIdOffset = 20000;
+    public const uint SpearFishIdOffset = 20000;
     private readonly byte* _fish;
     private readonly byte* _spearFish;
-    private readonly uint  _numFish;
-    private readonly uint  _numSpearFish;
+    private readonly uint _numFish;
+    private readonly uint _numSpearFish;
 
     private readonly byte[] _fishStore;
     private readonly byte[] _spearFishStore;
@@ -24,13 +24,13 @@ public unsafe class FishLog
 
     public FishLog(ISigScannerWrapper sigScanner, IDataManager gameData)
     {
-        _numFish      = (uint) gameData.GetExcelSheet<FishParameter>().Count;
-        _numSpearFish = (uint) gameData.GetExcelSheet<SpearfishingItem>().Count;
+        _numFish = (uint)gameData.GetExcelSheet<FishParameter>().Count;
+        _numSpearFish = (uint)gameData.GetExcelSheet<SpearfishingItem>().Count;
 
-        _fish      = PlayerState.Instance()->CaughtFishBitArray.Pointer;
+        _fish = PlayerState.Instance()->CaughtFishBitArray.Pointer;
         _spearFish = PlayerState.Instance()->CaughtSpearfishBitArray.Pointer;
 
-        _fishStore      = new byte[(_numFish + 7) / 8];
+        _fishStore = new byte[(_numFish + 7) / 8];
         _spearFishStore = new byte[(_numSpearFish + 7) / 8];
         CheckForChanges();
     }
@@ -40,7 +40,9 @@ public unsafe class FishLog
         fixed (byte* ptr2 = data)
         {
             if (Functions.MemCmpUnchecked(ptr, ptr2, num))
+            {
                 return false;
+            }
         }
 
         Marshal.Copy((IntPtr)ptr, data, 0, num);
@@ -49,9 +51,11 @@ public unsafe class FishLog
 
     public bool CheckForChanges()
     {
-        if (!CheckForChanges(_fish,      _fishStore,      _fishStore.Length)
+        if (!CheckForChanges(_fish, _fishStore, _fishStore.Length)
          && !CheckForChanges(_spearFish, _spearFishStore, _spearFishStore.Length))
+        {
             return false;
+        }
 
         Change?.Invoke();
         return true;
@@ -74,7 +78,7 @@ public unsafe class FishLog
         }
 
         var offset = spearFishId / 8;
-        var bit    = (byte)spearFishId % 8;
+        var bit = (byte)spearFishId % 8;
         return ((_spearFish[offset] >> bit) & 1) == 1;
     }
 
@@ -93,7 +97,7 @@ public unsafe class FishLog
         }
 
         var offset = fishId / 8;
-        var bit    = (byte)fishId % 8;
+        var bit = (byte)fishId % 8;
         return ((_fish[offset] >> bit) & 1) == 1;
     }
 
@@ -103,6 +107,8 @@ public unsafe class FishLog
     public void SetAllUnlocked()
     {
         for (var i = 0; i < _fishStore.Length; ++i)
+        {
             _fish[i] = 0xFF;
+        }
     }
 }

@@ -1,10 +1,8 @@
 using Dalamud.Game.Inventory;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 
 namespace GatherBuddy.AutoGather.Collectables;
@@ -20,13 +18,13 @@ public static class ItemHelper
         ];
 
         var inventoryItems = new List<GameInventoryItem>(140);
-        for (int i = 0; i < inventoriesToFetch.Length; i++)
+        for (var i = 0; i < inventoriesToFetch.Length; i++)
         {
             inventoryItems.AddRange(Dalamud.GameInventory.GetInventoryItems(inventoriesToFetch[i]));
         }
         return inventoryItems;
     }
-    
+
 
     public static unsafe int GetInventoryAndArmoryItemCount(uint itemId, bool includeEquipped = false)
     {
@@ -53,14 +51,16 @@ public static class ItemHelper
     }
     public static List<Item> GetLuminaItemsFromInventory()
     {
-        List<Item> luminaItems = new List<Item>();
+        var luminaItems = new List<Item>();
         var inventoryItems = GetCurrentInventoryItems();
-    
+
         foreach (var invItem in inventoryItems)
         {
             var luminaItem = Dalamud.GameData.GetExcelSheet<Item>().FirstOrDefault(i => i.RowId == invItem.BaseItemId);
             if (luminaItem.RowId != 0)
+            {
                 luminaItems.Add(luminaItem);
+            }
         }
         return luminaItems;
     }
@@ -68,7 +68,9 @@ public static class ItemHelper
     private static void LogInventoryManagerFallback(string message)
     {
         if ((DateTime.UtcNow - _lastInventoryManagerFallbackLogTime).TotalSeconds < 5)
+        {
             return;
+        }
 
         _lastInventoryManagerFallbackLogTime = DateTime.UtcNow;
         GatherBuddy.Log.Debug(message);

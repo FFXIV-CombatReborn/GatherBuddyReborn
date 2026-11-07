@@ -1,6 +1,6 @@
-﻿using System.Linq;
-using Dalamud.Interface.Textures;
+﻿using Dalamud.Interface.Textures;
 using GatherBuddy.Weather;
+using System.Linq;
 
 namespace GatherBuddy.Gui;
 
@@ -10,8 +10,8 @@ public partial class Interface
     {
         public const int NumWeathers = 12;
 
-        private readonly WeatherTimeline                              _timeline;
-        public readonly  (Structs.Weather, ISharedImmediateTexture)[] Weathers;
+        private readonly WeatherTimeline _timeline;
+        public readonly (Structs.Weather, ISharedImmediateTexture)[] Weathers;
 
         public string Zone
             => _timeline.Territory.Name;
@@ -19,7 +19,7 @@ public partial class Interface
         private CachedWeather(WeatherTimeline t)
         {
             _timeline = t;
-            Weathers  = new (Structs.Weather, ISharedImmediateTexture)[NumWeathers];
+            Weathers = new (Structs.Weather, ISharedImmediateTexture)[NumWeathers];
         }
 
         public void Update()
@@ -33,11 +33,11 @@ public partial class Interface
         }
 
         public static CachedWeather[] CreateWeatherCache()
-            => GatherBuddy.WeatherManager.UniqueZones.Select(t =>
+            => [.. GatherBuddy.WeatherManager.UniqueZones.Select(t =>
             {
                 var ret = new CachedWeather(t);
                 ret.Update();
                 return ret;
-            }).ToArray();
+            })];
     }
 }

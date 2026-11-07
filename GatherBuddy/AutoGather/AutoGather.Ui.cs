@@ -1,23 +1,15 @@
-using Dalamud.Game.ClientState.Objects.Enums;
-using GatherBuddy.Helpers;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Objects.Enums;
+using ElliLib;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using GatherBuddy.CustomInfo;
+using GatherBuddy.Helpers;
+using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
-using System;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Windowing;
-
-using FFXIVClientStructs.FFXIV.Client.UI;
-using GatherBuddy.CustomInfo;
-using Newtonsoft.Json;
-using ElliLib;
-using ElliLib.Raii;
 
 namespace GatherBuddy.AutoGather
 {
@@ -40,7 +32,7 @@ namespace GatherBuddy.AutoGather
             if (ImGui.Button("Import Node Offsets from Clipboard"))
             {
                 var settings = new JsonSerializerSettings();
-                var                          text    = ImGuiUtil.GetClipboardText();
+                var text = ImGuiUtil.GetClipboardText();
                 var vectors = JsonConvert.DeserializeObject<List<OffsetPair>>(text, settings) ?? [];
                 foreach (var offset in vectors)
                 {
@@ -115,7 +107,7 @@ namespace GatherBuddy.AutoGather
                         {
                             if (list == null)
                             {
-                                list                                                                           = new List<Vector3>();
+                                list = [];
                                 GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId[territoryId] = list;
                             }
 
@@ -164,21 +156,24 @@ namespace GatherBuddy.AutoGather
                         }
                         ImGui.Text(playerPosition.ToString());
                     }
-                    
+
                 }
 
                 ImGui.EndTable();
             }
         }
 
-        public unsafe static void DrawMountSelector()
+        public static unsafe void DrawMountSelector()
         {
             ImGui.PushItemWidth(200);
             var ps = PlayerState.Instance();
             var preview = Dalamud.GameData.GetExcelSheet<Mount>().First(x => x.RowId == GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId)
                 .Singular.ToString().ToProperCase();
             if (string.IsNullOrEmpty(preview))
+            {
                 preview = "Mount Roulette";
+            }
+
             if (ImGui.BeginCombo("Select Mount", preview))
             {
                 if (ImGui.Selectable("Mount Roulette", GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId == 0))

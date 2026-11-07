@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.Gui;
 
@@ -13,7 +13,9 @@ public partial class VulcanWindow
     {
         var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
         if (currentJob == requiredJobId)
+        {
             return;
+        }
 
         try
         {
@@ -43,12 +45,12 @@ public partial class VulcanWindow
     {
         var requiredJob = (uint)(recipe.CraftType.RowId + 8);
         var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
-        
+
         if (currentJob != requiredJob)
         {
             GatherBuddy.Log.Information($"[VulcanWindow] Job switch needed: {currentJob} -> {requiredJob}");
             SwitchJobIfNeeded(requiredJob);
-            
+
             var tm = GatherBuddy.AutoGather?.TaskManager;
             if (tm != null)
             {
@@ -61,10 +63,10 @@ public partial class VulcanWindow
             }
             return;
         }
-        
+
         StartCraftWithRaphaelAfterJobSwitch(recipe);
     }
-    
+
     private static void StartCraftWithRaphaelAfterJobSwitch(Recipe recipe)
     {
         var settings = GatherBuddy.RecipeBrowserSettings.Get(recipe.RowId);
@@ -79,16 +81,28 @@ public partial class VulcanWindow
         {
             GatherBuddy.Log.Debug($"[VulcanWindow] Applying recipe browser settings for {recipe.RowId}");
             if (settings.FoodItemId.HasValue)
+            {
                 GatherBuddy.Log.Debug($"  Food: {settings.FoodItemId.Value}");
+            }
+
             if (settings.MedicineItemId.HasValue)
+            {
                 GatherBuddy.Log.Debug($"  Medicine: {settings.MedicineItemId.Value}");
+            }
+
             if (settings.ManualItemId.HasValue)
+            {
                 GatherBuddy.Log.Debug($"  Manual: {settings.ManualItemId.Value}");
+            }
+
             if (settings.SquadronManualItemId.HasValue)
+            {
                 GatherBuddy.Log.Debug($"  Squadron Manual: {settings.SquadronManualItemId.Value}");
+            }
+
             GatherBuddy.Log.Debug($"  Ingredient prefs: {settings.IngredientPreferences.Count} items, UseAllNQ={settings.UseAllNQ}");
             CraftingGameInterop.SetQualityPolicy(qualityPolicy);
-            
+
             var allApplied = ConsumableChecker.ApplyConsumables(settings);
             if (!allApplied)
             {
@@ -109,7 +123,9 @@ public partial class VulcanWindow
         CraftingGameInterop.SetSelectedMacro(selectedMacroId);
         CraftingGameInterop.ReloadSolversForCraft(executionContext.EffectiveSolverMode, !executionContext.ForceProgressOnlyUnlockCraft);
         if (!string.IsNullOrEmpty(selectedMacroId))
+        {
             GatherBuddy.Log.Information($"[VulcanWindow] Using macro: {selectedMacroId}");
+        }
 
         if (!CraftingContextResolver.UsesRaphaelSolver(executionContext))
         {
@@ -202,7 +218,7 @@ public partial class VulcanWindow
                 SelectedMacroId = settings.SelectedMacroId,
                 MacroMode = settings.MacroMode,
                 SolverOverride = settings.SolverOverride,
-                IngredientPreferences = new Dictionary<uint, int>(settings.IngredientPreferences),
+                IngredientPreferences = [with(settings.IngredientPreferences)],
             };
         }
 

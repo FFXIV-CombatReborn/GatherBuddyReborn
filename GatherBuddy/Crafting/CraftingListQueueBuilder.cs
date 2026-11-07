@@ -1,6 +1,6 @@
+using Lumina.Excel.Sheets;
 using System.Collections.Generic;
 using System.Linq;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -9,12 +9,11 @@ public static class CraftingListQueueBuilder
     public static List<CraftingListItem> CreateExpandedQueue(CraftingListDefinition list, bool useRetainerCraftableAvailability = false)
         => CreateExpandedQueue(list, list.CreatePlan(useRetainerCraftableAvailability));
     public static List<CraftingListItem> CreateGroupedQueue(CraftingListPlan plan)
-        => GetRecipesInDependencyOrder(plan.Recipes, plan.OriginalRecipes)
+        => [.. GetRecipesInDependencyOrder(plan.Recipes, plan.OriginalRecipes)
             .Select(item => new CraftingListItem(item.RecipeId, item.Quantity)
             {
                 IsOriginalRecipe = item.IsOriginalRecipe,
-            })
-            .ToList();
+            })];
 
     public static List<CraftingListItem> CreateExpandedQueue(CraftingListDefinition list, CraftingListPlan plan)
     {
@@ -28,7 +27,9 @@ public static class CraftingListQueueBuilder
             var recipeOptions = list.GetRecipeOptions(recipeItem.RecipeId, isOriginal);
             var recipeData = RecipeManager.GetRecipe(recipeItem.RecipeId);
             if (!recipeData.HasValue)
+            {
                 continue;
+            }
 
             var forceQuickSynth = list.ShouldForceQuickSynth(recipeData.Value, isOriginal);
             var qualityOverrideMode = list.GetQualityOverrideMode(recipeData.Value, isOriginal);
@@ -45,7 +46,9 @@ public static class CraftingListQueueBuilder
                 queueItem.Options.Skipping = recipeOptions.Skipping;
 
                 if (isOriginal && originalItem != null)
+                {
                     queueItem.ConsumableOverrides = originalItem.ConsumableOverrides.Clone();
+                }
 
                 var craftSettings = isOriginal
                     ? originalItem?.CraftSettings
@@ -78,10 +81,14 @@ public static class CraftingListQueueBuilder
     {
         var settings = CraftingQualityPolicyResolver.BuildEffectiveSettings(recipe, sourceSettings, useAllHQByDefault, forcePreferNQ);
         if (settings == null && (effectiveMacroId != null || effectiveSolverOverride != SolverOverrideMode.Default))
+        {
             settings = new RecipeCraftSettings();
+        }
 
         if (settings == null)
+        {
             return null;
+        }
 
         settings.SelectedMacroId = effectiveMacroId;
         settings.SolverOverride = effectiveSolverOverride;
@@ -93,10 +100,12 @@ public static class CraftingListQueueBuilder
     {
         var isSpecific = settings != null
             && (settings.MacroMode == MacroOverrideMode.Specific
-                || (settings.MacroMode == MacroOverrideMode.Inherit
-                    && (!string.IsNullOrEmpty(settings.SelectedMacroId) || settings.SolverOverride != SolverOverrideMode.Default)));
+                || settings.MacroMode == MacroOverrideMode.Inherit
+                    && (!string.IsNullOrEmpty(settings.SelectedMacroId) || settings.SolverOverride != SolverOverrideMode.Default));
         if (isSpecific)
+        {
             return (settings?.SelectedMacroId, settings?.SolverOverride ?? SolverOverrideMode.Default);
+        }
 
         return isPrecraft
             ? (list.DefaultPrecraftMacroId, list.DefaultPrecraftSolverOverride)
@@ -117,7 +126,9 @@ public static class CraftingListQueueBuilder
         foreach (var jobGroup in precraftsByJob)
         {
             foreach (var recipeItem in jobGroup.ToList())
+            {
                 ProcessRecipeWithDependencies(recipeItem, precrafts, processed, sortedPrecrafts);
+            }
         }
 
         var result = new List<CraftingListItem>();
@@ -128,7 +139,9 @@ public static class CraftingListQueueBuilder
         {
             result.Add(precraft);
             if (!finalProductsByRecipeId.TryGetValue(precraft.RecipeId, out var finalProduct))
+            {
                 continue;
+            }
 
             result.Add(finalProduct);
             attachedFinalRecipeIds.Add(precraft.RecipeId);
@@ -142,7 +155,9 @@ public static class CraftingListQueueBuilder
             .ToList();
 
         foreach (var recipeItem in sortedFinalProducts)
+        {
             result.Add(recipeItem);
+        }
 
         return result;
     }
@@ -154,21 +169,29 @@ public static class CraftingListQueueBuilder
         List<CraftingListItem> result)
     {
         if (processed.Contains(recipeItem.RecipeId))
+        {
             return;
+        }
 
         var recipe = RecipeManager.GetRecipe(recipeItem.RecipeId);
         if (!recipe.HasValue)
+        {
             return;
+        }
 
         foreach (var (itemId, _) in RecipeManager.GetIngredients(recipe.Value))
         {
             var depRecipe = RecipeManager.GetRecipeForItem(itemId);
             if (!depRecipe.HasValue)
+            {
                 continue;
+            }
 
             var depItem = allRecipes.FirstOrDefault(r => r.RecipeId == depRecipe.Value.RowId && !r.IsOriginalRecipe);
             if (depItem != null)
+            {
                 ProcessRecipeWithDependencies(depItem, allRecipes, processed, result);
+            }
         }
 
         processed.Add(recipeItem.RecipeId);

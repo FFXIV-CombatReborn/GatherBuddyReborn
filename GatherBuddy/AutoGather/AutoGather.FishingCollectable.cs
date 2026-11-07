@@ -1,13 +1,8 @@
-using System;
+using GatherBuddy.Automation;
+using Lumina.Excel.Sheets;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Dalamud.Game.Text;
-using Dalamud.Utility;
-using GatherBuddy.Automation;
-using GatherBuddy.Plugin;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.AutoGather
 {
@@ -26,11 +21,15 @@ namespace GatherBuddy.AutoGather
         private unsafe bool HandleFishingCollectable()
         {
             if (!GatherBuddy.Config.AutoGatherConfig.AutoCollectablesFishing)
+            {
                 return false;
+            }
 
             var addon = SelectYesnoAddon;
             if (addon == null || !addon->IsReady)
+            {
                 return false;
+            }
 
             var master = new AddonMaster.SelectYesno(addon);
             var text = master.TextLegacy;
@@ -48,26 +47,26 @@ namespace GatherBuddy.AutoGather
                 GatherBuddy.Log.Debug($"[AutoCollectable] Not enough AtkValues ({addon->AtkValuesCount}), cannot read item ID");
                 return false;
             }
-            
+
             var itemIdEncoded = addon->AtkValues[14].UInt;
             if (itemIdEncoded < 500000)
             {
                 GatherBuddy.Log.Debug($"[AutoCollectable] Invalid encoded item ID: {itemIdEncoded}");
                 return false;
             }
-            
+
             var itemId = itemIdEncoded - 500000;
             GatherBuddy.Log.Debug($"[AutoCollectable] Extracted item ID: {itemId} (from encoded value {itemIdEncoded})");
 
             var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
             var item = itemSheet.GetRowOrDefault(itemId);
-            
+
             if (item == null || item.Value.RowId == 0)
             {
                 GatherBuddy.Log.Debug($"[AutoCollectable] Failed to find item with ID {itemId}");
                 return false;
             }
-            
+
             var itemValue = item.Value;
             if (!itemValue.IsCollectable)
             {
@@ -96,7 +95,7 @@ namespace GatherBuddy.AutoGather
                 {
                     var wksItem = Dalamud.GameData.GetExcelSheet<WKSItemInfo>().GetRow(itemValue.AdditionalData.RowId);
                     if (wksItem.RowId != 0)
-                {
+                    {
                         GatherBuddy.Log.Debug($"[AutoCollectable] Accepting [{itemValue.RowId}] {itemValue.Name} - stellar fish for {wksItem.WKSItemSubCategory.ValueNullable?.Name ?? "null"}");
                         Callback.Fire(&addon->AtkUnitBase, true, 0);
                         return true;

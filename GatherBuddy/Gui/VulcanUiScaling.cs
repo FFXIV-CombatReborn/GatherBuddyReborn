@@ -1,5 +1,5 @@
-using System.Numerics;
 using Dalamud.Interface.Utility;
+using System.Numerics;
 
 namespace GatherBuddy.Gui;
 

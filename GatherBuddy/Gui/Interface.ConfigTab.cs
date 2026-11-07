@@ -1,21 +1,16 @@
-using System;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text;
 using Dalamud.Interface.Utility;
-
-using FFXIVClientStructs.STD;
+using Dalamud.Utility;
+using ElliLib;
+using ElliLib.Widgets;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
-using GatherBuddy.Enums;
-using GatherBuddy.FishTimer;
-using GatherBuddy.Utilities;
-using Dalamud.Utility;
-using ElliLib;
-using ElliLib.Widgets;
+using System;
+using System.Linq;
+using System.Numerics;
 using FishRecord = GatherBuddy.FishTimer.FishRecord;
 using GatheringType = GatherBuddy.Enums.GatheringType;
 using ImRaii = ElliLib.Raii.ImRaii;
@@ -27,7 +22,7 @@ public partial class Interface
     private static class ConfigFunctions
     {
         public static Interface _base = null!;
-        
+
         private static string _fishFilterText = "";
         private static Fish? _selectedFish = null;
         private static string _presetName = "";
@@ -48,14 +43,18 @@ public partial class Interface
         private static void DrawCheckbox(string label, string description, bool oldValue, Action<bool> setter)
         {
             if (ImGuiUtil.Checkbox(label, description, oldValue, setter))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
         private static void DrawChatTypeSelector(string label, string description, XivChatType currentValue, Action<XivChatType> setter)
         {
             ImGui.SetNextItemWidth(SetInputWidth);
             if (Widget.DrawChatTypeSelector(label, description, currentValue, setter))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
         // Auto-Gather Config
@@ -72,11 +71,11 @@ public partial class Interface
 
         public static void DrawGoHomeBox()
         {
-            DrawCheckbox("Go home when done",                       "Uses the '/li auto' command to take you home when done gathering",
+            DrawCheckbox("Go home when done", "Uses the '/li auto' command to take you home when done gathering",
                 GatherBuddy.Config.AutoGatherConfig.GoHomeWhenDone, b => GatherBuddy.Config.AutoGatherConfig.GoHomeWhenDone = b);
             ImGui.SameLine();
             ImGuiEx.PluginAvailabilityIndicator([new("Lifestream")]);
-            DrawCheckbox("Go home when idle",                       "Uses the '/li auto' command to take you home when waiting for timed nodes",
+            DrawCheckbox("Go home when idle", "Uses the '/li auto' command to take you home when waiting for timed nodes",
                 GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle, b => GatherBuddy.Config.AutoGatherConfig.GoHomeWhenIdle = b);
             ImGui.SameLine();
             ImGuiEx.PluginAvailabilityIndicator([new("Lifestream")]);
@@ -108,9 +107,14 @@ public partial class Interface
             if (ImGui.DragInt("Playback Volume", ref volume, 1, 0, 100))
             {
                 if (volume < 0)
+                {
                     volume = 0;
+                }
                 else if (volume > 100)
+                {
                     volume = 100;
+                }
+
                 GatherBuddy.Config.AutoGatherConfig.SoundPlaybackVolume = volume;
                 GatherBuddy.Config.Save();
             }
@@ -121,10 +125,10 @@ public partial class Interface
 
         public static void DrawHonkModeBox()
             => DrawCheckbox("Play a sound when done gathering", "Play a sound when auto-gathering shuts down because your list is complete",
-                GatherBuddy.Config.AutoGatherConfig.HonkMode,   b => GatherBuddy.Config.AutoGatherConfig.HonkMode = b);
+                GatherBuddy.Config.AutoGatherConfig.HonkMode, b => GatherBuddy.Config.AutoGatherConfig.HonkMode = b);
 
         public static void DrawRepairBox()
-            => DrawCheckbox("Repair gear when needed",        "Repair gear when it is almost broken",
+            => DrawCheckbox("Repair gear when needed", "Repair gear when it is almost broken",
                 GatherBuddy.Config.AutoGatherConfig.DoRepair, b => GatherBuddy.Config.AutoGatherConfig.DoRepair = b);
 
         public static void DrawRepairThreshold()
@@ -187,7 +191,10 @@ public partial class Interface
             if (ImGui.InputText("Lifestream Command", ref tmp, 100))
             {
                 if (string.IsNullOrEmpty(tmp))
+                {
                     tmp = "auto";
+                }
+
                 GatherBuddy.Config.AutoGatherConfig.LifestreamCommand = tmp;
                 GatherBuddy.Config.Save();
             }
@@ -225,7 +232,7 @@ public partial class Interface
                 b => GatherBuddy.Config.AutoGatherConfig.AlwaysReduceAllItems = b);
 
         public static void DrawUseFlagBox()
-            => DrawCheckbox("Disable map marker navigation",            "Whether or not to navigate using map markers (timed nodes only)",
+            => DrawCheckbox("Disable map marker navigation", "Whether or not to navigate using map markers (timed nodes only)",
                 GatherBuddy.Config.AutoGatherConfig.DisableFlagPathing, b => GatherBuddy.Config.AutoGatherConfig.DisableFlagPathing = b);
 
         public static void DrawFarNodeFilterDistance()
@@ -326,7 +333,7 @@ public partial class Interface
         }
 
         public static void DrawForceWalkingBox()
-            => DrawCheckbox("Force Walking",                      "Force walking to nodes instead of using mounts.",
+            => DrawCheckbox("Force Walking", "Force walking to nodes instead of using mounts.",
                 GatherBuddy.Config.AutoGatherConfig.ForceWalking, b => GatherBuddy.Config.AutoGatherConfig.ForceWalking = b);
 
         public static void DrawDisableRandomLandingPositionsBox()
@@ -337,7 +344,7 @@ public partial class Interface
                 GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions, b => GatherBuddy.Config.AutoGatherConfig.DisableRandomLandingPositions = b);
 
         public static void DrawUseNavigationBox()
-            => DrawCheckbox("Use vnavmesh Navigation",             "Use vnavmesh Navigation to move your character automatically",
+            => DrawCheckbox("Use vnavmesh Navigation", "Use vnavmesh Navigation to move your character automatically",
                 GatherBuddy.Config.AutoGatherConfig.UseNavigation, b => GatherBuddy.Config.AutoGatherConfig.UseNavigation = b);
 
         public static void DrawStuckThreshold()
@@ -361,7 +368,9 @@ public partial class Interface
             using var combo = ImRaii.Combo("Item Sorting Method", v.ToString());
             ImGuiUtil.HoverTooltip("What method to use when sorting items internally");
             if (!combo)
+            {
                 return;
+            }
 
             if (ImGui.Selectable(AutoGatherConfig.SortingType.Location.ToString(), v == AutoGatherConfig.SortingType.Location))
             {
@@ -482,14 +491,18 @@ public partial class Interface
                 {
                     GatherBuddy.Config.AddIngameContextMenus = b;
                     if (b)
+                    {
                         _plugin.ContextMenu.Enable();
+                    }
                     else
+                    {
                         _plugin.ContextMenu.Disable();
+                    }
                 });
 
         public static void DrawPreferredJobSelect()
         {
-            var v       = GatherBuddy.Config.PreferredGatheringType;
+            var v = GatherBuddy.Config.PreferredGatheringType;
             var current = v == GatheringType.Multiple ? "No Preference" : v.ToString();
             ImGui.SetNextItemWidth(SetInputWidth);
             using var combo = ImRaii.Combo("Preferred Job", current);
@@ -498,7 +511,9 @@ public partial class Interface
               + "This effectively turns the regular gather command to /gathermin or /gatherbtn when an item can be gathered by both, "
               + "ignoring the other options even on successive tries.");
             if (!combo)
+            {
                 return;
+            }
 
             if (ImGui.Selectable("No Preference", v == GatheringType.Multiple) && v != GatheringType.Multiple)
             {
@@ -536,17 +551,21 @@ public partial class Interface
                 b =>
                 {
                     if (b)
+                    {
                         _plugin.AlarmManager.Enable();
+                    }
                     else
+                    {
                         _plugin.AlarmManager.Disable();
+                    }
                 });
 
         public static void DrawAlarmsInDutyToggle()
             => DrawCheckbox("Enable Alarms in Duty", "Set whether alarms should trigger while you are bound by a duty.",
-                GatherBuddy.Config.AlarmsInDuty,     b => GatherBuddy.Config.AlarmsInDuty = b);
+                GatherBuddy.Config.AlarmsInDuty, b => GatherBuddy.Config.AlarmsInDuty = b);
 
         public static void DrawAlarmsOnlyWhenLoggedInToggle()
-            => DrawCheckbox("Enable Alarms Only In-Game",  "Set whether alarms should trigger while you are not logged into any character.",
+            => DrawCheckbox("Enable Alarms Only In-Game", "Set whether alarms should trigger while you are not logged into any character.",
                 GatherBuddy.Config.AlarmsOnlyWhenLoggedIn, b => GatherBuddy.Config.AlarmsOnlyWhenLoggedIn = b);
 
         private static void DrawAlarmPicker(string label, string description, Sounds current, Action<Sounds> setter)
@@ -554,17 +573,20 @@ public partial class Interface
             var cur = (int)current;
             ImGui.SetNextItemWidth(90 * ImGuiHelpers.GlobalScale);
             if (ImGui.Combo(new ImU8String(label), ref cur, AlarmCache.SoundIdNames))
+            {
                 setter((Sounds)cur);
+            }
+
             ImGuiUtil.HoverTooltip(description);
         }
 
         public static void DrawWeatherAlarmPicker()
             => DrawAlarmPicker("Weather Change Alarm", "Choose a sound that is played every 8 Eorzea hours on regular weather changes.",
-                GatherBuddy.Config.WeatherAlarm,       _plugin.AlarmManager.SetWeatherAlarm);
+                GatherBuddy.Config.WeatherAlarm, _plugin.AlarmManager.SetWeatherAlarm);
 
         public static void DrawHourAlarmPicker()
             => DrawAlarmPicker("Eorzea Hour Change Alarm", "Choose a sound that is played every time the current Eorzea hour changes.",
-                GatherBuddy.Config.HourAlarm,              _plugin.AlarmManager.SetHourAlarm);
+                GatherBuddy.Config.HourAlarm, _plugin.AlarmManager.SetHourAlarm);
 
         // Fish Timer
         public static void DrawFishTimerBox()
@@ -620,11 +642,15 @@ public partial class Interface
               + "You should probably keep this as high as your highest bite window and as low as possible. About 40 seconds is usually enough.");
 
             if (!ret)
+            {
                 return;
+            }
 
             var newValue = (ushort)Math.Clamp((int)(value * 1000f + 0.9), FishRecord.MinBiteTime * 2, FishRecord.MaxBiteTime);
             if (newValue == GatherBuddy.Config.FishTimerScale)
+            {
                 return;
+            }
 
             GatherBuddy.Config.FishTimerScale = newValue;
             GatherBuddy.Config.Save();
@@ -638,11 +664,15 @@ public partial class Interface
             ImGuiUtil.HoverTooltip("The fishing timer window can show a number of interval lines and corresponding seconds between 0 and 16.\n"
               + "Set to 0 to turn this feature off.");
             if (!ret)
+            {
                 return;
+            }
 
             var newValue = (byte)Math.Clamp(value, 0, 16);
             if (newValue == GatherBuddy.Config.ShowSecondIntervals)
+            {
                 return;
+            }
 
             GatherBuddy.Config.ShowSecondIntervals = newValue;
             GatherBuddy.Config.Save();
@@ -656,11 +686,15 @@ public partial class Interface
             ImGuiUtil.HoverTooltip("Round the displayed second value to this number of digits past the decimal. \n"
               + "Set to 0 to display only whole numbers.");
             if (!ret)
+            {
                 return;
+            }
 
             var newValue = (byte)Math.Clamp(value, 0, 3);
             if (newValue == GatherBuddy.Config.SecondIntervalsRounding)
+            {
                 return;
+            }
 
             GatherBuddy.Config.SecondIntervalsRounding = newValue;
             GatherBuddy.Config.Save();
@@ -673,11 +707,15 @@ public partial class Interface
             var ret = ImGui.DragUShort("Upcoming Windows Uptime Count", ref value, 0.1f, 1, 20);
             ImGuiUtil.HoverTooltip("The number of gathering window in the upcoming windows uptime tooltip/pop-up.");
             if (!ret)
+            {
                 return;
+            }
 
             var newValue = Math.Clamp(value, (ushort)1, (ushort)100);
             if (newValue == GatherBuddy.Config.UpcomingUptimesCount)
+            {
                 return;
+            }
 
             GatherBuddy.Config.UpcomingUptimesCount = newValue;
             GatherBuddy.Config.Save();
@@ -768,16 +806,22 @@ public partial class Interface
         public static void DrawSpearfishFishNamePercentage()
         {
             if (!GatherBuddy.Config.FixNamesOnPosition)
+            {
                 return;
+            }
 
             var tmp = (int)GatherBuddy.Config.FixNamesPercentage;
             ImGui.SetNextItemWidth(SetInputWidth);
             if (!ImGui.DragInt("Fish Name Position Percentage", ref tmp, 0.1f, 0, 100, "%i%%"))
+            {
                 return;
+            }
 
             tmp = Math.Clamp(tmp, 0, 100);
             if (tmp == GatherBuddy.Config.FixNamesPercentage)
+            {
                 return;
+            }
 
             GatherBuddy.Config.FixNamesPercentage = (byte)tmp;
             GatherBuddy.Config.Save();
@@ -835,7 +879,9 @@ public partial class Interface
                 GatherBuddy.Config.OnlyShowGatherWindowHoldingKey, b => GatherBuddy.Config.OnlyShowGatherWindowHoldingKey = b);
 
             if (!GatherBuddy.Config.OnlyShowGatherWindowHoldingKey)
+            {
                 return;
+            }
 
             ImGui.SetNextItemWidth(SetInputWidth);
             Widget.KeySelector("Hotkey to Hold", "Set the hotkey to hold to keep the window visible.",
@@ -853,7 +899,9 @@ public partial class Interface
         {
             if (Widget.ModifiableKeySelector("Hotkey to Open Gather Window", "Set a hotkey to open the Gather Window.", SetInputWidth,
                     GatherBuddy.Config.GatherWindowHotkey, k => GatherBuddy.Config.GatherWindowHotkey = k, Configuration.ValidKeys))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
         public static void DrawMainInterfaceHotkeyInput()
@@ -861,7 +909,9 @@ public partial class Interface
             if (Widget.ModifiableKeySelector("Hotkey to Open Main Interface", "Set a hotkey to open the main GatherBuddy interface.",
                     SetInputWidth,
                     GatherBuddy.Config.MainInterfaceHotkey, k => GatherBuddy.Config.MainInterfaceHotkey = k, Configuration.ValidKeys))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
 
@@ -871,26 +921,36 @@ public partial class Interface
             if (Widget.ModifierSelector("Modifier to Delete Items on Right-Click",
                     "Set the modifier key to be used while right-clicking items in the gather window to delete them.",
                     GatherBuddy.Config.GatherWindowDeleteModifier, k => GatherBuddy.Config.GatherWindowDeleteModifier = k))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
 
         public static void DrawAetherytePreference()
         {
-            var tmp     = GatherBuddy.Config.AetherytePreference == AetherytePreference.Cost;
+            var tmp = GatherBuddy.Config.AetherytePreference == AetherytePreference.Cost;
             var oldPref = GatherBuddy.Config.AetherytePreference;
             if (ImGui.RadioButton("Prefer Cheaper Aetherytes", tmp))
+            {
                 GatherBuddy.Config.AetherytePreference = AetherytePreference.Cost;
+            }
+
             var hovered = ImGui.IsItemHovered();
             ImGui.SameLine();
             if (ImGui.RadioButton("Prefer Less Travel Time", !tmp))
+            {
                 GatherBuddy.Config.AetherytePreference = AetherytePreference.Distance;
+            }
+
             hovered |= ImGui.IsItemHovered();
             if (hovered)
+            {
                 ImGui.SetTooltip(
                     "Specify whether you prefer aetherytes that are closer to your target (less travel time)"
                   + " or aetherytes that are cheaper to teleport to when scanning through all available nodes for an item."
                   + " Only matters if the item is not timed and has multiple sources.");
+            }
 
             if (oldPref != GatherBuddy.Config.AetherytePreference)
             {
@@ -911,7 +971,7 @@ public partial class Interface
                 s => GatherBuddy.Config.IdentifiedGatherableFormat = s);
 
         public static void DrawAlwaysMapsBox()
-            => DrawCheckbox("Always gather maps when available",      "GBR will always grab maps first if it sees one in a node",
+            => DrawCheckbox("Always gather maps when available", "GBR will always grab maps first if it sees one in a node",
                 GatherBuddy.Config.AutoGatherConfig.AlwaysGatherMaps, b => GatherBuddy.Config.AutoGatherConfig.AlwaysGatherMaps = b);
 
         public static void DrawUseExistingAutoHookPresetsBox()
@@ -947,25 +1007,25 @@ public partial class Interface
               + "This helps remove unwanted fish to increase catch rates of your target.",
                 GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap,
                 b => GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.EnableSurfaceSlap)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove;
                 if (ImGui.RadioButton("Use Surface Slap when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.SurfaceSlapGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold", ref gpThreshold, 1, 0, 10000))
@@ -974,7 +1034,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Surface Slap will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -986,25 +1046,25 @@ public partial class Interface
               + "Identical Cast improves catch rate when used on the same fishing hole.",
                 GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast,
                 b => GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.EnableIdenticalCast)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove;
                 if (ImGui.RadioButton("Use Identical Cast when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below##IdenticalCast", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.IdenticalCastGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold##IdenticalCast", ref gpThreshold, 1, 0, 10000))
@@ -1013,7 +1073,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Identical Cast will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -1024,25 +1084,25 @@ public partial class Interface
                 "Automatically enable Ambitious Lure for fish that use Powerful Hookset.",
                 GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure,
                 b => GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.EnableAmbitiousLure)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove;
                 if (ImGui.RadioButton("Use Ambitious Lure when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below##AmbitiousLure", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.AmbitiousLureGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold##AmbitiousLure", ref gpThreshold, 1, 0, 10000))
@@ -1051,7 +1111,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Ambitious Lure will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -1062,25 +1122,25 @@ public partial class Interface
                 "Automatically enable Modest Lure for fish that use Precision Hookset.",
                 GatherBuddy.Config.AutoGatherConfig.EnableModestLure,
                 b => GatherBuddy.Config.AutoGatherConfig.EnableModestLure = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.EnableModestLure)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove;
                 if (ImGui.RadioButton("Use Modest Lure when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below##ModestLure", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.ModestLureGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.ModestLureGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold##ModestLure", ref gpThreshold, 1, 0, 10000))
@@ -1089,7 +1149,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Modest Lure will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -1167,25 +1227,25 @@ public partial class Interface
               + "Recommended for mooching or Surface Slap fishing.",
                 GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch,
                 b => GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.UsePrizeCatch)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove;
                 if (ImGui.RadioButton("Use Prize Catch when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below##PrizeCatch", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.PrizeCatchGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold##PrizeCatch", ref gpThreshold, 1, 0, 10000))
@@ -1194,7 +1254,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Prize Catch will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -1205,25 +1265,25 @@ public partial class Interface
                 "Automatically use Chum in generated fishing presets.",
                 GatherBuddy.Config.AutoGatherConfig.UseChum,
                 b => GatherBuddy.Config.AutoGatherConfig.UseChum = b);
-            
+
             if (GatherBuddy.Config.AutoGatherConfig.UseChum)
             {
                 ImGui.Indent();
-                
+
                 var gpAbove = GatherBuddy.Config.AutoGatherConfig.ChumGPAbove;
                 if (ImGui.RadioButton("Use Chum when GP is Above", gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.ChumGPAbove = true;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 ImGui.SameLine();
                 if (ImGui.RadioButton("Below##Chum", !gpAbove))
                 {
                     GatherBuddy.Config.AutoGatherConfig.ChumGPAbove = false;
                     GatherBuddy.Config.Save();
                 }
-                
+
                 var gpThreshold = GatherBuddy.Config.AutoGatherConfig.ChumGPThreshold;
                 ImGui.SetNextItemWidth(SetInputWidth);
                 if (ImGui.DragInt("GP Threshold##Chum", ref gpThreshold, 1, 0, 10000))
@@ -1232,7 +1292,7 @@ public partial class Interface
                     GatherBuddy.Config.Save();
                 }
                 ImGuiUtil.HoverTooltip("Chum will be used when your GP is above/below this threshold.");
-                
+
                 ImGui.Unindent();
             }
         }
@@ -1248,9 +1308,9 @@ public partial class Interface
             {
                 ImGui.Indent();
                 ImGui.SetNextItemWidth(150);
-                DrawConsumableCombo("Select food", AutoGather.AutoGather.PossibleFoods, 
-                    GatherBuddy.Config.AutoGatherConfig.FoodItemId, 
-                    id => 
+                DrawConsumableCombo("Select food", AutoGather.AutoGather.PossibleFoods,
+                    GatherBuddy.Config.AutoGatherConfig.FoodItemId,
+                    id =>
                     {
                         GatherBuddy.Config.AutoGatherConfig.FoodItemId = id;
                         GatherBuddy.Config.Save();
@@ -1267,9 +1327,9 @@ public partial class Interface
             {
                 ImGui.Indent();
                 ImGui.SetNextItemWidth(150);
-                DrawConsumableCombo("Select medicine", AutoGather.AutoGather.PossiblePotions, 
-                    GatherBuddy.Config.AutoGatherConfig.MedicineItemId, 
-                    id => 
+                DrawConsumableCombo("Select medicine", AutoGather.AutoGather.PossiblePotions,
+                    GatherBuddy.Config.AutoGatherConfig.MedicineItemId,
+                    id =>
                     {
                         GatherBuddy.Config.AutoGatherConfig.MedicineItemId = id;
                         GatherBuddy.Config.Save();
@@ -1307,7 +1367,9 @@ public partial class Interface
                 foreach (var (itemname, rowid, count) in list)
                 {
                     if (count != 0)
+                    {
                         separatorState = true;
+                    }
                     else if (separatorState ?? false)
                     {
                         ImGui.Separator();
@@ -1321,7 +1383,7 @@ public partial class Interface
                 }
             }
         }
-        
+
         public static void DrawDiademAutoAetherCannonBox()
             => DrawCheckbox("Diadem Auto-Aethercannon",
                 "Automatically target and fire aethercannon at nearby enemies when gauge is ready (≥200).\n"
@@ -1335,7 +1397,7 @@ public partial class Interface
                 "Windmires will only be used when they provide a significant distance advantage over normal movement.",
                 GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps,
                 b => GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps = b);
-        
+
         public static void DrawDiademFarmCloudedNodes()
             => DrawCheckbox("Re-enter The Diadem to Reset Clouded Nodes",
                 "After gathering umbral items from a clouded node, re-enter the instance to make the node reappear.",
@@ -1347,28 +1409,30 @@ public partial class Interface
             ImGui.Separator();
             ImGui.TextUnformatted("Manual Preset Generator");
             ImGui.Spacing();
-            
+
             var availableFish = GatherBuddy.GameData.Fishes.Values.Where(f => !f.IsSpearFish).ToList();
-            
+
             ImGui.TextUnformatted("Select Target Fish:");
             ImGui.SetNextItemWidth(SetInputWidth);
-            
+
             if (ImGui.BeginCombo("###FishSelector", _selectedFish?.Name[GatherBuddy.Language] ?? "None"))
             {
                 ImGui.SetNextItemWidth(SetInputWidth - 20);
                 ImGui.InputTextWithHint("###FishFilter", "Search...", ref _fishFilterText, 100);
                 ImGui.Separator();
-                
+
                 using (var child = ImRaii.Child("###FishList", new Vector2(0, 200 * ImGuiHelpers.GlobalScale), false))
                 {
-                    for (int i = 0; i < availableFish.Count; i++)
+                    for (var i = 0; i < availableFish.Count; i++)
                     {
                         var fish = availableFish[i];
                         var fishName = fish.Name[GatherBuddy.Language];
-                        
+
                         if (_fishFilterText.Length > 0 && !fishName.ToLower().Contains(_fishFilterText.ToLower()))
+                        {
                             continue;
-                        
+                        }
+
                         using var id = ImRaii.PushId($"{fish.ItemId}###{i}");
                         if (ImGui.Selectable(fishName, _selectedFish?.ItemId == fish.ItemId))
                         {
@@ -1379,10 +1443,10 @@ public partial class Interface
                         }
                     }
                 }
-                
+
                 ImGui.EndCombo();
             }
-            
+
             if (_selectedFish != null)
             {
                 ImGui.Spacing();
@@ -1390,7 +1454,7 @@ public partial class Interface
                 ImGui.SetNextItemWidth(SetInputWidth);
                 ImGui.InputText("###PresetNameInput", ref _presetName, 64);
                 ImGuiUtil.HoverTooltip("The preset name should match the fish's Item ID for GBR to use it automatically.");
-                
+
                 ImGui.Spacing();
                 if (ImGui.Button("Generate Preset"))
                 {
@@ -1398,14 +1462,16 @@ public partial class Interface
                 }
             }
         }
-        
+
         private static void GenerateManualPreset(Fish fish, string presetName)
         {
             if (string.IsNullOrWhiteSpace(presetName))
+            {
                 presetName = fish.ItemId.ToString();
-            
+            }
+
             var success = AutoHookIntegration.AutoHookService.ExportPresetToAutoHook(presetName, [fish], _base.MatchConfigPreset(fish));
-            
+
             if (success)
             {
                 if (fish.Predators.Length > 0 && fish.Predators.All(p => !p.Item1.IsSpearFish))
@@ -1424,8 +1490,8 @@ public partial class Interface
         }
     }
 
-    private string _configSearch       = string.Empty;
-    private int    _selectedConfigPage  = 0;
+    private string _configSearch = string.Empty;
+    private int _selectedConfigPage = 0;
 
     private readonly record struct ConfigEntry(string SearchText, Action<ConfigLayout> Draw)
     {
@@ -1466,7 +1532,9 @@ public partial class Interface
         public void Dispose()
         {
             if (_amount > 0f)
+            {
                 ImGui.Unindent(_amount);
+            }
         }
     }
 
@@ -1475,7 +1543,9 @@ public partial class Interface
     private static ConfigIndentScope PushConfigIndent(int depth)
     {
         if (depth <= 0)
+        {
             return default;
+        }
 
         return new ConfigIndentScope(depth * ImGui.GetStyle().IndentSpacing);
     }
@@ -1492,9 +1562,7 @@ public partial class Interface
                 layout =>
                 {
                     ConfigFunctions.DrawHonkModeBox();
-                    if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
-                        layout.Child.Draw(ConfigFunctions.DrawHonkVolumeSlider);
-                }),
+                    if (GatherBuddy.Config.AutoGatherConfig.HonkMode) { layout.Child.Draw(ConfigFunctions.DrawHonkVolumeSlider); } }),
             new("Check Retainer Inventories",                     ConfigFunctions.DrawCheckRetainersBox),
             new("Teleport to next timed item",                    ConfigFunctions.DrawTeleportToNextNodeBox),
             new("Go home when done Go home when idle",            ConfigFunctions.DrawGoHomeBox),
@@ -1522,17 +1590,13 @@ public partial class Interface
                 layout =>
                 {
                     ConfigFunctions.DrawRepairBox();
-                    if (GatherBuddy.Config.AutoGatherConfig.DoRepair)
-                        layout.Child.Draw(ConfigFunctions.DrawRepairThreshold);
-                }),
+                    if (GatherBuddy.Config.AutoGatherConfig.DoRepair) { layout.Child.Draw(ConfigFunctions.DrawRepairThreshold); } }),
             new("Enable materia extraction",                      ConfigFunctions.DrawMaterialExtraction),
             new("Enable Aetherial Reduction Always Reduce All Items",
                 layout =>
                 {
                     ConfigFunctions.DrawAetherialReduction();
-                    if (GatherBuddy.Config.AutoGatherConfig.DoReduce)
-                        layout.Child.Draw(ConfigFunctions.DrawAlwaysReduceAllItemsBox);
-                }),
+                    if (GatherBuddy.Config.AutoGatherConfig.DoReduce) { layout.Child.Draw(ConfigFunctions.DrawAlwaysReduceAllItemsBox); } }),
             new("Wait for AutoRetainer Multi-mode AutoRetainer Threshold Delay AutoRetainer for timed nodes",
                 layout =>
                 {
@@ -1670,35 +1734,50 @@ public partial class Interface
             var (defaultColor, name, description) = color.Data();
             var currentColor = GatherBuddy.Config.Colors.TryGetValue(color, out var current) ? current : defaultColor;
             if (Widget.ColorPicker(name, description, currentColor, c => GatherBuddy.Config.Colors[color] = c, defaultColor))
+            {
                 GatherBuddy.Config.Save();
+            }
         }
 
         ImGui.NewLine();
 
-        if (Widget.PaletteColorPicker("Names in Chat",         Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorNames,
-                Configuration.DefaultSeColorNames,    Configuration.ForegroundColors, out var idx))
+        if (Widget.PaletteColorPicker("Names in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorNames,
+                Configuration.DefaultSeColorNames, Configuration.ForegroundColors, out var idx))
+        {
             GatherBuddy.Config.SeColorNames = idx;
-        if (Widget.PaletteColorPicker("Commands in Chat",      Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorCommands,
+        }
+
+        if (Widget.PaletteColorPicker("Commands in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorCommands,
                 Configuration.DefaultSeColorCommands, Configuration.ForegroundColors, out idx))
+        {
             GatherBuddy.Config.SeColorCommands = idx;
-        if (Widget.PaletteColorPicker("Arguments in Chat",     Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorArguments,
+        }
+
+        if (Widget.PaletteColorPicker("Arguments in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorArguments,
                 Configuration.DefaultSeColorArguments, Configuration.ForegroundColors, out idx))
+        {
             GatherBuddy.Config.SeColorArguments = idx;
+        }
+
         if (Widget.PaletteColorPicker("Alarm Message in Chat", Vector2.One * ImGui.GetFrameHeight(), GatherBuddy.Config.SeColorAlarm,
-                Configuration.DefaultSeColorAlarm,    Configuration.ForegroundColors, out idx))
+                Configuration.DefaultSeColorAlarm, Configuration.ForegroundColors, out idx))
+        {
             GatherBuddy.Config.SeColorAlarm = idx;
+        }
     }
 
 
     private void DrawConfigTab()
     {
-        using var id  = ImRaii.PushId("Config");
+        using var id = ImRaii.PushId("Config");
         using var tab = ImRaii.TabItem("Config");
         ImGuiUtil.HoverTooltip("Set up your very own GatherBuddy to your meticulous specifications.\n"
           + "If you treat him well, he might even become a real boy.");
 
         if (!tab)
+        {
             return;
+        }
 
         ConfigFunctions._base = this;
 
@@ -1719,14 +1798,21 @@ public partial class Interface
 
         using var rightChild = ImRaii.Child("##ConfigRight", Vector2.Zero, false);
         if (!rightChild)
+        {
             return;
+        }
+
         var padding = ImGui.GetStyle().WindowPadding;
         ImGui.SetCursorPosY(padding.Y);
 
         if (!string.IsNullOrWhiteSpace(_configSearch))
+        {
             DrawConfigSearchResults();
+        }
         else
+        {
             DrawConfigPage(ConfigPages[_selectedConfigPage]);
+        }
     }
 
     private void DrawConfigPageSelector()
@@ -1738,7 +1824,10 @@ public partial class Interface
             if (page.Category != lastCategory)
             {
                 if (lastCategory.Length > 0)
+                {
                     ImGui.Spacing();
+                }
+
                 if (page.Category.Length > 0)
                 {
                     ImGui.TextDisabled(page.Category.ToUpperInvariant());
@@ -1751,7 +1840,7 @@ public partial class Interface
             if (ImGui.Selectable(page.Name, isSelected) && !isSelected)
             {
                 _selectedConfigPage = i;
-                _configSearch       = string.Empty;
+                _configSearch = string.Empty;
             }
         }
     }
@@ -1759,7 +1848,7 @@ public partial class Interface
     private void DrawConfigSearchResults()
     {
         var query = _configSearch.Trim();
-        var any   = false;
+        var any = false;
         var layout = ConfigLayout.Root;
 
         foreach (var page in ConfigPages)
@@ -1774,18 +1863,28 @@ public partial class Interface
                 }
             }
 
-            if (!hasMatch) continue;
+            if (!hasMatch)
+            {
+                continue;
+            }
 
             if (any)
+            {
                 ImGui.Spacing();
+            }
+
             any = true;
 
             var header = page.Category.Length > 0 ? $"{page.Category}: {page.Name}" : page.Name;
             DrawConfigSearchHeader(header);
 
             foreach (var entry in page.Entries)
+            {
                 if (entry.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase))
+                {
                     layout.Draw(entry);
+                }
+            }
         }
 
         if (!any)
@@ -1795,7 +1894,9 @@ public partial class Interface
             ImGui.TextDisabled("No settings matched your search.");
             var targetY = startY + ImGui.GetFrameHeightWithSpacing();
             if (ImGui.GetCursorPosY() < targetY)
+            {
                 ImGui.SetCursorPosY(targetY);
+            }
         }
     }
 
@@ -1807,7 +1908,10 @@ public partial class Interface
         ImGui.TextDisabled(header.ToUpperInvariant());
         var targetY = startY + ImGui.GetFrameHeightWithSpacing();
         if (ImGui.GetCursorPosY() < targetY)
+        {
             ImGui.SetCursorPosY(targetY);
+        }
+
         ImGui.Separator();
         ImGui.SetCursorPosX(startX);
     }
@@ -1816,7 +1920,9 @@ public partial class Interface
     {
         var layout = ConfigLayout.Root;
         foreach (var entry in page.Entries)
+        {
             layout.Draw(entry);
+        }
     }
 }
 

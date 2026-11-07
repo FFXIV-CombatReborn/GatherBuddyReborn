@@ -1,6 +1,6 @@
-﻿using System;
-using GatherBuddy.Utility;
+﻿using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
+using System;
 
 namespace GatherBuddy.Structs;
 
@@ -11,15 +11,17 @@ public class Bait : IComparable<Bait>
     public static Bait Unknown { get; } = new(0, "Unknown", 60027);
 
     public readonly string Name = "Unknown";
-    public          uint   Id   { get; private set; }
-    public          ushort Icon { get; private set; }
+    public uint Id { get; private set; }
+    public ushort Icon { get; private set; }
 
     public Bait(Item data)
     {
-        Id   = data.RowId;
+        Id = data.RowId;
         Icon = data.Icon;
         if (data.RowId != 0)
+        {
             Name = MultiString.ParseSeStringLumina(data.Name);
+        }
     }
 
     public int CompareTo(Bait? other)
@@ -27,7 +29,7 @@ public class Bait : IComparable<Bait>
 
     private Bait(uint id, string name, ushort icon)
     {
-        Id   = id;
+        Id = id;
         Name = name;
         Icon = icon;
     }

@@ -1,5 +1,4 @@
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
 
 namespace GatherBuddy.Crafting;
 
@@ -12,15 +11,22 @@ public static unsafe class MateriaManager
     {
         var container = InventoryManager.Instance()->GetInventoryContainer(InventoryType.EquippedItems);
         if (container == null)
+        {
             return false;
+        }
 
         for (var i = 0; i < container->Size; i++)
         {
             var slot = container->GetInventorySlot(i);
             if (slot == null || slot->ItemId == 0)
+            {
                 continue;
+            }
+
             if (slot->SpiritbondOrCollectability == 10000)
+            {
                 return true;
+            }
         }
         return false;
     }
@@ -29,16 +35,23 @@ public static unsafe class MateriaManager
     {
         var container = InventoryManager.Instance()->GetInventoryContainer(InventoryType.EquippedItems);
         if (container == null)
+        {
             return 0;
+        }
 
         var count = 0;
         for (var i = 0; i < container->Size; i++)
         {
             var slot = container->GetInventorySlot(i);
             if (slot == null || slot->ItemId == 0)
+            {
                 continue;
+            }
+
             if (slot->SpiritbondOrCollectability == 10000)
+            {
                 count++;
+            }
         }
         return count;
     }
@@ -47,7 +60,9 @@ public static unsafe class MateriaManager
     {
         var inv = InventoryManager.Instance();
         if (inv == null)
+        {
             return true;
+        }
 
         var containers = new[]
         {
@@ -61,12 +76,17 @@ public static unsafe class MateriaManager
         {
             var container = inv->GetInventoryContainer(type);
             if (container == null)
+            {
                 continue;
+            }
+
             for (var i = 0; i < container->Size; i++)
             {
                 var slot = container->GetInventorySlot(i);
                 if (slot == null || slot->ItemId == 0)
+                {
                     return true;
+                }
             }
         }
         return false;

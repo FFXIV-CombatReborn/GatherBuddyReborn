@@ -34,13 +34,13 @@ public partial class AutoGatherListsManager : IDisposable
 {
     public event Action? ActiveItemsChanged;
 
-    private const string FileName         = "auto_gather_lists.json";
+    private const string FileName = "auto_gather_lists.json";
     private const string FileNameFallback = "gather_window.json";
 
-    private readonly FileSystem<AutoGatherList>             _fileSystem;
-    private readonly List<(IGatherable Item, uint Quantity)> _activeItems   = [];
+    private readonly FileSystem<AutoGatherList> _fileSystem;
+    private readonly List<(IGatherable Item, uint Quantity)> _activeItems = [];
     private readonly List<(IGatherable Item, uint Quantity)> _fallbackItems = [];
-    private readonly HashSet<IGatherable>                    _localInventoryActiveItems = [];
+    private readonly HashSet<IGatherable> _localInventoryActiveItems = [];
     public static ManualOrderSortMode SortMode { get; } = new();
 
     public FileSystem<AutoGatherList> FileSystem
@@ -101,7 +101,9 @@ public partial class AutoGatherListsManager : IDisposable
         }
 
         if (change)
+        {
             Save();
+        }
 
         _fileSystem.Changed += OnFileSystemChanged;
         SetActiveItems();
@@ -123,7 +125,10 @@ public partial class AutoGatherListsManager : IDisposable
     public void SetActiveItems(bool removeCompletedItems = false)
     {
         if (removeCompletedItems && RemoveCompletedItemsFromEnabledLists())
+        {
             Save();
+        }
+
         _activeItems.Clear();
         _fallbackItems.Clear();
         _localInventoryActiveItems.Clear();
@@ -146,7 +151,10 @@ public partial class AutoGatherListsManager : IDisposable
             else
             {
                 if (!usesRetainerInventory)
+                {
                     _localInventoryActiveItems.Add(item);
+                }
+
                 _activeItems.Add((item, quantity));
             }
         }
@@ -169,7 +177,9 @@ public partial class AutoGatherListsManager : IDisposable
             foreach (var list in allLists)
             {
                 if (_fileSystem.TryGetValue(list, out var leaf))
+                {
                     list.FolderPath = leaf.Parent.IsRoot ? string.Empty : leaf.Parent.FullName();
+                }
             }
 
             var text = JsonConvert.SerializeObject(allLists.Select(p => new AutoGatherList.Config(p)), Formatting.Indented);
@@ -196,7 +206,9 @@ public partial class AutoGatherListsManager : IDisposable
                 var text = File.ReadAllText(file.FullName);
                 var configs = JsonConvert.DeserializeObject<AutoGatherList.Config[]>(text);
                 if (configs != null)
+                {
                     return new AutoGatherListsManager(configs);
+                }
             }
             catch (Exception e)
             {

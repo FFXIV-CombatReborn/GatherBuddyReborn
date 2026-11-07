@@ -13,9 +13,15 @@ public static class SolverUtils
     public static CraftStatus Status(CraftState craft, StepState step)
     {
         if (step.Durability <= 0)
+        {
             return CraftStatus.Failed;
+        }
+
         if (step.Progress >= craft.CraftProgress)
+        {
             return CraftStatus.Complete;
+        }
+
         return CraftStatus.InProgress;
     }
 
@@ -31,11 +37,15 @@ public static class SolverUtils
             var rec = solver.Solve(craft, step);
             var action = rec.Action;
             if (action == VulcanSkill.None)
+            {
                 return null;
+            }
 
             var (res, next) = Simulator.Execute(craft, step, action, 0, 1);
             if (res == Simulator.ExecuteResult.CantUse)
+            {
                 return null;
+            }
 
             step = next;
         }
@@ -51,15 +61,21 @@ public static class SolverUtils
         while (Status(craft, step) == CraftStatus.InProgress)
         {
             if (actionCount >= MaxEstimatedActions)
+            {
                 return false;
+            }
 
             var action = solver.Solve(craft, step).Action;
             if (action == VulcanSkill.None)
+            {
                 return false;
+            }
 
             var (res, next) = Simulator.Execute(craft, step, action, 0, 1);
             if (res == Simulator.ExecuteResult.CantUse)
+            {
                 return false;
+            }
 
             actionCount++;
             step = next;
@@ -83,7 +99,7 @@ public static class SolverUtils
     public static string EstimateCollectibleThreshold(Solver solver, CraftState craft, int startingQuality)
     {
         var res = SimulateSolverExecution(solver, craft, startingQuality);
-        string finalBreakpoint = craft.CraftQualityMin2 != craft.CraftQualityMin1 ? "3rd" : "2nd";
+        var finalBreakpoint = craft.CraftQualityMin2 != craft.CraftQualityMin1 ? "3rd" : "2nd";
         return res == null || res.Quality < craft.CraftQualityMin1 || res.Progress < craft.CraftProgress ? "Fail" : res.Quality >= craft.CraftQualityMin3 ? $"{finalBreakpoint}" : res.Quality >= craft.CraftQualityMin2 && craft.CraftQualityMin2 != craft.CraftQualityMin1 ? "2nd" : "1st";
     }
 }

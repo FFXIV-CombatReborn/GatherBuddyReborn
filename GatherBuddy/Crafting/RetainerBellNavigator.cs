@@ -1,7 +1,7 @@
-using System;
-using System.Numerics;
 using Dalamud.Game.ClientState.Objects.Types;
 using GatherBuddy.Plugin;
+using System;
+using System.Numerics;
 
 namespace GatherBuddy.Crafting;
 
@@ -71,13 +71,17 @@ public class RetainerBellNavigator
     public void Update()
     {
         if (_targetBell == null || _state != NavigationState.Navigating)
+        {
             return;
+        }
 
         try
         {
             var playerPos = Dalamud.Objects.LocalPlayer?.Position ?? Vector3.Zero;
             if (playerPos == Vector3.Zero)
+            {
                 return;
+            }
 
             var distance = Vector3.Distance(playerPos, _targetBell.Position);
             if (distance < _lastDistance - 0.5f)
@@ -104,7 +108,10 @@ public class RetainerBellNavigator
             if (!VNavmesh.Path.IsRunning())
             {
                 if (DateTime.UtcNow < _nextRestartAttempt)
+                {
                     return;
+                }
+
                 if (_restartAttempts >= MaxRestartAttempts)
                 {
                     GatherBuddy.Log.Error($"[RetainerBellNavigator] Navigation failed after {MaxRestartAttempts} restart attempts ({distance:F1}m remaining)");
@@ -121,7 +128,9 @@ public class RetainerBellNavigator
                 {
                     GatherBuddy.Log.Warning($"[RetainerBellNavigator] Failed to restart navigation on attempt {_restartAttempts}/{MaxRestartAttempts}: {ex.Message}");
                     if (_restartAttempts >= MaxRestartAttempts)
+                    {
                         _state = NavigationState.Failed;
+                    }
                 }
             }
         }

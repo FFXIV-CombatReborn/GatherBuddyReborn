@@ -1,14 +1,14 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
+using Dalamud.Interface.Utility;
+using ElliLib;
+using ElliLib.Table;
+using GatherBuddy.Config;
+using GatherBuddy.Time;
 using System;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility;
-using GatherBuddy.Config;
-using GatherBuddy.Time;
-using ElliLib;
-using ElliLib.Table;
 using ImRaii = ElliLib.Raii.ImRaii;
-using Dalamud.Interface.Textures;
 
 namespace GatherBuddy.Gui;
 
@@ -23,17 +23,16 @@ public partial class Interface
         private static float _zoneSize;
         private static float _weatherSize;
         private static float _headerSize;
-        private        bool  _weathersDirty = true;
+        private bool _weathersDirty = true;
 
         public WeatherTable()
             : base("WeatherTable", CachedWeather.CreateWeatherCache(),
-                Enumerable.Range(0, CachedWeather.NumWeathers).Select(i => (Column<CachedWeather>)new WeatherHeader(i))
-                    .Prepend(new ZoneHeader()).ToArray())
+                [.. Enumerable.Range(0, CachedWeather.NumWeathers).Select(i => (Column<CachedWeather>)new WeatherHeader(i)).Prepend(new ZoneHeader())])
         {
             GatherBuddy.Time.WeatherChanged += SetDirty;
-            Flags                           &= ~ImGuiTableFlags.NoBordersInBody;
-            Flags                           &= ~ImGuiTableFlags.BordersInnerH;
-            Sortable                        =  false;
+            Flags &= ~ImGuiTableFlags.NoBordersInBody;
+            Flags &= ~ImGuiTableFlags.BordersInnerH;
+            Sortable = false;
         }
 
         public void Dispose()
@@ -65,7 +64,7 @@ public partial class Interface
         {
             private readonly ColorId _headerColor;
             private readonly ColorId _cellColor;
-            private readonly int     _idx;
+            private readonly int _idx;
 
             public override float Width
                 => GatherBuddy.Config.ShowWeatherNames
@@ -92,7 +91,9 @@ public partial class Interface
             public override bool DrawFilter()
             {
                 if (_headerColor != 0)
+                {
                     ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, _headerColor.Value());
+                }
 
                 ImGui.Text(WeatherTimeStrings[_idx]);
                 return false;
@@ -101,13 +102,19 @@ public partial class Interface
             public override void DrawColumn(CachedWeather line, int _)
             {
                 if (_cellColor != 0)
+                {
                     ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, _cellColor.Value());
+                }
 
                 var (weather, icon) = line.Weathers[_idx];
                 if (GatherBuddy.Config.ShowWeatherNames)
+                {
                     NamedWeather(icon, weather.Name);
+                }
                 else
+                {
                     CenteredWeather(icon, weather, _centerOffset);
+                }
             }
         }
 
@@ -115,16 +122,18 @@ public partial class Interface
         {
             if (_weatherSize == 0)
             {
-                _zoneSize    = Items.Max(c => ImGui.CalcTextSize(c.Zone).X) / ImGuiHelpers.GlobalScale;
+                _zoneSize = Items.Max(c => ImGui.CalcTextSize(c.Zone).X) / ImGuiHelpers.GlobalScale;
                 _weatherSize = GatherBuddy.GameData.Weathers.Values.Max(w => ImGui.CalcTextSize(w.Name).X) / ImGuiHelpers.GlobalScale;
-                _headerSize  = ImGui.CalcTextSize(" 88:88:88 ").X / ImGuiHelpers.GlobalScale;
+                _headerSize = ImGui.CalcTextSize(" 88:88:88 ").X / ImGuiHelpers.GlobalScale;
             }
 
-            _centerOffset         = (_headerSize - WeatherIconSize.X - ImGui.GetStyle().ItemInnerSpacing.X / 2) / 2;
+            _centerOffset = (_headerSize - WeatherIconSize.X - ImGui.GetStyle().ItemInnerSpacing.X / 2) / 2;
             _textHeightIconOffset = (WeatherIconSize.Y - TextHeight) / 2;
 
             if (!_weathersDirty)
+            {
                 return;
+            }
 
             // Update times
             var sync = GatherBuddy.Time.ServerTime.SyncToEorzeaWeather();
@@ -136,7 +145,10 @@ public partial class Interface
 
             // Update weathers
             foreach (var item in Items)
+            {
                 item.Update();
+            }
+
             _weathersDirty = false;
         }
 
@@ -144,9 +156,14 @@ public partial class Interface
         {
             var cursor = ImGui.GetCursorPos();
             if (icon.TryGetWrap(out var wrap, out _))
+            {
                 ImGui.Image(wrap.Handle, WeatherIconSize);
+            }
             else
+            {
                 ImGui.Dummy(WeatherIconSize);
+            }
+
             ImGui.SetCursorPos(cursor + new Vector2(WeatherIconSize.X + ItemSpacing.X / 2, _textHeightIconOffset));
             ImGui.Text(name);
         }
@@ -155,9 +172,14 @@ public partial class Interface
         {
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
             if (icon.TryGetWrap(out var wrap, out _))
+            {
                 ImGui.Image(wrap.Handle, WeatherIconSize);
+            }
             else
+            {
                 ImGui.Dummy(WeatherIconSize);
+            }
+
             ImGuiUtil.HoverTooltip($"{weather.Name} ({weather.Id})");
         }
     }
@@ -166,13 +188,15 @@ public partial class Interface
 
     private void DrawWeatherTab()
     {
-        using var id  = ImRaii.PushId("Weather");
+        using var id = ImRaii.PushId("Weather");
         using var tab = ImRaii.TabItem("Weather");
         ImGuiUtil.HoverTooltip("Yes, 'Gloom' is weather.\n"
           + "See the weather forecast in all zones for the following days, as well as the last one.");
 
         if (!tab)
+        {
             return;
+        }
 
         _weatherTable.Draw(WeatherIconSize.Y + ImGui.GetStyle().ItemSpacing.Y);
     }

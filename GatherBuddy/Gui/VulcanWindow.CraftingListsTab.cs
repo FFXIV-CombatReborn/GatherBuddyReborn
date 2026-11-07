@@ -1,16 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Textures;
 using ElliLib;
-using ElliLib.Raii;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -35,7 +32,7 @@ public partial class VulcanWindow
             ImRaii.IEndObject handle;
             if (_craftingListsRequestFocus)
             {
-                bool dummy = true;
+                var dummy = true;
                 handle = ImRaii.TabItem("Crafting Lists##craftingListsTab", ref dummy, ImGuiTabItemFlags.SetSelected);
             }
             else
@@ -45,18 +42,22 @@ public partial class VulcanWindow
             tabItem = handle;
             tabOpen = handle.Success;
             if (tabOpen)
+            {
                 _craftingListsRequestFocus = false;
+            }
         }
 
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             DrawCraftingListsTabContent();
         }
     }
-    
+
     private void DrawCraftingListsTabContent()
     {
         if (_openCreateListPopup)
@@ -109,7 +110,9 @@ public partial class VulcanWindow
                                 GatherBuddy.CraftingListManager.SaveList(_editingList);
                             }
                             if (ImGui.IsItemHovered())
+                            {
                                 ImGui.SetTooltip("Automatically delete this list after crafting completes. Has no effect if stopped manually.");
+                            }
                         }
                         else
                         {
@@ -119,7 +122,9 @@ public partial class VulcanWindow
                         ImGui.Spacing();
 
                         if (_listEditor != null)
+                        {
                             _listEditor.Draw();
+                        }
                     }
                 }
             }
@@ -148,22 +153,28 @@ public partial class VulcanWindow
         }
         ImGui.SameLine();
         if (ImGui.Button("New Folder", VulcanUiScaling.Scaled(95f, 0f)))
+        {
             QueueCreateFolderPopup();
+        }
+
         ImGui.SameLine();
         if (ImGui.Button("TeamCraft Import", VulcanUiScaling.Scaled(115f, 0f)))
+        {
             _showTeamCraftImport = true;
+        }
+
         ImGui.SameLine();
         if (ImGui.Button("Import List", VulcanUiScaling.Scaled(95f, 0f)))
         {
-            _importListText  = string.Empty;
+            _importListText = string.Empty;
             _importListError = null;
             ImGui.OpenPopup("ImportListPopup");
         }
 
         ImGui.Spacing();
 
-        var avail  = ImGui.GetContentRegionAvail();
-        var leftW  = VulcanUiScaling.Scaled(220f);
+        var avail = ImGui.GetContentRegionAvail();
+        var leftW = VulcanUiScaling.Scaled(220f);
         var rightW = avail.X - leftW - ImGui.GetStyle().ItemSpacing.X;
 
         using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
@@ -196,10 +207,14 @@ public partial class VulcanWindow
             return;
         }
         foreach (var folderPath in rootFolders)
+        {
             DrawListFolderNode(folderPath);
+        }
 
         foreach (var list in rootLists)
+        {
             DrawCraftingListSelectorEntry(list);
+        }
     }
 
     private void DrawListFolderNode(string folderPath)
@@ -210,7 +225,9 @@ public partial class VulcanWindow
 
         var flags = ImGuiTreeNodeFlags.SpanAvailWidth;
         if (!hasChildren)
+        {
             flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+        }
 
         var label = $"{CraftingListManager.GetFolderDisplayName(folderPath)}##folder_{folderPath}";
         var open = ImGui.TreeNodeEx(label, flags);
@@ -234,28 +251,40 @@ public partial class VulcanWindow
             }
 
             if (ImGui.Selectable("Create Subfolder"))
+            {
                 QueueCreateFolderPopup(folderPath);
+            }
 
             var canDelete = GatherBuddy.CraftingListManager.CanDeleteFolder(folderPath);
             using (ImRaii.Disabled(!canDelete))
             {
                 if (ImGui.Selectable("Delete Folder"))
+                {
                     GatherBuddy.CraftingListManager.DeleteFolder(folderPath);
+                }
             }
             if (!canDelete && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            {
                 ImGui.SetTooltip("Move or delete the lists in this folder before removing it.");
+            }
 
             ImGui.EndPopup();
         }
 
         if (!hasChildren || !open)
+        {
             return;
+        }
 
         foreach (var childFolderPath in childFolders)
+        {
             DrawListFolderNode(childFolderPath);
+        }
 
         foreach (var list in childLists)
+        {
             DrawCraftingListSelectorEntry(list);
+        }
 
         ImGui.TreePop();
     }
@@ -264,15 +293,22 @@ public partial class VulcanWindow
     {
         var isHighlighted = _previewList?.ID == list.ID;
         if (isHighlighted)
+        {
             ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.ParsedGold);
+        }
 
         if (ImGui.Selectable($"{list.Name}##list_{list.ID}", isHighlighted))
+        {
             OpenCraftingList(list);
+        }
+
         DrawCraftingListDragDropSource(list);
         DrawCraftingListEntryDropTarget(list);
 
         if (isHighlighted)
+        {
             ImGui.PopStyleColor();
+        }
 
         if (ImGui.IsItemHovered())
         {
@@ -285,31 +321,43 @@ public partial class VulcanWindow
             : ImGui.BeginPopupContextItem($"ListContextMenu_{list.ID}");
 
         if (!isPopupOpen)
+        {
             return;
+        }
 
         if (ImGui.Selectable("Edit"))
+        {
             OpenCraftingList(list);
+        }
 
         var artisanLoaded = IPCSubscriber.IsReady("Artisan");
         using (ImRaii.Disabled(artisanLoaded))
         {
             if (ImGui.Selectable("Start"))
+            {
                 StartCraftingList(list);
+            }
         }
         if (artisanLoaded && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
             ImGui.SetTooltip("Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.");
+        }
 
         if (ImGui.BeginMenu("Move to Folder"))
         {
             var isRoot = string.IsNullOrEmpty(list.FolderPath);
             if (ImGui.MenuItem("Root", string.Empty, isRoot) && !isRoot)
+            {
                 GatherBuddy.CraftingListManager.MoveListToFolder(list, null);
+            }
 
             foreach (var folderPath in GatherBuddy.CraftingListManager.GetAllFolderPaths())
             {
                 var isCurrentFolder = list.FolderPath.Equals(folderPath, StringComparison.OrdinalIgnoreCase);
                 if (ImGui.MenuItem(CraftingListManager.FormatFolderPath(folderPath), string.Empty, isCurrentFolder) && !isCurrentFolder)
+                {
                     GatherBuddy.CraftingListManager.MoveListToFolder(list, folderPath);
+                }
             }
             ImGui.EndMenu();
         }
@@ -342,7 +390,10 @@ public partial class VulcanWindow
         if (ImGui.Selectable("Delete"))
         {
             if (_previewList?.ID == list.ID)
+            {
                 _previewList = null;
+            }
+
             GatherBuddy.CraftingListManager.DeleteList(list.ID);
         }
 
@@ -387,7 +438,9 @@ public partial class VulcanWindow
         {
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
             using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudGrey3))
+            {
                 ImGui.TextWrapped(list.Description);
+            }
         }
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
@@ -399,9 +452,9 @@ public partial class VulcanWindow
         ImGui.Separator();
         ImGui.Spacing();
 
-        var style   = ImGui.GetStyle();
+        var style = ImGui.GetStyle();
         var buttonH = VulcanUiScaling.Scaled(22f) * 2 + style.ItemSpacing.Y * 3 + VulcanUiScaling.Scaled(4f);
-        var listH   = Math.Max(ImGui.GetContentRegionAvail().Y - buttonH, VulcanUiScaling.Scaled(40f));
+        var listH = Math.Max(ImGui.GetContentRegionAvail().Y - buttonH, VulcanUiScaling.Scaled(40f));
 
         ImGui.BeginChild("##previewRecipeList", new Vector2(-1, listH), false);
 
@@ -432,9 +485,13 @@ public partial class VulcanWindow
                     var icon = Icons.DefaultStorage.TextureProvider
                         .GetFromGameIcon(new GameIconLookup(resultItem.Icon));
                     if (icon.TryGetWrap(out var wrap, out _))
+                    {
                         ImGui.Image(wrap.Handle, iconSz);
+                    }
                     else
+                    {
                         ImGui.Dummy(iconSz);
+                    }
 
                     ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
                     ImGui.SetCursorPosY(textY);
@@ -456,7 +513,10 @@ public partial class VulcanWindow
 
         var halfW = (ImGui.GetContentRegionAvail().X - style.ItemSpacing.X) / 2f;
         if (ImGui.Button("Edit List##previewEdit", new Vector2(halfW, VulcanUiScaling.Scaled(22f))))
+        {
             OpenCraftingList(list);
+        }
+
         ImGui.SameLine();
         if (IPCSubscriber.IsReady("Artisan"))
         {
@@ -555,7 +615,9 @@ public partial class VulcanWindow
     {
         using var source = ImRaii.DragDropSource();
         if (!source.Success)
+        {
             return;
+        }
 
         _draggedCraftingListId = list.ID;
         ImGui.SetDragDropPayload(CraftingListDragDropPayload, []);
@@ -566,16 +628,22 @@ public partial class VulcanWindow
     {
         using var target = ImRaii.DragDropTarget();
         if (!target.Success || !ImGuiUtil.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
+        {
             return;
+        }
 
         var draggedList = GatherBuddy.CraftingListManager.GetListByID(draggedListId);
         if (draggedList == null || draggedList.ID == targetList.ID)
+        {
             return;
+        }
 
         var itemMidpointY = (ImGui.GetItemRectMin().Y + ImGui.GetItemRectMax().Y) * 0.5f;
         var placeAfter = ImGui.GetMousePos().Y >= itemMidpointY;
         if (!GatherBuddy.CraftingListManager.MoveListRelative(draggedList, targetList, placeAfter))
+        {
             return;
+        }
 
         _previewList = GatherBuddy.CraftingListManager.GetListByID(draggedListId);
         _previewFolderPath = null;
@@ -585,14 +653,20 @@ public partial class VulcanWindow
     {
         using var target = ImRaii.DragDropTarget();
         if (!target.Success || !ImGuiUtil.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
+        {
             return;
+        }
 
         var draggedList = GatherBuddy.CraftingListManager.GetListByID(draggedListId);
         if (draggedList == null)
+        {
             return;
+        }
 
         if (!GatherBuddy.CraftingListManager.MoveListToFolderEnd(draggedList, folderPath))
+        {
             return;
+        }
 
         _previewFolderPath = folderPath;
         _previewList = null;

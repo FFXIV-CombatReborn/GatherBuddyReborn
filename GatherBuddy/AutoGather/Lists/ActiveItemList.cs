@@ -22,19 +22,19 @@ namespace GatherBuddy.AutoGather.Lists
 {
     internal sealed class ActiveItemList : IEnumerable<GatherTarget>, IDisposable
     {
-        private readonly List<GatherTarget>                      _gatherableItems    = [];
-        private readonly AutoGatherListsManager                  _listsManager;
-        private readonly AutoGather                              _autoGather;
-        private readonly Dictionary<uint, int>                   _teleportationCosts = [];
-        private readonly Dictionary<GatheringNode, TimeInterval> _visitedTimedNodes  = [];
-        private          TimeStamp                               _lastUpdateTime     = TimeStamp.MinValue;
-        private          uint                                    _lastTerritoryId;
-        private          int                                     _lastWeatherId;
-        private          bool                                    _activeItemsChanged;
-        private          bool                                    _consumedCloudedNode;
-        private          bool                                    _forceUpdateUnconditionally;
-        private          GatheringType                           _lastJob            = GatheringType.Unknown;
-        private          GatherTarget                            _currentItem;
+        private readonly List<GatherTarget> _gatherableItems = [];
+        private readonly AutoGatherListsManager _listsManager;
+        private readonly AutoGather _autoGather;
+        private readonly Dictionary<uint, int> _teleportationCosts = [];
+        private readonly Dictionary<GatheringNode, TimeInterval> _visitedTimedNodes = [];
+        private TimeStamp _lastUpdateTime = TimeStamp.MinValue;
+        private uint _lastTerritoryId;
+        private int _lastWeatherId;
+        private bool _activeItemsChanged;
+        private bool _consumedCloudedNode;
+        private bool _forceUpdateUnconditionally;
+        private GatheringType _lastJob = GatheringType.Unknown;
+        private GatherTarget _currentItem;
 
         internal ReadOnlyDictionary<GatheringNode, TimeInterval> DebugVisitedTimedLocations
             => _visitedTimedNodes.AsReadOnly();
@@ -63,8 +63,8 @@ namespace GatherBuddy.AutoGather.Lists
 
         public ActiveItemList(AutoGatherListsManager listsManager, AutoGather autoGather)
         {
-            _listsManager                    =  listsManager;
-            _autoGather                      =  autoGather;
+            _listsManager = listsManager;
+            _autoGather = autoGather;
             _listsManager.ActiveItemsChanged += OnActiveItemsChanged;
         }
 
@@ -86,7 +86,9 @@ namespace GatherBuddy.AutoGather.Lists
         public GatherTarget GetNextOrDefault()
         {
             if (IsUpdateNeeded())
+            {
                 DoUpdate();
+            }
 
             return _currentItem = _gatherableItems
                 .FirstOrDefault(x => x.Time.InRange(_lastUpdateTime) && NeedsGathering(x));
@@ -117,7 +119,7 @@ namespace GatherBuddy.AutoGather.Lists
             {
                 node = GatherBuddy.GameData.GatheringNodes.Values.FirstOrDefault(n => n.WorldPositions.ContainsKey(target.BaseId));
                 time = node?.Times.NextUptime(IsInitialized ? _lastUpdateTime : GatherBuddy.Time.ServerTime) ?? default;
-            }            
+            }
 
             switch (node?.NodeType)
             {
@@ -137,9 +139,14 @@ namespace GatherBuddy.AutoGather.Lists
         {
             _forceUpdateUnconditionally = true;
             if (x.Time != TimeInterval.Always && x.Node?.NodeType is NodeType.Legendary or NodeType.Unspoiled)
+            {
                 _visitedTimedNodes[x.Node] = x.Time;
+            }
+
             if (x.Node?.NodeType == NodeType.Clouded)
+            {
                 _consumedCloudedNode = EnhancedCurrentWeather.GetCurrentWeatherId() == x.Node.UmbralWeather.Id;
+            }
         }
 
         private bool NeedsGathering((IGatherable item, uint quantity) value)
@@ -154,9 +161,15 @@ namespace GatherBuddy.AutoGather.Lists
         private static bool CheckOvercap(IGatherable item)
         {
             if (item.IsTreasureMap)
+            {
                 return item.GetInventoryCount() < 1;
+            }
+
             if (item.IsCrystal)
+            {
                 return item.GetInventoryCount() < 9999;
+            }
+
             return true;
         }
 
@@ -169,15 +182,21 @@ namespace GatherBuddy.AutoGather.Lists
             public int Compare(FishWindowPriority lhs, FishWindowPriority rhs)
             {
                 if (!lhs.Applicable || !rhs.Applicable)
+                {
                     return 0;
+                }
 
                 var durationComparison = lhs.EffectiveDuration.CompareTo(rhs.EffectiveDuration);
                 if (durationComparison != 0)
+                {
                     return durationComparison;
+                }
 
                 var endComparison = lhs.WindowEnd.CompareTo(rhs.WindowEnd);
                 if (endComparison != 0)
+                {
                     return endComparison;
+                }
 
                 return lhs.WindowStart.CompareTo(rhs.WindowStart);
             }
@@ -186,16 +205,25 @@ namespace GatherBuddy.AutoGather.Lists
         private static int GetAvailabilityPriority(GatherTarget target, TimeStamp now)
         {
             if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+            {
                 return 3;
+            }
+
             if (target.Time == TimeInterval.Always)
+            {
                 return 1;
+            }
+
             return target.Time.InRange(now) ? 0 : 2;
         }
 
         private static TimeStamp GetAvailabilityStart(GatherTarget target, TimeStamp now)
         {
             if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+            {
                 return TimeStamp.MaxValue;
+            }
+
             return target.Time.InRange(now) ? TimeStamp.MinValue : target.Time.Start;
         }
 
@@ -205,7 +233,9 @@ namespace GatherBuddy.AutoGather.Lists
         private static FishWindowPriority GetFishWindowPriority(GatherTarget target, TimeStamp now)
         {
             if (target.Fish == null || target.Time == TimeInterval.Always || target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+            {
                 return default;
+            }
 
             var effectiveStart = target.Time.Start.Max(now);
             return new FishWindowPriority(true, target.Time.End - effectiveStart, target.Time.End, target.Time.Start);
@@ -214,9 +244,14 @@ namespace GatherBuddy.AutoGather.Lists
         private static string FormatFishTimingForDebug(in GatherTarget target, TimeStamp now)
         {
             if (target.Time == TimeInterval.Always)
+            {
                 return "always";
+            }
+
             if (target.Time == TimeInterval.Invalid || target.Time == TimeInterval.Never)
+            {
                 return "invalid";
+            }
 
             var effectiveStart = target.Time.Start.Max(now);
             var window = TimeInterval.DurationString(effectiveStart, target.Time.End, true);
@@ -233,7 +268,9 @@ namespace GatherBuddy.AutoGather.Lists
                 .Select(x => $"{x.Item.Name[GatherBuddy.Language]} ({FormatFishTimingForDebug(x, now)})")
                 .ToArray();
             if (prioritizedFish.Length == 0)
+            {
                 return;
+            }
 
             GatherBuddy.Log.Debug($"[ActiveItemList] Fish priority order: {string.Join(" | ", prioritizedFish)}");
         }
@@ -242,7 +279,9 @@ namespace GatherBuddy.AutoGather.Lists
         {
             var timeComparison = GetLegacyAvailabilityStart(lhs, now).CompareTo(GetLegacyAvailabilityStart(rhs, now));
             if (timeComparison != 0)
+            {
                 return timeComparison;
+            }
 
             return (lhs.Time == TimeInterval.Always).CompareTo(rhs.Time == TimeInterval.Always);
         }
@@ -251,11 +290,15 @@ namespace GatherBuddy.AutoGather.Lists
         {
             var availabilityComparison = GetAvailabilityPriority(lhs, now).CompareTo(GetAvailabilityPriority(rhs, now));
             if (availabilityComparison != 0)
+            {
                 return availabilityComparison;
+            }
 
             var windowComparison = FishWindowPriorityComparer.Instance.Compare(GetFishWindowPriority(lhs, now), GetFishWindowPriority(rhs, now));
             if (windowComparison != 0)
+            {
                 return windowComparison;
+            }
 
             return CompareLegacyTargetOrder(lhs, rhs, now);
         }
@@ -268,18 +311,24 @@ namespace GatherBuddy.AutoGather.Lists
             foreach (var (target, index) in orderedTargets.WithIndex())
             {
                 if (target.Fish == null)
+                {
                     continue;
+                }
 
                 fishSlots.Add(index);
                 fishTargets.Add(target);
             }
 
             if (fishTargets.Count < 2)
+            {
                 return orderedTargets;
+            }
 
             fishTargets.Sort((lhs, rhs) => CompareFishTargetOrder(lhs, rhs, now));
             for (var i = 0; i < fishSlots.Count; ++i)
+            {
                 orderedTargets[fishSlots[i]] = fishTargets[i];
+            }
 
             return orderedTargets;
         }
@@ -292,8 +341,12 @@ namespace GatherBuddy.AutoGather.Lists
         private void RemoveExpiredVisited(TimeStamp adjustedServerTime)
         {
             foreach (var (loc, time) in _visitedTimedNodes)
+            {
                 if (time.End <= adjustedServerTime)
+                {
                     _visitedTimedNodes.Remove(loc);
+                }
+            }
         }
 
         internal void DebugClearVisited()
@@ -435,11 +488,15 @@ namespace GatherBuddy.AutoGather.Lists
         private ILocation CorrectForPredatorLocation(IGatherable item, ILocation location)
         {
             if (item is not Fish fish || fish.Predators.Length == 0)
+            {
                 return location;
+            }
 
             var shadowSpot = fish.FishingSpots.FirstOrDefault(spot => spot.IsShadowNode);
             if (shadowSpot == null)
+            {
                 return location;
+            }
 
             if (_autoGather.IsSwimmingShadowsAvailable(shadowSpot))
             {
@@ -473,7 +530,9 @@ namespace GatherBuddy.AutoGather.Lists
         private static TimeInterval IntersectPredatorUptime(IGatherable item, ILocation location, TimeInterval time, TimeStamp now)
         {
             if (item is not Fish fish || fish.Predators.Length == 0)
+            {
                 return time;
+            }
 
             var territory = location switch
             {
@@ -503,7 +562,9 @@ namespace GatherBuddy.AutoGather.Lists
         private static TimeInterval IntersectMoochUptime(IGatherable item, ILocation location, TimeInterval time, TimeStamp now)
         {
             if (item is not Fish fish || fish.Mooches.Length == 0)
+            {
                 return time;
+            }
 
             var territory = location switch
             {
@@ -533,13 +594,18 @@ namespace GatherBuddy.AutoGather.Lists
         private static float GetHorizontalSquaredDistanceToPlayer(ILocation node)
         {
             if (node.Territory.Id != Dalamud.ClientState.TerritoryType)
+            {
                 return float.MaxValue;
+            }
 
             var player = Player.Object;
-            if (player == null) return float.MaxValue;
+            if (player == null)
+            {
+                return float.MaxValue;
+            }
             // Node coordinates are map coordinates multiplied by 100.
             var playerPos3D = player.GetMapCoordinates();
-            var playerPos   = new Vector2(playerPos3D.X * 100f,             playerPos3D.Y * 100f);
+            var playerPos = new Vector2(playerPos3D.X * 100f, playerPos3D.Y * 100f);
             return Vector2.DistanceSquared(new Vector2(node.IntegralXCoord, node.IntegralYCoord), playerPos);
         }
 
@@ -553,9 +619,9 @@ namespace GatherBuddy.AutoGather.Lists
                 NodeType.Legendary => 0,
                 NodeType.Unspoiled => 1,
                 NodeType.Ephemeral => 2,
-                NodeType.Clouded   => 3,
-                NodeType.Regular   => 9,
-                _                  => 99,
+                NodeType.Clouded => 3,
+                NodeType.Regular => 9,
+                _ => 99,
             };
         }
 
@@ -563,7 +629,9 @@ namespace GatherBuddy.AutoGather.Lists
         {
             var aetheryte = AutoGather.FindClosestAetheryte(location);
             if (aetheryte == null)
+            {
                 return int.MaxValue; // If there's no aetheryte, put it at the end
+            }
 
             return _teleportationCosts.GetValueOrDefault(aetheryte.Id, int.MaxValue);
         }
@@ -577,7 +645,9 @@ namespace GatherBuddy.AutoGather.Lists
 
             var telepo = Telepo.Instance();
             if (telepo == null)
+            {
                 return;
+            }
 
             telepo->UpdateAetheryteList();
             _teleportationCosts.EnsureCapacity(telepo->TeleportList.Count);
@@ -609,7 +679,7 @@ namespace GatherBuddy.AutoGather.Lists
                 18 /* FSH */ => GatheringType.Fisher,
                 _ => GatheringType.Unknown
             };
-            
+
             if (_activeItemsChanged
                 || _forceUpdateUnconditionally
                 || _lastUpdateTime.TotalEorzeaHours() != adjustedServerTime.TotalEorzeaHours()
@@ -617,7 +687,9 @@ namespace GatherBuddy.AutoGather.Lists
                 || _lastTerritoryId != Dalamud.ClientState.TerritoryType
                 || Diadem.IsInside && _lastWeatherId != EnhancedCurrentWeather.GetCurrentWeatherId()
                 || _lastJob != currentJob)
+            {
                 return true;
+            }
 
             return false;
         }
@@ -627,13 +699,13 @@ namespace GatherBuddy.AutoGather.Lists
         /// </summary>
         private void DoUpdate()
         {
-            var territoryId        = Dalamud.ClientState.TerritoryType;
-            var weatherId          = Diadem.IsInside ? EnhancedCurrentWeather.GetCurrentWeatherId() : 0;
+            var territoryId = Dalamud.ClientState.TerritoryType;
+            var weatherId = Diadem.IsInside ? EnhancedCurrentWeather.GetCurrentWeatherId() : 0;
             var adjustedServerTime = AutoGather.AdjustedServerTime;
-            var eorzeaHour         = adjustedServerTime.TotalEorzeaHours();
-            var lastTerritoryId    = _lastTerritoryId;
-            var lastWeatherId      = _lastWeatherId;
-            var lastEorzeaHour     = _lastUpdateTime.TotalEorzeaHours();
+            var eorzeaHour = adjustedServerTime.TotalEorzeaHours();
+            var lastTerritoryId = _lastTerritoryId;
+            var lastWeatherId = _lastWeatherId;
+            var lastEorzeaHour = _lastUpdateTime.TotalEorzeaHours();
             var currentJob = Player.Job switch
             {
                 16 /* MIN */ => GatheringType.Miner,
@@ -644,19 +716,25 @@ namespace GatherBuddy.AutoGather.Lists
 
             _activeItemsChanged = false;
             _forceUpdateUnconditionally = false;
-            _lastUpdateTime     = adjustedServerTime;
-            _lastTerritoryId    = territoryId;
-            _lastWeatherId      = weatherId;
-            _lastJob            = currentJob;
+            _lastUpdateTime = adjustedServerTime;
+            _lastTerritoryId = territoryId;
+            _lastWeatherId = weatherId;
+            _lastJob = currentJob;
 
             if (territoryId != lastTerritoryId)
+            {
                 UpdateTeleportationCosts();
+            }
 
             if (lastWeatherId != weatherId)
+            {
                 _consumedCloudedNode = false;
+            }
 
             if (eorzeaHour != lastEorzeaHour)
+            {
                 RemoveExpiredVisited(adjustedServerTime);
+            }
 
             UpdateItemsToGather();
         }

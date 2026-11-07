@@ -1,11 +1,10 @@
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
-using GatherBuddy.Helpers;
 using GatherBuddy.CustomInfo;
+using GatherBuddy.Helpers;
+using GatherBuddy.Plugin;
 using System;
 using System.Numerics;
-using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Utilities;
-using GatherBuddy.Plugin;
 
 namespace GatherBuddy.AutoGather.Movement
 {
@@ -27,7 +26,9 @@ namespace GatherBuddy.AutoGather.Movement
         public bool Check(Vector3 destination, bool isPathing)
         {
             if (IsRunning)
+            {
                 return false;
+            }
 
             var now = DateTime.Now;
 
@@ -63,7 +64,7 @@ namespace GatherBuddy.AutoGather.Movement
                 else if (now.Subtract(_lastMovement).TotalSeconds > GatherBuddy.Config.AutoGatherConfig.NavResetThreshold)
                 {
                     GatherBuddy.Log.Warning($"Advanced Unstuck: the character is stuck. Moved {_lastPosition.DistanceToPlayer()} yalms in {now.Subtract(_lastMovement).TotalSeconds} seconds.");
-                    
+
                     // Try jumping first if not flying/diving and haven't tried jumping recently
                     if (now.Subtract(_lastJumpAttempt).TotalSeconds > GatherBuddy.Config.AutoGatherConfig.NavResetCooldown * 2.0 && IsJumpPossible())
                     {
@@ -78,7 +79,7 @@ namespace GatherBuddy.AutoGather.Movement
                         Start();
                     }
                 }
-            } 
+            }
             else
             {
                 //vnavmesh is generating path: update current position.
@@ -110,11 +111,15 @@ namespace GatherBuddy.AutoGather.Movement
         private unsafe bool IsJumpPossible()
         {
             if (Dalamud.Conditions[ConditionFlag.InFlight] || Dalamud.Conditions[ConditionFlag.Diving] || Dalamud.Conditions[ConditionFlag.Jumping])
+            {
                 return false;
+            }
 
             var amInstance = FFXIVClientStructs.FFXIV.Client.Game.ActionManager.Instance();
             if (amInstance == null)
+            {
                 return false;
+            }
 
             var actionStatus = amInstance->GetActionStatus(FFXIVClientStructs.FFXIV.Client.Game.ActionType.GeneralAction, 2);
             return actionStatus == 0;
@@ -150,10 +155,10 @@ namespace GatherBuddy.AutoGather.Movement
 
             var rng = new Random();
             Vector3 landablePosition = default;
-            
-            for (int distance = 15; distance <= 60; distance += 5)
+
+            for (var distance = 15; distance <= 60; distance += 5)
             {
-                for (int angleStep = 0; angleStep < 16; angleStep++)
+                for (var angleStep = 0; angleStep < 16; angleStep++)
                 {
                     var angle = (float)(angleStep * Math.PI * 2 / 16);
                     var offset = new Vector3(
@@ -161,18 +166,18 @@ namespace GatherBuddy.AutoGather.Movement
                         0,
                         (float)Math.Sin(angle) * distance
                     );
-                    
+
                     var testPosition = Player.Position + offset;
-                    
+
                     try
                     {
                         var floorPosition = VNavmesh.Query.Mesh.PointOnFloor.Invoke(testPosition, true, 50f);
-                        
+
                         if (floorPosition.HasValue && floorPosition.Value != default)
                         {
                             var distanceToFloor = Vector3.Distance(floorPosition.Value, Player.Position);
                             var heightDiff = Math.Abs(floorPosition.Value.Y - testPosition.Y);
-                            
+
                             if (distanceToFloor > 10f && heightDiff < 30f)
                             {
                                 landablePosition = floorPosition.Value;
@@ -186,17 +191,19 @@ namespace GatherBuddy.AutoGather.Movement
                         GatherBuddy.Log.Debug($"Error querying mesh at distance {distance}, angle {angleStep}: {ex.Message}");
                     }
                 }
-                
+
                 if (landablePosition != default)
+                {
                     break;
+                }
             }
-            
+
             if (landablePosition == default)
             {
                 GatherBuddy.Log.Error("[Fishing Unstuck] CRITICAL: Could not find any landable position within 60y. Manual intervention required.");
                 return;
             }
-            
+
             _movementController.DesiredPosition = landablePosition;
             _movementController.Enabled = true;
             _unstuckStart = DateTime.Now;

@@ -1,10 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.Gui;
 
@@ -19,7 +17,10 @@ public partial class VulcanWindow
         }
 
         if (list.QuickSynthAll)
+        {
             GatherBuddy.Log.Debug($"[VulcanWindow] Quick Synth All active (PreferNQ={list.QuickSynthAllPreferNQ}, PrecraftsOnly={list.QuickSynthAllPrecraftsOnly})");
+        }
+
         var executionPlan = CraftingExecutionPlan.Create(list);
 
         GatherBuddy.Log.Information($"[VulcanWindow] Starting crafting list '{list.Name}' with {executionPlan.QueueView.Count} crafts from {executionPlan.ResolvedPlan.Recipes.Count} planned recipes");
@@ -33,12 +34,16 @@ public partial class VulcanWindow
         SolverOverrideMode effectiveSolverOverride,
         bool forcePreferNQ)
     {
-        RecipeCraftSettings? settings = sourceSettings?.Clone();
+        var settings = sourceSettings?.Clone();
         if (settings == null && (effectiveMacroId != null || effectiveSolverOverride != SolverOverrideMode.Default || forcePreferNQ))
+        {
             settings = new RecipeCraftSettings();
+        }
 
         if (settings == null)
+        {
             return null;
+        }
 
         settings.SelectedMacroId = effectiveMacroId;
         settings.SolverOverride = effectiveSolverOverride;
@@ -53,10 +58,10 @@ public partial class VulcanWindow
 
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
     {
-        var precrafts     = recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
+        var precrafts = recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
         var finalProducts = new List<CraftingListItem>(originalRecipesList);
 
-        var result    = new List<CraftingListItem>();
+        var result = new List<CraftingListItem>();
         var processed = new HashSet<uint>();
 
         var precraftsByJob = precrafts
@@ -66,7 +71,9 @@ public partial class VulcanWindow
         foreach (var jobGroup in precraftsByJob)
         {
             foreach (var recipeItem in jobGroup.ToList())
+            {
                 ProcessRecipeWithDependencies(recipeItem, precrafts, processed, result);
+            }
         }
 
         var sortedFinalProducts = finalProducts
@@ -76,7 +83,9 @@ public partial class VulcanWindow
             .ToList();
 
         foreach (var recipeItem in sortedFinalProducts)
+        {
             result.Add(recipeItem);
+        }
 
         return result;
     }
@@ -85,10 +94,12 @@ public partial class VulcanWindow
     {
         var isSpecific = settings != null
             && (settings.MacroMode == MacroOverrideMode.Specific
-                || (settings.MacroMode == MacroOverrideMode.Inherit
-                    && (!string.IsNullOrEmpty(settings.SelectedMacroId) || settings.SolverOverride != SolverOverrideMode.Default)));
+                || settings.MacroMode == MacroOverrideMode.Inherit
+                    && (!string.IsNullOrEmpty(settings.SelectedMacroId) || settings.SolverOverride != SolverOverrideMode.Default));
         if (isSpecific)
+        {
             return (settings?.SelectedMacroId, settings?.SolverOverride ?? SolverOverrideMode.Default);
+        }
 
         return isPrecraft
             ? (list.DefaultPrecraftMacroId, list.DefaultPrecraftSolverOverride)
@@ -102,11 +113,15 @@ public partial class VulcanWindow
         List<CraftingListItem> result)
     {
         if (processed.Contains(recipeItem.RecipeId))
+        {
             return;
+        }
 
         var recipe = RecipeManager.GetRecipe(recipeItem.RecipeId);
         if (recipe == null)
+        {
             return;
+        }
 
         var ingredients = RecipeManager.GetIngredients(recipe.Value);
         foreach (var (itemId, _) in ingredients)
@@ -116,7 +131,9 @@ public partial class VulcanWindow
             {
                 var depItem = allRecipes.FirstOrDefault(r => r.RecipeId == depRecipe.Value.RowId && !r.IsOriginalRecipe);
                 if (depItem != null)
+                {
                     ProcessRecipeWithDependencies(depItem, allRecipes, processed, result);
+                }
             }
         }
 
@@ -130,9 +147,11 @@ public partial class VulcanWindow
         if (classJobSheet != null)
         {
             var classJobId = craftTypeId + 8;
-            var classJob   = classJobSheet.GetRow(classJobId);
+            var classJob = classJobSheet.GetRow(classJobId);
             if (classJob.RowId > 0)
+            {
                 return classJob.Abbreviation.ExtractText();
+            }
         }
 
         return "Unknown";
@@ -144,11 +163,13 @@ public partial class VulcanWindow
         {
             var inventory = InventoryManager.Instance();
             if (inventory == null)
+            {
                 return 0;
+            }
 
-            var total      = 0;
+            var total = 0;
             var baseItemId = itemId >= 1_000_000 ? itemId - 1_000_000 : itemId;
-            var hqItemId   = baseItemId + 1_000_000;
+            var hqItemId = baseItemId + 1_000_000;
             var inventories = new[]
             {
                 InventoryType.Inventory1, InventoryType.Inventory2,
@@ -160,16 +181,22 @@ public partial class VulcanWindow
             {
                 var container = inventory->GetInventoryContainer(invType);
                 if (container == null)
+                {
                     continue;
+                }
 
                 for (var i = 0; i < container->Size; i++)
                 {
                     var item = container->GetInventorySlot(i);
                     if (item == null || item->ItemId == 0)
+                    {
                         continue;
+                    }
 
                     if (item->ItemId == baseItemId || item->ItemId == hqItemId)
+                    {
                         total += (int)item->Quantity;
+                    }
                 }
             }
 

@@ -1,9 +1,9 @@
+using Dalamud.Plugin;
+using Dalamud.Plugin.Ipc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Dalamud.Plugin;
-using Dalamud.Plugin.Ipc;
 
 namespace GatherBuddy.Plugin;
 
@@ -45,19 +45,19 @@ internal class EzIPCEventAttribute : Attribute
 
 internal static class EzIPC
 {
-    private static readonly List<Action> DisposalActions = new();
+    private static readonly List<Action> DisposalActions = [];
 
     public static EzIPCDisposalToken[] Init(object instance, string prefix, SafeWrapper safeWrapper = SafeWrapper.None)
     {
         var type = instance.GetType();
         InitType(instance, type, prefix, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        return Array.Empty<EzIPCDisposalToken>();
+        return [];
     }
 
     public static EzIPCDisposalToken[] Init(Type staticType, string prefix, SafeWrapper safeWrapper = SafeWrapper.None)
     {
         InitType(null, staticType, prefix, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-        return Array.Empty<EzIPCDisposalToken>();
+        return [];
     }
 
     public static void Dispose()
@@ -88,7 +88,10 @@ internal static class EzIPC
         foreach (var method in type.GetMethods(flags))
         {
             var attr = method.GetCustomAttribute<EzIPCAttribute>();
-            if (attr == null) continue;
+            if (attr == null)
+            {
+                continue;
+            }
 
             var ipcName = attr.IPCName ?? method.Name;
             var fullName = attr.ApplyPrefix ? $"{prefix}.{ipcName}" : ipcName;
@@ -120,7 +123,10 @@ internal static class EzIPC
         foreach (var field in type.GetFields(flags))
         {
             var attr = field.GetCustomAttribute<EzIPCAttribute>();
-            if (attr == null) continue;
+            if (attr == null)
+            {
+                continue;
+            }
 
             var ipcName = attr.IPCName ?? field.Name;
             var fullName = attr.ApplyPrefix ? $"{prefix}.{ipcName}" : ipcName;
@@ -129,7 +135,9 @@ internal static class EzIPC
             {
                 var fieldType = field.FieldType;
                 if (!fieldType.IsGenericType && fieldType != typeof(Action))
+                {
                     continue;
+                }
 
                 var subscriber = CreateSubscriber(fullName, fieldType);
                 if (subscriber != null)
@@ -149,7 +157,10 @@ internal static class EzIPC
         foreach (var field in type.GetFields(flags))
         {
             var attr = field.GetCustomAttribute<EzIPCEventAttribute>();
-            if (attr == null) continue;
+            if (attr == null)
+            {
+                continue;
+            }
 
             var ipcName = attr.IPCName ?? field.Name;
             var fullName = attr.ApplyPrefix ? $"{prefix}.{ipcName}" : ipcName;
@@ -181,34 +192,36 @@ internal static class EzIPC
         switch (paramCount)
         {
             case 0:
-            {
-                var provider = Dalamud.PluginInterface.GetIpcProvider<object>(name);
-                var action = (Action)Delegate.CreateDelegate(typeof(Action), instance, method);
-                provider.RegisterAction(action);
-                DisposalActions.Add(() => provider?.UnregisterAction());
-                break;
-            }
-            case 1:
-            {
-                var p1Type = method.GetParameters()[0].ParameterType;
-                var providerType = typeof(ICallGateProvider<,>).MakeGenericType(p1Type, typeof(object));
-                var getProviderMethod = typeof(IDalamudPluginInterface)
-                    .GetMethods()
-                    .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == 2)
-                    .MakeGenericMethod(p1Type, typeof(object));
-                var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, new object[] { name });
-                
-                var actionType = typeof(Action<>).MakeGenericType(p1Type);
-                var action = Delegate.CreateDelegate(actionType, instance, method);
-                
-                providerType.GetMethod("RegisterAction")!.Invoke(provider, new object[] { action });
-                DisposalActions.Add(() =>
                 {
-                    if (provider is ICallGateProvider baseProvider)
-                        baseProvider.UnregisterAction();
-                });
-                break;
-            }
+                    var provider = Dalamud.PluginInterface.GetIpcProvider<object>(name);
+                    var action = (Action)Delegate.CreateDelegate(typeof(Action), instance, method);
+                    provider.RegisterAction(action);
+                    DisposalActions.Add(() => provider?.UnregisterAction());
+                    break;
+                }
+            case 1:
+                {
+                    var p1Type = method.GetParameters()[0].ParameterType;
+                    var providerType = typeof(ICallGateProvider<,>).MakeGenericType(p1Type, typeof(object));
+                    var getProviderMethod = typeof(IDalamudPluginInterface)
+                        .GetMethods()
+                        .First(m => m.Name == "GetIpcProvider" && m.GetGenericArguments().Length == 2)
+                        .MakeGenericMethod(p1Type, typeof(object));
+                    var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, new object[] { name });
+
+                    var actionType = typeof(Action<>).MakeGenericType(p1Type);
+                    var action = Delegate.CreateDelegate(actionType, instance, method);
+
+                    providerType.GetMethod("RegisterAction")!.Invoke(provider, new object[] { action });
+                    DisposalActions.Add(() =>
+                    {
+                        if (provider is ICallGateProvider baseProvider)
+                        {
+                            baseProvider.UnregisterAction();
+                        }
+                    });
+                    break;
+                }
         }
     }
 
@@ -216,10 +229,10 @@ internal static class EzIPC
     {
         var paramTypes = parameters.Select(p => p.ParameterType).ToArray();
         var allTypes = paramTypes.Concat(new[] { returnType }).ToArray();
-        
+
         Type providerType;
         Type delegateType;
-        
+
         if (paramTypes.Length == 0)
         {
             providerType = typeof(ICallGateProvider<>).MakeGenericType(returnType);
@@ -241,12 +254,14 @@ internal static class EzIPC
             .MakeGenericMethod(allTypes);
         var provider = getProviderMethod.Invoke(Dalamud.PluginInterface, new object[] { name });
         var func = Delegate.CreateDelegate(delegateType, instance, method);
-        
+
         providerType.GetMethod("RegisterFunc")!.Invoke(provider, new object[] { func });
         DisposalActions.Add(() =>
         {
             if (provider is ICallGateProvider baseProvider)
+            {
                 baseProvider.UnregisterFunc();
+            }
         });
     }
 
@@ -259,7 +274,9 @@ internal static class EzIPC
         }
 
         if (!delegateType.IsGenericType)
+        {
             return null;
+        }
 
         var genericDef = delegateType.GetGenericTypeDefinition();
         var genericArgs = delegateType.GetGenericArguments();
@@ -377,7 +394,9 @@ internal static class EzIPC
         }
 
         if (!delegateType.IsGenericType)
+        {
             return null;
+        }
 
         var genericDef = delegateType.GetGenericTypeDefinition();
         var genericArgs = delegateType.GetGenericArguments();

@@ -1,24 +1,24 @@
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Game.ClientState.Keys;
 using ElliLib;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.Config;
 
 public partial class Configuration
 {
-    public static readonly VirtualKey[] ValidKeys = Dalamud.Keys.GetValidVirtualKeys().Prepend(VirtualKey.NO_KEY).ToArray();
+    public static readonly VirtualKey[] ValidKeys = [.. Dalamud.Keys.GetValidVirtualKeys().Prepend(VirtualKey.NO_KEY)];
 
     public const string DefaultIdentifiedGatherableFormat = "Identified {Item} for \"{Input}\".";
-    public const string DefaultAlarmFormat                = "{Alarm} {Item} {DelayString} at {Location}.";
+    public const string DefaultAlarmFormat = "{Alarm} {Item} {DelayString} at {Location}.";
 
     public static readonly Dictionary<int, uint> ForegroundColors = Dalamud.GameData.GetExcelSheet<UIColor>()!
         .Where(c => (c.Dark & 0xFF) > 0)
         .ToDictionary(c => (int)c.RowId, c => Functions.ReorderColor(c.Dark));
 
-    public const int DefaultSeColorNames     = 504;
-    public const int DefaultSeColorCommands  = 31;
+    public const int DefaultSeColorNames = 504;
+    public const int DefaultSeColorCommands = 31;
     public const int DefaultSeColorArguments = 546;
-    public const int DefaultSeColorAlarm     = 518;
+    public const int DefaultSeColorAlarm = 518;
 }

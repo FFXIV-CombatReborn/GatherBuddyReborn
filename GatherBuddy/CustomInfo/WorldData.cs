@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
@@ -6,16 +7,15 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.CustomInfo
 {
     public static class WorldData
     {
-        private static string WorldLocationsPath = Path.Combine(Dalamud.PluginInterface.ConfigDirectory.FullName, "world_locations.json");
-        private static string NodeOffsetsPath = Path.Combine(Dalamud.PluginInterface.ConfigDirectory.FullName, "node_offsets.json");
-        public static Dictionary<uint, List<Vector3>> WorldLocationsByNodeId { get; set; } = new();
-        public static Dictionary<Vector3, Vector3>    NodeOffsets            { get; set; } = new();
+        private static readonly string WorldLocationsPath = Path.Combine(Dalamud.PluginInterface.ConfigDirectory.FullName, "world_locations.json");
+        private static readonly string NodeOffsetsPath = Path.Combine(Dalamud.PluginInterface.ConfigDirectory.FullName, "node_offsets.json");
+        public static Dictionary<uint, List<Vector3>> WorldLocationsByNodeId { get; set; } = [];
+        public static Dictionary<Vector3, Vector3> NodeOffsets { get; set; } = [];
         public static ReadOnlyCollection<(ushort BaseGathering, ushort BasePerception)> IlvConvertTable { get; private set; }
 
         static WorldData()
@@ -41,13 +41,15 @@ namespace GatherBuddy.CustomInfo
         private static T LoadFromFile<T>(string path, string resourceName, JsonSerializerSettings settings)
         {
             var assembly = typeof(GatherBuddy).Assembly;
-            T   defaultObj;
+            T defaultObj;
 
             // Load the embedded resource
             using (var stream = assembly.GetManifestResourceStream(resourceName))
             {
                 if (stream == null)
+                {
                     throw new FileNotFoundException("Embedded resource not found.", resourceName);
+                }
 
                 using (var reader = new StreamReader(stream))
                 {
@@ -81,11 +83,11 @@ namespace GatherBuddy.CustomInfo
 
             // Read the content of the file
             var locJson = File.ReadAllText(path);
-            var obj     = JsonConvert.DeserializeObject<T>(locJson, settings);
+            var obj = JsonConvert.DeserializeObject<T>(locJson, settings);
             return obj ?? Activator.CreateInstance<T>();
         }
 
-        private static Dictionary<uint,List<Vector3>> MergeData(Dictionary<uint, List<Vector3>> defaultData, Dictionary<uint, List<Vector3>> existingData)
+        private static Dictionary<uint, List<Vector3>> MergeData(Dictionary<uint, List<Vector3>> defaultData, Dictionary<uint, List<Vector3>> existingData)
         {
             foreach (var kvp in defaultData)
             {
@@ -101,7 +103,7 @@ namespace GatherBuddy.CustomInfo
                 }
                 else
                 {
-                    existingData[kvp.Key] = new List<Vector3>(kvp.Value);
+                    existingData[kvp.Key] = [with(kvp.Value)];
                 }
             }
 
@@ -110,7 +112,7 @@ namespace GatherBuddy.CustomInfo
 
         private static List<OffsetPair> MergeData(List<OffsetPair> defaultData, List<OffsetPair> existingData)
         {
-            return existingData.Concat(defaultData).GroupBy(v => v.Original).Select(v => v.First()).ToList();
+            return [.. existingData.Concat(defaultData).GroupBy(v => v.Original).Select(v => v.First())];
         }
 
         public static void AddOffset(Vector3 original, Vector3 offset)
@@ -120,7 +122,7 @@ namespace GatherBuddy.CustomInfo
                 GatherBuddy.Log.Error($"{original} already has an offset of {NodeOffsets[original]}. Unable to add new offset.");
                 return;
             }
-            
+
             NodeOffsets[original] = offset;
             Task.Run(SaveOffsetsToFile);
         }
@@ -129,7 +131,7 @@ namespace GatherBuddy.CustomInfo
         {
             var settings = new JsonSerializerSettings();
             var offsetJson = JsonConvert.SerializeObject(NodeOffsets.Select(x => new OffsetPair(x.Key, x.Value)).ToList(), Formatting.Indented, settings);
-            
+
             File.WriteAllText(NodeOffsetsPath, offsetJson);
         }
 
@@ -138,17 +140,24 @@ namespace GatherBuddy.CustomInfo
             if (!WorldLocationsByNodeId.TryGetValue(nodeId, out var list))
             {
                 lock (WorldLocationsByNodeId)
+                {
                     WorldLocationsByNodeId[nodeId] = list = [];
+                }
+
                 foreach (var node in GatherBuddy.GameData.GatheringNodes.Values.Where(v => v.WorldPositions.ContainsKey(nodeId)))
+                {
                     node.WorldPositions[nodeId] = list;
+                }
             }
-                
+
             if (!list.Contains(location))
             {
                 lock (WorldLocationsByNodeId)
+                {
                     list.Add(location);
+                }
 
-                Task.Run(() => { lock (WorldLocationsByNodeId) SaveLocationsToFile(); });
+                Task.Run(() => { lock (WorldLocationsByNodeId) { SaveLocationsToFile(); } });
                 GatherBuddy.Log.Debug($"Added location {location} to node {nodeId}");
                 WorldLocationsChanged?.Invoke();
             }
@@ -176,7 +185,11 @@ namespace GatherBuddy.CustomInfo
             while (stream.ReadLine() is string line and { Length: > 5 })
             {
                 Span<ushort> values = [.. line.Split(',').Select(ushort.Parse)];
-                while (list.Count < values[0] + 1) list.Add((0, 0));
+                while (list.Count < values[0] + 1)
+                {
+                    list.Add((0, 0));
+                }
+
                 list[values[0]] = (values[1], values[2]);
             }
             IlvConvertTable = new([.. list]);

@@ -1,6 +1,6 @@
+using GatherBuddy.Vulcan;
 using System;
 using System.Collections.Generic;
-using GatherBuddy.Vulcan;
 
 namespace GatherBuddy.Crafting;
 
@@ -40,7 +40,7 @@ public class CachedRaphaelSolution
 {
     public string Key { get; set; } = string.Empty;
     public RaphaelSolveRequest Request { get; set; } = null!;
-    public List<uint> ActionIds { get; set; } = new();
+    public List<uint> ActionIds { get; set; } = [];
     public DateTime GeneratedAt { get; set; }
     public bool IsFailed { get; set; }
     public string? FailureReason { get; set; }

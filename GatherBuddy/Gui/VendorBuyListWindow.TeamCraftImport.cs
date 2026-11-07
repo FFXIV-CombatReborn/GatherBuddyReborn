@@ -1,9 +1,8 @@
-using System;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
-using ElliLib.Raii;
 using GatherBuddy.Vulcan.Vendors;
+using System;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -50,7 +49,9 @@ public sealed partial class VendorBuyListWindow
     private void DrawTeamCraftImportWindow(VendorBuyListManager manager)
     {
         if (!_showTeamCraftImport)
+        {
             return;
+        }
 
         ImGui.SetNextWindowSize(_teamCraftImportWindowSize, ImGuiCond.Appearing);
         var isOpen = _showTeamCraftImport;
@@ -65,12 +66,17 @@ public sealed partial class VendorBuyListWindow
         }
 
         if (_teamCraftImportWindowSizeDirty && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
+        {
             SaveTeamCraftImportWindowSize();
+        }
 
         if (!drawWindow)
         {
             if (!_showTeamCraftImport)
+            {
                 SaveTeamCraftImportWindowSize(true);
+            }
+
             ImGui.End();
             return;
         }
@@ -116,7 +122,9 @@ public sealed partial class VendorBuyListWindow
                         _teamCraftImportError = null;
                     }
                     if (isSelected)
+                    {
                         ImGui.SetItemDefaultFocus();
+                    }
                 }
                 ImGui.EndCombo();
             }
@@ -157,7 +165,7 @@ public sealed partial class VendorBuyListWindow
             ? GetTeamCraftImportTargetList(manager)
             : null;
         using (ImRaii.Disabled(string.IsNullOrWhiteSpace(_teamCraftImportText)
-            || (_teamCraftImportIntoExistingList && selectedTargetList == null)))
+            || _teamCraftImportIntoExistingList && selectedTargetList == null))
         {
             if (ImGui.Button("Import", VulcanUiScaling.Scaled(120f, 0f)))
             {
@@ -183,7 +191,9 @@ public sealed partial class VendorBuyListWindow
         }
 
         if (!_showTeamCraftImport)
+        {
             SaveTeamCraftImportWindowSize(true);
+        }
 
         ImGui.End();
     }
@@ -192,7 +202,9 @@ public sealed partial class VendorBuyListWindow
     {
         var activeListId = manager.ActiveList?.Id;
         if (activeListId.HasValue)
+        {
             return activeListId.Value;
+        }
 
         return manager.Lists.Count > 0
             ? manager.Lists[0].Id
@@ -213,7 +225,9 @@ public sealed partial class VendorBuyListWindow
             foreach (var list in manager.Lists)
             {
                 if (list.Id == _teamCraftImportTargetListId.Value)
+                {
                     return;
+                }
             }
         }
 
@@ -224,12 +238,16 @@ public sealed partial class VendorBuyListWindow
     {
         NormalizeTeamCraftImportTargetListId(manager);
         if (!_teamCraftImportTargetListId.HasValue)
+        {
             return null;
+        }
 
         foreach (var list in manager.Lists)
         {
             if (list.Id == _teamCraftImportTargetListId.Value)
+            {
                 return list;
+            }
         }
 
         return null;
@@ -248,7 +266,9 @@ public sealed partial class VendorBuyListWindow
     private void SaveTeamCraftImportWindowSize(bool force = false)
     {
         if (!force && !_teamCraftImportWindowSizeDirty)
+        {
             return;
+        }
 
         var normalizedSize = NormalizeTeamCraftImportWindowSize(_teamCraftImportWindowSize);
         if (HasTeamCraftImportWindowSizeChanged(GatherBuddy.Config.VendorTeamCraftImportWindowSize, normalizedSize))

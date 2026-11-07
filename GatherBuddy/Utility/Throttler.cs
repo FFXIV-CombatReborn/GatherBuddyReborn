@@ -27,7 +27,9 @@ public class Throttler<T> where T : notnull
         }
 
         if (reThrottle)
+        {
             _throttlers[name] = Environment.TickCount64 + milliseconds;
+        }
 
         return false;
     }
@@ -38,7 +40,9 @@ public class Throttler<T> where T : notnull
     public bool Check(T name)
     {
         if (!_throttlers.ContainsKey(name))
+        {
             return true;
+        }
 
         return Environment.TickCount64 > _throttlers[name];
     }
@@ -46,7 +50,9 @@ public class Throttler<T> where T : notnull
     public long GetRemainingTime(T name, bool allowNegative = false)
     {
         if (!_throttlers.ContainsKey(name))
+        {
             return allowNegative ? -Environment.TickCount64 : 0;
+        }
 
         var remaining = _throttlers[name] - Environment.TickCount64;
 

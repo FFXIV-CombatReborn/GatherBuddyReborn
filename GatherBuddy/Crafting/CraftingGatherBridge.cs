@@ -1,16 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using GatherBuddy.Automation;
-using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.AutoGather.Collectables;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Automation;
 using GatherBuddy.Helpers;
-using Lumina.Excel.Sheets;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
+using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.Crafting;
 
@@ -25,7 +25,7 @@ public static class CraftingGatherBridge
     private static CraftingQueueProcessor? _queueProcessor = null;
     private static CraftingExecutionPlan? _activeExecutionPlan = null;
     private static bool _isQueueMode = false;
-    private static List<AutoGatherList> _disabledGatherLists = new();
+    private static readonly List<AutoGatherList> _disabledGatherLists = [];
     private static int? _ephemeralListId = null;
     private static bool _waitingForCollectables = false;
     private static bool _collectablesStartPending = false;
@@ -35,7 +35,7 @@ public static class CraftingGatherBridge
     private static DateTime _lastCollectablesHardFailLog = DateTime.MinValue;
     private static bool _waitingForCollectablesHomeReturn = false;
     private static bool _collectablesHomeReturnStarted = false;
-    
+
     public static bool PreserveListOnDisable { get; set; } = false;
 
     public static void Initialize(global::GatherBuddy.GatherBuddy plugin)
@@ -55,10 +55,10 @@ public static class CraftingGatherBridge
         manager.OnFinishCollecting += OnCollectablesFinished;
         manager.OnError += OnCollectablesError;
     }
-    
+
     public static uint RecipeToCraft => _recipeIdToCraft;
     public static bool WaitingForGatherComplete => _waitingForGatherComplete;
-    
+
     public static AutoGatherList? GetTemporaryGatherList() => _gatherList;
     public static CraftingExecutionPlan? GetActiveExecutionPlan()
         => _activeExecutionPlan;
@@ -67,7 +67,7 @@ public static class CraftingGatherBridge
         => _activeExecutionPlan != null && _activeExecutionPlan.MatchesList(listId)
             ? _activeExecutionPlan
             : null;
-    
+
     public static void DeleteTemporaryGatherList()
     {
         if (_gatherList != null && _plugin != null)
@@ -84,7 +84,7 @@ public static class CraftingGatherBridge
             }
         }
     }
-    
+
     public static void CreatePersistentGatherList(string listName, Dictionary<uint, int> materials)
     {
         if (_plugin == null)
@@ -105,14 +105,22 @@ public static class CraftingGatherBridge
             {
                 var gatherQuantity = GetCraftingGatherTargetQuantity(itemId, quantity, out var gatherItemId);
                 if (gatherQuantity <= 0)
+                {
                     continue;
+                }
 
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
+                {
                     gatherList.Add(gatherable, (uint)gatherQuantity);
+                }
                 else if (GatherBuddy.GameData.Fishes.TryGetValue(gatherItemId, out var fish))
+                {
                     gatherList.Add(fish, (uint)gatherQuantity);
+                }
                 else
+                {
                     GatherBuddy.Log.Debug($"[CraftingGatherBridge] Item {gatherItemId} not found in gatherables or fish, skipping");
+                }
             }
 
             if (gatherList.Items.Count > 0)
@@ -136,13 +144,20 @@ public static class CraftingGatherBridge
     {
         gatherItemId = itemId;
         if (quantity <= 0)
+        {
             return 0;
+        }
 
         if (!AutoGather.Helpers.Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
+        {
             return quantity;
+        }
+
         var approvedDeficit = Math.Max(0, quantity - GetInventoryCount(itemId));
         if (approvedDeficit <= 0)
+        {
             return 0;
+        }
 
         gatherItemId = rawItemId;
         var batchSize = AutoGather.Helpers.Diadem.ApprovedInspectionBatchSizes.TryGetValue(itemId, out var configuredBatchSize) && configuredBatchSize > 0
@@ -150,7 +165,7 @@ public static class CraftingGatherBridge
             : 1;
         return RoundUpToBatchSize(approvedDeficit, batchSize);
     }
-    
+
     public static void Update()
     {
         if (_isQueueMode && _queueProcessor != null)
@@ -158,7 +173,7 @@ public static class CraftingGatherBridge
             UpdateCollectablesHomeReturnBeforeResume();
             TryStartCollectablesInterruption();
             _queueProcessor.Update();
-            
+
             if (_queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete && !_queueProcessor.HasPendingTasks())
             {
                 GatherBuddy.Log.Information("[CraftingGatherBridge] All completion tasks done, cleaning up");
@@ -176,10 +191,12 @@ public static class CraftingGatherBridge
                 }
             }
         }
-        
+
         if (!_waitingForJobSwitch)
+        {
             return;
-        
+        }
+
         var timeSinceSwitch = (DateTime.Now - _jobSwitchTime).TotalSeconds;
         if (timeSinceSwitch >= 2)
         {
@@ -189,7 +206,7 @@ public static class CraftingGatherBridge
             OnGatherComplete();
         }
     }
-    
+
     public static void OnCraftFinished(Recipe? recipe, bool cancelled)
     {
         if (_isQueueMode && _queueProcessor != null)
@@ -205,7 +222,7 @@ public static class CraftingGatherBridge
         _waitingForGatherComplete = true;
         CreateGatherListForMissingIngredients(missing);
     }
-    
+
     public static void StartQueueCraftAndGather(CraftingExecutionPlan executionPlan, CraftingListConsumableSettings? listConsumables = null, int? ephemeralListId = null)
     {
         _isQueueMode = true;
@@ -221,11 +238,13 @@ public static class CraftingGatherBridge
         var hasRetainerWork = executionPlan.RetainerRestock && AllaganTools.Enabled
             && (executionPlan.Materials.Count > 0 || executionPlan.RetainerConsumedCraftables.Count > 0);
         if (!hasRetainerWork)
+        {
             CreateGatherListForMissingIngredients(executionPlan.Materials);
+        }
 
         GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(_queueProcessor);
     }
-    
+
     public static void CreateGatherListForMissingIngredients(Dictionary<uint, int> missing)
     {
         try
@@ -257,14 +276,22 @@ public static class CraftingGatherBridge
             {
                 var gatherQuantity = GetCraftingGatherTargetQuantity(itemId, quantity, out var gatherItemId);
                 if (gatherQuantity <= 0)
+                {
                     continue;
-                
+                }
+
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(gatherItemId, out var gatherable))
+                {
                     _gatherList.Add(gatherable, (uint)gatherQuantity);
+                }
                 else if (GatherBuddy.GameData.Fishes.TryGetValue(gatherItemId, out var fish))
+                {
                     _gatherList.Add(fish, (uint)gatherQuantity);
+                }
                 else
+                {
                     GatherBuddy.Log.Debug($"[CraftingGatherBridge] Item {gatherItemId} not found in gatherables or fish, skipping");
+                }
             }
 
             if (_gatherList.Items.Count > 0 && _plugin != null)
@@ -295,7 +322,7 @@ public static class CraftingGatherBridge
             GatherBuddy.Log.Error($"Failed to create gather list: {ex.Message}");
         }
     }
-    
+
     public static void OnGatherComplete()
     {
         if (_isQueueMode && _queueProcessor != null)
@@ -305,10 +332,12 @@ public static class CraftingGatherBridge
             _queueProcessor.OnGatherComplete();
             return;
         }
-        
+
         if (_recipeIdToCraft == 0)
+        {
             return;
-        
+        }
+
         var recipeSheet = Dalamud.GameData.GetExcelSheet<Recipe>();
         if (recipeSheet == null || !recipeSheet.TryGetRow(_recipeIdToCraft, out var recipe))
         {
@@ -317,10 +346,10 @@ public static class CraftingGatherBridge
             _waitingForGatherComplete = false;
             return;
         }
-        
+
         var requiredCraftJob = (uint)(recipe.CraftType.RowId + 8);
         var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
-        
+
         if (currentJob != requiredCraftJob)
         {
             if (!_waitingForJobSwitch)
@@ -332,17 +361,17 @@ public static class CraftingGatherBridge
             }
             return;
         }
-        
+
         _waitingForGatherComplete = false;
         _waitingForJobSwitch = false;
         GatherBuddy.Log.Information($"Gathering complete. Starting craft for recipe {_recipeIdToCraft}");
-        
+
         DeleteTemporaryGatherList();
-        
+
         CraftingGameInterop.StartCraft(recipe, 1);
         _recipeIdToCraft = 0;
     }
-    
+
     private static unsafe void SwitchJob(uint jobId)
     {
         try
@@ -353,14 +382,14 @@ public static class CraftingGatherBridge
                 GatherBuddy.Log.Error("Failed to get gearset module");
                 return;
             }
-            
+
             if (GearsetStatsReader.TryResolveExistingGearsetIndex(gearsetModule, jobId, out var gearsetIndex))
             {
                 gearsetModule->EquipGearset(gearsetIndex);
                 GatherBuddy.Log.Information($"Equipped gearset {gearsetIndex} for job {jobId}");
                 return;
             }
-            
+
             GatherBuddy.Log.Warning($"No gearset found for job {jobId}");
         }
         catch (Exception ex)
@@ -372,7 +401,9 @@ public static class CraftingGatherBridge
     public static bool IsGatheringComplete()
     {
         if (_gatherList == null)
+        {
             return _waitingForGatherComplete;
+        }
 
         var allComplete = true;
         foreach (var item in _gatherList.Items)
@@ -395,7 +426,10 @@ public static class CraftingGatherBridge
         {
             var inventory = InventoryManager.Instance();
             if (inventory == null)
+            {
                 return 0;
+            }
+
             return inventory->GetInventoryItemCount(itemId, false, false, false);
         }
         catch
@@ -403,7 +437,7 @@ public static class CraftingGatherBridge
             return 0;
         }
     }
-    
+
     public static void TestRepairSystem()
     {
         if (_queueProcessor != null && _isQueueMode)
@@ -411,19 +445,21 @@ public static class CraftingGatherBridge
             GatherBuddy.Log.Warning("[CraftingGatherBridge] Cannot test repair - queue is already running");
             return;
         }
-        
+
         GatherBuddy.Log.Information("[CraftingGatherBridge] Starting repair system test");
         _isQueueMode = true;
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.TestRepair();
-        
+
         GatherBuddy.CraftingStatusWindow?.SetQueueProcessor(_queueProcessor);
     }
-    
+
     private static void RestoreDisabledGatherLists()
     {
         if (_disabledGatherLists.Count == 0 || _plugin == null)
+        {
             return;
+        }
 
         foreach (var list in _disabledGatherLists)
         {
@@ -448,10 +484,14 @@ public static class CraftingGatherBridge
          || GatherBuddy.CollectableManager.IsRunning
          || _waitingForCollectablesHomeReturn
          || DateTime.UtcNow < _nextCollectablesRetry)
+        {
             return;
+        }
 
         if (_waitingForCollectables)
+        {
             return;
+        }
 
         var collectableConfig = GatherBuddy.Config.CollectableConfig;
         if (!collectableConfig.AutoTurnInCollectables)
@@ -480,11 +520,16 @@ public static class CraftingGatherBridge
         if (!_collectablesStartPending)
         {
             if (_queueProcessor.Paused)
+            {
                 return;
+            }
 
             var thresholdState = CollectableInventoryHelper.GetThresholdState(GatherBuddy.Config.CollectableConfig);
             if (!thresholdState.ThresholdReached)
+            {
                 return;
+            }
+
             _queueProcessor.Pause();
             _collectablesStartPending = true;
             _lastCollectablesWaitLog = DateTime.MinValue;
@@ -528,11 +573,15 @@ public static class CraftingGatherBridge
     private static void TryExitCraftingUiForCollectables()
     {
         if (CraftingGameInterop.CurrentState != CraftingGameInterop.CraftState.IdleBetween)
+        {
             return;
+        }
 
         if (_lastCollectablesExitAttempt != DateTime.MinValue
-         && (DateTime.UtcNow - _lastCollectablesExitAttempt) < TimeSpan.FromMilliseconds(500))
+         && DateTime.UtcNow - _lastCollectablesExitAttempt < TimeSpan.FromMilliseconds(500))
+        {
             return;
+        }
 
         _lastCollectablesExitAttempt = DateTime.UtcNow;
         CraftingTasks.TaskExitCraft();
@@ -628,8 +677,10 @@ public static class CraftingGatherBridge
 
     private static void LogCollectablesWaitReason(string waitReason)
     {
-        if (_lastCollectablesWaitLog != DateTime.MinValue && (DateTime.UtcNow - _lastCollectablesWaitLog) < TimeSpan.FromSeconds(10))
+        if (_lastCollectablesWaitLog != DateTime.MinValue && DateTime.UtcNow - _lastCollectablesWaitLog < TimeSpan.FromSeconds(10))
+        {
             return;
+        }
 
         GatherBuddy.Log.Debug($"[CraftingGatherBridge] Waiting to start collectables interruption: {waitReason}");
         _lastCollectablesWaitLog = DateTime.UtcNow;
@@ -638,7 +689,10 @@ public static class CraftingGatherBridge
     private static void OnCollectablesFinished()
     {
         if (!_waitingForCollectables && !_collectablesStartPending)
+        {
             return;
+        }
+
         ResetCollectablesInterruptionState();
         _queueProcessor?.Resume();
     }
@@ -646,7 +700,9 @@ public static class CraftingGatherBridge
     private static void OnCollectablesError(string error)
     {
         if (!_waitingForCollectables && !_collectablesStartPending)
+        {
             return;
+        }
 
         GatherBuddy.Log.Error($"[CraftingGatherBridge] Collectables interruption failed: {error}");
         var hardFailReason = GatherBuddy.Config.CollectableConfig.AutoTurnInHardFailReason;
@@ -680,17 +736,23 @@ public static class CraftingGatherBridge
     private static void UpdateCollectablesHomeReturnBeforeResume()
     {
         if (!_waitingForCollectablesHomeReturn)
+        {
             return;
+        }
 
         if (!_collectablesHomeReturnStarted)
         {
             if (Lifestream.Enabled && Lifestream.IsBusy())
+            {
                 return;
+            }
 
             if (!HomeNavigationHelper.TryStartReturnHome(out var error))
             {
                 if (string.IsNullOrWhiteSpace(error))
+                {
                     return;
+                }
 
                 GatherBuddy.Log.Warning($"[CraftingGatherBridge] {error}");
                 GatherBuddy.Log.Warning("[CraftingGatherBridge] Resuming the queue without a home return after collectables hard fail");
@@ -704,13 +766,15 @@ public static class CraftingGatherBridge
         }
 
         if (!HomeNavigationHelper.IsReturnComplete())
+        {
             return;
+        }
 
         GatherBuddy.Log.Information("[CraftingGatherBridge] Home return complete, resuming the queue after collectables hard fail");
         ResetCollectablesInterruptionState();
         _queueProcessor?.Resume();
     }
-    
+
     public static void StopQueue()
     {
         if (_queueProcessor != null)
@@ -738,16 +802,22 @@ public static class CraftingGatherBridge
     public static void PauseQueue(string reason)
     {
         if (_isQueueMode && _queueProcessor is { Paused: false })
+        {
             _queueProcessor.Pause(reason);
+        }
     }
 
     private static void LogCollectablesHardFailState(string hardFailReason)
     {
         if (string.IsNullOrWhiteSpace(hardFailReason))
+        {
             return;
+        }
 
-        if (_lastCollectablesHardFailLog != DateTime.MinValue && (DateTime.UtcNow - _lastCollectablesHardFailLog) < TimeSpan.FromSeconds(30))
+        if (_lastCollectablesHardFailLog != DateTime.MinValue && DateTime.UtcNow - _lastCollectablesHardFailLog < TimeSpan.FromSeconds(30))
+        {
             return;
+        }
 
         GatherBuddy.Log.Warning($"[CraftingGatherBridge] Skipping collectables interruption because auto turn-ins were forced off: {hardFailReason}");
         _lastCollectablesHardFailLog = DateTime.UtcNow;

@@ -1,9 +1,9 @@
-using System;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Plugin;
 using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Automation;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.AutoGather.Collectables;
+using GatherBuddy.Automation;
+using GatherBuddy.Plugin;
+using System;
 using PurifyResult = GatherBuddy.Automation.AddonMaster.PurifyResult;
 
 namespace GatherBuddy.AutoGather
@@ -13,7 +13,9 @@ namespace GatherBuddy.AutoGather
         private bool HasReducibleItems()
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DoReduce || Dalamud.Conditions[ConditionFlag.Mounted])
+            {
                 return false;
+            }
 
             if (!QuestManager.IsQuestComplete(67633))
             {
@@ -31,7 +33,9 @@ namespace GatherBuddy.AutoGather
             foreach (var item in items)
             {
                 if (!item.IsCollectable)
+                {
                     continue;
+                }
 
                 // Check regular gatherables
                 if (GatherBuddy.GameData.Gatherables.TryGetValue(item.BaseItemId, out var gatherable)
@@ -39,7 +43,7 @@ namespace GatherBuddy.AutoGather
                 {
                     return true;
                 }
-                
+
                 // Check fish
                 if (GatherBuddy.GameData.Fishes.TryGetValue(item.BaseItemId, out var fish)
                  && fish.ItemData.AetherialReduce != 0)
@@ -63,10 +67,10 @@ namespace GatherBuddy.AutoGather
                 TaskManager.DelayNext(500);
             }
 
-            TaskManager.Enqueue(ReduceFirstItem,                                3000, true, "Reduce first item");
+            TaskManager.Enqueue(ReduceFirstItem, 3000, true, "Reduce first item");
             TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Occupied39], 5000, true, "Wait until first item reduction is complete");
             TaskManager.DelayNext(delay);
-            TaskManager.Enqueue(StartAutoReduction,                             1000, true, "Start auto reduction");
+            TaskManager.Enqueue(StartAutoReduction, 1000, true, "Start auto reduction");
             TaskManager.Enqueue(() => !Dalamud.Conditions[ConditionFlag.Occupied39], 180000, true, "Wait until all items have been reduced");
             TaskManager.DelayNext(delay);
             TaskManager.Enqueue(() =>
@@ -74,19 +78,27 @@ namespace GatherBuddy.AutoGather
                 EnqueueActionWithDelay(() =>
                 {
                     if (PurifyResultAddon is var addon and not null)
+                    {
                         Callback.Fire(addon, true, -1);
+                    }
                 });
                 if (reduceAll && HasReducibleItems())
+                {
                     ReduceItems(true, onComplete);
+                }
                 else
                 {
                     EnqueueActionWithDelay(() =>
                     {
                         if (PurifyItemSelectorAddon is var addon and not null)
+                        {
                             Callback.Fire(addon, true, -1);
+                        }
                     });
                     if (onComplete != null)
+                    {
                         TaskManager.Enqueue(() => onComplete());
+                    }
                 }
             });
         }
@@ -95,7 +107,9 @@ namespace GatherBuddy.AutoGather
         {
             var addon = PurifyItemSelectorAddon;
             if (addon == null)
+            {
                 return false;
+            }
 
             Callback.Fire(addon, true, 12, 0u);
             return true;
@@ -105,7 +119,9 @@ namespace GatherBuddy.AutoGather
         {
             var addon = PurifyResultAddon;
             if (addon == null)
+            {
                 return false;
+            }
 
             new PurifyResult(addon).Automatic();
             return true;

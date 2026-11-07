@@ -1,12 +1,11 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Colors;
+using GatherBuddy.Crafting;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
-using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Gui;
 
@@ -15,7 +14,10 @@ public partial class VulcanWindow
     private void DrawTeamCraftImportWindow()
     {
         if (!_showTeamCraftImport)
+        {
             return;
+        }
+
         ImGui.SetNextWindowSize(_teamCraftImportWindowSize, ImGuiCond.Appearing);
         var isOpen = _showTeamCraftImport;
         var drawWindow = ImGui.Begin("TeamCraft Import###TCImport", ref isOpen, ImGuiWindowFlags.NoCollapse);
@@ -29,12 +31,17 @@ public partial class VulcanWindow
         }
 
         if (_teamCraftImportWindowSizeDirty && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
+        {
             SaveTeamCraftImportWindowSize();
+        }
 
         if (!drawWindow)
         {
             if (!_showTeamCraftImport)
+            {
                 SaveTeamCraftImportWindowSize(true);
+            }
+
             ImGui.End();
             return;
         }
@@ -53,7 +60,9 @@ public partial class VulcanWindow
         ImGui.Spacing();
         ImGui.Checkbox("Ephemeral##teamCraftEphemeral", ref _teamCraftEphemeral);
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
+        }
 
         ImGui.Spacing();
         ImGui.Text("Final Items:");
@@ -72,16 +81,18 @@ public partial class VulcanWindow
             {
                 DisposeListEditor();
                 _editingList = importedList;
-                _listEditor  = new CraftingListEditor(importedList);
-                _listEditor.OnStartCrafting = l => { StartCraftingList(l); MinimizeWindow(); };
+                _listEditor = new CraftingListEditor(importedList)
+                {
+                    OnStartCrafting = l => { StartCraftingList(l); MinimizeWindow(); }
+                };
                 _listEditor.RefreshInventoryCounts();
                 GatherBuddy.CraftingMaterialsWindow?.SetEditor(_listEditor);
                 GatherBuddy.CraftingTreeWindow?.SetEditor(_listEditor);
                 _deferEditorDraw = true;
 
-                _teamCraftListName   = string.Empty;
+                _teamCraftListName = string.Empty;
                 _teamCraftFinalItems = string.Empty;
-                _teamCraftEphemeral  = false;
+                _teamCraftEphemeral = false;
                 _showTeamCraftImport = false;
 
                 GatherBuddy.Log.Information($"[VulcanWindow] Successfully imported TeamCraft list: {importedList.Name}");
@@ -91,13 +102,15 @@ public partial class VulcanWindow
         ImGui.SameLine();
         if (ImGui.Button("Cancel", VulcanUiScaling.Scaled(100f, 0f)))
         {
-            _teamCraftListName   = string.Empty;
+            _teamCraftListName = string.Empty;
             _teamCraftFinalItems = string.Empty;
-            _teamCraftEphemeral  = false;
+            _teamCraftEphemeral = false;
             _showTeamCraftImport = false;
         }
         if (!_showTeamCraftImport)
+        {
             SaveTeamCraftImportWindowSize(true);
+        }
 
         ImGui.End();
     }
@@ -115,7 +128,9 @@ public partial class VulcanWindow
     private void SaveTeamCraftImportWindowSize(bool force = false)
     {
         if (!force && !_teamCraftImportWindowSizeDirty)
+        {
             return;
+        }
 
         var normalizedSize = NormalizeTeamCraftImportWindowSize(_teamCraftImportWindowSize);
         if (HasTeamCraftImportWindowSizeChanged(GatherBuddy.Config.TeamCraftImportWindowSize, normalizedSize))
@@ -155,9 +170,13 @@ public partial class VulcanWindow
         {
             var existingItem = newList.Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
             if (existingItem != null)
+            {
                 existingItem.Quantity += quantity;
+            }
             else
+            {
                 newList.Recipes.Add(new CraftingListItem(recipeId, quantity));
+            }
         }
 
         GatherBuddy.CraftingListManager.SaveList(newList);
@@ -168,7 +187,9 @@ public partial class VulcanWindow
     private void ParseTeamCraftSection(string text, List<(uint recipeId, int quantity)> output)
     {
         if (string.IsNullOrWhiteSpace(text))
+        {
             return;
+        }
 
         using var reader = new System.IO.StringReader(text);
         string? line;
@@ -176,20 +197,28 @@ public partial class VulcanWindow
         {
             var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2)
+            {
                 continue;
+            }
 
             if (!parts[0].EndsWith('x'))
+            {
                 continue;
+            }
 
             if (!int.TryParse(parts[0].Substring(0, parts[0].Length - 1), out var numberOfItems))
+            {
                 continue;
+            }
 
             var itemName = string.Join(" ", parts.Skip(1)).Trim();
             GatherBuddy.Log.Debug($"[VulcanWindow] TeamCraft import: Parsing {numberOfItems}x {itemName}");
 
             var recipeSheet = Dalamud.GameData.GetExcelSheet<Recipe>();
             if (recipeSheet == null)
+            {
                 continue;
+            }
 
             Recipe? foundRecipe = null;
             foreach (var recipe in recipeSheet)

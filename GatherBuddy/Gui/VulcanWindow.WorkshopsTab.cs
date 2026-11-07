@@ -1,15 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Textures;
-using ElliLib.Raii;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Workshops;
 using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -49,7 +48,9 @@ public partial class VulcanWindow
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             DrawWorkshopsTabContent();
         }
@@ -103,7 +104,9 @@ public partial class VulcanWindow
     private void EnsureWorkshopSelection(IReadOnlyList<WorkshopProjectNode> projects)
     {
         if (_selectedWorkshopProject != null && !projects.Any(project => project.SequenceId == _selectedWorkshopProject.SequenceId))
+        {
             _selectedWorkshopProject = null;
+        }
 
         _selectedWorkshopProject ??= projects.FirstOrDefault();
 
@@ -121,7 +124,9 @@ public partial class VulcanWindow
         }
 
         if (_workshopLoopCount < 1)
+        {
             _workshopLoopCount = 1;
+        }
     }
 
     private static bool ScopeExists(WorkshopProjectNode project, WorkshopScopeNode scope)
@@ -167,9 +172,13 @@ public partial class VulcanWindow
             var rowY = ImGui.GetCursorPosY();
             var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(project.ProjectIconId));
             if (icon.TryGetWrap(out var wrap, out _))
+            {
                 ImGui.Image(wrap.Handle, iconSize);
+            }
             else
+            {
                 ImGui.Dummy(iconSize);
+            }
 
             ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
             ImGui.SetCursorPosY(rowY + (iconSize.Y - ImGui.GetTextLineHeight()) / 2f);
@@ -213,10 +222,14 @@ public partial class VulcanWindow
         var overviewSelected = _selectedWorkshopScope is WorkshopProjectNode selectedProject
             && selectedProject.SequenceId == _selectedWorkshopProject.SequenceId;
         if (ImGui.Selectable($"Overview##workshopOverview_{_selectedWorkshopProject.SequenceId}", overviewSelected))
+        {
             _selectedWorkshopScope = _selectedWorkshopProject;
+        }
 
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Show the full project requirements and generate a list for the entire workshop project.");
+        }
 
         ImGui.Spacing();
 
@@ -225,28 +238,43 @@ public partial class VulcanWindow
             var isSelected = _selectedWorkshopScope is WorkshopPartNode selectedPart && selectedPart.PartId == part.PartId;
             var flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.DefaultOpen;
             if (isSelected)
+            {
                 flags |= ImGuiTreeNodeFlags.Selected;
+            }
+
             if (part.Phases.Count == 0)
+            {
                 flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+            }
 
             var open = ImGui.TreeNodeEx($"{part.DisplayName}##workshopPart_{part.PartId}", flags);
             if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
+            {
                 _selectedWorkshopScope = part;
+            }
 
             if (ImGui.IsItemHovered())
+            {
                 ImGui.SetTooltip($"{part.Phases.Count} phase(s) · {part.CraftableRequirementCount} supply item(s) with recipes");
+            }
 
             if (!open || part.Phases.Count == 0)
+            {
                 continue;
+            }
 
             foreach (var phase in part.Phases)
             {
                 var phaseSelected = _selectedWorkshopScope is WorkshopPhaseNode selectedPhase && selectedPhase.PhaseId == phase.PhaseId;
                 if (ImGui.Selectable($"Phase {phase.PhaseIndex}##workshopPhase_{phase.PhaseId}", phaseSelected))
+                {
                     _selectedWorkshopScope = phase;
+                }
 
                 if (ImGui.IsItemHovered())
+                {
                     ImGui.SetTooltip($"{phase.CraftableRequirementCount} supply item(s) with recipes");
+                }
             }
 
             ImGui.TreePop();
@@ -278,9 +306,13 @@ public partial class VulcanWindow
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(12f));
         var headerIcon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(scope.ProjectIconId));
         if (headerIcon.TryGetWrap(out var wrap, out _))
+        {
             ImGui.Image(wrap.Handle, VulcanUiScaling.Scaled(48f, 48f));
+        }
         else
+        {
             ImGui.Dummy(VulcanUiScaling.Scaled(48f, 48f));
+        }
 
         ImGui.SameLine(0, VulcanUiScaling.Scaled(12f));
         var headerStartY = ImGui.GetCursorPosY();
@@ -288,7 +320,9 @@ public partial class VulcanWindow
         ImGui.TextColored(ImGuiColors.ParsedGold, scope.DisplayName);
         ImGui.TextColored(ImGuiColors.DalamudGrey3, scopeLabel);
         if (scope.Kind != WorkshopScopeKind.Project)
+        {
             ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Project: {scope.ProjectName}");
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -302,7 +336,10 @@ public partial class VulcanWindow
             ImGui.TextColored(ImGuiColors.DalamudOrange, "No recipe found for:");
             ImGui.Spacing();
             foreach (var req in scope.Requirements.Where(r => !r.IsCraftable))
+            {
                 ImGui.TextUnformatted($"  {req.ItemName}  x{req.RequiredQuantity}");
+            }
+
             ImGui.EndTooltip();
         }
         DrawWorkshopStatRow("Required:", scope.TotalRequiredItemCount.ToString(), new Vector4(0.85f, 0.85f, 0.85f, 1.0f));
@@ -318,7 +355,9 @@ public partial class VulcanWindow
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(12f));
         ImGui.Checkbox("Ephemeral##workshopEphemeral", ref _workshopEphemeral);
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Delete this list automatically after crafting completes. Can be changed later in the list editor.");
+        }
 
         ImGui.Spacing();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(12f));
@@ -338,11 +377,15 @@ public partial class VulcanWindow
         using (ImRaii.Disabled(scope.CraftableRequirementCount == 0))
         {
             if (ImGui.Button("Create Crafting List##createWorkshopList", VulcanUiScaling.Scaled(-1f, 22f)))
+            {
                 CreateWorkshopCraftingList(scope, _workshopListName);
+            }
         }
 
         if (scope.CraftableRequirementCount == 0 && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
             ImGui.SetTooltip("This selection has no workshop supplies with recipes to add to a Vulcan crafting list.");
+        }
 
         ImGui.Spacing();
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(12f));
@@ -350,7 +393,9 @@ public partial class VulcanWindow
         using (ImRaii.Disabled(!canAddToExistingList))
         {
             if (ImGui.Button("Add to Existing List##addWorkshopToExistingList", VulcanUiScaling.Scaled(-1f, 22f)))
+            {
                 QueueWorkshopAddToListPopup();
+            }
         }
 
         if (!canAddToExistingList && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -382,7 +427,9 @@ public partial class VulcanWindow
             foreach (var requirement in scope.Requirements)
             {
                 if (itemSheet == null || !itemSheet.TryGetRow(requirement.ItemId, out var item))
+                {
                     continue;
+                }
 
                 DrawIngredientRow(requirement.ItemId, requirement.RequiredQuantity, item, showRetainer);
             }
@@ -407,7 +454,9 @@ public partial class VulcanWindow
             .OrderBy(requirement => requirement.ItemName, StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (craftableRequirements.Count == 0)
+        {
             return;
+        }
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -425,9 +474,14 @@ public partial class VulcanWindow
             var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(requirement.IconId));
             ImGui.SetCursorPosX(rowStartX);
             if (icon.TryGetWrap(out var wrap, out _))
+            {
                 ImGui.Image(wrap.Handle, new Vector2(iconSize, iconSize));
+            }
             else
+            {
                 ImGui.Dummy(new Vector2(iconSize, iconSize));
+            }
+
             ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
             ImGui.SetCursorPosY(textY);
             ImGui.TextColored(textColor, requirement.ItemName);
@@ -452,7 +506,9 @@ public partial class VulcanWindow
         list.SkipIfEnough = true;
 
         foreach (var (recipeId, quantity) in draft.Recipes)
+        {
             list.AddRecipe(recipeId, quantity);
+        }
 
         if (!GatherBuddy.CraftingListManager.SaveList(list))
         {
@@ -483,7 +539,9 @@ public partial class VulcanWindow
         ImGui.SetNextWindowSize(popupSize, ImGuiCond.Always);
         ImGui.SetNextWindowSizeConstraints(popupSize, popupSize);
         if (!ImGui.BeginPopup(WorkshopAddToListPopupId, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
+        {
             return;
+        }
 
         var scope = _selectedWorkshopScope;
         if (scope == null)
@@ -493,7 +551,10 @@ public partial class VulcanWindow
             ImGui.TextColored(ImGuiColors.DalamudGrey, "No workshop scope selected.");
             ImGui.Spacing();
             if (ImGui.Button("Close", VulcanUiScaling.Scaled(100f, 0f)))
+            {
                 ImGui.CloseCurrentPopup();
+            }
+
             ImGui.EndPopup();
             return;
         }
@@ -545,7 +606,9 @@ public partial class VulcanWindow
         ImGui.Spacing();
 
         if (ImGui.Button("Cancel", VulcanUiScaling.Scaled(100f, 0f)))
+        {
             ImGui.CloseCurrentPopup();
+        }
 
         ImGui.EndPopup();
     }
@@ -560,7 +623,9 @@ public partial class VulcanWindow
         }
 
         foreach (var (recipeId, quantity) in draft.Recipes)
+        {
             list.AddRecipe(recipeId, quantity);
+        }
 
         list.Description = string.IsNullOrEmpty(list.Description)
             ? draft.Description

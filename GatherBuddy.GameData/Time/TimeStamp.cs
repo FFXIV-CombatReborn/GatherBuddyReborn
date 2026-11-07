@@ -3,9 +3,9 @@ using System.Globalization;
 
 namespace GatherBuddy.Time;
 
-public readonly struct TimeStamp : IComparable<TimeStamp>, IEquatable<TimeStamp>
+public readonly struct TimeStamp(long value) : IComparable<TimeStamp>, IEquatable<TimeStamp>
 {
-    public long Time { get; init; }
+    public long Time { get; init; } = value;
 
     public static implicit operator long(TimeStamp ts)
         => ts.Time;
@@ -13,9 +13,6 @@ public readonly struct TimeStamp : IComparable<TimeStamp>, IEquatable<TimeStamp>
     public TimeStamp()
         : this(0)
     { }
-
-    public TimeStamp(long value)
-        => Time = value;
 
     public static TimeStamp UtcNow
         => new(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());

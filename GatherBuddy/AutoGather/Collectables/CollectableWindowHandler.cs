@@ -1,7 +1,6 @@
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
 using Lumina.Excel.Sheets;
-using GatherBuddy.Plugin;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.AutoGather.Collectables;
@@ -21,7 +20,7 @@ public unsafe class CollectableWindowHandler
                 new() {Type = ValueType.Int, Int = 14},
                 new(){Type = ValueType.UInt, UInt = id }
             };
-            addon->FireCallback(2, selectJob); 
+            addon->FireCallback(2, selectJob);
         }
     }
 
@@ -52,7 +51,7 @@ public unsafe class CollectableWindowHandler
         var itemName = item.Name.ToString();
         SelectItem(itemName);
     }
-    
+
     public unsafe void SubmitItem()
     {
         if (Automation.GenericHelpers.TryGetAddonByName<AtkUnitBase>("CollectablesShop", out var addon) &&
@@ -66,7 +65,7 @@ public unsafe class CollectableWindowHandler
             addon->FireCallback(2, submitItem, true);
         }
     }
-    
+
     public unsafe void CloseWindow()
     {
         if (Automation.GenericHelpers.TryGetAddonByName<AtkUnitBase>("CollectablesShop", out var addon) &&

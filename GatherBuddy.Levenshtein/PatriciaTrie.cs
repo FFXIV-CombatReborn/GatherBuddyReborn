@@ -7,29 +7,35 @@ namespace GatherBuddy.Levenshtein;
 
 public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
 {
-    public const int DeleteCost  = 8;
-    public const int InsertCost  = 12;
+    public const int DeleteCost = 8;
+    public const int InsertCost = 12;
     public const int ReplaceCost = 16;
 
-    public readonly  Node                         Root                = Node.CreateRoot();
-    private readonly Dictionary<StringView, Node> _leafs              = new();
-    private readonly List<List<ushort>>           _tableCache         = new() { new List<ushort>() };
-    private          int                          _longestCheckedWord = 0;
+    public readonly Node Root = Node.CreateRoot();
+    private readonly Dictionary<StringView, Node> _leafs = [];
+    private readonly List<List<ushort>> _tableCache = [[]];
+    private int _longestCheckedWord = 0;
 
     public int FuzzyFind(string word, int maxDistance, out T? data)
     {
         var smallestDistance = maxDistance + 1;
         data = default;
         if (word.Length == 0)
+        {
             return smallestDistance;
+        }
 
         if (maxDistance < 1)
+        {
             return smallestDistance;
+        }
 
         IncreaseTableColumns(word.Length + 1);
 
         foreach (var child in Root.Children)
+        {
             PopulateTable(word, child, ref data, ref smallestDistance);
+        }
 
         return smallestDistance;
     }
@@ -37,7 +43,9 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
     public int FuzzyFindMatch(string word, int maxDistance, out T? data)
     {
         if (!_leafs.TryGetValue(word, out var node))
+        {
             return FuzzyFind(word, maxDistance, out data);
+        }
 
         data = node.Data;
         return 0;
@@ -63,15 +71,19 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
             if (dist < smallestDistance)
             {
                 smallestDistance = dist;
-                data             = root.Data;
+                data = root.Data;
             }
         }
 
         if (root.TotalWord.Length >= word.Length + smallestDistance)
+        {
             return;
+        }
 
         foreach (var child in root.Children)
+        {
             PopulateTable(word, child, ref data, ref smallestDistance);
+        }
     }
 
     public IEnumerator<(StringView, T)> GetEnumerator()
@@ -80,10 +92,14 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
     private static IEnumerable<(StringView, T)> Enumerate(Node root)
     {
         if (root.HasData)
+        {
             yield return (root.TotalWord, root.Data!);
+        }
 
         foreach (var child in root.Children.SelectMany(Enumerate))
+        {
             yield return child;
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -92,7 +108,9 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
     private void IncreaseTableRows(int length)
     {
         if (length <= _tableCache.Count)
+        {
             return;
+        }
 
         for (var i = _tableCache.Count; i < length; ++i)
         {
@@ -105,14 +123,20 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
     private void IncreaseTableColumns(int length)
     {
         if (length <= _longestCheckedWord + 1)
+        {
             return;
+        }
 
         if (_tableCache[0].Count < length)
+        {
             _tableCache[0].AddRange(Enumerable.Range(_tableCache[0].Count, length - _tableCache[0].Count)
                 .Select(i => (ushort)(i * DeleteCost)));
+        }
 
         foreach (var list in _tableCache.Skip(1).Where(list => list.Count < length))
+        {
             list.AddRange(Enumerable.Repeat((ushort)0, length - list.Count));
+        }
 
         _longestCheckedWord = length - 1;
     }
@@ -120,12 +144,15 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
     public bool Add(string word, T data)
     {
         if (word.Length == 0 || _leafs.ContainsKey(word))
+        {
             return false;
+        }
 
         IncreaseTableRows(word.Length + 1);
 
         var node = Root;
-        var w    = new StringView(word);
+        var w = new StringView(word);
+    outer:
         while (true)
         {
             if (node.Children.Count == 0)
@@ -133,8 +160,6 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
                 _leafs.Add(word, new Node(node, word, data, true));
                 return true;
             }
-
-            var next = false;
             foreach (var child in node.Children.Where(child => child.Word[0] >= w[0]))
             {
                 if (child.Word[0] > w[0])
@@ -147,7 +172,9 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
                 for (var i = 1; i < minLength; ++i)
                 {
                     if (child.Word[i] == w[i])
+                    {
                         continue;
+                    }
 
                     var newNode = child.SplitOff(i);
                     _leafs.Add(word, new Node(newNode, word, data, true));
@@ -158,7 +185,7 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
                 // since the dictionary check would have caught it otherwise
                 if (child.Word.Length == w.Length)
                 {
-                    child.Data    = data;
+                    child.Data = data;
                     child.HasData = true;
                     _leafs.Add(word, child);
                     return true;
@@ -171,13 +198,9 @@ public partial class PatriciaTrie<T> : IEnumerable<(StringView, T)>
                 }
 
                 node = child;
-                w    = new StringView(word, child.TotalWord.Length);
-                next = true;
-                break;
+                w = new StringView(word, child.TotalWord.Length);
+                continue outer;
             }
-
-            if (next)
-                continue;
 
             _leafs.Add(word, new Node(node, word, data, true));
             return true;

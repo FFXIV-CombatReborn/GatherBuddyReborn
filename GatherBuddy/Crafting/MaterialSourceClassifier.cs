@@ -1,10 +1,8 @@
+using GatherBuddy.Vulcan.Vendors;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GatherBuddy.AutoGather.Collectables;
-using GatherBuddy.Plugin;
-using GatherBuddy.Vulcan.Vendors;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -31,12 +29,12 @@ public static class MaterialSourceClassifier
 
     public static void Reset()
     {
-        _gilVendorItems       = null;
-        _scripItems           = null;
+        _gilVendorItems = null;
+        _scripItems = null;
         _specialCurrencyItems = null;
-        _craftableItems       = null;
-        _fallbackDropItems    = null;
-        _initialized          = false;
+        _craftableItems = null;
+        _fallbackDropItems = null;
+        _initialized = false;
     }
 
     public static MaterialSource Classify(uint itemId, bool preferVendors = false)
@@ -44,37 +42,60 @@ public static class MaterialSourceClassifier
         EnsureInitialized();
 
         if (preferVendors && _gilVendorItems?.Contains(itemId) == true)
+        {
             return MaterialSource.GilVendor;
+        }
 
         if (GatherBuddy.GameData.Gatherables.ContainsKey(itemId))
+        {
             return MaterialSource.Gatherable;
+        }
 
         if (GatherBuddy.GameData.Fishes.ContainsKey(itemId))
+        {
             return MaterialSource.Fish;
+        }
 
         if (_scripItems?.Contains(itemId) == true)
+        {
             return MaterialSource.Scrip;
+        }
+
         if (MobDropInfoCache.IsKnownDropItem(itemId))
+        {
             return MaterialSource.Drop;
+        }
 
         if (!MobDropInfoCache.IsInitialized && _fallbackDropItems?.Contains(itemId) == true)
+        {
             return MaterialSource.Drop;
+        }
 
         if (_craftableItems?.Contains(itemId) == true)
+        {
             return MaterialSource.Craftable;
+        }
 
         if (_gilVendorItems?.Contains(itemId) == true)
+        {
             return MaterialSource.GilVendor;
+        }
 
         if (_specialCurrencyItems?.Contains(itemId) == true)
+        {
             return MaterialSource.SpecialCurrency;
+        }
 
         return MaterialSource.Other;
     }
 
     private static void EnsureInitialized()
     {
-        if (_initialized) return;
+        if (_initialized)
+        {
+            return;
+        }
+
         _initialized = true;
         BuildGilVendorSet();
         BuildScripSet();
@@ -85,14 +106,23 @@ public static class MaterialSourceClassifier
 
     private static void BuildGilVendorSet()
     {
-        _gilVendorItems = new HashSet<uint>();
+        _gilVendorItems = [];
         try
         {
             var sheet = Dalamud.GameData.GetSubrowExcelSheet<GilShopItem>();
-            if (sheet == null) return;
+            if (sheet == null)
+            {
+                return;
+            }
+
             foreach (var subrow in sheet.SelectMany(s => s))
+            {
                 if (subrow.Item.RowId > 0)
+                {
                     _gilVendorItems.Add(subrow.Item.RowId);
+                }
+            }
+
             GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Gil vendor set: {_gilVendorItems.Count} items");
         }
         catch (Exception ex)
@@ -103,13 +133,18 @@ public static class MaterialSourceClassifier
 
     private static void BuildScripSet()
     {
-        _scripItems = new HashSet<uint>();
+        _scripItems = [];
         try
         {
             VendorShopResolver.InitializeAsync();
             foreach (var entry in VendorShopResolver.SpecialShopEntries.Where(entry => entry.Group == VendorCurrencyGroup.Scrips))
+            {
                 if (entry.ItemId > 0)
+                {
                     _scripItems.Add(entry.ItemId);
+                }
+            }
+
             GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Scrip set: {_scripItems.Count} items");
         }
         catch (Exception ex)
@@ -120,14 +155,23 @@ public static class MaterialSourceClassifier
 
     private static void BuildCraftableSet()
     {
-        _craftableItems = new HashSet<uint>();
+        _craftableItems = [];
         try
         {
             var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
-            if (sheet == null) return;
+            if (sheet == null)
+            {
+                return;
+            }
+
             foreach (var recipe in sheet)
+            {
                 if (recipe.ItemResult.RowId > 0)
+                {
                     _craftableItems.Add(recipe.ItemResult.RowId);
+                }
+            }
+
             GatherBuddy.Log.Debug($"[MaterialSourceClassifier] Craftable set: {_craftableItems.Count} items");
         }
         catch (Exception ex)
@@ -138,14 +182,22 @@ public static class MaterialSourceClassifier
 
     private static void BuildDropSet()
     {
-        _fallbackDropItems = new HashSet<uint>();
+        _fallbackDropItems = [];
         try
         {
             var sheet = Dalamud.GameData.GetExcelSheet<RetainerTaskNormal>();
-            if (sheet == null) return;
+            if (sheet == null)
+            {
+                return;
+            }
+
             foreach (var row in sheet)
+            {
                 if (row.Item.RowId > 0 && row.GatheringLog.RowId == 0 && row.FishingLog.RowId == 0)
+                {
                     _fallbackDropItems.Add(row.Item.RowId);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -155,11 +207,15 @@ public static class MaterialSourceClassifier
 
     private static void BuildSpecialCurrencySet()
     {
-        _specialCurrencyItems = new HashSet<uint>();
+        _specialCurrencyItems = [];
         try
         {
             var sheet = Dalamud.GameData.GetExcelSheet<SpecialShop>();
-            if (sheet == null) return;
+            if (sheet == null)
+            {
+                return;
+            }
+
             foreach (var shop in sheet)
             {
                 foreach (var entry in shop.Item)
@@ -168,7 +224,9 @@ public static class MaterialSourceClassifier
                     {
                         var id = received.Item.RowId;
                         if (id > 0)
+                        {
                             _specialCurrencyItems.Add(id);
+                        }
                     }
                 }
             }

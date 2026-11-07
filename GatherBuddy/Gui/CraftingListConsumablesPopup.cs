@@ -1,13 +1,13 @@
+using Dalamud.Bindings.ImGui;
+using Dalamud.Game.Text;
+using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Crafting;
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Game.Text;
-using GatherBuddy.Crafting;
-using GatherBuddy.Vulcan;
-using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace GatherBuddy.Gui;
 
@@ -26,10 +26,10 @@ public class CraftingListConsumablesPopup
     private string _medicineSearch = string.Empty;
     private string _precraftMacroSearch = string.Empty;
     private string _finalMacroSearch = string.Empty;
-    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = new();
-    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
-    private List<(uint ItemId, string Name)> _manualItems = new();
-    private List<(uint ItemId, string Name)> _squadronManualItems = new();
+    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = [];
+    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = [];
+    private List<(uint ItemId, string Name)> _manualItems = [];
+    private List<(uint ItemId, string Name)> _squadronManualItems = [];
     public System.Action? OnSaved { get; set; }
     private static float SelectorLabelWidth => VulcanUiScaling.Scaled(160f);
     private static float SelectorComboWidth => VulcanUiScaling.Scaled(240f);
@@ -57,7 +57,9 @@ public class CraftingListConsumablesPopup
     public void Draw()
     {
         if (!_isOpen)
+        {
             return;
+        }
 
         if (ImGui.Begin(_title, ref _isOpen, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize))
         {
@@ -93,7 +95,9 @@ public class CraftingListConsumablesPopup
 
         ImGui.Checkbox("Assume All HQ Materials##ListUseAllHQ", ref _workingUseAllHQ);
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Use all HQ-capable ingredients as the list default for planning and Raphael warmup.\nItem and precraft settings can still override this.");
+        }
 
         ImGui.Spacing();
 
@@ -155,7 +159,9 @@ public class CraftingListConsumablesPopup
         var currentName = GetMacroSelectionName(selectedMacroId, solverOverride, allMacros);
         ImGui.SetNextItemWidth(SelectorComboWidth);
         if (!ImGui.BeginCombo(comboId, currentName))
+        {
             return;
+        }
 
         var isDefault = solverOverride == SolverOverrideMode.Default && string.IsNullOrEmpty(selectedMacroId);
         if (ImGui.Selectable("Default (Use Solver)", isDefault))
@@ -179,7 +185,9 @@ public class CraftingListConsumablesPopup
             solverOverride = SolverOverrideMode.ProgressOnlySolver;
         }
         if (ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip("Use only progress-building actions, no quality steps. Fast NQ crafts.");
+        }
 
         if (allMacros.Count > 0)
         {
@@ -188,7 +196,7 @@ public class CraftingListConsumablesPopup
             var searchValue = macroSearch;
             var filteredMacros = string.IsNullOrWhiteSpace(searchValue)
                 ? allMacros
-                : allMacros.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
+                : [.. allMacros.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase))];
             foreach (var macro in filteredMacros)
             {
                 var isSelected = selectedMacroId == macro.Id;
@@ -210,11 +218,11 @@ public class CraftingListConsumablesPopup
     {
         return solverOverride switch
         {
-            SolverOverrideMode.StandardSolver     => "Standard Solver",
-            SolverOverrideMode.RaphaelSolver      => "Raphael Solver",
+            SolverOverrideMode.StandardSolver => "Standard Solver",
+            SolverOverrideMode.RaphaelSolver => "Raphael Solver",
             SolverOverrideMode.ProgressOnlySolver => "Progress Only",
             _ when !string.IsNullOrEmpty(macroId) => allMacros.FirstOrDefault(m => m.Id == macroId)?.Name ?? "(Macro Not Found)",
-            _                                     => "Default (Use Solver)",
+            _ => "Default (Use Solver)",
         };
     }
 
@@ -240,7 +248,7 @@ public class CraftingListConsumablesPopup
             var searchValue = search;
             var filtered = string.IsNullOrWhiteSpace(searchValue)
                 ? _foodItems
-                : _foodItems.Where(f => f.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
+                : [.. _foodItems.Where(f => f.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase))];
 
             foreach (var entry in filtered)
             {
@@ -279,7 +287,7 @@ public class CraftingListConsumablesPopup
             var searchValue = search;
             var filtered = string.IsNullOrWhiteSpace(searchValue)
                 ? _medicineItems
-                : _medicineItems.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
+                : [.. _medicineItems.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase))];
 
             foreach (var entry in filtered)
             {
@@ -308,13 +316,17 @@ public class CraftingListConsumablesPopup
         if (ImGui.BeginCombo($"##Manual{idSuffix}", current))
         {
             if (ImGui.Selectable("None", manualId == 0))
+            {
                 itemId = null;
+            }
 
             foreach (var (id, name) in _manualItems)
             {
                 var isSelected = id == manualId;
                 if (ImGui.Selectable(name, isSelected))
+                {
                     itemId = id;
+                }
             }
 
             ImGui.EndCombo();
@@ -333,13 +345,17 @@ public class CraftingListConsumablesPopup
         if (ImGui.BeginCombo($"##Squadron{idSuffix}", current))
         {
             if (ImGui.Selectable("None", squadronId == 0))
+            {
                 itemId = null;
+            }
 
             foreach (var (id, name) in _squadronManualItems)
             {
                 var isSelected = id == squadronId;
                 if (ImGui.Selectable(name, isSelected))
+                {
                     itemId = id;
+                }
             }
 
             ImGui.EndCombo();
@@ -354,7 +370,9 @@ public class CraftingListConsumablesPopup
         _squadronManualItems.Clear();
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null)
+        {
             return;
+        }
 
         foreach (var item in itemSheet)
         {
@@ -365,7 +383,9 @@ public class CraftingListConsumablesPopup
                 {
                     _foodItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _foodItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersPot(item))
@@ -375,7 +395,9 @@ public class CraftingListConsumablesPopup
                 {
                     _medicineItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _medicineItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersManual(item))
@@ -396,41 +418,46 @@ public class CraftingListConsumablesPopup
             }
         }
 
-        _foodItems = _foodItems
+        _foodItems = [.. _foodItems
             .OrderBy(f => !HasItemInInventory(f.ItemId, f.IsHQ))
             .ThenBy(f => f.Name)
-            .ThenBy(f => f.IsHQ ? 0 : 1)
-            .ToList();
-        _medicineItems = _medicineItems
+            .ThenBy(f => f.IsHQ ? 0 : 1)];
+        _medicineItems = [.. _medicineItems
             .OrderBy(m => !HasItemInInventory(m.ItemId, m.IsHQ))
             .ThenBy(m => m.Name)
-            .ThenBy(m => m.IsHQ ? 0 : 1)
-            .ToList();
-        _manualItems = _manualItems
+            .ThenBy(m => m.IsHQ ? 0 : 1)];
+        _manualItems = [.. _manualItems
             .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
-        _squadronManualItems = _squadronManualItems
+            .ThenBy(m => m.Name)];
+        _squadronManualItems = [.. _squadronManualItems
             .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
+            .ThenBy(m => m.Name)];
     }
 
     private static ItemFood? GetItemConsumableProperties(Item item, bool hq)
     {
         if (!item.ItemAction.IsValid)
+        {
             return null;
+        }
+
         var action = item.ItemAction.Value;
         var actionParams = hq ? action.DataHQ : action.Data;
         if (actionParams[0] is not 48 and not 49)
+        {
             return null;
+        }
+
         return Dalamud.GameData.GetExcelSheet<ItemFood>()?.GetRow(actionParams[1]);
     }
 
     private static bool IsCraftersFood(Item item)
     {
         if (item.ItemUICategory.RowId != 46)
+        {
             return false;
+        }
+
         var consumable = GetItemConsumableProperties(item, false);
         return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71);
     }
@@ -438,7 +465,10 @@ public class CraftingListConsumablesPopup
     private static bool IsCraftersPot(Item item)
     {
         if (item.ItemUICategory.RowId != 44)
+        {
             return false;
+        }
+
         var consumable = GetItemConsumableProperties(item, false);
         return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71 or 69 or 68);
     }
@@ -446,9 +476,15 @@ public class CraftingListConsumablesPopup
     private static bool IsCraftersManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 300 or 301 or 1751 or 5329;
     }
@@ -456,9 +492,15 @@ public class CraftingListConsumablesPopup
     private static bool IsSquadronManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 2291 or 2292 or 2293 or 2294;
     }
@@ -470,7 +512,10 @@ public class CraftingListConsumablesPopup
     {
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet != null && itemSheet.TryGetRow(itemId, out var item))
+        {
             return item.Name.ExtractText();
+        }
+
         return "Unknown";
     }
 
@@ -491,7 +536,9 @@ public class CraftingListConsumablesPopup
     private void Save()
     {
         if (_list == null)
+        {
             return;
+        }
 
         _list.Consumables = _workingDefaults;
         _list.DefaultPrecraftMacroId = _workingDefaultPrecraftMacroId;

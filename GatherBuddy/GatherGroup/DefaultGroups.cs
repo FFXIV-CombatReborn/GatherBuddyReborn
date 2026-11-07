@@ -1,7 +1,7 @@
-using System.Collections.Generic;
-using System.Linq;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GatherBuddy.GatherGroup;
 
@@ -10,41 +10,41 @@ public static class GroupData
     private static TimedGroup.Config CreateDefaultGroup(string name, string description, params (uint, int)[] items)
         => new()
         {
-            Name        = name,
+            Name = name,
             Description = description,
-            Nodes = items.Concat(items.Select(i => (i.Item1, i.Item2 + 12)))
+            Nodes = [.. items.Concat(items.Select(i => (i.Item1, i.Item2 + 12)))
                 .Select(i => new TimedGroupNode.Config()
                 {
-                    Type        = ObjectType.Gatherable,
-                    ItemId      = i.Item1,
+                    Type = ObjectType.Gatherable,
+                    ItemId = i.Item1,
                     StartMinute = (short)(i.Item2 * RealTime.MinutesPerHour),
-                    EndMinute   = (short)((i.Item2 + 2) * RealTime.MinutesPerHour % RealTime.MinutesPerDay),
-                    Annotation  = string.Empty,
-                }).ToArray(),
+                    EndMinute = (short)((i.Item2 + 2) * RealTime.MinutesPerHour % RealTime.MinutesPerDay),
+                    Annotation = string.Empty,
+                })],
         };
 
     private static TimedGroup.Config CreateEphemeralGroup(string name, string description, params (uint, int)[] items)
         => new()
         {
-            Name        = name,
+            Name = name,
             Description = description,
-            Nodes = items
+            Nodes = [.. items
                 .Select(i => new TimedGroupNode.Config()
                 {
-                    Type        = ObjectType.Gatherable,
-                    ItemId      = i.Item1,
+                    Type = ObjectType.Gatherable,
+                    ItemId = i.Item1,
                     StartMinute = (short)(i.Item2 * RealTime.MinutesPerHour),
-                    EndMinute   = (short)((i.Item2 + 4) * RealTime.MinutesPerHour % RealTime.MinutesPerDay),
-                    Annotation  = string.Empty,
-                }).ToArray(),
+                    EndMinute = (short)((i.Item2 + 4) * RealTime.MinutesPerHour % RealTime.MinutesPerDay),
+                    Annotation = string.Empty,
+                })],
         };
 
     private static TimedGroup.Config CreateDarkMatterGroup()
         => new()
         {
-            Name        = "darkmatter",
+            Name = "darkmatter",
             Description = "Collects all nodes that provide dark matter clusters.",
-            Nodes = new (uint, short, short)[]
+            Nodes = [.. new (uint, short, short)[]
             {
                 (215, 0, 80),
                 (250, 80, 103),
@@ -91,17 +91,17 @@ public static class GroupData
                 (227, 1380, 0),
             }.Select(n => new TimedGroupNode.Config()
             {
-                Type           = ObjectType.Gatherable,
-                ItemId         = 10335,
-                StartMinute    = n.Item2,
-                EndMinute      = n.Item3,
-                Annotation     = string.Empty,
+                Type = ObjectType.Gatherable,
+                ItemId = 10335,
+                StartMinute = n.Item2,
+                EndMinute = n.Item3,
+                Annotation = string.Empty,
                 PreferLocation = n.Item1,
-            }).ToArray(),
+            })],
         };
 
     // @formatter:off
-    internal static readonly List<TimedGroup.Config> DefaultGroups = 
+    internal static readonly List<TimedGroup.Config> DefaultGroups =
     [
         CreateDefaultGroup("80***", "Contains exarchic crafting nodes.",                    (32954, 0), (32952, 2), (32955, 4), (32950, 6), (32951, 8), (32953, 10)),
         CreateDefaultGroup("80**",  "Contains neo-ishgardian / aesthete crafting nodes.",   (30485, 0), (30486, 2), (29974, 4), (29970, 6), (29972, 8), (29976, 10)),

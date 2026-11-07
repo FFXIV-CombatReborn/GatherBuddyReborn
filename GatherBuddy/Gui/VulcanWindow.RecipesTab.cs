@@ -1,19 +1,10 @@
-﻿using System;
+﻿using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
+using Lumina.Excel.Sheets;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Interface;
-using Dalamud.Interface.Textures;
-using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
-using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
-using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -24,16 +15,16 @@ public partial class VulcanWindow
     private static Vector2 LineIconSize => new(ImGui.GetTextLineHeight(), ImGui.GetTextLineHeight());
     private static Vector2 ItemSpacing => ImGui.GetStyle().ItemSpacing;
     private static float Scale => ImGuiHelpers.GlobalScale;
-    private static readonly Dictionary<uint, int> CachedRetainerIngredientCounts = new();
-    private static readonly Dictionary<uint, DateTime> RetainerIngredientRefreshTimes = new();
+    private static readonly Dictionary<uint, int> CachedRetainerIngredientCounts = [];
+    private static readonly Dictionary<uint, DateTime> RetainerIngredientRefreshTimes = [];
     private const double RetainerIngredientRefreshIntervalSeconds = 1.0;
-    
+
     private static float TextWidth(string text)
         => ImGui.CalcTextSize(text).X + ItemSpacing.X;
 
     private enum SortColumn { Name, Job, Level, Crafted }
     private enum SortDirection { Ascending, Descending }
-    
+
     private static List<ExtendedRecipe>? _extendedRecipeList;
     private static List<ExtendedRecipe>? _filteredRecipes;
     private static bool _filtersDirty = true;
@@ -42,9 +33,8 @@ public partial class VulcanWindow
     private static SortDirection _sortDirection = SortDirection.Ascending;
     private static bool _hideCrafted = false;
     private static bool _filterByEquipLevel = false;
-    private static RecipeTable? _recipeTable;
     private static string _recipeSearchText = "";
-    private static HashSet<uint> _selectedJobFilters = new();
+    private static HashSet<uint> _selectedJobFilters = [];
     private static int _minLevel = 1;
     private static int _maxLevel = 100;
     private static bool _filterBrowserMasterRecipes = false;
@@ -59,11 +49,11 @@ public partial class VulcanWindow
     private static int _browserCraftQuantity = 1;
     private static bool _browserRetainerRestock = false;
     private static RecipeCraftSettingsPopup _craftSettingsPopup = new();
-    private static string _contextMenuListSearch    = string.Empty;
-    private static int    _contextMenuAddQuantity    = 1;
-    private static string _contextMenuNewListName    = string.Empty;
-    private static bool   _contextMenuNewListEphemeral = false;
-    private static string? _contextMenuLastAddedList  = null;
+    private static string _contextMenuListSearch = string.Empty;
+    private static int _contextMenuAddQuantity = 1;
+    private static string _contextMenuNewListName = string.Empty;
+    private static bool _contextMenuNewListEphemeral = false;
+    private static string? _contextMenuLastAddedList = null;
     private static DateTime _contextMenuLastAddedAt;
     private static string _bulkAddFilteredListSearch = string.Empty;
     private static int _filteredUncraftedRecipeCount = 0;
@@ -76,7 +66,9 @@ public partial class VulcanWindow
     private static void InitializeRecipeList()
     {
         if (_isInitialized)
+        {
             return;
+        }
 
         var tempList = new List<ExtendedRecipe>();
         var recipeSheet = Dalamud.GameData.GetExcelSheet<Recipe>();
@@ -99,27 +91,29 @@ public partial class VulcanWindow
     private static void UpdateFilteredList()
     {
         if (!_filtersDirty || _extendedRecipeList == null)
+        {
             return;
+        }
 
         var filtered = _extendedRecipeList.Where(PassesFilters).ToList();
-        
+
         filtered = _sortColumn switch
         {
-            SortColumn.Name => _sortDirection == SortDirection.Ascending 
-                ? filtered.OrderBy(r => r.Name).ToList()
-                : filtered.OrderByDescending(r => r.Name).ToList(),
+            SortColumn.Name => _sortDirection == SortDirection.Ascending
+                ? [.. filtered.OrderBy(r => r.Name)]
+                : [.. filtered.OrderByDescending(r => r.Name)],
             SortColumn.Job => _sortDirection == SortDirection.Ascending
-                ? filtered.OrderBy(r => r.JobId).ToList()
-                : filtered.OrderByDescending(r => r.JobId).ToList(),
-            SortColumn.Level => _sortDirection == SortDirection.Ascending 
-                ? filtered.OrderBy(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level).ToList()
-                : filtered.OrderByDescending(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level).ToList(),
+                ? [.. filtered.OrderBy(r => r.JobId)]
+                : [.. filtered.OrderByDescending(r => r.JobId)],
+            SortColumn.Level => _sortDirection == SortDirection.Ascending
+                ? [.. filtered.OrderBy(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level)]
+                : [.. filtered.OrderByDescending(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level)],
             SortColumn.Crafted => _sortDirection == SortDirection.Ascending
-                ? filtered.OrderBy(r => r.IsCrafted).ToList()
-                : filtered.OrderByDescending(r => r.IsCrafted).ToList(),
+                ? [.. filtered.OrderBy(r => r.IsCrafted)]
+                : [.. filtered.OrderByDescending(r => r.IsCrafted)],
             _ => filtered
         };
-        
+
         _filteredRecipes = filtered;
         _filteredUncraftedRecipeCount = _filteredRecipes.Count(r => !r.IsCrafted);
         _filtersDirty = false;
@@ -129,7 +123,9 @@ public partial class VulcanWindow
     private static bool EnsureRecipeVisibleInBrowser(ExtendedRecipe recipe)
     {
         if (PassesFilters(recipe))
+        {
             return false;
+        }
 
         var changed = false;
 
@@ -233,7 +229,9 @@ public partial class VulcanWindow
         }
 
         if (changed)
+        {
             _filtersDirty = true;
+        }
 
         return changed;
     }
@@ -290,7 +288,9 @@ public partial class VulcanWindow
     {
         var now = DateTime.UtcNow;
         if ((now - _lastTooltipAnchorFailureLog).TotalSeconds < 5)
+        {
             return;
+        }
 
         _lastTooltipAnchorFailureLog = now;
         GatherBuddy.Log.Debug($"[VulcanWindow] {message}");
@@ -318,25 +318,39 @@ public partial class VulcanWindow
     private static bool PassesRecipeTypeFilters(Recipe recipe)
     {
         if (_filterBrowserLevelingOnly)
+        {
             return IsLevelingRecipe(recipe);
+        }
 
         if (_filterBrowserHousingRecipes && !IsHousingRecipe(recipe))
+        {
             return false;
+        }
 
         if (_filterBrowserDyeRecipes && !IsDyeRecipe(recipe))
+        {
             return false;
+        }
 
         if (_filterBrowserMasterRecipes && recipe.SecretRecipeBook.RowId == 0)
+        {
             return false;
+        }
 
         if (_filterBrowserCollectables && !recipe.ItemResult.Value.AlwaysCollectable)
+        {
             return false;
+        }
 
         if (_filterBrowserExpertRecipes && !recipe.IsExpert)
+        {
             return false;
+        }
 
         if (_filterBrowserQuestRecipes && recipe.ItemResult.Value.ItemSearchCategory.RowId != 0)
+        {
             return false;
+        }
 
         return true;
     }
@@ -346,24 +360,34 @@ public partial class VulcanWindow
         if (!string.IsNullOrWhiteSpace(_recipeSearchText))
         {
             if (!item.Name.Contains(_recipeSearchText, StringComparison.OrdinalIgnoreCase))
+            {
                 return false;
+            }
         }
 
         if (_selectedJobFilters.Count > 0)
         {
             if (!_selectedJobFilters.Contains(item.JobId))
+            {
                 return false;
+            }
         }
 
         var levelValue = _filterByEquipLevel ? item.ItemEquipLevel : item.Level;
         if (levelValue < _minLevel || levelValue > _maxLevel)
+        {
             return false;
-        
+        }
+
         if (_hideCrafted && item.IsCrafted)
+        {
             return false;
+        }
 
         if (!PassesRecipeTypeFilters(item.Recipe))
+        {
             return false;
+        }
 
         return true;
     }
@@ -372,7 +396,7 @@ public partial class VulcanWindow
     {
         IDisposable tabItem;
         bool tabOpen;
-        
+
         if (GatherBuddy.ControllerSupport != null && !_recipesTabRequestFocus)
         {
             var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Recipes##recipesTab", 1, 9);
@@ -400,16 +424,22 @@ public partial class VulcanWindow
             tabItem = handle;
             tabOpen = handle.Success;
             if (tabOpen)
+            {
                 _recipesTabRequestFocus = false;
+            }
         }
-        
+
         using (tabItem)
         {
             if (!tabOpen)
+            {
                 return;
+            }
 
             if (GatherBuddy.Config.ShowRecipeBrowserTooltips)
+            {
                 CaptureRecipesTooltipWindowBounds();
+            }
 
             if (!_isInitialized)
             {

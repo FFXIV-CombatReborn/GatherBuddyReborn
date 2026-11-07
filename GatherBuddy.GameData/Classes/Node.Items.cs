@@ -1,8 +1,8 @@
+using Dalamud.Game;
+using GatherBuddy.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Dalamud.Game;
-using GatherBuddy.Enums;
 
 namespace GatherBuddy.Classes;
 
@@ -22,11 +22,16 @@ public partial class GatheringNode
     {
         item.NodeList.Add(this);
         if (item.NodeType == NodeType.Unknown)
+        {
             item.NodeType = NodeType;
+        }
         else if (item.NodeType != NodeType.Regular && NodeType == NodeType.Regular)
+        {
             item.NodeType = NodeType.Regular;
+        }
+
         item.GatheringType = item.GatheringType.Add(GatheringType);
-        item.ExpansionIdx  = Math.Min(item.ExpansionIdx, Territory.Data.ExVersion.RowId);
+        item.ExpansionIdx = Math.Min(item.ExpansionIdx, Territory.Data.ExVersion.RowId);
     }
 
     public bool AddItem(Gatherable item)
@@ -34,7 +39,9 @@ public partial class GatheringNode
         if (Items.Contains(item))
         {
             if (item.NodeList.Contains(this))
+            {
                 return false;
+            }
 
             AddNodeToItem(item);
             return true;

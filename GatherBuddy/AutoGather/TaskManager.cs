@@ -8,10 +8,10 @@ namespace GatherBuddy.AutoGather;
 public class TaskManager : IDisposable
 {
     private readonly IFramework _framework;
-    private readonly Dictionary<string, long> _throttlers = new();
-    
-    private readonly List<TaskItem> _tasks = new();
-    private readonly List<TaskItem> _immediateTasks = new();
+    private readonly Dictionary<string, long> _throttlers = [];
+
+    private readonly List<TaskItem> _tasks = [];
+    private readonly List<TaskItem> _immediateTasks = [];
     private TaskItem? _currentTask;
     private long _abortAt;
 
@@ -22,7 +22,7 @@ public class TaskManager : IDisposable
     public bool ShowDebug { get; set; } = true;
 
     public string? CurrentTaskName => _currentTask?.Name;
-    public List<string> TaskStack => _immediateTasks.Select(x => x.Name).Union(_tasks.Select(x => x.Name)).ToList();
+    public List<string?> TaskStack => [.. _immediateTasks.Select(x => x.Name).Union(_tasks.Select(x => x.Name))];
     public int NumQueuedTasks => _tasks.Count + _immediateTasks.Count + (_currentTask == null ? 0 : 1);
     public bool IsBusy => _currentTask != null || _tasks.Count > 0 || _immediateTasks.Count > 0;
 
@@ -252,7 +252,9 @@ public class TaskManager : IDisposable
     private bool CheckThrottle(string name)
     {
         if (!_throttlers.TryGetValue(name, out var time))
+        {
             return true;
+        }
 
         if (Environment.TickCount64 >= time)
         {
@@ -273,20 +275,24 @@ public class TaskManager : IDisposable
             {
                 _currentTask = _immediateTasks[0];
                 _immediateTasks.RemoveAt(0);
-                
+
                 if (ShowDebug)
+                {
                     GatherBuddy.Log.Debug($"[TaskManager] Starting immediate task: {_currentTask.Name ?? "unnamed"}");
-                
+                }
+
                 _abortAt = Environment.TickCount64 + _currentTask.TimeLimitMS;
             }
             else if (_tasks.Count > 0)
             {
                 _currentTask = _tasks[0];
                 _tasks.RemoveAt(0);
-                
+
                 if (ShowDebug)
+                {
                     GatherBuddy.Log.Debug($"[TaskManager] Starting task: {_currentTask.Name ?? "unnamed"}");
-                
+                }
+
                 _abortAt = Environment.TickCount64 + _currentTask.TimeLimitMS;
             }
             else
@@ -299,12 +305,14 @@ public class TaskManager : IDisposable
             try
             {
                 var result = _currentTask.Action();
-                
+
                 if (result == true)
                 {
                     if (ShowDebug)
+                    {
                         GatherBuddy.Log.Debug($"[TaskManager] Task completed: {_currentTask.Name ?? "unnamed"}");
-                    
+                    }
+
                     _currentTask = null;
                 }
                 else if (result == false)
@@ -315,14 +323,18 @@ public class TaskManager : IDisposable
                         {
                             var logMessage = $"[TaskManager] Clearing {_tasks.Count} remaining tasks due to timeout";
                             if (TimeoutSilently)
+                            {
                                 GatherBuddy.Log.Verbose(logMessage);
+                            }
                             else
+                            {
                                 GatherBuddy.Log.Warning(logMessage);
-                            
+                            }
+
                             _tasks.Clear();
                             _immediateTasks.Clear();
                         }
-                        
+
                         throw new TimeoutException($"Task '{_currentTask.Name ?? "unnamed"}' took too long to execute");
                     }
                 }
@@ -335,10 +347,14 @@ public class TaskManager : IDisposable
             catch (TimeoutException e)
             {
                 if (TimeoutSilently)
+                {
                     GatherBuddy.Log.Verbose($"[TaskManager] {e.Message}");
+                }
                 else
+                {
                     GatherBuddy.Log.Warning($"[TaskManager] {e.Message}");
-                
+                }
+
                 _currentTask = null;
             }
             catch (Exception e)

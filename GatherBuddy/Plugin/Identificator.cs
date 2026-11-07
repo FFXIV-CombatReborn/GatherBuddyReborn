@@ -10,9 +10,9 @@ public class Identificator
 {
     public const int MaxDistance = 4;
 
-    private readonly GameData                               _data;
+    private readonly GameData _data;
     private readonly FrozenDictionary<string, Gatherable>[] _gatherableFromLanguage;
-    private readonly FrozenDictionary<string, Fish>[]       _fishFromLanguage;
+    private readonly FrozenDictionary<string, Fish>[] _fishFromLanguage;
 
     public Identificator()
     {
@@ -25,8 +25,8 @@ public class Identificator
             (ClientLanguage)(((int)GatherBuddy.Language + 3) % 4),
         };
 
-        _gatherableFromLanguage = languages.Select(CreateGatherableDictionary).ToArray();
-        _fishFromLanguage       = languages.Select(CreateFishDictionary).ToArray();
+        _gatherableFromLanguage = [.. languages.Select(CreateGatherableDictionary)];
+        _fishFromLanguage = [.. languages.Select(CreateFishDictionary)];
     }
 
     private FrozenDictionary<string, Gatherable> CreateGatherableDictionary(ClientLanguage l)
@@ -39,7 +39,9 @@ public class Identificator
                 for (var i = 2; i < 10; ++i)
                 {
                     if (dict.TryAdd(name + $" ({i})", gatherable))
+                    {
                         break;
+                    }
                 }
             }
         }
@@ -57,7 +59,9 @@ public class Identificator
                 for (var i = 2; i < 10; ++i)
                 {
                     if (dict.TryAdd(name + $" ({i})", fish))
+                    {
                         break;
+                    }
                 }
             }
         }
@@ -74,25 +78,33 @@ public class Identificator
             if (length < 0)
             {
                 if (n.Length >= -length || !n.StartsWith(name))
+                {
                     continue;
+                }
 
-                ret    = obj;
+                ret = obj;
                 length = -n.Length;
             }
             else if (n.Length < length)
             {
                 if (!n.Contains(name))
+                {
                     continue;
+                }
 
                 ret = obj;
                 if (n.StartsWith(name))
+                {
                     length = -n.Length;
+                }
                 else
+                {
                     length = n.Length;
+                }
             }
             else if (n.StartsWith(name))
             {
-                ret    = obj;
+                ret = obj;
                 length = -n.Length;
             }
         }
@@ -103,20 +115,26 @@ public class Identificator
     public Gatherable? IdentifyGatherable(string itemName)
     {
         if (itemName.Length == 0)
+        {
             return null;
+        }
 
         // Check for full matches in current language first, by initialization order.
         var itemNameLower = itemName.ToLowerInvariant();
         foreach (var dict in _gatherableFromLanguage)
         {
             if (dict.TryGetValue(itemNameLower, out var item))
+            {
                 return item;
+            }
         }
 
         // Search for the shortest object in the current language that starts with the given string.
         // If none does, use the shortest object that contains the given string.
         if (SearchContains(_gatherableFromLanguage[0], itemNameLower, out var ret))
+        {
             return ret;
+        }
 
         // Check for fuzzy matches up to the given MaxDistance.
         return _data.GatherablesTrie.FuzzyFind(itemNameLower, MaxDistance, out var data) < MaxDistance ? data : null;
@@ -125,18 +143,24 @@ public class Identificator
     public Fish? IdentifyFish(string itemName)
     {
         if (itemName.Length == 0)
+        {
             return null;
+        }
 
         // Same as for gatherables.
         var itemNameLower = itemName.ToLowerInvariant();
         foreach (var dict in _fishFromLanguage)
         {
             if (dict.TryGetValue(itemNameLower, out var item))
+            {
                 return item;
+            }
         }
 
         if (SearchContains(_fishFromLanguage[0], itemNameLower, out var ret))
+        {
             return ret;
+        }
 
         return _data.FishTrie.FuzzyFind(itemNameLower, MaxDistance, out var data) < MaxDistance ? data : null;
     }
