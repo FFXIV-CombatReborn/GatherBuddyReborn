@@ -1655,7 +1655,7 @@ public class VendorNavigator
 
     private void StopPathing()
     {
-        if (VNavmesh.Path.IsRunning())
+        if (VNavmesh.Enabled && VNavmesh.Path.IsRunning())
             VNavmesh.Path.Stop();
 
         _landingWaypointCount     = 0;
