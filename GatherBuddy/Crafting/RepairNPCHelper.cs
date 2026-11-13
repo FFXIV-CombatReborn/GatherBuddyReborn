@@ -1,11 +1,11 @@
+using Lumina.Data.Files;
+using Lumina.Data.Parsing.Layer;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
-using Lumina.Data.Files;
-using Lumina.Data.Parsing.Layer;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -20,7 +20,7 @@ public class RepairNPCData
 
 public static class RepairNPCHelper
 {
-    public static List<RepairNPCData> RepairNPCs { get; } = new();
+    public static List<RepairNPCData> RepairNPCs { get; } = [];
 
     public static void PopulateRepairNPCs()
     {
@@ -29,7 +29,7 @@ public static class RepairNPCHelper
             var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
             var eNpcResidentSheet = Dalamud.GameData.GetExcelSheet<ENpcResident>();
             var eNpcBaseSheet = Dalamud.GameData.GetExcelSheet<ENpcBase>();
-            
+
             if (territorySheet == null || eNpcResidentSheet == null || eNpcBaseSheet == null)
             {
                 GatherBuddy.Log.Error("[RepairNPCHelper] Could not get required Excel sheets");
@@ -45,17 +45,21 @@ public static class RepairNPCHelper
             BuildNPCInstancesFromLgbFiles(territoriesToProcess, allNpcInstances);
 
             var repairNPCsByDataId = new Dictionary<uint, (string Name, int RepairIndex)>();
-            
+
             foreach (var eNpcResident in eNpcResidentSheet)
             {
                 if (eNpcResident.RowId == 0)
+                {
                     continue;
+                }
 
                 if (!eNpcBaseSheet.TryGetRow(eNpcResident.RowId, out var eNpcBase))
+                {
                     continue;
+                }
 
-                int repairIndex = -1;
-                for (int i = 0; i < eNpcBase.ENpcData.Count; i++)
+                var repairIndex = -1;
+                for (var i = 0; i < eNpcBase.ENpcData.Count; i++)
                 {
                     if (eNpcBase.ENpcData[i].RowId == 720915)
                     {
@@ -65,24 +69,32 @@ public static class RepairNPCHelper
                 }
 
                 if (repairIndex < 0)
+                {
                     continue;
+                }
 
                 var name = ToTitleCase(eNpcResident.Singular.ExtractText());
                 if (string.IsNullOrWhiteSpace(name))
+                {
                     continue;
+                }
 
                 repairNPCsByDataId[eNpcResident.RowId] = (name, repairIndex);
             }
 
             var addedDataIds = new HashSet<uint>();
-            
+
             foreach (var instance in allNpcInstances)
             {
                 if (!repairNPCsByDataId.TryGetValue(instance.DataId, out var npcData))
+                {
                     continue;
+                }
 
                 if (addedDataIds.Contains(instance.DataId))
+                {
                     continue;
+                }
 
                 addedDataIds.Add(instance.DataId);
                 RepairNPCs.Add(new RepairNPCData
@@ -97,11 +109,11 @@ public static class RepairNPCHelper
 
             RepairNPCs.Sort((first, second) =>
             {
-                int cityFirst = cityAreaTerritories.FindIndex(t => t.RowId == first.TerritoryType);
-                int citySecond = cityAreaTerritories.FindIndex(t => t.RowId == second.TerritoryType);
+                var cityFirst = cityAreaTerritories.FindIndex(t => t.RowId == first.TerritoryType);
+                var citySecond = cityAreaTerritories.FindIndex(t => t.RowId == second.TerritoryType);
 
-                long scoreFirst = (cityFirst < 0 ? 5000 : cityFirst) + first.TerritoryType;
-                long scoreSecond = (citySecond < 0 ? 5000 : citySecond) + second.TerritoryType;
+                var scoreFirst = (cityFirst < 0 ? 5000 : cityFirst) + first.TerritoryType;
+                var scoreSecond = (citySecond < 0 ? 5000 : citySecond) + second.TerritoryType;
 
                 return scoreFirst.CompareTo(scoreSecond);
             });
@@ -113,7 +125,7 @@ public static class RepairNPCHelper
             GatherBuddy.Log.Error($"[RepairNPCHelper] Error populating repair NPCs: {ex.Message}");
         }
     }
-    
+
     public static void RestorePreferredNPC()
     {
         var config = GatherBuddy.Config.VulcanRepairConfig;
@@ -139,26 +151,32 @@ public static class RepairNPCHelper
             {
                 var lgbFile = GetLgbFile(territoryType, "planevent.lgb");
                 if (lgbFile == null)
+                {
                     continue;
+                }
 
                 foreach (var layer in lgbFile.Layers)
                 {
                     foreach (var instanceObject in layer.InstanceObjects)
                     {
                         if (instanceObject.AssetType != LayerEntryType.EventNPC)
+                        {
                             continue;
+                        }
 
                         var eNPCInstanceObject = (LayerCommon.ENPCInstanceObject)instanceObject.Object;
                         var eNpcResidentDataId = eNPCInstanceObject.ParentData.ParentData.BaseId;
 
                         if (eNpcResidentDataId == 0)
+                        {
                             continue;
+                        }
 
                         var position = new Vector3(
                             instanceObject.Transform.Translation.X,
                             instanceObject.Transform.Translation.Y,
                             instanceObject.Transform.Translation.Z);
-                        
+
                         instances.Add((eNpcResidentDataId, territoryType.RowId, position));
                     }
                 }
@@ -175,11 +193,15 @@ public static class RepairNPCHelper
         {
             var bgPath = territoryType.Bg.ExtractText();
             if (string.IsNullOrEmpty(bgPath))
+            {
                 return null;
+            }
 
             var levelIndex = bgPath.IndexOf("/level/", StringComparison.Ordinal);
             if (levelIndex < 0)
+            {
                 return null;
+            }
 
             var path = $"bg/{bgPath.Substring(0, levelIndex + 1)}level/{lgbFileName}";
             return Dalamud.GameData.GetFile<LgbFile>(path);
@@ -189,12 +211,14 @@ public static class RepairNPCHelper
             return null;
         }
     }
-    
+
     private static string ToTitleCase(string text)
     {
         if (string.IsNullOrEmpty(text))
+        {
             return text;
-        
+        }
+
         var textInfo = CultureInfo.InvariantCulture.TextInfo;
         return textInfo.ToTitleCase(text.ToLowerInvariant());
     }

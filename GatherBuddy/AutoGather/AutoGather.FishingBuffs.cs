@@ -1,4 +1,3 @@
-using System.Linq;
 using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
 
@@ -21,41 +20,27 @@ public partial class AutoGather
         3973   // Modest Lure
     ];
 
-    private bool HasActiveFishingBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-            return false;
+    private static bool HasActiveFishingBuff()
+        => Player.HasAnyStatus(FishingBuffIds);
 
-        return player.StatusList.Any(status => FishingBuffIds.Contains(status.StatusId));
-    }
+    private static bool HasFoodBuff()
+        => Player.HasStatus(48);
 
-    private bool HasFoodBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-            return false;
-
-        return player.StatusList.Any(status => status.StatusId == 48);
-    }
-
-    private bool HasMedicineBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-            return false;
-
-        return player.StatusList.Any(status => status.StatusId == 49);
-    }
+    private static bool HasMedicineBuff()
+        => Player.HasStatus(49);
 
     private ConfigPreset GetFishingConsumablesPreset()
     {
         if (_currentGatherTarget?.Fish != null)
+        {
             return MatchConfigPreset(_currentGatherTarget.Value.Fish);
+        }
 
         var next = _activeItemList.GetNextOrDefault();
         if (next.Fish != null)
+        {
             return MatchConfigPreset(next.Fish);
+        }
 
         return MatchConfigPreset((Fish?)null);
     }
@@ -63,7 +48,9 @@ public partial class AutoGather
     private bool TryUseFishingConsumables(ConfigPreset config)
     {
         if (Player.Job != 18)
+        {
             return false;
+        }
 
         var needFood = config.Consumables.Food.Enabled
             && config.Consumables.Food.ItemId > 0
@@ -76,9 +63,14 @@ public partial class AutoGather
         var manualItemId = GetConsumablesWithCastTime(config);
 
         if (!needFood && !needMed && manualItemId == 0)
+        {
             return false;
+        }
+
         if (HasActiveFishingBuff())
+        {
             return false;
+        }
 
         if (IsFishing || IsGathering)
         {

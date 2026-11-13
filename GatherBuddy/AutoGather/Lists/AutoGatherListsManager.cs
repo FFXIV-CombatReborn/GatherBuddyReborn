@@ -1,4 +1,3 @@
-using ElliLib.Filesystem;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using Newtonsoft.Json;
@@ -6,27 +5,24 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.AutoGather.Lists;
 
 public class ManualOrderSortMode : ISortMode<AutoGatherList>
 {
-    public ReadOnlySpan<byte> Name
-        => "Manual Order"u8;
-
-    public ReadOnlySpan<byte> Description
-        => "Sort by manually assigned order, with folders first."u8;
-
     public IEnumerable<FileSystem<AutoGatherList>.IPath> GetChildren(FileSystem<AutoGatherList>.Folder folder)
     {
-        var folders = folder.GetSubFolders().Cast<FileSystem<AutoGatherList>.IPath>();
-        var leaves = folder.GetLeaves()
-            .OrderBy(l => l.Value.Order)
-            .ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
-            .Cast<FileSystem<AutoGatherList>.IPath>();
-        return folders.Concat(leaves);
+        var leaves = new List<FileSystem<AutoGatherList>.Leaf>(folder.GetLeaves());
+        leaves.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Value.Order.CompareTo(rhs.Value.Order);
+            return order != 0 ? order : StringComparer.OrdinalIgnoreCase.Compare(lhs.Name, rhs.Name);
+        });
+        var children = new List<FileSystem<AutoGatherList>.IPath>(folder.GetSubFolders());
+        children.AddRange(leaves);
+        return children;
     }
 }
 
@@ -34,20 +30,20 @@ public partial class AutoGatherListsManager : IDisposable
 {
     public event Action? ActiveItemsChanged;
 
-    private const string FileName         = "auto_gather_lists.json";
+    private const string FileName = "auto_gather_lists.json";
     private const string FileNameFallback = "gather_window.json";
 
-    private readonly FileSystem<AutoGatherList>             _fileSystem;
-    private readonly List<(IGatherable Item, uint Quantity)> _activeItems   = [];
+    private readonly FileSystem<AutoGatherList> _fileSystem;
+    private readonly List<(IGatherable Item, uint Quantity)> _activeItems = [];
     private readonly List<(IGatherable Item, uint Quantity)> _fallbackItems = [];
-    private readonly HashSet<IGatherable>                    _localInventoryActiveItems = [];
+    private readonly HashSet<IGatherable> _localInventoryActiveItems = [];
     public static ManualOrderSortMode SortMode { get; } = new();
 
     public FileSystem<AutoGatherList> FileSystem
         => _fileSystem;
 
     public IEnumerable<AutoGatherList> Lists
-        => _fileSystem.Select(kvp => kvp.Key);
+        => _fileSystem.Values;
 
     public ReadOnlyCollection<(IGatherable Item, uint Quantity)> ActiveItems
         => _activeItems.AsReadOnly();
@@ -101,7 +97,9 @@ public partial class AutoGatherListsManager : IDisposable
         }
 
         if (change)
+        {
             Save();
+        }
 
         _fileSystem.Changed += OnFileSystemChanged;
         SetActiveItems();
@@ -112,7 +110,16 @@ public partial class AutoGatherListsManager : IDisposable
         // Not renumbering the source folder on ObjectRemoved or ObjectMoved makes the numbering sparse, but it's fine for ordering.
         if (type is FileSystemChangeType.ObjectMoved or FileSystemChangeType.LeafAdded && changedObject is FileSystem<AutoGatherList>.Leaf newLeaf)
         {
-            newLeaf.Value.Order = newLeaf.Parent.GetLeaves().Where(leaf => leaf != newLeaf).Select(leaf => leaf.Value.Order).DefaultIfEmpty().Max() + 1;
+            int? maxOrder = null;
+            foreach (var leaf in newLeaf.Parent.GetLeaves())
+            {
+                if (leaf != newLeaf && (maxOrder == null || leaf.Value.Order > maxOrder.Value))
+                {
+                    maxOrder = leaf.Value.Order;
+                }
+            }
+
+            newLeaf.Value.Order = (maxOrder ?? 0) + 1;
             Save();
         }
     }
@@ -123,22 +130,40 @@ public partial class AutoGatherListsManager : IDisposable
     public void SetActiveItems(bool removeCompletedItems = false)
     {
         if (removeCompletedItems && RemoveCompletedItemsFromEnabledLists())
+        {
             Save();
+        }
+
         _activeItems.Clear();
         _fallbackItems.Clear();
         _localInventoryActiveItems.Clear();
 
-        var items = _fileSystem.Root.GetAllDescendants(SortMode)
-            .OfType<FileSystem<AutoGatherList>.Leaf>()
-            .Select(leaf => leaf.Value)
-            .Where(l => l.Enabled)
-            .SelectMany(l => l.Items.Select(i => (Item: i, Quantity: l.Quantities[i], l.Fallback, ItemEnabled: l.EnabledItems[i], l.UsesRetainerInventory)))
-            .Where(i => i.ItemEnabled)
-            .GroupBy(i => (i.Item, i.Fallback))
-            .Select(x => (x.Key.Item, Quantity: (uint)Math.Min(x.Sum(g => g.Quantity), uint.MaxValue), x.Key.Fallback, UsesRetainerInventory: x.All(g => g.UsesRetainerInventory)));
-
-        foreach (var (item, quantity, fallback, usesRetainerInventory) in items)
+        var totals = new Dictionary<(IGatherable Item, bool Fallback), (long Quantity, bool UsesRetainerInventory)>();
+        foreach (var path in _fileSystem.Root.GetAllDescendants(SortMode))
         {
+            if (path is not FileSystem<AutoGatherList>.Leaf { Value: { Enabled: true } list })
+            {
+                continue;
+            }
+
+            foreach (var listItem in list.Items)
+            {
+                var listQuantity = list.Quantities[listItem];
+                if (!list.EnabledItems[listItem])
+                {
+                    continue;
+                }
+
+                ref var total = ref CollectionsMarshal.GetValueRefOrAddDefault(totals, (listItem, list.Fallback), out var exists);
+                total = exists
+                    ? (total.Quantity + listQuantity, total.UsesRetainerInventory && list.UsesRetainerInventory)
+                    : (listQuantity, list.UsesRetainerInventory);
+            }
+        }
+
+        foreach (var ((item, fallback), (totalQuantity, usesRetainerInventory)) in totals)
+        {
+            var quantity = (uint)Math.Min(totalQuantity, uint.MaxValue);
             if (fallback)
             {
                 _fallbackItems.Add((item, quantity));
@@ -146,7 +171,10 @@ public partial class AutoGatherListsManager : IDisposable
             else
             {
                 if (!usesRetainerInventory)
+                {
                     _localInventoryActiveItems.Add(item);
+                }
+
                 _activeItems.Add((item, quantity));
             }
         }
@@ -165,14 +193,16 @@ public partial class AutoGatherListsManager : IDisposable
 
         try
         {
-            var allLists = _fileSystem.Select(kvp => kvp.Key).ToList();
+            List<AutoGatherList> allLists = [.. _fileSystem.Values];
             foreach (var list in allLists)
             {
                 if (_fileSystem.TryGetValue(list, out var leaf))
+                {
                     list.FolderPath = leaf.Parent.IsRoot ? string.Empty : leaf.Parent.FullName();
+                }
             }
 
-            var text = JsonConvert.SerializeObject(allLists.Select(p => new AutoGatherList.Config(p)), Formatting.Indented);
+            var text = JsonConvert.SerializeObject(allLists.ConvertAll(p => new AutoGatherList.Config(p)), Formatting.Indented);
             File.WriteAllText(file.FullName, text);
         }
         catch (Exception e)
@@ -196,7 +226,9 @@ public partial class AutoGatherListsManager : IDisposable
                 var text = File.ReadAllText(file.FullName);
                 var configs = JsonConvert.DeserializeObject<AutoGatherList.Config[]>(text);
                 if (configs != null)
+                {
                     return new AutoGatherListsManager(configs);
+                }
             }
             catch (Exception e)
             {

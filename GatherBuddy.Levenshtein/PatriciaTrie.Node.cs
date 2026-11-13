@@ -14,21 +14,21 @@ public partial class PatriciaTrie<T>
             public static readonly NodeComparer Default = new();
         }
 
-        public          StringView      Word;
-        private         Node?           _parent;
-        public readonly StringView      TotalWord;
+        public StringView Word;
+        private Node? _parent;
+        public readonly StringView TotalWord;
         public readonly SortedSet<Node> Children;
-        public          T?              Data;
-        public          bool            HasData;
+        public T? Data;
+        public bool HasData;
 
         private Node(bool _)
         {
-            _parent   = null;
-            Data      = default;
-            Word      = StringView.Empty;
+            _parent = null;
+            Data = default;
+            Word = StringView.Empty;
             TotalWord = StringView.Empty;
-            Children  = new SortedSet<Node>(NodeComparer.Default);
-            HasData   = false;
+            Children = [with(NodeComparer.Default)];
+            HasData = false;
         }
 
         public static Node CreateRoot()
@@ -36,12 +36,12 @@ public partial class PatriciaTrie<T>
 
         public Node(Node parent, StringView totalWord, T? data, bool hasData)
         {
-            Data      = data;
-            _parent   = parent;
-            Word      = totalWord.Substring(parent.TotalWord.Length, totalWord.Length - parent.TotalWord.Length);
+            Data = data;
+            _parent = parent;
+            Word = totalWord.Substring(parent.TotalWord.Length, totalWord.Length - parent.TotalWord.Length);
             TotalWord = totalWord;
-            HasData   = hasData;
-            Children  = new SortedSet<Node>(NodeComparer.Default);
+            HasData = hasData;
+            Children = [with(NodeComparer.Default)];
             parent.Children.Add(this);
         }
 

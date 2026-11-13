@@ -1,5 +1,4 @@
 using Dalamud.Game.Inventory;
-using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -13,15 +12,17 @@ public static class RecipeExtensions
     public static List<(Item Item, int Amount)> Ingredients(this Recipe recipe)
     {
         var result = new List<(Item, int)>();
-        
-        for (int i = 0; i < recipe.Ingredient.Count; i++)
+
+        for (var i = 0; i < recipe.Ingredient.Count; i++)
         {
             try
             {
                 var item = recipe.Ingredient[i].Value;
                 var amount = recipe.AmountIngredient[i];
                 if (item.RowId > 0)
+                {
                     result.Add((item, amount));
+                }
             }
             catch { }
         }
@@ -37,7 +38,10 @@ public static class RecipeManager
     {
         var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
         if (sheet != null && sheet.TryGetRow(recipeId, out var row))
+        {
             return row;
+        }
+
         return null;
     }
 
@@ -50,7 +54,7 @@ public static class RecipeManager
     public static IReadOnlyList<Recipe> GetRecipesForItem(uint itemId)
     {
         var recipesByItemId = _recipesByItemId.Value;
-        return recipesByItemId.GetValueOrDefault(itemId) ?? (IReadOnlyList<Recipe>)Array.Empty<Recipe>();
+        return recipesByItemId.GetValueOrDefault(itemId) ?? (IReadOnlyList<Recipe>)[];
     }
 
     private static Dictionary<uint, List<Recipe>> BuildRecipeIndex()
@@ -65,10 +69,14 @@ public static class RecipeManager
         }
         foreach (var recipe in sheet)
         {
-            if (recipe.ItemResult.RowId == 0) continue;
+            if (recipe.ItemResult.RowId == 0)
+            {
+                continue;
+            }
+
             if (!recipesByItemId.TryGetValue(recipe.ItemResult.RowId, out var list))
             {
-                list = new List<Recipe>();
+                list = [];
                 recipesByItemId[recipe.ItemResult.RowId] = list;
             }
             list.Add(recipe);
@@ -83,7 +91,9 @@ public static class RecipeManager
         foreach (var (item, amount) in recipe.Ingredients())
         {
             if (item.RowId > 0)
+            {
                 result.Add((item.RowId, amount));
+            }
         }
         return result;
     }
@@ -111,9 +121,13 @@ public static class RecipeManager
             else
             {
                 if (resolved.ContainsKey(itemId))
+                {
                     resolved[itemId] += actualAmount;
+                }
                 else
+                {
                     resolved[itemId] = actualAmount;
+                }
             }
         }
     }
@@ -127,7 +141,9 @@ public static class RecipeManager
         {
             var haveCount = GetInventoryCount(itemId);
             if (haveCount < needed)
+            {
                 missing[itemId] = needed - haveCount;
+            }
         }
 
         return missing;
@@ -142,14 +158,16 @@ public static class RecipeManager
                 GameInventoryType.Inventory1, GameInventoryType.Inventory2,
                 GameInventoryType.Inventory3, GameInventoryType.Inventory4
             };
-            int count = 0;
+            var count = 0;
             foreach (var invType in inventories)
             {
                 var items = Dalamud.GameInventory.GetInventoryItems(invType);
                 foreach (var item in items)
                 {
                     if (item.ItemId == itemId)
+                    {
                         count += (int)item.Quantity;
+                    }
                 }
             }
             return count;
@@ -170,19 +188,22 @@ public static class RecipeManager
     {
         var sheet = Dalamud.GameData.GetExcelSheet<Recipe>();
         if (sheet == null)
-            return new();
+        {
+            return [];
+        }
 
         var exact = sheet
             .Where(r => r.ItemResult.RowId > 0 &&
                         r.ItemResult.Value.Name.ExtractText().Equals(name, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (exact.Count > 0)
+        {
             return exact;
+        }
 
-        return sheet
+        return [.. sheet
             .Where(r => r.ItemResult.RowId > 0 &&
                         r.ItemResult.Value.Name.ExtractText().Contains(name, StringComparison.OrdinalIgnoreCase))
-            .Take(10)
-            .ToList();
+            .Take(10)];
     }
 }

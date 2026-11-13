@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Text;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Interface.Utility;
@@ -14,10 +9,15 @@ using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Gui;
 using GatherBuddy.Interfaces;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Time;
-using ElliLib;
+using GatherBuddy.Utility;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Text;
 using Functions = GatherBuddy.Plugin.Functions;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.GatherHelper;
 
@@ -25,13 +25,13 @@ public class GatherWindow : Window
 {
     private readonly GatherBuddy _plugin;
 
-    private int              _deleteSet        = -1;
-    private int              _deleteItemIdx    = -1;
-    private bool             _deleteAutoGather;
-    private AutoGatherList?  _deleteListObj    = null;
+    private int _deleteSet = -1;
+    private int _deleteItemIdx = -1;
+    private bool _deleteAutoGather;
+    private AutoGatherList? _deleteListObj = null;
     private TimeStamp _earliestKeyboardToggle = TimeStamp.Epoch;
-    private Vector2   _lastSize               = Vector2.Zero;
-    private Vector2   _newPosition            = Vector2.Zero;
+    private Vector2 _lastSize = Vector2.Zero;
+    private Vector2 _newPosition = Vector2.Zero;
 
     public GatherWindow(GatherBuddy plugin)
         : base("##GatherHelperReborn",
@@ -41,10 +41,10 @@ public class GatherWindow : Window
           | ImGuiWindowFlags.NoNavFocus
           | ImGuiWindowFlags.NoScrollbar)
     {
-        _plugin             = plugin;
-        IsOpen              = GatherBuddy.Config.ShowGatherWindow;
-        RespectCloseHotkey  = false;
-        Namespace           = "GatherHelperReborn";
+        _plugin = plugin;
+        IsOpen = GatherBuddy.Config.ShowGatherWindow;
+        RespectCloseHotkey = false;
+        Namespace = "GatherHelperReborn";
         DisableWindowSounds = true;
         SizeConstraints = new WindowSizeConstraints
         {
@@ -56,16 +56,21 @@ public class GatherWindow : Window
     private static void DrawTime(ILocation? loc, TimeInterval time, bool uptimeDependency)
     {
         if (!GatherBuddy.Config.ShowGatherWindowTimers || !ImGui.TableNextColumn())
+        {
             return;
+        }
+
         if (time.Equals(TimeInterval.Always))
+        {
             return;
+        }
 
         var active = time.Start <= GatherBuddy.Time.ServerTime;
         var colorId = (active, uptimeDependency) switch
         {
-            (true, true)   => ColorId.DependentAvailableFish.Value(),
-            (true, false)  => ColorId.AvailableItem.Value(),
-            (false, true)  => ColorId.DependentUpcomingFish.Value(),
+            (true, true) => ColorId.DependentAvailableFish.Value(),
+            (true, false) => ColorId.AvailableItem.Value(),
+            (false, true) => ColorId.DependentUpcomingFish.Value(),
             (false, false) => ColorId.UpcomingItem.Value(),
         };
 
@@ -93,7 +98,9 @@ public class GatherWindow : Window
     private static void CreateTooltip(IGatherable? item, ILocation? loc, TimeInterval time)
     {
         if (!ImGui.IsItemHovered())
+        {
             return;
+        }
 
         if (item is not Fish fish)
         {
@@ -101,7 +108,7 @@ public class GatherWindow : Window
             return;
         }
 
-        var extendedFish = Interface.ExtendedFishList.FirstOrDefault(f => f.Data == fish);
+        var extendedFish = Interface.FindExtendedFish(fish);
         if (extendedFish == null)
         {
             ImGui.SetTooltip(TooltipText(loc, time));
@@ -113,21 +120,25 @@ public class GatherWindow : Window
         ImGui.Text(TooltipText(loc, time));
         ImGui.NewLine();
         extendedFish.SetTooltip(loc?.Territory ?? Territory.Invalid, ImGuiHelpers.ScaledVector2(40, 40), ImGuiHelpers.ScaledVector2(20, 20),
-            ImGuiHelpers.ScaledVector2(30,                                                          30),
+            ImGuiHelpers.ScaledVector2(30, 30),
             false);
     }
 
-    private readonly List<(IGatherable Item, ILocation Location, TimeInterval Uptime, uint Quantity)> _data = new();
+    private readonly List<(IGatherable Item, ILocation Location, TimeInterval Uptime, uint Quantity)> _data = [];
 
     private static bool HasPredatorTimerIssue(IGatherable item)
     {
         if (item is not Fish fish || fish.Predators.Length == 0)
+        {
             return false;
+        }
 
         foreach (var (predatorFish, _) in fish.Predators)
         {
             if (CheckRestrictions(predatorFish, fish))
+            {
                 return true;
+            }
         }
 
         return false;
@@ -137,36 +148,64 @@ public class GatherWindow : Window
             if (predator.FishRestrictions.HasFlag(FishRestrictions.Time))
             {
                 if (!target.FishRestrictions.HasFlag(FishRestrictions.Time))
+                {
                     return true;
+                }
+
                 if (!predator.Interval.Contains(target.Interval))
+                {
                     return true;
+                }
             }
 
             if (predator.FishRestrictions.HasFlag(FishRestrictions.Weather))
             {
                 if (!target.FishRestrictions.HasFlag(FishRestrictions.Weather))
+                {
                     return true;
+                }
 
-                if (predator.CurrentWeather.Length > 0 && target.CurrentWeather.Any(w => !predator.CurrentWeather.Contains(w)))
+                if (predator.CurrentWeather.Length > 0 && HasWeatherOutside(target.CurrentWeather, predator.CurrentWeather))
+                {
                     return true;
+                }
 
-                if (predator.PreviousWeather.Length > 0 && target.PreviousWeather.Any(w => !predator.PreviousWeather.Contains(w)))
+                if (predator.PreviousWeather.Length > 0 && HasWeatherOutside(target.PreviousWeather, predator.PreviousWeather))
+                {
                     return true;
+                }
             }
 
             return false;
         }
     }
 
+    private static bool HasWeatherOutside(Structs.Weather[] weathers, Structs.Weather[] allowed)
+    {
+        foreach (var weather in weathers)
+        {
+            if (Array.IndexOf(allowed, weather) < 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void DrawItem(IGatherable item, ILocation loc, TimeInterval time, uint quantity)
     {
         if (GatherBuddy.Config.ShowGatherWindowOnlyAvailable && time.Start > GatherBuddy.Time.ServerTime)
+        {
             return;
+        }
 
         var inventoryCount = item.GetTotalCount(_plugin.AutoGatherListsManager.UsesRetainerInventory(item));
 
         if (quantity > 0 && inventoryCount >= quantity && GatherBuddy.Config.HideGatherWindowCompletedItems)
+        {
             return;
+        }
 
         var hasPredatorIssue = HasPredatorTimerIssue(item);
 
@@ -174,26 +213,40 @@ public class GatherWindow : Window
         {
             using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing / 2);
             if (Icons.DefaultStorage.TryLoadIcon(item.ItemData.Icon, out var icon))
-                ImGuiUtil.HoverIcon(icon.Handle, icon.Size, new Vector2(ImGui.GetTextLineHeight()));
+            {
+                Ui.HoverIcon(icon, new Vector2(ImGui.GetTextLineHeight()));
+            }
             else
+            {
                 ImGui.Dummy(new Vector2(ImGui.GetTextLineHeight()));
+            }
+
             ImGui.SameLine();
-            
-            var colorId = time == TimeInterval.Always    ? ColorId.GatherWindowText :
+
+            var colorId = time == TimeInterval.Always ? ColorId.GatherWindowText :
                 time.Start > GatherBuddy.Time.ServerTime ? ColorId.GatherWindowUpcoming : ColorId.GatherWindowAvailable;
 
             if (quantity > 0 && inventoryCount >= quantity)
+            {
                 colorId = ColorId.DisabledText;
-            using var color                         = ImRaii.PushColor(ImGuiCol.Text, colorId.Value());
+            }
+
+            using var color = ImRaii.PushColor(ImGuiCol.Text, colorId.Value());
             var quantityText = quantity > 0 ? $" ({inventoryCount}/{quantity})" : "";
             if (ImGui.Selectable($"{item.Name[GatherBuddy.Language]}{quantityText}", false))
             {
                 if (_plugin.Executor.LastItem != item)
+                {
                     _plugin.Executor.GatherItem(item);
+                }
                 else if (item is Gatherable)
+                {
                     _plugin.Executor.GatherItemByName("next");
+                }
                 else
+                {
                     _plugin.Executor.GatherFishByName("next");
+                }
             }
 
             var clicked = ImGui.IsItemClicked(ImGuiMouseButton.Right);
@@ -203,53 +256,75 @@ public class GatherWindow : Window
             if (clicked && Dalamud.Keys[VirtualKey.MENU])
             {
                 if (quantity > 0)
+                {
                     foreach (var list in _plugin.AutoGatherListsManager.Lists)
                     {
                         if (!list.Enabled)
+                        {
                             continue;
+                        }
 
                         var idx = list.Items.IndexOf(item);
                         if (idx < 0)
+                        {
                             continue;
+                        }
 
                         _plugin.AutoGatherListsManager.ChangeEnabled(list, item, false);
                         break;
                     }
+                }
             }
             else if (clicked && Functions.CheckModifier(GatherBuddy.Config.GatherWindowDeleteModifier, false))
+            {
                 if (quantity > 0)
+                {
                     foreach (var list in _plugin.AutoGatherListsManager.Lists)
                     {
                         if (!list.Enabled)
+                        {
                             continue;
+                        }
 
                         var idx = list.Items.IndexOf(item);
                         if (idx < 0)
+                        {
                             continue;
+                        }
 
                         _deleteListObj = list;
                         _deleteItemIdx = idx;
                         _deleteAutoGather = true;
                         break;
                     }
+                }
                 else
+                {
                     for (var i = 0; i < _plugin.GatherWindowManager.Presets.Count; ++i)
                     {
                         var preset = _plugin.GatherWindowManager.Presets[i];
                         if (!preset.Enabled)
+                        {
                             continue;
+                        }
 
                         var idx = preset.Items.IndexOf(item);
                         if (idx < 0)
+                        {
                             continue;
+                        }
 
                         _deleteSet = i;
                         _deleteItemIdx = idx;
                         _deleteAutoGather = false;
                         break;
                     }
+                }
+            }
             else
+            {
                 Interface.CreateGatherWindowContextMenu(item, clicked);
+            }
         }
 
         DrawTime(loc, time, hasPredatorIssue);
@@ -258,7 +333,9 @@ public class GatherWindow : Window
     private void DeleteItem()
     {
         if (_deleteItemIdx < 0)
+        {
             return;
+        }
 
         if (_deleteAutoGather && _deleteListObj != null)
         {
@@ -277,9 +354,11 @@ public class GatherWindow : Window
     private void CheckHotkeys()
     {
         if (_earliestKeyboardToggle > GatherBuddy.Time.ServerTime || !Functions.CheckKeyState(GatherBuddy.Config.GatherWindowHotkey, false))
+        {
             return;
+        }
 
-        _earliestKeyboardToggle             = GatherBuddy.Time.ServerTime.AddMilliseconds(500);
+        _earliestKeyboardToggle = GatherBuddy.Time.ServerTime.AddMilliseconds(500);
         GatherBuddy.Config.ShowGatherWindow = !GatherBuddy.Config.ShowGatherWindow;
         GatherBuddy.Config.Save();
     }
@@ -287,7 +366,9 @@ public class GatherWindow : Window
     private static bool CheckHoldKey()
     {
         if (!GatherBuddy.Config.OnlyShowGatherWindowHoldingKey || GatherBuddy.Config.GatherWindowHoldKey == VirtualKey.NO_KEY)
+        {
             return false;
+        }
 
         return !Dalamud.Keys[GatherBuddy.Config.GatherWindowHoldKey];
     }
@@ -299,18 +380,30 @@ public class GatherWindow : Window
     {
         _data.Clear();
 
-        var list = _plugin.AutoGatherListsManager.ActiveItems
-            .Select(x => (x.Item, x.Quantity))
-            .Concat(_plugin.GatherWindowManager.ActiveItems.Select(i => (Item: i, Quantity: 0u)))
-            .GroupBy(x => x.Item)
-            .Select(g => { var (loc, time) = GatherBuddy.UptimeManager.BestLocation(g.Key); return (g.Key, loc, time, (uint)g.Sum(x => x.Quantity)); });
+        var quantities = new Dictionary<IGatherable, long>();
+        foreach (var (item, quantity) in _plugin.AutoGatherListsManager.ActiveItems)
+        {
+            quantities.TryGetValue(item, out var total);
+            quantities[item] = total + quantity;
+        }
+
+        foreach (var item in _plugin.GatherWindowManager.ActiveItems)
+        {
+            quantities.TryAdd(item, 0);
+        }
+
+        foreach (var (item, quantity) in quantities)
+        {
+            var (loc, time) = GatherBuddy.UptimeManager.BestLocation(item);
+            _data.Add((item, loc, time, (uint)quantity));
+        }
 
         if (GatherBuddy.Config.SortGatherWindowByUptime)
-            list = list.OrderBy(i => i.time, Comparer<TimeInterval>.Create((x, y) => x.Compare(y)));
+        {
+            _data.StableSort(static (x, y) => x.Uptime.Compare(y.Uptime));
+        }
 
-        _data.AddRange(list);
-
-        return _data.Count == 0 || GatherBuddy.Config.ShowGatherWindowOnlyAvailable && _data.All(f => f.Uptime.Start > GatherBuddy.Time.ServerTime);
+        return _data.Count == 0 || GatherBuddy.Config.ShowGatherWindowOnlyAvailable && _data.TrueForAll(f => f.Uptime.Start > GatherBuddy.Time.ServerTime);
     }
 
     public override void PreOpenCheck()
@@ -327,10 +420,14 @@ public class GatherWindow : Window
         ImGui.PushStyleColor(ImGuiCol.WindowBg, ColorId.GatherWindowBackground.Value());
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.One * 2 * ImGuiHelpers.GlobalScale);
         if (GatherBuddy.Config.LockGatherWindow)
+        {
             Flags |= ImGuiWindowFlags.NoMove;
+        }
         else
+        {
             Flags &= ~
                 ImGuiWindowFlags.NoMove;
+        }
 
         if (_newPosition.Y != 0)
         {
@@ -349,25 +446,31 @@ public class GatherWindow : Window
     private void CheckAnchorPosition()
     {
         if (!GatherBuddy.Config.GatherWindowBottomAnchor)
+        {
             return;
+        }
 
         // Can not use Y size since a single text row is smaller than the minimal window size
         // for some reason. 50 is arbitrary. Default window size was 32,32 for me.
         if (_lastSize.X < 50 * ImGuiHelpers.GlobalScale)
+        {
             _lastSize = ImGui.GetWindowSize();
+        }
 
         var size = ImGui.GetWindowSize();
         if (_lastSize == size)
+        {
             return;
+        }
 
-        _newPosition   =  ImGui.GetWindowPos();
+        _newPosition = ImGui.GetWindowPos();
         _newPosition.Y += _lastSize.Y - size.Y;
-        _lastSize      =  size;
+        _lastSize = size;
     }
 
     public override void Draw()
     {
-        var       colorId = GatherBuddy.AutoGather.Enabled ? ColorId.GatherWindowAvailable.Value() : ColorId.GatherWindowText.Value();
+        var colorId = GatherBuddy.AutoGather.Enabled ? ColorId.GatherWindowAvailable.Value() : ColorId.GatherWindowText.Value();
         using var color = ImRaii.PushColor(ImGuiCol.Text, colorId);
         if (ImGui.Selectable($"Auto-Gather: {GatherBuddy.AutoGather.AutoStatus}###toggle-button"))
         {
@@ -378,15 +481,25 @@ public class GatherWindow : Window
             _plugin.Interface.Toggle();
         }
         color.Pop();
-        ImGuiUtil.HoverTooltip("Click to enable/disable auto-gather. Right click to toggle interface");
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Click to enable/disable auto-gather. Right click to toggle interface");
+        }
         if (GatherBuddy.AutoGather.CurrentRequestedTarget is { } target)
+        {
             ImGui.Text($"Target: {target.Name[GatherBuddy.Language]}");
+        }
+
         using var table = ImRaii.Table("##table", GatherBuddy.Config.ShowGatherWindowTimers ? 2 : 1);
         if (!table)
+        {
             return;
-        
+        }
+
         foreach (var (item, loc, time, quantity) in _data)
+        {
             DrawItem(item, loc, time, quantity);
+        }
 
         CheckAnchorPosition();
     }

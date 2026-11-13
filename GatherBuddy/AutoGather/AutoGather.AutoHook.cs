@@ -1,11 +1,10 @@
-using System;
-using System.IO;
-using System.Linq;
-using GatherBuddy.Helpers;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.AutoHookIntegration;
+using GatherBuddy.Classes;
 using GatherBuddy.Plugin;
 using Newtonsoft.Json.Linq;
+using System;
+using System.IO;
 
 namespace GatherBuddy.AutoGather;
 
@@ -23,10 +22,14 @@ public partial class AutoGather
     private void CleanupAutoHookIfNeeded(GatherTarget newTarget)
     {
         if (!GatherBuddy.Config.AutoGatherConfig.UseAutoHook)
+        {
             return;
+        }
 
         if (_currentAutoHookTarget == null || _currentAutoHookPresetName == null)
+        {
             return;
+        }
 
         if (_currentAutoHookTarget.Value.FishingSpot?.Id != newTarget.FishingSpot?.Id)
         {
@@ -37,7 +40,9 @@ public partial class AutoGather
     private void SetupAutoHookForFishing(GatherTarget target)
     {
         if (!GatherBuddy.Config.AutoGatherConfig.UseAutoHook)
+        {
             return;
+        }
 
         if (!AutoHook.Enabled)
         {
@@ -46,7 +51,9 @@ public partial class AutoGather
         }
 
         if (target.Fish == null)
+        {
             return;
+        }
 
         CleanupAutoHookIfNeeded(target);
 
@@ -59,21 +66,26 @@ public partial class AutoGather
             CleanupAutoHook();
         }
 
-        if (_currentAutoHookTarget?.Fish?.ItemId == target.Fish.ItemId 
+        if (_currentAutoHookTarget?.Fish?.ItemId == target.Fish.ItemId
             && _currentAutoHookPresetName != null
             && _isUsingAutoHookGlobalPreset == shouldUseGlobalAutoHookPreset)
         {
             if (_isUsingAutoHookGlobalPreset)
+            {
                 AutoHook.SetPreset?.Invoke(AutoHookGlobalPresetSelectionSentinel);
+            }
+
             if (target.Fish.IsSpearFish)
             {
                 if (!EnableAutoGig())
+                {
                     return;
+                }
             }
             else
             {
                 AutoHook.SetPluginState?.Invoke(true);
-                AutoHook.SetAutoStartFishing?.Invoke(true); 
+                AutoHook.SetAutoStartFishing?.Invoke(true);
             }
             GatherBuddy.Log.Verbose(
                 $"[AutoGather] Re-enabled existing AutoHook preset '{(_isUsingAutoHookGlobalPreset ? AutoHookGlobalPresetDisplayName : _currentAutoHookPresetName)}'");
@@ -107,14 +119,14 @@ public partial class AutoGather
                 return;
             }
             // Check if the target fish is an intuition fish
-            bool isIntuitionFish = target.Fish.Predators.Length > 0 && target.Fish.Predators.All(p => !p.Item1.IsSpearFish);
-            
+            var isIntuitionFish = target.Fish.Predators.Length > 0 && Array.TrueForAll(target.Fish.Predators, p => !p.Item1.IsSpearFish);
+
             // For intuition fish, always use target fish (two-preset system handles predators)
             // For non-intuition fish with predators, check if we should use predator instead
             var presetFish = target.Fish;
-            if (!isIntuitionFish && target.Fish.Predators.Any())
+            if (!isIntuitionFish && target.Fish.Predators.Length > 0)
             {
-                var firstPredator = target.Fish.Predators.First().Item1;
+                var firstPredator = target.Fish.Predators[0].Item1;
                 if (target.FishingSpot?.IsShadowNode != true)
                 {
                     presetFish = firstPredator;
@@ -125,11 +137,11 @@ public partial class AutoGather
                     GatherBuddy.Log.Debug($"[AutoGather] Target fish {target.Fish.Name[GatherBuddy.Language]} is at its shadow node, using target fish for preset");
                 }
             }
-            
+
             var fishName = presetFish.Name[GatherBuddy.Language];
             var fishId = presetFish.ItemId;
             string? presetName = null;
-            bool isUserPreset = false;
+            var isUserPreset = false;
 
             if (GatherBuddy.Config.AutoGatherConfig.UseExistingAutoHookPresets)
             {
@@ -139,16 +151,13 @@ public partial class AutoGather
                     // For intuition fish, look for presets named after target fish ID
                     var targetFishId = target.Fish.ItemId;
                     userPresetName = FindAutoHookPreset($"{targetFishId}_Predators");
-                    if (userPresetName == null)
-                    {
-                        userPresetName = FindAutoHookPreset(targetFishId.ToString());
-                    }
+                    userPresetName ??= FindAutoHookPreset(targetFishId.ToString());
                 }
                 else
                 {
                     userPresetName = FindAutoHookPreset(fishId.ToString());
                 }
-                
+
                 if (userPresetName != null)
                 {
                     presetName = userPresetName;
@@ -167,27 +176,33 @@ public partial class AutoGather
             {
                 // Build fish list: if at shadow node with multiple predators, include them all
                 var fishList = new[] { presetFish };
-                if (presetFish == target.Fish && target.Fish.Predators.Count() > 1 && target.FishingSpot?.IsShadowNode == true)
+                if (presetFish == target.Fish && target.Fish.Predators.Length > 1 && target.FishingSpot?.IsShadowNode == true)
                 {
                     // At shadow node targeting fish with multiple predators - include all predators (skip first) + target
-                    var predatorFish = target.Fish.Predators.Skip(1).Select(p => p.Item1).ToList();
-                    fishList = predatorFish.Append(target.Fish).ToArray();
-                    GatherBuddy.Log.Debug($"[AutoGather] Building preset with {fishList.Length} fish for multi-predator chain: {string.Join(", ", fishList.Select(f => f.Name[GatherBuddy.Language]))}");
+                    var predators = target.Fish.Predators;
+                    fishList = new Fish[predators.Length];
+                    for (var i = 1; i < predators.Length; ++i)
+                    {
+                        fishList[i - 1] = predators[i].Item1;
+                    }
+
+                    fishList[^1] = target.Fish;
+                    GatherBuddy.Log.Debug($"[AutoGather] Building preset with {fishList.Length} fish for multi-predator chain: {string.Join(", ", Array.ConvertAll(fishList, f => f.Name[GatherBuddy.Language]))}");
                 }
-                
+
                 presetName = $"GBR_{fishName.Replace(" ", "")}_{DateTime.Now:HHmmss}";
 
                 // For intuition fish generator will generate _Predators and _Target presets
                 if (isIntuitionFish)
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Creating intuition presets for {fishName}");
-                    presetName = presetName + "_Predators";
+                    presetName += "_Predators";
                 }
                 else
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Creating AutoHook preset '{presetName}' for {fishName}");
                 }
-                
+
                 bool success;
                 if (presetFish.IsSpearFish)
                 {
@@ -198,7 +213,7 @@ public partial class AutoGather
                     var gbrPreset = MatchConfigPreset(presetFish);
                     success = AutoHookService.ExportPresetToAutoHook(presetName.Replace("_Predators", ""), fishList, gbrPreset, selectPreset: true);
                 }
-                
+
                 if (!success)
                 {
                     GatherBuddy.Log.Error($"[AutoGather] Failed to create AutoHook preset");
@@ -210,7 +225,7 @@ public partial class AutoGather
             _currentAutoHookPresetName = presetName;
             _isCurrentPresetUserOwned = isUserPreset;
             _isUsingAutoHookGlobalPreset = false;
-            
+
             if (isIntuitionFish && !isUserPreset)
             {
                 var baseName = presetName.Replace("_Predators", "");
@@ -220,7 +235,7 @@ public partial class AutoGather
             {
                 _currentAutoHookTargetPresetName = null;
             }
-            
+
             if (target.Fish.IsSpearFish)
             {
                 if (EnableAutoGig())
@@ -242,7 +257,7 @@ public partial class AutoGather
                     GatherBuddy.Log.Information("[AutoGather] AutoHook enabled for fishing");
                 }
             }
-            
+
             var presetType = isUserPreset ? "user" : "generated";
             GatherBuddy.Log.Information($"[AutoGather] AutoHook preset '{presetName}' ({presetType}) for {fishName} selected and activated successfully");
         }
@@ -276,7 +291,9 @@ public partial class AutoGather
     private void CleanupAutoHook()
     {
         if (!AutoHook.Enabled)
+        {
             return;
+        }
 
         try
         {
@@ -312,12 +329,12 @@ public partial class AutoGather
                     }
                 }
             }
-            
+
             AutoHook.SetAutoStartFishing?.Invoke(false);
             AutoHook.SetAutoGigState?.Invoke(false);
             AutoHook.SetPluginState?.Invoke(_autoHookPluginStateBeforeAutoGig ?? false);
             GatherBuddy.Log.Debug("[AutoGather] AutoHook/AutoGig cleanup complete");
-            
+
             _currentAutoHookTarget = null;
             _currentAutoHookPresetName = null;
             _currentAutoHookTargetPresetName = null;
@@ -332,14 +349,16 @@ public partial class AutoGather
         }
     }
 
-    private string? FindAutoHookPreset(string fishId)
+    private static string? FindAutoHookPreset(string fishId)
     {
         try
         {
             // Resolve AutoHook config path: .../pluginConfigs/AutoHook.json
             var pluginConfigsDir = Dalamud.PluginInterface.ConfigDirectory.Parent?.FullName;
             if (string.IsNullOrEmpty(pluginConfigsDir))
+            {
                 return null;
+            }
 
             var configPath = Path.Combine(pluginConfigsDir, "AutoHook.json");
             if (!File.Exists(configPath))
@@ -351,8 +370,7 @@ public partial class AutoGather
             var json = File.ReadAllText(configPath);
             var config = JObject.Parse(json);
 
-            var customPresets = config["HookPresets"]?["CustomPresets"] as JArray;
-            if (customPresets == null)
+            if (config["HookPresets"]?["CustomPresets"] is not JArray customPresets)
             {
                 GatherBuddy.Log.Debug("[AutoGather] No CustomPresets found in AutoHook config");
                 return null;

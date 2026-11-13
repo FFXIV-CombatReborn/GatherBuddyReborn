@@ -2,12 +2,12 @@ namespace GatherBuddy.Time;
 
 public static class EorzeaTimeStampExtensions
 {
-    public const int MillisecondsPerEorzeaHour    = 175000;
-    public const int SecondsPerEorzeaHour         = MillisecondsPerEorzeaHour / RealTime.MillisecondsPerSecond;
+    public const int MillisecondsPerEorzeaHour = 175000;
+    public const int SecondsPerEorzeaHour = MillisecondsPerEorzeaHour / RealTime.MillisecondsPerSecond;
     public const int MillisecondsPerEorzeaWeather = 8 * MillisecondsPerEorzeaHour;
-    public const int SecondsPerEorzeaWeather      = MillisecondsPerEorzeaWeather / RealTime.MillisecondsPerSecond;
-    public const int MillisecondsPerEorzeaDay     = RealTime.HoursPerDay * MillisecondsPerEorzeaHour;
-    public const int SecondsPerEorzeaDay          = MillisecondsPerEorzeaDay / RealTime.MillisecondsPerSecond;
+    public const int SecondsPerEorzeaWeather = MillisecondsPerEorzeaWeather / RealTime.MillisecondsPerSecond;
+    public const int MillisecondsPerEorzeaDay = RealTime.HoursPerDay * MillisecondsPerEorzeaHour;
+    public const int SecondsPerEorzeaDay = MillisecondsPerEorzeaDay / RealTime.MillisecondsPerSecond;
 
     public static TimeStamp ConvertToEorzea(this TimeStamp t)
         => new(t.Time * 144 / 7);
@@ -60,8 +60,8 @@ public static class EorzeaTimeStampExtensions
     public static (long minutes, int seconds) MinutesToReal(long eorzeaMinutes)
     {
         var seconds = (double)eorzeaMinutes * SecondsPerEorzeaHour / RealTime.MinutesPerHour;
-        var m       = (long)seconds;
-        var s       = (int)((seconds - m) * RealTime.SecondsPerMinute);
+        var m = (long)seconds;
+        var s = (int)((seconds - m) * RealTime.SecondsPerMinute);
         return (m, s);
     }
 }

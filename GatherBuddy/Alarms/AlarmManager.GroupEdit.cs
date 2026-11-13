@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Alarms;
@@ -12,14 +10,24 @@ public partial class AlarmManager
         if (group.Enabled)
         {
             group.Enabled = false;
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
-                RemoveActiveAlarm(alarm);
+            foreach (var alarm in group.Alarms)
+            {
+                if (alarm.Enabled)
+                {
+                    RemoveActiveAlarm(alarm);
+                }
+            }
         }
         else
         {
             group.Enabled = true;
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
-                AddActiveAlarm(alarm);
+            foreach (var alarm in group.Alarms)
+            {
+                if (alarm.Enabled)
+                {
+                    AddActiveAlarm(alarm);
+                }
+            }
         }
 
         Save();
@@ -28,33 +36,51 @@ public partial class AlarmManager
     public void AddGroup(string name)
         => AddGroup(new AlarmGroup()
         {
-            Name        = name,
+            Name = name,
             Description = string.Empty,
-            Enabled     = false,
-            Alarms      = new List<Alarm>(),
+            Enabled = false,
+            Alarms = [],
         });
 
     public void AddGroup(AlarmGroup group)
     {
         Alarms.Add(group);
         if (group.Enabled)
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
-                AddActiveAlarm(alarm);
+        {
+            foreach (var alarm in group.Alarms)
+            {
+                if (alarm.Enabled)
+                {
+                    AddActiveAlarm(alarm);
+                }
+            }
+        }
+
         Save();
     }
 
     public void MoveGroup(int idx1, int idx2)
     {
         if (Functions.Move(Alarms, idx1, idx2))
+        {
             Save();
+        }
     }
 
     public void DeleteGroup(int idx)
     {
         var group1 = Alarms[idx];
         if (group1.Enabled)
-            foreach (var alarm in group1.Alarms.Where(a => a.Enabled))
-                RemoveActiveAlarm(alarm);
+        {
+            foreach (var alarm in group1.Alarms)
+            {
+                if (alarm.Enabled)
+                {
+                    RemoveActiveAlarm(alarm);
+                }
+            }
+        }
+
         Alarms.RemoveAt(idx);
         Save();
     }
@@ -63,7 +89,9 @@ public partial class AlarmManager
     {
         var group = Alarms[idx];
         if (group.Name == newName)
+        {
             return;
+        }
 
         group.Name = newName;
         Save();
@@ -73,7 +101,9 @@ public partial class AlarmManager
     {
         var group = Alarms[idx];
         if (group.Description == newDesc)
+        {
             return;
+        }
 
         group.Description = newDesc;
         Save();

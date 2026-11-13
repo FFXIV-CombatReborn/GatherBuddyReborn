@@ -5,7 +5,7 @@ using SpearfishSize = GatherBuddy.Enums.SpearfishSize;
 
 namespace GatherBuddy.SeFunctions;
 
-public unsafe static class AddonSpearFishingExtensions
+public static unsafe class AddonSpearFishingExtensions
 {
     extension(ref AddonSpearFishing addon)
     {

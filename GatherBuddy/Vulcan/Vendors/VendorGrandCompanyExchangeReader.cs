@@ -1,7 +1,7 @@
-using System;
-using System.Collections.Generic;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.Vulcan.Vendors;
 

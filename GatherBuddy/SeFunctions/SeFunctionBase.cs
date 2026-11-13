@@ -1,14 +1,14 @@
-using System;
-using System.Runtime.InteropServices;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
+using System;
+using System.Runtime.InteropServices;
 
 namespace GatherBuddy.SeFunctions;
 
 public class SeFunctionBase<T> where T : Delegate
 {
-    public    IntPtr Address;
-    protected T?     FuncDelegate;
+    public IntPtr Address;
+    protected T? FuncDelegate;
 
     public SeFunctionBase(ISigScanner sigScanner, int offset)
     {
@@ -19,10 +19,14 @@ public class SeFunctionBase<T> where T : Delegate
     public SeFunctionBase(ISigScanner sigScanner, string signature, int offset = 0)
     {
         if (sigScanner.TryScanText(signature, out var ptr))
+        {
             Address = (IntPtr)ptr + offset;
+        }
         else
+        {
             Address = IntPtr.Zero;
-        
+        }
+
         var baseOffset = Address != IntPtr.Zero ? (ulong)Address.ToInt64() - (ulong)sigScanner.Module.BaseAddress.ToInt64() : 0;
         GatherBuddy.Log.Debug($"{GetType().Name} address 0x{Address.ToInt64():X16}, baseOffset 0x{baseOffset:X16}.");
     }
@@ -30,7 +34,9 @@ public class SeFunctionBase<T> where T : Delegate
     public T? Delegate()
     {
         if (FuncDelegate != null)
+        {
             return FuncDelegate;
+        }
 
         if (Address != IntPtr.Zero)
         {
@@ -45,7 +51,9 @@ public class SeFunctionBase<T> where T : Delegate
     public dynamic? Invoke(params dynamic[] parameters)
     {
         if (FuncDelegate != null)
+        {
             return FuncDelegate.DynamicInvoke(parameters);
+        }
 
         if (Address != IntPtr.Zero)
         {

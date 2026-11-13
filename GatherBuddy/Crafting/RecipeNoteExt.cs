@@ -1,7 +1,7 @@
-using System;
-using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
+using System;
+using System.Runtime.InteropServices;
 
 namespace GatherBuddy.Crafting;
 
@@ -54,7 +54,9 @@ public unsafe struct RecipeNoteIngredientEntry
 
         NumAssignedNQ = (byte)Math.Min(NumTotal, Math.Min(NumAvailableNQ, nq));
         if (NumAssignedNQ != NumTotal)
+        {
             NumAssignedHQ = (byte)Math.Min(NumTotal, Math.Min(NumAvailableHQ, hq));
+        }
 
         if (updateUI && Dalamud.GameGui.GetAddonByName("RecipeNote") is { Address: not 0 } addon)
         {
@@ -68,8 +70,10 @@ public static unsafe class RecipeNoteExt
     public static Span<RecipeNoteIngredientEntry> GetIngredientsSpan(FFXIVClientStructs.FFXIV.Client.Game.UI.RecipeNote.RecipeEntry* recipe)
     {
         if (recipe == null)
+        {
             return new Span<RecipeNoteIngredientEntry>();
-        
+        }
+
         var ptr = (RecipeNoteIngredientEntry*)recipe;
         return new Span<RecipeNoteIngredientEntry>(ptr, 6);
     }

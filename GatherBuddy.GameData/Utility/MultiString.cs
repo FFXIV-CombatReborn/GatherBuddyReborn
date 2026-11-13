@@ -1,8 +1,8 @@
-using System;
 using Dalamud.Game;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 using Lumina.Text.ReadOnly;
+using System;
 
 namespace GatherBuddy.Utility;
 
@@ -11,9 +11,9 @@ public readonly struct MultiString(string en, string de, string fr, string jp)
     public static string ParseSeStringLumina(ReadOnlySeString? luminaString)
         => luminaString?.ExtractText() ?? string.Empty;
 
-    public readonly string English  = en;
-    public readonly string German   = de;
-    public readonly string French   = fr;
+    public readonly string English = en;
+    public readonly string German = de;
+    public readonly string French = fr;
     public readonly string Japanese = jp;
 
     public string this[ClientLanguage lang]
@@ -47,11 +47,11 @@ public readonly struct MultiString(string en, string de, string fr, string jp)
     private string Name(ClientLanguage lang)
         => lang switch
         {
-            ClientLanguage.English  => English,
-            ClientLanguage.German   => German,
+            ClientLanguage.English => English,
+            ClientLanguage.German => German,
             ClientLanguage.Japanese => Japanese,
-            ClientLanguage.French   => French,
-            _                       => throw new ArgumentException(),
+            ClientLanguage.French => French,
+            _ => throw new ArgumentException(),
         };
 
     public static readonly MultiString Empty = new(string.Empty, string.Empty, string.Empty, string.Empty);

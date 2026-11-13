@@ -1,8 +1,7 @@
-using System;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using System;
 
 namespace GatherBuddy.AutoGather.Extensions;
 
@@ -35,7 +34,9 @@ public static class GatherableExtensions
         var count = inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 0);
 
         if (gatherable.ItemData.IsCollectable)
+        {
             count += inventory->GetInventoryItemCount(gatherable.ItemId, false, false, false, 1);
+        }
 
         return count;
     }
@@ -47,12 +48,16 @@ public static class GatherableExtensions
     {
         var localCount = gatherable.GetInventoryCount();
         if (!useRetainerInventory || !GatherBuddy.Config.AutoGatherConfig.CheckRetainers || !AllaganTools.Enabled)
+        {
             return localCount;
+        }
 
         try
         {
             if (!AllaganTools.IsInitialized())
+            {
                 return localCount;
+            }
 
             var retainerCount = AllaganTools.ItemCountOwned(gatherable.ItemId, true, _retainerInventoryTypes);
             return (int)Math.Min((long)localCount + retainerCount, int.MaxValue);

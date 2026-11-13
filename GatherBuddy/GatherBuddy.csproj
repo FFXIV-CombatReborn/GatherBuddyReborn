@@ -1,11 +1,11 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <LangVersion>preview</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
     <RootNamespace>GatherBuddy</RootNamespace>
     <AssemblyName>GatherBuddyReborn</AssemblyName>
-    <Version>7.5.0.0</Version>
+    <Version>0.0.0.0</Version>
     <Company>SoftOtter</Company>
     <Product>GatherBuddy</Product>
     <Copyright>Copyright © 2026</Copyright>
@@ -24,6 +24,7 @@
     <Author>The Combat Reborn Team</Author>
     <Description>Adds commands to simplify gathering by finding nodes and fish and their locations via item name and a UI to keep track of special uptime and weather conditions. Also automatically gathers items based on these conditions using lists that you specify. Automated gathering requires vnavmesh.</Description>
     <Punchline>Simplify Gathering and Fishing to the extreme.</Punchline>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
 
   <ItemGroup>
@@ -47,21 +48,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CSCore" Version="1.2.1.2" />
+    <PackageReference Include="CSCore" Version="1.2.1.2" NoWarn="NU1701" />
     <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" />
-    <PackageReference Include="LuminaSupplemental.Excel" Version="4.3.0" />
-    <PackageReference Include="MessagePack" Version="3.1.3" />
+    <PackageReference Include="LuminaSupplemental.Excel" Version="7.0.1" />
+    <PackageReference Include="MessagePack" Version="3.1.12" />
+    <PackageReference Include="RebornMaterial" Version="7.5.8.1" />
   </ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\GatherBuddy.GameData\GatherBuddy.GameData.csproj" />
 	  <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />
-	  <ProjectReference Include="..\ElliLib\ElliLib.csproj" />
-	  <ProjectReference Include="..\ElliCon\ElliCon.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <Folder Include="AutoGather\Tasks\" />
+	  <Folder Include="RebornUI\" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -70,6 +71,16 @@
 
 	<ItemGroup>
 	  <EmbeddedResource Include="CustomInfo\fish_records.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="RebornUI\Images\*.png">
+	    <LogicalName>GatherBuddy.RebornUI.Images.%(Filename)%(Extension)</LogicalName>
+	  </EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Update="DotNet.ReproducibleBuilds" Version="2.0.5" />
 	</ItemGroup>
 
 

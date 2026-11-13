@@ -5,7 +5,7 @@ namespace GatherBuddy.Data;
 public static class ForcedAetherytes
 {
     public static readonly (uint ZoneId, uint AetheryteId)[] ZonesWithoutAetherytes =
-    {
+    [
         (128, 8),    // Limsa Upper Decks -> Limsa
         (900, 8),    // The Endeavor -> Limsa
         (901, 70),   // The Diadem -> Foundation
@@ -22,7 +22,7 @@ public static class ForcedAetherytes
         (1291, 175), // Phaenna -> Bestway Burrows
         (1310, 175), // Oizys -> Bestway Burrows
         (1319, 175), // Auxesia -> Bestway Burrows
-    };
+    ];
 
     public static void ApplyMissingAetherytes(GameData data)
     {
@@ -30,7 +30,7 @@ public static class ForcedAetherytes
         foreach (var (zoneId, aetheryteId) in ZonesWithoutAetherytes)
         {
             var territoryType = sheet.GetRow(zoneId);
-            var territory     = data.FindOrAddTerritory(territoryType);
+            var territory = data.FindOrAddTerritory(territoryType);
             if (territory == null)
             {
                 data.Log.Error($"Could not find territory {zoneId}.");
@@ -49,13 +49,13 @@ public static class ForcedAetherytes
 
 
     public static readonly (uint NodeId, uint AetheryteId)[] Aetherytes =
-    {
+    [
         (834, 172), // Rime Dolomite -> Camp Broken Glass
         (771, 106), // Rarefied Shiitake Mushroom -> Onokoro
         (682, 148), // Purpure -> Macarenses Angle
         //(310, 104), // Rarefied Raw Triphane -> Rhalgr's Reach
         //(312, 111), // Rarefied Raw Star Spinel -> Kugane
-    };
+    ];
 
     public static void Apply(GameData data)
     {

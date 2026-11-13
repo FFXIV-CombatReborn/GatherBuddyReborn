@@ -1,16 +1,15 @@
-using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
 using System;
 using System.Linq;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
 
 namespace GatherBuddy.Crafting;
 
 public static class CraftingStateBuilder
 {
-public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
+    public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
     {
         try
         {
@@ -80,7 +79,10 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
             {
                 var playerState = PlayerState.Instance();
                 if (playerState == null)
+                {
                     return null;
+                }
+
                 return playerState->Attributes[70];
             }
         }
@@ -98,7 +100,10 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
             {
                 var playerState = PlayerState.Instance();
                 if (playerState == null)
+                {
                     return null;
+                }
+
                 return playerState->Attributes[71];
             }
         }
@@ -116,7 +121,10 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
             {
                 var playerState = PlayerState.Instance();
                 if (playerState == null)
+                {
                     return null;
+                }
+
                 return playerState->Attributes[11];
             }
         }
@@ -146,7 +154,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                 };
 
                 if (manipulationQuestId == 0)
+                {
                     return false;
+                }
 
                 return QuestManager.IsQuestComplete(manipulationQuestId);
             }
@@ -163,13 +173,17 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
         {
             var player = Dalamud.Objects.LocalPlayer;
             if (player == null)
+            {
                 return false;
+            }
 
             unsafe
             {
                 var inventoryManager = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
                 if (inventoryManager == null)
+                {
                     return false;
+                }
 
                 var jobCrystal = inventoryManager->GetInventorySlot(FFXIVClientStructs.FFXIV.Client.Game.InventoryType.EquippedItems, 13);
                 return jobCrystal != null && jobCrystal->ItemId != 0;
@@ -217,7 +231,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                     foreach (var param in row.HWDCrafterSupplyParams)
                     {
                         if (param.ItemTradeIn.RowId != itemId)
+                        {
                             continue;
+                        }
 
                         qualityMin1 = param.BaseCollectableRating * 10;
                         qualityMin2 = param.MidCollectableRating * 10;
@@ -227,7 +243,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                     }
 
                     if (found)
+                    {
                         break;
+                    }
                 }
             }
 
@@ -239,7 +257,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                     foreach (var row in satisfactionSheet.SelectMany(sheet => sheet))
                     {
                         if (row.Item.RowId != itemId)
+                        {
                             continue;
+                        }
 
                         qualityMin1 = row.CollectabilityLow * 10;
                         qualityMin2 = row.CollectabilityMid * 10;
@@ -260,7 +280,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                         foreach (var entry in row.Item)
                         {
                             if (entry.ItemId.RowId != itemId)
+                            {
                                 continue;
+                            }
 
                             qualityMin1 = entry.CollectabilityMid * 10;
                             qualityMin2 = entry.CollectabilityHigh * 10;
@@ -269,7 +291,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                         }
 
                         if (found)
+                        {
                             break;
+                        }
                     }
                 }
             }
@@ -284,7 +308,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                         foreach (var entry in row.Item)
                         {
                             if (entry.ItemId.RowId != itemId)
+                            {
                                 continue;
+                            }
 
                             var breakpoints = entry.Collectability.Value;
                             qualityMin1 = breakpoints.CollectabilityLow * 10;
@@ -295,7 +321,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                         }
 
                         if (found)
+                        {
                             break;
+                        }
                     }
                 }
             }
@@ -308,7 +336,9 @@ public static GameStateBuilder.PlayerStats GetCurrentPlayerStats()
                     foreach (var row in collectableSheet.SelectMany(sheet => sheet))
                     {
                         if (row.Item.RowId != itemId || row.CollectablesShopRefine.RowId == 0)
+                        {
                             continue;
+                        }
 
                         var breakpoints = row.CollectablesShopRefine.Value;
                         qualityMin1 = breakpoints.LowCollectability * 10;

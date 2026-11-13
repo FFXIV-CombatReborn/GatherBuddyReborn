@@ -9,13 +9,13 @@ public class AHAutoCastsConfig
 
     [JsonProperty("DontCancelMooch")]
     public bool DontCancelMooch { get; set; } = true;
-    
+
     [JsonProperty("TurnCollectOffWithoutAnimCancel")]
     public bool TurnCollectOffWithoutAnimCancel { get; set; }
-    
+
     [JsonProperty("CastLine")]
     public AHAutoCastLine? CastLine { get; set; }
-    
+
     [JsonProperty("CastMooch")]
     public AHAutoMoochCast? CastMooch { get; set; }
 
@@ -45,10 +45,10 @@ public class AHAutoPatience
 
     [JsonProperty("Id")]
     public uint Id { get; set; }
-    
+
     [JsonProperty("GpThreshold")]
     public int GpThreshold { get; set; }
-    
+
     [JsonProperty("GpThresholdAbove")]
     public bool GpThresholdAbove { get; set; } = true;
 }
@@ -63,10 +63,10 @@ public class AHAutoCordial
 {
     [JsonProperty("Enabled")]
     public bool Enabled { get; set; }
-    
+
     [JsonProperty("GpThreshold")]
     public int? GpThreshold { get; set; }
-    
+
     [JsonProperty("GpThresholdAbove")]
     public bool? GpThresholdAbove { get; set; }
 }
@@ -84,10 +84,10 @@ public class AHAutoPrizeCatch
 
     [JsonProperty("UseOnlyWithActiveSlap")]
     public bool UseOnlyWithActiveSlap { get; set; }
-    
+
     [JsonProperty("GpThreshold")]
     public int GpThreshold { get; set; }
-    
+
     [JsonProperty("GpThresholdAbove")]
     public bool GpThresholdAbove { get; set; } = true;
 }
@@ -96,10 +96,10 @@ public class AHAutoChum
 {
     [JsonProperty("Enabled")]
     public bool Enabled { get; set; }
-    
+
     [JsonProperty("GpThreshold")]
     public int GpThreshold { get; set; }
-    
+
     [JsonProperty("GpThresholdAbove")]
     public bool GpThresholdAbove { get; set; } = true;
 }

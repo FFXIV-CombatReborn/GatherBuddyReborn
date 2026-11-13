@@ -1,4 +1,3 @@
-using System;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Vulcan;
 
@@ -10,58 +9,77 @@ public static unsafe class SynthesisReader
     {
         var addon = Dalamud.GameGui.GetAddonByName("Synthesis");
         if (addon == null || addon.Address == nint.Zero)
+        {
             return null;
-        
+        }
+
         return (AtkUnitBase*)addon.Address;
     }
-    
+
     public static bool IsSynthesisWindowOpen()
     {
         var addon = GetSynthesisAddon();
         return addon != null && addon->IsVisible;
     }
-    
+
     public static int GetStepIndex(AtkUnitBase* synthWindow)
     {
         if (synthWindow == null || synthWindow->AtkValuesCount < 16)
+        {
             return 0;
+        }
+
         return synthWindow->AtkValues[15].Int;
     }
-    
+
     public static int GetProgress(AtkUnitBase* synthWindow)
     {
         if (synthWindow == null || synthWindow->AtkValuesCount < 6)
+        {
             return 0;
+        }
+
         return synthWindow->AtkValues[5].Int;
     }
-    
+
     public static int GetQuality(AtkUnitBase* synthWindow)
     {
         if (synthWindow == null || synthWindow->AtkValuesCount < 10)
+        {
             return 0;
+        }
+
         return synthWindow->AtkValues[9].Int;
     }
-    
+
     public static int GetDurability(AtkUnitBase* synthWindow)
     {
         if (synthWindow == null || synthWindow->AtkValuesCount < 8)
+        {
             return 0;
+        }
+
         return synthWindow->AtkValues[7].Int;
     }
-    
+
     public static Condition GetCondition(AtkUnitBase* synthWindow)
     {
         if (synthWindow == null || synthWindow->AtkValuesCount < 13)
+        {
             return Condition.Normal;
+        }
+
         return (Condition)synthWindow->AtkValues[12].Int;
     }
-    
+
     public static StepState? ReadCurrentStepState(CraftState craft, StepState? previousStep = null)
     {
         var synthWindow = GetSynthesisAddon();
         if (synthWindow == null)
+        {
             return null;
-        
+        }
+
         var step = new StepState
         {
             Index = GetStepIndex(synthWindow),
@@ -78,21 +96,25 @@ public static unsafe class SynthesisReader
             PrevComboAction = previousStep?.PrevComboAction ?? VulcanSkill.None,
             PrevActionFailed = previousStep?.PrevActionFailed ?? false
         };
-        
+
         ReadBuffsIntoStepState(step);
-        
+
         if (step.TrainedPerfectionActive)
+        {
             step.TrainedPerfectionAvailable = false;
-        
+        }
+
         return step;
     }
-    
+
     private static void ReadBuffsIntoStepState(StepState step)
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return;
-        
+        }
+
         foreach (var status in player.StatusList)
         {
             switch (status.StatusId)

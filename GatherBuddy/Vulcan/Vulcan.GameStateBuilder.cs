@@ -144,20 +144,57 @@ public static class GameStateBuilder
     private static float[] GetConditionProbabilities(ConditionFlags flags)
     {
         if ((flags & ConditionFlags.Normal) == 0)
+        {
             return new[] { 1f };
+        }
 
         var probs = new float[10];
         probs[0] = 1f;
 
-        if ((flags & ConditionFlags.Good) != 0) probs[1] = 0.2f;
-        if ((flags & ConditionFlags.Excellent) != 0) probs[2] = 0.04f;
-        if ((flags & ConditionFlags.Poor) != 0) probs[3] = 0.05f;
-        if ((flags & ConditionFlags.Centered) != 0) probs[4] = 0.1f;
-        if ((flags & ConditionFlags.Sturdy) != 0) probs[5] = 0.1f;
-        if ((flags & ConditionFlags.Pliant) != 0) probs[6] = 0.1f;
-        if ((flags & ConditionFlags.Malleable) != 0) probs[7] = 0.1f;
-        if ((flags & ConditionFlags.Primed) != 0) probs[8] = 0.05f;
-        if ((flags & ConditionFlags.GoodOmen) != 0) probs[9] = 0.05f;
+        if ((flags & ConditionFlags.Good) != 0)
+        {
+            probs[1] = 0.2f;
+        }
+
+        if ((flags & ConditionFlags.Excellent) != 0)
+        {
+            probs[2] = 0.04f;
+        }
+
+        if ((flags & ConditionFlags.Poor) != 0)
+        {
+            probs[3] = 0.05f;
+        }
+
+        if ((flags & ConditionFlags.Centered) != 0)
+        {
+            probs[4] = 0.1f;
+        }
+
+        if ((flags & ConditionFlags.Sturdy) != 0)
+        {
+            probs[5] = 0.1f;
+        }
+
+        if ((flags & ConditionFlags.Pliant) != 0)
+        {
+            probs[6] = 0.1f;
+        }
+
+        if ((flags & ConditionFlags.Malleable) != 0)
+        {
+            probs[7] = 0.1f;
+        }
+
+        if ((flags & ConditionFlags.Primed) != 0)
+        {
+            probs[8] = 0.05f;
+        }
+
+        if ((flags & ConditionFlags.GoodOmen) != 0)
+        {
+            probs[9] = 0.05f;
+        }
 
         return probs;
     }

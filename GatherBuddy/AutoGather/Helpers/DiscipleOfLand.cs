@@ -1,6 +1,6 @@
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using System;
 using GatherBuddy.Utilities;
+using System;
 
 namespace GatherBuddy.AutoGather
 {

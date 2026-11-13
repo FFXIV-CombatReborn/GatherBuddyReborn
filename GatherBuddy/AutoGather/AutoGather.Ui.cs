@@ -1,46 +1,23 @@
-using Dalamud.Game.ClientState.Objects.Enums;
-using GatherBuddy.Helpers;
-using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using GatherBuddy.Plugin;
 using Dalamud.Bindings.ImGui;
-using Lumina.Excel.Sheets;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Windowing;
-
-using FFXIVClientStructs.FFXIV.Client.UI;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
 using GatherBuddy.CustomInfo;
+using GatherBuddy.Helpers;
+using GatherBuddy.Plugin;
 using Newtonsoft.Json;
-using ElliLib;
-using ElliLib.Raii;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace GatherBuddy.AutoGather
 {
     public static class AutoGatherUI
     {
-        public static void DrawAutoGatherStatus()
-        {
-            var enabled = GatherBuddy.AutoGather.Enabled;
-            if (ImGui.Checkbox("Enabled", ref enabled))
-            {
-                GatherBuddy.AutoGather.Enabled = enabled;
-            }
-
-            ImGui.Text($"Status: {GatherBuddy.AutoGather.AutoStatus}");
-        }
-
-
         public static void DrawDebugTables()
         {
             if (ImGui.Button("Import Node Offsets from Clipboard"))
             {
                 var settings = new JsonSerializerSettings();
-                var                          text    = ImGuiUtil.GetClipboardText();
+                var text = RebornUI.Ui.ReadClipboard();
                 var vectors = JsonConvert.DeserializeObject<List<OffsetPair>>(text, settings) ?? [];
                 foreach (var offset in vectors)
                 {
@@ -54,7 +31,13 @@ namespace GatherBuddy.AutoGather
             if (ImGui.Button("Export Node Offsets to Clipboard"))
             {
                 var settings = new JsonSerializerSettings();
-                var offsetString = JsonConvert.SerializeObject(WorldData.NodeOffsets.Select(x => new OffsetPair(x.Key, x.Value)).ToList(), Formatting.Indented, settings);
+                var offsets = new List<OffsetPair>(WorldData.NodeOffsets.Count);
+                foreach (var (original, offset) in WorldData.NodeOffsets)
+                {
+                    offsets.Add(new OffsetPair(original, offset));
+                }
+
+                var offsetString = JsonConvert.SerializeObject(offsets, Formatting.Indented, settings);
                 ImGui.SetClipboardText(offsetString);
                 GatherBuddy.Log.Information("Node offsets exported to clipboard");
             }
@@ -72,8 +55,21 @@ namespace GatherBuddy.AutoGather
                 ImGui.TableHeadersRow();
 
                 var playerPosition = Player.Object?.Position ?? Vector3.Zero;
-                foreach (var node in Dalamud.Objects.Where(o => o.ObjectKind == ObjectKind.GatheringPoint)
-                             .OrderBy(o => Vector3.Distance(o.Position, playerPosition)))
+                var nearbyNodes = new List<(IGameObject Node, float Distance, int Index)>();
+                foreach (var obj in Dalamud.Objects)
+                {
+                    if (obj.ObjectKind == ObjectKind.GatheringPoint)
+                    {
+                        nearbyNodes.Add((obj, Vector3.Distance(obj.Position, playerPosition), nearbyNodes.Count));
+                    }
+                }
+
+                nearbyNodes.Sort(static (lhs, rhs) =>
+                {
+                    var order = lhs.Distance.CompareTo(rhs.Distance);
+                    return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+                });
+                foreach (var (node, _, _) in nearbyNodes)
                 {
                     ImGui.TableNextRow();
                     ImGui.TableSetColumnIndex(0);
@@ -115,7 +111,7 @@ namespace GatherBuddy.AutoGather
                         {
                             if (list == null)
                             {
-                                list                                                                           = new List<Vector3>();
+                                list = [];
                                 GatherBuddy.Config.AutoGatherConfig.BlacklistedNodesByTerritoryId[territoryId] = list;
                             }
 
@@ -164,45 +160,10 @@ namespace GatherBuddy.AutoGather
                         }
                         ImGui.Text(playerPosition.ToString());
                     }
-                    
+
                 }
 
                 ImGui.EndTable();
-            }
-        }
-
-        public unsafe static void DrawMountSelector()
-        {
-            ImGui.PushItemWidth(200);
-            var ps = PlayerState.Instance();
-            var preview = Dalamud.GameData.GetExcelSheet<Mount>().First(x => x.RowId == GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId)
-                .Singular.ToString().ToProperCase();
-            if (string.IsNullOrEmpty(preview))
-                preview = "Mount Roulette";
-            if (ImGui.BeginCombo("Select Mount", preview))
-            {
-                if (ImGui.Selectable("Mount Roulette", GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId == 0))
-                {
-                    GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId = 0;
-                    GatherBuddy.Config.Save();
-                }
-
-                foreach (var mount in Dalamud.GameData.GetExcelSheet<Mount>().OrderBy(x => x.Singular.ToString().ToProperCase()))
-                {
-                    if (ps->IsMountUnlocked(mount.RowId))
-                    {
-                        var selected = ImGui.Selectable(mount.Singular.ToString().ToProperCase(),
-                            GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId == mount.RowId);
-
-                        if (selected)
-                        {
-                            GatherBuddy.Config.AutoGatherConfig.AutoGatherMountId = mount.RowId;
-                            GatherBuddy.Config.Save();
-                        }
-                    }
-                }
-
-                ImGui.EndCombo();
             }
         }
 

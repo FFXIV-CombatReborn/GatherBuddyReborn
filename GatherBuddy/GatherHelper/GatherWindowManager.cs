@@ -1,12 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Dalamud.Interface.ImGuiNotification;
 using GatherBuddy.Alarms;
 using GatherBuddy.Interfaces;
+using GatherBuddy.Utility;
 using Newtonsoft.Json;
-using ElliLib.Extensions;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.GatherHelper;
@@ -15,17 +14,17 @@ public partial class GatherWindowManager : IDisposable
 {
     public const string FileName = "gather_window.json";
 
-    public List<GatherWindowPreset> Presets = new();
+    public List<GatherWindowPreset> Presets = [];
 
-    public List<IGatherable> ActiveItems = new();
-    public List<IGatherable> SortedItems = new();
+    public List<IGatherable> ActiveItems = [];
+    public List<IGatherable> SortedItems = [];
 
     private readonly AlarmManager _alarms;
-    private          bool         _sortDirty = true;
+    private bool _sortDirty = true;
 
     public GatherWindowManager(AlarmManager alarms)
     {
-        _alarms                                =  alarms;
+        _alarms = alarms;
         GatherBuddy.UptimeManager.UptimeChange += OnUptimeChange;
         SetShowGatherWindowAlarms(GatherBuddy.Config.ShowGatherWindowAlarms);
     }
@@ -33,9 +32,14 @@ public partial class GatherWindowManager : IDisposable
     public void SetShowGatherWindowAlarms(bool value)
     {
         if (value)
+        {
             _alarms.ActiveAlarmsChanged += OnActiveAlarmsChange;
+        }
         else
+        {
             _alarms.ActiveAlarmsChanged -= OnActiveAlarmsChange;
+        }
+
         SetActiveItems();
     }
 
@@ -51,14 +55,33 @@ public partial class GatherWindowManager : IDisposable
     public void SetActiveItems()
     {
         ActiveItems.Clear();
-        foreach (var item in Presets.Where(p => p.Enabled)
-                     .SelectMany(p => p.Items)
-                     .Where(i => !ActiveItems.Contains(i)))
-            ActiveItems.Add(item);
+        foreach (var preset in Presets)
+        {
+            if (!preset.Enabled)
+            {
+                continue;
+            }
+
+            foreach (var item in preset.Items)
+            {
+                if (!ActiveItems.Contains(item))
+                {
+                    ActiveItems.Add(item);
+                }
+            }
+        }
+
         if (GatherBuddy.Config.ShowGatherWindowAlarms && GatherBuddy.Config.AlarmsEnabled)
-            foreach (var item in _alarms.ActiveAlarms.Select(a => a.Item1.Item)
-                         .Where(i => !ActiveItems.Contains(i)))
-                ActiveItems.Add(item);
+        {
+            foreach (var (alarm, _) in _alarms.ActiveAlarms)
+            {
+                if (!ActiveItems.Contains(alarm.Item))
+                {
+                    ActiveItems.Add(alarm.Item);
+                }
+            }
+        }
+
         SortedItems.Clear();
         SortedItems.InsertRange(0, ActiveItems);
         _sortDirty = true;
@@ -67,11 +90,15 @@ public partial class GatherWindowManager : IDisposable
     public IList<IGatherable> GetList()
     {
         if (!GatherBuddy.Config.SortGatherWindowByUptime)
+        {
             return ActiveItems;
+        }
 
         if (_sortDirty)
+        {
             SortedItems.StableSort((lhs, rhs)
                 => GatherBuddy.UptimeManager.BestLocation(lhs).Interval.Compare(GatherBuddy.UptimeManager.BestLocation(rhs).Interval));
+        }
 
         return SortedItems;
     }
@@ -80,11 +107,13 @@ public partial class GatherWindowManager : IDisposable
     {
         var file = Functions.ObtainSaveFile(FileName);
         if (file == null)
+        {
             return;
+        }
 
         try
         {
-            var text = JsonConvert.SerializeObject(Presets.Select(p => new GatherWindowPreset.Config(p)), Formatting.Indented);
+            var text = JsonConvert.SerializeObject(Presets.ConvertAll(p => new GatherWindowPreset.Config(p)), Formatting.Indented);
             File.WriteAllText(file.FullName, text);
         }
         catch (Exception e)
@@ -95,7 +124,7 @@ public partial class GatherWindowManager : IDisposable
 
     public static GatherWindowManager Load(AlarmManager alarms)
     {
-        var ret  = new GatherWindowManager(alarms);
+        var ret = new GatherWindowManager(alarms);
         var file = Functions.ObtainSaveFile(FileName);
         if (file is not { Exists: true })
         {
@@ -123,7 +152,7 @@ public partial class GatherWindowManager : IDisposable
                     Content =
                         "Failed to load some gather window presets. See the plugin log for more details. This is not saved, if it keeps happening you need to manually change a preset to cause a save.",
                     MinimizedText = "Failed to load gather window presets.",
-                    Type          = NotificationType.Error,
+                    Type = NotificationType.Error,
                 });
             }
         }

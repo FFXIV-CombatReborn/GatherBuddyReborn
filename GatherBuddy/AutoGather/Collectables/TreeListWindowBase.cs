@@ -4,7 +4,7 @@ using FFXIVClientStructs.STD;
 
 namespace GatherBuddy.AutoGather.Collectables;
 
-public unsafe abstract class TreeListWindowBase
+public abstract unsafe class TreeListWindowBase
 {
     protected readonly StdVector<Pointer<AtkComponentTreeListItem>> Items;
     protected readonly string[] Labels;
@@ -26,10 +26,16 @@ public unsafe abstract class TreeListWindowBase
         for (var i = 0; i < addon->UldManager.NodeListCount; i++)
         {
             var node = addon->UldManager.NodeList[i];
-            if (!IsTargetNode(node)) continue;
+            if (!IsTargetNode(node))
+            {
+                continue;
+            }
 
             var compNode = node->GetAsAtkComponentNode();
-            if (compNode == null || compNode->Component == null) continue;
+            if (compNode == null || compNode->Component == null)
+            {
+                continue;
+            }
 
             return (AtkComponentTreeList*)compNode->Component;
         }

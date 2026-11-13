@@ -1,7 +1,7 @@
+using FFXIVClientStructs.FFXIV.Client.Game;
+using Lumina.Excel.Sheets;
 using System;
 using System.Linq;
-using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace GatherBuddy.Crafting;
 
@@ -13,94 +13,118 @@ public static class ConsumableChecker
     {
         var actionManager = ActionManager.Instance();
         if (actionManager == null)
+        {
             return false;
-        
+        }
+
         return actionManager->UseAction(ActionType.Item, itemId, extraParam: 65535);
     }
-    
+
     public static bool HasFoodBuff(uint foodItemId)
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
-        
+        }
+
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null || !itemSheet.TryGetRow(foodItemId, out var item))
+        {
             return false;
-        
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
-        
+        }
+
         var action = item.ItemAction.Value;
         var nqParam = action.Data[1];
         var hqParam = action.DataHQ[1];
-        
+
         foreach (var status in player.StatusList)
         {
             if (status.StatusId == 48 && status.RemainingTime > 10f)
             {
                 if (status.Param == nqParam || status.Param == hqParam + 10000)
+                {
                     return true;
+                }
             }
         }
-        
+
         return false;
     }
-    
+
     public static bool HasMedicineBuff(uint medicineItemId)
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
-        
+        }
+
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null || !itemSheet.TryGetRow(medicineItemId, out var item))
+        {
             return false;
-        
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
-        
+        }
+
         var action = item.ItemAction.Value;
         var nqParam = action.Data[1];
         var hqParam = action.DataHQ[1];
-        
+
         foreach (var status in player.StatusList)
         {
             if (status.StatusId == 49 && status.RemainingTime > 10f)
             {
                 if (status.Param == nqParam || status.Param == hqParam + 10000)
+                {
                     return true;
+                }
             }
         }
-        
+
         return false;
     }
-    
+
     public static bool HasManualBuff()
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
-        
+        }
+
         return player.StatusList.Any(s => s.StatusId == 45);
     }
-    
+
     public static bool HasSquadronManualBuff()
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return false;
-        
+        }
+
         uint[] squadronBuffs = { 1082, 1083, 1084, 1085 };
         return player.StatusList.Any(s => squadronBuffs.Contains(s.StatusId));
     }
-    
+
     public static unsafe bool HasItemInInventory(uint itemId)
     {
         var inventoryManager = InventoryManager.Instance();
         if (inventoryManager == null)
+        {
             return false;
-        
+        }
+
         return inventoryManager->GetInventoryItemCount(itemId) > 0;
     }
 
@@ -109,8 +133,10 @@ public static class ConsumableChecker
 
     public static RecipeCraftSettings? GetValidatorPreviewCraftStatConsumables(RecipeCraftSettings? settings)
     {
-        if (settings == null || (!settings.FoodItemId.HasValue && !settings.MedicineItemId.HasValue))
+        if (settings == null || !settings.FoodItemId.HasValue && !settings.MedicineItemId.HasValue)
+        {
             return null;
+        }
 
         return new RecipeCraftSettings
         {
@@ -124,7 +150,9 @@ public static class ConsumableChecker
     public static RecipeCraftSettings? GetProjectedCraftStatConsumables(RecipeCraftSettings? settings)
     {
         if (settings == null)
+        {
             return null;
+        }
 
         RecipeCraftSettings? projected = null;
 
@@ -150,7 +178,9 @@ public static class ConsumableChecker
     public static RecipeCraftSettings? GetPendingCraftStatConsumables(RecipeCraftSettings? settings)
     {
         if (settings == null)
+        {
             return null;
+        }
 
         RecipeCraftSettings? pending = null;
 
@@ -174,16 +204,16 @@ public static class ConsumableChecker
 
         return pending;
     }
-    
+
     public static bool ApplyConsumables(RecipeCraftSettings settings)
     {
-        bool allApplied = true;
-        
+        var allApplied = true;
+
         if (settings.FoodItemId.HasValue)
         {
             if (!HasFoodBuff(settings.FoodItemId.Value))
             {
-                uint itemToUse = GetConsumableInventoryItemId(settings.FoodItemId.Value, settings.FoodHQ);
+                var itemToUse = GetConsumableInventoryItemId(settings.FoodItemId.Value, settings.FoodHQ);
                 if (HasItemInInventory(itemToUse))
                 {
                     GatherBuddy.Log.Debug($"[ConsumableChecker] Using food item {settings.FoodItemId.Value} ({(settings.FoodHQ ? "HQ" : "NQ")})");
@@ -196,12 +226,12 @@ public static class ConsumableChecker
                 }
             }
         }
-        
+
         if (settings.MedicineItemId.HasValue)
         {
             if (!HasMedicineBuff(settings.MedicineItemId.Value))
             {
-                uint itemToUse = GetConsumableInventoryItemId(settings.MedicineItemId.Value, settings.MedicineHQ);
+                var itemToUse = GetConsumableInventoryItemId(settings.MedicineItemId.Value, settings.MedicineHQ);
                 if (HasItemInInventory(itemToUse))
                 {
                     GatherBuddy.Log.Debug($"[ConsumableChecker] Using medicine item {settings.MedicineItemId.Value} ({(settings.MedicineHQ ? "HQ" : "NQ")})");
@@ -214,7 +244,7 @@ public static class ConsumableChecker
                 }
             }
         }
-        
+
         if (settings.ManualItemId.HasValue)
         {
             if (!HasManualBuff())
@@ -231,7 +261,7 @@ public static class ConsumableChecker
                 }
             }
         }
-        
+
         if (settings.SquadronManualItemId.HasValue)
         {
             if (!HasSquadronManualBuff())
@@ -248,7 +278,7 @@ public static class ConsumableChecker
                 }
             }
         }
-        
+
         return allApplied;
     }
 }

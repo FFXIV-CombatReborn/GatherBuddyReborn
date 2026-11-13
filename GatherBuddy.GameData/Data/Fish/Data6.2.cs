@@ -11,7 +11,7 @@ public static partial class Fish
             .Mooch(data, 36591, 36447)
             .Bite(data, HookSet.Powerful, BiteType.Strong)
             .Time(180, 360)
-            .ForceBig  (false); 
+            .ForceBig(false);
         data.Apply(37845, Patch.BuriedMemory) // Greatsword Snook
             .Bait(data, 36591)
             .Bite(data, HookSet.Powerful, BiteType.Legendary)

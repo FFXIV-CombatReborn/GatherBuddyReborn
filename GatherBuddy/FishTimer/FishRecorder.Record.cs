@@ -1,48 +1,48 @@
-﻿using System;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
-using Dalamud.Game;
+﻿using Dalamud.Game;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using GatherBuddy.Classes;
-using GatherBuddy.Helpers;
-using GatherBuddy.Utilities;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer.Parser;
+using GatherBuddy.Helpers;
 using GatherBuddy.Models;
 using GatherBuddy.Structs;
 using GatherBuddy.Time;
+using GatherBuddy.Utilities;
 using Lumina.Excel.Sheets;
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 
 namespace GatherBuddy.FishTimer;
 
 public partial class FishRecorder
 {
-    public const int DeadLureTiming    = 5000;
+    public const int DeadLureTiming = 5000;
     public const int InvalidLureTiming = DeadLureTiming + 500;
 
     [Flags]
     internal enum CatchSteps
     {
-        None           = 0x00,
-        BeganFishing   = 0x01,
+        None = 0x00,
+        BeganFishing = 0x01,
         IdentifiedSpot = 0x02,
-        FishBit        = 0x04,
-        FishCaught     = 0x08,
-        Mooch          = 0x10,
-        FishReeled     = 0x20,
-        NoMoreHook     = 0x40,
+        FishBit = 0x04,
+        FishCaught = 0x08,
+        Mooch = 0x10,
+        FishReeled = 0x20,
+        NoMoreHook = 0x40,
     }
 
-    public readonly   FishingParser Parser;
-    internal          CatchSteps    Step      = 0;
-    internal          FishingState  LastState = FishingState.None;
-    internal readonly Stopwatch     Timer     = new();
-    internal readonly Stopwatch     LureTimer = new();
-    private           byte          _currentLureStack;
-    public event System.Action      UsedLure;
+    public readonly FishingParser Parser;
+    internal CatchSteps Step = 0;
+    internal FishingState LastState = FishingState.None;
+    internal readonly Stopwatch Timer = new();
+    internal readonly Stopwatch LureTimer = new();
+    private byte _currentLureStack;
+    public event System.Action UsedLure;
 
     public Fish? LastCatch;
 
@@ -53,7 +53,9 @@ public partial class FishRecorder
         if (GatherBuddy.EventFramework.CurrentSwimBait is { } fishId)
         {
             if (GatherBuddy.GameData.Fishes.TryGetValue(fishId, out var fish))
+            {
                 return new Bait(fish.ItemData);
+            }
 
             GatherBuddy.Log.Error($"Item with id {fishId} is not a known type of fish to be used as bait.");
             return Bait.Unknown;
@@ -61,7 +63,9 @@ public partial class FishRecorder
 
         var baitId = GatherBuddy.CurrentBait.Current;
         if (GatherBuddy.GameData.Bait.TryGetValue(baitId, out var bait))
+        {
             return bait;
+        }
 
         GatherBuddy.Log.Error($"Item with id {baitId} is not a known type of bait.");
         return Bait.Unknown;
@@ -69,36 +73,42 @@ public partial class FishRecorder
 
     private void CheckBuffs()
     {
-        if (Dalamud.Objects.LocalPlayer?.StatusList is not {} statusList)
+        if (Dalamud.Objects.LocalPlayer?.StatusList is not { } statusList)
+        {
             return;
+        }
 
         foreach (var buff in statusList)
         {
             Record.Flags |= buff.StatusId switch
             {
-                761  => Effects.Snagging,
-                763  => Effects.Chum,
-                568  => Effects.Intuition,
-                762  => Effects.FishEyes,
+                761 => Effects.Snagging,
+                763 => Effects.Chum,
+                568 => Effects.Intuition,
+                762 => Effects.FishEyes,
                 1804 => Effects.IdenticalCast,
                 1803 => Effects.SurfaceSlap,
                 2780 => Effects.PrizeCatch,
                 3907 => Effects.BigGameFishing,
-                850  => Effects.Patience,
-                765  => Effects.Patience2,
-                _    => Effects.None,
+                850 => Effects.Patience,
+                765 => Effects.Patience2,
+                _ => Effects.None,
             };
         }
 
         if (Record.Flags.HasFlag(Effects.Patience)
          && Record.Flags.HasFlag(Effects.Patience2))
+        {
             Record.Flags &= ~Effects.Patience;
+        }
     }
 
     private void UpdateLure()
     {
         if (Dalamud.Objects.LocalPlayer?.StatusList is not { } statusList)
+        {
             return;
+        }
 
         foreach (var buff in statusList)
         {
@@ -110,12 +120,15 @@ public partial class FishRecorder
                 3973 when buff.Param == 1 => Effects.ModestLure1,
                 3973 when buff.Param == 2 => Effects.ModestLure2,
                 3973 when buff.Param == 3 => Effects.ModestLure1 | Effects.ModestLure2,
-                _                         => Effects.None,
+                _ => Effects.None,
             };
         }
 
         if (Record.Flags.HasLure() && LureTimer.ElapsedMilliseconds >= InvalidLureTiming)
+        {
             Record.Flags |= Effects.ValidLure;
+        }
+
         LureTimer.Stop();
     }
 
@@ -140,10 +153,12 @@ public partial class FishRecorder
     {
         var uiState = FFXIVClientStructs.FFXIV.Client.Game.UI.UIState.Instance();
         if (uiState == null)
+        {
             return;
+        }
 
-        Record.Gathering     = (ushort)uiState->PlayerState.Attributes[(int)GatheringIdx];
-        Record.Perception    = (ushort)uiState->PlayerState.Attributes[(int)PerceptionIdx];
+        Record.Gathering = (ushort)uiState->PlayerState.Attributes[(int)GatheringIdx];
+        Record.Perception = (ushort)uiState->PlayerState.Attributes[(int)PerceptionIdx];
     }
 
 
@@ -154,7 +169,7 @@ public partial class FishRecorder
         {
             Flags = Effects.Valid,
         };
-        Step             = CatchSteps.None;
+        Step = CatchSteps.None;
         Record.TimeStamp = TimeStamp.Epoch;
         Timer.Reset();
         LureTimer.Reset();
@@ -163,11 +178,11 @@ public partial class FishRecorder
 
     private void SubscribeToParser()
     {
-        Parser.BeganFishing   += OnBeganFishing;
-        Parser.BeganMooching  += OnMooch;
-        Parser.CaughtFish     += OnCatch;
+        Parser.BeganFishing += OnBeganFishing;
+        Parser.BeganMooching += OnMooch;
+        Parser.CaughtFish += OnCatch;
         Parser.IdentifiedSpot += OnIdentification;
-        Parser.HookedIn       += OnHooking;
+        Parser.HookedIn += OnHooking;
     }
 
     private void OnBeganFishing(FishingSpot? spot)
@@ -178,9 +193,9 @@ public partial class FishRecorder
         Step = CatchSteps.BeganFishing;
         CheckBuffs();
         CheckStats();
-        Record.Bait          = GetCurrentBait();
-        Record.FishingSpot   = spot;
-        Record.Position      = Player.Position;
+        Record.Bait = GetCurrentBait();
+        Record.FishingSpot = spot;
+        Record.Position = Player.Position;
         Record.RotationAngle = new Angle(Player.Rotation);
         var worldName = Player.CurrentWorld;
         if (worldName != null)
@@ -189,7 +204,9 @@ public partial class FishRecorder
             Record.World = world;
         }
         if (Record.HasSpot)
+        {
             Step |= CatchSteps.IdentifiedSpot;
+        }
 
         GatherBuddy.Log.Verbose($"Began fishing at {spot?.Name ?? "Undiscovered Fishing Hole"} using {Record.Bait.Name}.");
     }
@@ -199,18 +216,22 @@ public partial class FishRecorder
         Timer.Stop();
         UpdateLure();
         Record.SetTugHook(GatherBuddy.TugType.Bite, Record.Hook);
-        Step                 |= CatchSteps.FishBit;
+        Step |= CatchSteps.FishBit;
         if (LureTimer.ElapsedMilliseconds > 0)
+        {
             GatherBuddy.Log.Verbose(
                 $"Fish bit with {Record.Tug} after {Timer.ElapsedMilliseconds} ms. Time since last lure: {LureTimer.ElapsedMilliseconds} ms.");
+        }
         else
+        {
             GatherBuddy.Log.Verbose($"Fish bit with {Record.Tug} after {Timer.ElapsedMilliseconds} ms.");
+        }
     }
 
     private void OnIdentification(FishingSpot spot)
     {
-        Record.FishingSpot =  spot;
-        Step               |= CatchSteps.IdentifiedSpot;
+        Record.FishingSpot = spot;
+        Step |= CatchSteps.IdentifiedSpot;
         GatherBuddy.Log.Verbose($"Identified previously unknown fishing spot as {spot.Name}.");
     }
 
@@ -225,14 +246,20 @@ public partial class FishRecorder
 
     private void OnCatch(Fish fish, ushort size, byte amount, bool large, bool collectible)
     {
-        Step            |= CatchSteps.FishCaught;
-        Record.Catch    =  fish;
-        Record.Size     =  size;
-        Record.Amount   =  amount;
+        Step |= CatchSteps.FishCaught;
+        Record.Catch = fish;
+        Record.Size = size;
+        Record.Amount = amount;
         if (large)
+        {
             Record.Flags |= Effects.Large;
+        }
+
         if (collectible)
+        {
             Record.Flags |= Effects.Collectible;
+        }
+
         GatherBuddy.Log.Verbose(
             $"Caught {amount} {(large ? "large " : string.Empty)}{(collectible ? "collectible " : string.Empty)}{Record.Catch.Name[ClientLanguage.English]} of size {size / 10f:F1}.");
     }
@@ -246,10 +273,13 @@ public partial class FishRecorder
         Step = CatchSteps.BeganFishing | CatchSteps.Mooch;
         CheckBuffs();
         CheckStats();
-        Record.Bait        = LastCatch != null ? new Bait(LastCatch.ItemData) : GetCurrentBait();
+        Record.Bait = LastCatch != null ? new Bait(LastCatch.ItemData) : GetCurrentBait();
         Record.FishingSpot = spot;
         if (Record.HasSpot)
+        {
             Step |= CatchSteps.IdentifiedSpot;
+        }
+
         GatherBuddy.Log.Verbose($"Mooching with {Record.Bait.Name} at {spot?.Name ?? "Undiscovered Fishing Hole"}.");
     }
 
@@ -262,16 +292,22 @@ public partial class FishRecorder
         }
 
         if (!Step.HasFlag(CatchSteps.BeganFishing))
+        {
             return;
+        }
 
         Record.Bite = (ushort)Math.Clamp(Timer.ElapsedMilliseconds, 0, ushort.MaxValue);
         UpdateLure();
         if (!Record.VerifyValidity())
+        {
             Record.Flags &= ~Effects.Valid;
+        }
 
         Step = CatchSteps.None;
         if (GatherBuddy.Config.StoreFishRecords)
+        {
             Add(Record);
+        }
     }
 
     private void OnFrameworkUpdate(IFramework _)
@@ -285,13 +321,19 @@ public partial class FishRecorder
         UpdateLureStatus();
         var state = GatherBuddy.EventFramework.FishingState;
         if (LastState == state)
+        {
             return;
+        }
 
         LastState = state;
         switch (state)
         {
-            case FishingState.Bite:    OnBite(); break;
-            case FishingState.Hooking: Step |= CatchSteps.FishReeled; break;
+            case FishingState.Bite:
+                OnBite();
+                break;
+            case FishingState.Hooking:
+                Step |= CatchSteps.FishReeled;
+                break;
             case FishingState.PoleReady:
             case FishingState.Quitting:
                 OnFishingStop();

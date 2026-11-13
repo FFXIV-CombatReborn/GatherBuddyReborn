@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Generic;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
 
 namespace GatherBuddy.Crafting;
 
@@ -54,7 +53,9 @@ public static class RaphaelAssessmentService
     public static bool TryAssessRecipe(uint recipeId, RecipeCraftSettings? settings, out RaphaelAssessment assessment)
     {
         if (!TryGetRecipe(recipeId, out var recipe, out assessment))
+        {
             return false;
+        }
 
         if (IsQualityAgnostic(recipe))
         {
@@ -84,7 +85,9 @@ public static class RaphaelAssessmentService
     {
         assessment = CreateUnavailableAssessment(solution.Request.RecipeId, solution.Request, "Recipe data unavailable for cached Raphael solution.");
         if (!TryGetRecipe(solution.Request.RecipeId, out var recipe, out _))
+        {
             return false;
+        }
 
         if (!TryBuildCraftState(solution.Request, recipe, out var craft))
         {
@@ -99,10 +102,14 @@ public static class RaphaelAssessmentService
     public static bool TryQueueWarmupForRecipe(uint recipeId, RecipeCraftSettings? settings)
     {
         if (!TryGetRecipe(recipeId, out var recipe, out _))
+        {
             return false;
+        }
 
         if (IsQualityAgnostic(recipe))
+        {
             return false;
+        }
 
         var item = new CraftingListItem(recipe.RowId, 1)
         {
@@ -111,7 +118,10 @@ public static class RaphaelAssessmentService
         };
         var executionContext = CraftingContextResolver.ResolveExecutionContext(item, recipe, null);
         if (!CraftingContextResolver.UsesRaphaelSolver(executionContext))
+        {
             return false;
+        }
+
         return TryQueueWarmupForExecutionContext(recipe, executionContext, RaphaelSolvePriority.Urgent);
     }
 
@@ -123,24 +133,35 @@ public static class RaphaelAssessmentService
         var queued = 0;
         var originalSettings = list.Recipes.Find(item => item.RecipeId == recipeId)?.CraftSettings;
         if (TryQueueWarmupForListRecipe(recipeId, list, originalSettings))
+        {
             queued++;
+        }
 
         var dependentPrecraftRecipeIds = CollectDependentPrecraftRecipeIds(recipeId, list);
         if (dependentPrecraftRecipeIds.Count == 0)
+        {
             return queued;
+        }
 
         var plan = list.CreatePlan();
         foreach (var plannedItem in plan.Recipes)
         {
             if (plannedItem.IsOriginalRecipe || !dependentPrecraftRecipeIds.Contains(plannedItem.RecipeId))
+            {
                 continue;
+            }
 
             if (TryQueueWarmupForPrecraft(plannedItem.RecipeId, list, list.PrecraftCraftSettings.GetValueOrDefault(plannedItem.RecipeId)))
+            {
                 queued++;
+            }
         }
 
         if (queued > 0)
+        {
             GatherBuddy.Log.Debug($"[RaphaelAssessment] Queued {queued} Raphael warmup request(s) for added recipe {recipeId} in list '{list.Name}' including dependent precrafts where needed");
+        }
+
         return queued;
     }
 
@@ -154,24 +175,38 @@ public static class RaphaelAssessmentService
         foreach (var plannedItem in plan.Recipes)
         {
             if (!TryGetRecipe(plannedItem.RecipeId, out var recipe, out _))
+            {
                 continue;
+            }
 
             if (IsQualityAgnostic(recipe))
+            {
                 continue;
+            }
 
             if (!CraftingContextResolver.TryResolveListExecutionContext(list, plannedItem.RecipeId, plannedItem.IsOriginalRecipe, out var executionContext)
              || !CraftingContextResolver.UsesRaphaelSolver(executionContext))
+            {
                 continue;
+            }
+
             if (!TryBuildSimulationContext(recipe, executionContext, out var context))
+            {
                 continue;
+            }
 
             var request = context.RaphaelRequest;
             if (!GatherBuddy.RaphaelSolveCoordinator.IsKnown(request))
+            {
                 queuedRequests.TryAdd(request.GetKey(), request);
+            }
         }
 
         if (queuedRequests.Count == 0)
+        {
             return 0;
+        }
+
         GatherBuddy.Log.Debug($"[RaphaelAssessment] Queueing {queuedRequests.Count} background Raphael warmup request(s) for list '{list.Name}'");
         GatherBuddy.RaphaelSolveCoordinator.EnqueueSolvesFromRequests(queuedRequests.Values, RaphaelSolvePriority.Background);
         return queuedRequests.Count;
@@ -185,7 +220,9 @@ public static class RaphaelAssessmentService
         out RaphaelAssessment assessment)
     {
         if (!TryGetRecipe(recipeId, out var recipe, out assessment))
+        {
             return false;
+        }
 
         if (IsQualityAgnostic(recipe))
         {
@@ -232,7 +269,9 @@ public static class RaphaelAssessmentService
     private static void CollectDependentPrecraftRecipeIds(uint recipeId, CraftingListDefinition list, HashSet<uint> recipeIds, HashSet<uint> visitedRecipeIds)
     {
         if (!visitedRecipeIds.Add(recipeId))
+        {
             return;
+        }
 
         var recipe = RecipeManager.GetRecipe(recipeId);
         if (!recipe.HasValue)
@@ -245,7 +284,9 @@ public static class RaphaelAssessmentService
         {
             var subRecipe = ResolveSubRecipe(itemId, list);
             if (!subRecipe.HasValue)
+            {
                 continue;
+            }
 
             recipeIds.Add(subRecipe.Value.RowId);
             CollectDependentPrecraftRecipeIds(subRecipe.Value.RowId, list, recipeIds, visitedRecipeIds);
@@ -258,12 +299,14 @@ public static class RaphaelAssessmentService
         {
             var overrideRecipe = RecipeManager.GetRecipe(overrideRecipeId);
             if (overrideRecipe.HasValue)
+            {
                 return overrideRecipe;
+            }
         }
 
         return RecipeManager.GetRecipeForItem(itemId);
     }
-    
+
     private static bool TryQueueWarmupForListContext(
         uint recipeId,
         CraftingListDefinition list,
@@ -272,14 +315,20 @@ public static class RaphaelAssessmentService
         RaphaelSolvePriority priority)
     {
         if (!TryGetRecipe(recipeId, out var recipe, out _))
+        {
             return false;
+        }
 
         if (IsQualityAgnostic(recipe))
+        {
             return false;
+        }
 
         if (!CraftingContextResolver.TryResolveListExecutionContext(list, recipeId, isOriginalRecipe, settings, out var executionContext)
          || !CraftingContextResolver.UsesRaphaelSolver(executionContext))
+        {
             return false;
+        }
 
         return TryQueueWarmupForExecutionContext(recipe, executionContext, priority);
     }
@@ -298,7 +347,10 @@ public static class RaphaelAssessmentService
         var request = context.RaphaelRequest;
         var queued = GatherBuddy.RaphaelSolveCoordinator.EnqueueOrPromoteRequest(request, priority);
         if (queued)
+        {
             GatherBuddy.Log.Debug($"[RaphaelAssessment] Queueing Raphael warmup for recipe {recipe.RowId} with key {request.GetKey()} at {priority} priority");
+        }
+
         return queued;
     }
 
@@ -326,11 +378,15 @@ public static class RaphaelAssessmentService
         if (cachedSolution == null)
         {
             if (GatherBuddy.RaphaelSolveCoordinator.TryGetSolution(request, out var resolved) && resolved != null)
+            {
                 cachedSolution = resolved;
+            }
         }
 
         if (cachedSolution != null && !cachedSolution.IsFailed && cachedSolution.ActionIds.Count > 0)
+        {
             return AssessReadySolution(request, craft, cachedSolution);
+        }
 
         if (GatherBuddy.RaphaelSolveCoordinator.HasFailedSolution(request, out var failureReason))
         {
@@ -403,30 +459,44 @@ public static class RaphaelAssessmentService
     private static RaphaelAssessmentOutcome ClassifyOutcome(CraftState craft, StepState step)
     {
         if (step.Progress < craft.CraftProgress)
+        {
             return step.Durability > 0 ? RaphaelAssessmentOutcome.Incomplete : RaphaelAssessmentOutcome.FailedDurability;
+        }
 
         if (craft.CraftCollectible || craft.CraftExpert)
         {
             if ((craft.IshgardExpert || craft.IsCosmic) && step.Quality >= craft.CraftQualityMax)
+            {
                 return RaphaelAssessmentOutcome.FullQuality;
+            }
 
             if (step.Quality >= craft.CraftQualityMin3 && craft.CraftQualityMin3 > 0)
+            {
                 return RaphaelAssessmentOutcome.CollectibleTier3;
+            }
 
             if (step.Quality >= craft.CraftQualityMin2 && craft.CraftQualityMin2 > 0 && craft.CraftQualityMin2 != craft.CraftQualityMin1)
+            {
                 return RaphaelAssessmentOutcome.CollectibleTier2;
+            }
 
             if (step.Quality >= craft.CraftQualityMin1 && craft.CraftQualityMin1 > 0)
+            {
                 return RaphaelAssessmentOutcome.CollectibleTier1;
+            }
 
             return RaphaelAssessmentOutcome.FailedQualityRequirement;
         }
 
         if (craft.CraftHQ)
+        {
             return step.Quality >= craft.CraftQualityMax ? RaphaelAssessmentOutcome.FullQuality : RaphaelAssessmentOutcome.PartialQuality;
+        }
 
         if (craft.CraftQualityMin1 > 0)
+        {
             return step.Quality >= craft.CraftQualityMin1 ? RaphaelAssessmentOutcome.MinimumQualityMet : RaphaelAssessmentOutcome.FailedQualityRequirement;
+        }
 
         return RaphaelAssessmentOutcome.NoQualityRequired;
     }

@@ -9,13 +9,15 @@ public sealed class CurrentBait
 {
     public unsafe uint Current
     {
-        get 
+        get
         {
             if (GameMain.Instance()->CurrentTerritoryIntendedUseId == TerritoryIntendedUse.CosmicExploration)
             {
                 var cosmicManager = WKSManager.Instance();
                 if (cosmicManager != null)
+                {
                     return cosmicManager->State.FishingBait;
+                }
             }
 
             return PlayerState.Instance()->FishingBait;
@@ -37,13 +39,19 @@ public sealed class CurrentBait
     public ChangeBaitReturn ChangeBait(uint baitId)
     {
         if (baitId == Current)
+        {
             return ChangeBaitReturn.AlreadyEquipped;
+        }
 
         if (baitId == 0 || !GatherBuddy.GameData.Bait.ContainsKey(baitId))
+        {
             return ChangeBaitReturn.InvalidBait;
+        }
 
         if (HasItem(baitId) <= 0)
+        {
             return ChangeBaitReturn.NotInInventory;
+        }
 
         return GameMain.ExecuteCommand(701, 4, (int)baitId, 0, 0) ? ChangeBaitReturn.Success : ChangeBaitReturn.UnknownError;
     }

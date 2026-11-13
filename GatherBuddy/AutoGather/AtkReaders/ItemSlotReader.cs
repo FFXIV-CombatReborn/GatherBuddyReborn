@@ -1,18 +1,18 @@
-using System;
 using Dalamud.Game.Text.SeStringHandling;
 using GatherBuddy.Automation;
+using System;
 
 namespace GatherBuddy.AutoGather.AtkReaders;
 
 public class ItemSlotReader(IntPtr addon, int beginOffset = 0) : AtkReader(addon, beginOffset)
 {
     //public  bool        Enabled                => ReadBool(0).GetValueOrDefault();
-    public  uint        ItemId                 => ReadUInt(1).GetValueOrDefault();
-    private uint        FlagsRaw               => ReadUInt(5).GetValueOrDefault();
-    public  bool        HasBonus               => (FlagsRaw & 4) != 0;
-    public  bool        RequiresPerception     => (FlagsRaw & 1) != 0;
-    private SeString    RequiresPerceptionText => ReadSeString(6);
-    private uint        BuffsValuesRaw         => ReadUInt(7).GetValueOrDefault();
+    public uint ItemId => ReadUInt(1).GetValueOrDefault();
+    private uint FlagsRaw => ReadUInt(5).GetValueOrDefault();
+    public bool HasBonus => (FlagsRaw & 4) != 0;
+    public bool RequiresPerception => (FlagsRaw & 1) != 0;
+    private SeString RequiresPerceptionText => ReadSeString(6);
+    private uint BuffsValuesRaw => ReadUInt(7).GetValueOrDefault();
 
     public sbyte Yield
         => (sbyte)(BuffsValuesRaw & 0xff);

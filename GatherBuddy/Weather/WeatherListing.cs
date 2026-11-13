@@ -4,12 +4,12 @@ namespace GatherBuddy.Weather;
 
 public readonly struct WeatherListing
 {
-    public Structs.Weather Weather   { get; }
-    public TimeStamp       Timestamp { get; }
+    public Structs.Weather Weather { get; }
+    public TimeStamp Timestamp { get; }
 
     public WeatherListing(Structs.Weather weather, TimeStamp timeStamp)
     {
-        Weather   = weather;
+        Weather = weather;
         Timestamp = timeStamp;
     }
 
@@ -26,6 +26,6 @@ public readonly struct WeatherListing
         => new()
         {
             Start = Timestamp,
-            End   = End,
+            End = End,
         };
 }

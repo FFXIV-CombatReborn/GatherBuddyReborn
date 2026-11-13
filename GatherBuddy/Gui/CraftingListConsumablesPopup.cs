@@ -1,20 +1,20 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text;
+using Dalamud.Interface;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
-using FFXIVClientStructs.FFXIV.Client.Game;
+using RebornMaterial;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public class CraftingListConsumablesPopup
 {
-    private bool _isOpen;
-    private string _title = "";
     private CraftingListDefinition? _list;
     private CraftingListConsumableSettings _workingDefaults = new();
     private string? _workingDefaultPrecraftMacroId;
@@ -22,327 +22,208 @@ public class CraftingListConsumablesPopup
     private SolverOverrideMode _workingDefaultPrecraftSolverOverride = SolverOverrideMode.Default;
     private SolverOverrideMode _workingDefaultFinalSolverOverride = SolverOverrideMode.Default;
     private bool _workingUseAllHQ;
-    private string _foodSearch = string.Empty;
-    private string _medicineSearch = string.Empty;
-    private string _precraftMacroSearch = string.Empty;
-    private string _finalMacroSearch = string.Empty;
-    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = new();
-    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
-    private List<(uint ItemId, string Name)> _manualItems = new();
-    private List<(uint ItemId, string Name)> _squadronManualItems = new();
+    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = [];
+    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = [];
+    private List<(uint ItemId, string Name)> _manualItems = [];
+    private List<(uint ItemId, string Name)> _squadronManualItems = [];
     public System.Action? OnSaved { get; set; }
-    private static float SelectorLabelWidth => VulcanUiScaling.Scaled(160f);
-    private static float SelectorComboWidth => VulcanUiScaling.Scaled(240f);
-    private static Vector2 SaveButtonSize => VulcanUiScaling.Scaled(140f, 0f);
-    private static Vector2 CancelButtonSize => VulcanUiScaling.Scaled(100f, 0f);
+    private static float SelectorLabelWidth => VulcanUiScaling.Scaled(150f);
+    private static float SelectorComboWidth => VulcanUiScaling.Scaled(260f);
+
+    private static readonly (string Label, SolverOverrideMode Mode, string? Tooltip)[] SolverChoices =
+    [
+        ("Default, use the solver", SolverOverrideMode.Default, null),
+        ("Standard solver", SolverOverrideMode.StandardSolver, null),
+        ("Raphael solver", SolverOverrideMode.RaphaelSolver, null),
+        ("Progress only", SolverOverrideMode.ProgressOnlySolver, "Only progress-building actions, no quality steps. Fast NQ crafts."),
+    ];
+
+    internal static RebornUI.HostedPanelWindow CreateWindow()
+        => new("GatherBuddyCraftingListDefaults", "List Defaults", new Vector2(500f, 540f), new Vector2(460f, 300f), bodyScrolls: false);
 
     public void OpenListDefaults(CraftingListDefinition list)
     {
         _list = list;
-        _title = $"List Consumables/Macros - {list.Name}";
         _workingDefaults = list.Consumables.Clone();
         _workingDefaultPrecraftMacroId = list.DefaultPrecraftMacroId;
         _workingDefaultFinalMacroId = list.DefaultFinalMacroId;
         _workingDefaultPrecraftSolverOverride = list.DefaultPrecraftSolverOverride;
         _workingDefaultFinalSolverOverride = list.DefaultFinalSolverOverride;
         _workingUseAllHQ = list.UseAllHQ;
-        _foodSearch = string.Empty;
-        _medicineSearch = string.Empty;
-        _precraftMacroSearch = string.Empty;
-        _finalMacroSearch = string.Empty;
         EnsureConsumablesLoaded();
-        _isOpen = true;
+        GatherBuddy.CraftingListDefaultsWindow?.Show(this, DrawContents, () => list.Name);
     }
 
-    public void Draw()
+    public void Close()
     {
-        if (!_isOpen)
-            return;
+        GatherBuddy.CraftingListDefaultsWindow?.Hide(this);
+    }
 
-        if (ImGui.Begin(_title, ref _isOpen, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize))
+    private void DrawContents()
+    {
+        var footer = M3Widgets.ButtonHeight + M3.Space1 + ImGui.GetStyle().ItemSpacing.Y * 2f;
+        using (var body = ImRaii.Child("##listDefaultsBody", new Vector2(-1, -footer), false))
         {
-            DrawListDefaults();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            if (ImGui.Button("Save Defaults", SaveButtonSize))
+            if (body)
             {
-                Save();
+                DrawListDefaults();
             }
+        }
 
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", CancelButtonSize))
+        ImGui.Dummy(new Vector2(0, M3.Space1));
+        if (M3Widgets.Button("##saveDefaults", "Save defaults", M3ButtonStyle.Filled, FontAwesomeIcon.Save))
+        {
+            Save();
+            if (_list != null)
             {
-                _isOpen = false;
+                M3Snackbar.Show($"Saved the defaults for {_list.Name}.");
             }
+        }
 
-            ImGui.End();
+        ImGui.SameLine(0, M3.Space2);
+        if (M3Widgets.Button("##cancelDefaults", "Cancel", M3ButtonStyle.Text))
+        {
+            Close();
         }
     }
 
     private void DrawListDefaults()
     {
-        ImGui.Text("Default consumables for this list:");
-        ImGui.Spacing();
-        DrawMacroSection();
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.Checkbox("Assume All HQ Materials##ListUseAllHQ", ref _workingUseAllHQ);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use all HQ-capable ingredients as the list default for planning and Raphael warmup.\nItem and precraft settings can still override this.");
-
-        ImGui.Spacing();
-
-        var foodItemId = _workingDefaults.FoodItemId;
-        var foodHq = _workingDefaults.FoodHQ;
-        var medicineItemId = _workingDefaults.MedicineItemId;
-        var medicineHq = _workingDefaults.MedicineHQ;
-        var manualItemId = _workingDefaults.ManualItemId;
-        var squadronManualItemId = _workingDefaults.SquadronManualItemId;
-
-        DrawFoodSelector(ref foodItemId, ref foodHq, "##ListFood", ref _foodSearch);
-        DrawMedicineSelector(ref medicineItemId, ref medicineHq, "##ListMedicine", ref _medicineSearch);
-        DrawManualSelector(ref manualItemId, "##ListManual");
-        DrawSquadronManualSelector(ref squadronManualItemId, "##ListSquadron");
-
-        _workingDefaults.FoodItemId = foodItemId;
-        _workingDefaults.FoodHQ = foodHq;
-        _workingDefaults.MedicineItemId = medicineItemId;
-        _workingDefaults.MedicineHQ = medicineHq;
-        _workingDefaults.ManualItemId = manualItemId;
-        _workingDefaults.SquadronManualItemId = squadronManualItemId;
-    }
-
-    private void DrawMacroSection()
-    {
         var allMacros = CraftingGameInterop.UserMacroLibrary.GetAllMacros();
-        DrawMacroSelector(
-            "Precraft Macro:",
-            "##PrecraftMacro",
-            "##PrecraftMacroSearch",
-            ref _workingDefaultPrecraftMacroId,
-            ref _workingDefaultPrecraftSolverOverride,
-            ref _precraftMacroSearch,
-            allMacros);
+        using (M3Card.Begin("##listMacros", "Macro or solver", FontAwesomeIcon.Scroll, M3.AccentFor(0), subtitle: "Items and precrafts can still pick their own."))
+        {
+            DrawMacroSelector("Precrafts", "##PrecraftMacro", ref _workingDefaultPrecraftMacroId, ref _workingDefaultPrecraftSolverOverride, allMacros);
+            DrawMacroSelector("Final crafts", "##FinalMacro", ref _workingDefaultFinalMacroId, ref _workingDefaultFinalSolverOverride, allMacros);
+        }
 
-        DrawMacroSelector(
-            "Final Craft Macro:",
-            "##FinalMacro",
-            "##FinalMacroSearch",
-            ref _workingDefaultFinalMacroId,
-            ref _workingDefaultFinalSolverOverride,
-            ref _finalMacroSearch,
-            allMacros);
+        using (M3Card.Begin("##listConsumables", "Consumables", FontAwesomeIcon.Utensils, M3.AccentFor(1)))
+        {
+            M3Widgets.LabeledCheckbox("Assume all HQ materials##ListUseAllHQ", ref _workingUseAllHQ,
+                tooltip: "Treat all HQ-capable ingredients as HQ by default, both for planning and for Raphael warmup.\nItem and precraft settings can still override this.");
+
+            var foodItemId = _workingDefaults.FoodItemId;
+            var foodHq = _workingDefaults.FoodHQ;
+            var medicineItemId = _workingDefaults.MedicineItemId;
+            var medicineHq = _workingDefaults.MedicineHQ;
+            var manualItemId = _workingDefaults.ManualItemId;
+            var squadronManualItemId = _workingDefaults.SquadronManualItemId;
+
+            DrawConsumableSelector("Food", "##ListFood", _foodItems, ref foodItemId, ref foodHq);
+            DrawConsumableSelector("Medicine", "##ListMedicine", _medicineItems, ref medicineItemId, ref medicineHq);
+            DrawManualSelector("Manual", "##ListManual", _manualItems, ref manualItemId);
+            DrawManualSelector("Squadron manual", "##ListSquadron", _squadronManualItems, ref squadronManualItemId);
+
+            _workingDefaults.FoodItemId = foodItemId;
+            _workingDefaults.FoodHQ = foodHq;
+            _workingDefaults.MedicineItemId = medicineItemId;
+            _workingDefaults.MedicineHQ = medicineHq;
+            _workingDefaults.ManualItemId = manualItemId;
+            _workingDefaults.SquadronManualItemId = squadronManualItemId;
+        }
     }
 
-    private void DrawMacroSelector(
-        string label,
-        string comboId,
-        string searchId,
-        ref string? selectedMacroId,
-        ref SolverOverrideMode solverOverride,
-        ref string macroSearch,
-        List<UserMacro> allMacros)
+    private static void SelectorLabel(string label)
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text(label);
+        var start = ImGui.GetCursorPosY();
+        ImGui.SetCursorPosY(start + (M3Widgets.ComboHeight - ImGui.GetTextLineHeight()) * 0.5f);
+        ImGui.TextUnformatted(label);
         ImGui.SameLine(SelectorLabelWidth);
+        ImGui.SetCursorPosY(start);
+    }
 
-        var currentName = GetMacroSelectionName(selectedMacroId, solverOverride, allMacros);
-        ImGui.SetNextItemWidth(SelectorComboWidth);
-        if (!ImGui.BeginCombo(comboId, currentName))
+    private static void DrawMacroSelector(string label, string comboId, ref string? selectedMacroId, ref SolverOverrideMode solverOverride, List<UserMacro> allMacros)
+    {
+        SelectorLabel(label);
+        int index;
+        var macroId = selectedMacroId;
+        if (!string.IsNullOrEmpty(macroId) && solverOverride == SolverOverrideMode.Default)
+        {
+            var macroIndex = allMacros.FindIndex(m => m.Id == macroId);
+            index = macroIndex < 0 ? -1 : SolverChoices.Length + macroIndex;
+        }
+        else
+        {
+            var mode = solverOverride;
+            index = Array.FindIndex(SolverChoices, c => c.Mode == mode);
+        }
+
+        string Label(int i)
+        {
+            if (i < SolverChoices.Length)
+            {
+                return SolverChoices[i].Label;
+            }
+
+            var macro = allMacros[i - SolverChoices.Length];
+            return macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
+                ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
+                : macro.Name;
+        }
+
+        if (!M3Widgets.Combo(comboId, ref index, SolverChoices.Length + allMacros.Count, Label, SelectorComboWidth,
+                GetMacroSelectionName(selectedMacroId, solverOverride, allMacros), allMacros.Count > 6,
+                itemTooltip: i => i < SolverChoices.Length ? SolverChoices[i].Tooltip : null))
+        {
             return;
+        }
 
-        var isDefault = solverOverride == SolverOverrideMode.Default && string.IsNullOrEmpty(selectedMacroId);
-        if (ImGui.Selectable("Default (Use Solver)", isDefault))
+        if (index < SolverChoices.Length)
         {
             selectedMacroId = null;
+            solverOverride = SolverChoices[index].Mode;
+        }
+        else
+        {
+            selectedMacroId = allMacros[index - SolverChoices.Length].Id;
             solverOverride = SolverOverrideMode.Default;
         }
-        if (ImGui.Selectable("Standard Solver", solverOverride == SolverOverrideMode.StandardSolver))
-        {
-            selectedMacroId = null;
-            solverOverride = SolverOverrideMode.StandardSolver;
-        }
-        if (ImGui.Selectable("Raphael Solver", solverOverride == SolverOverrideMode.RaphaelSolver))
-        {
-            selectedMacroId = null;
-            solverOverride = SolverOverrideMode.RaphaelSolver;
-        }
-        if (ImGui.Selectable("Progress Only", solverOverride == SolverOverrideMode.ProgressOnlySolver))
-        {
-            selectedMacroId = null;
-            solverOverride = SolverOverrideMode.ProgressOnlySolver;
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use only progress-building actions, no quality steps. Fast NQ crafts.");
-
-        if (allMacros.Count > 0)
-        {
-            ImGui.Separator();
-            ImGui.InputTextWithHint(searchId, "Search macros...", ref macroSearch, 128);
-            var searchValue = macroSearch;
-            var filteredMacros = string.IsNullOrWhiteSpace(searchValue)
-                ? allMacros
-                : allMacros.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
-            foreach (var macro in filteredMacros)
-            {
-                var isSelected = selectedMacroId == macro.Id;
-                var displayName = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
-                    ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
-                    : macro.Name;
-                if (ImGui.Selectable(displayName, isSelected))
-                {
-                    selectedMacroId = macro.Id;
-                    solverOverride = SolverOverrideMode.Default;
-                }
-            }
-        }
-
-        ImGui.EndCombo();
     }
 
     private static string GetMacroSelectionName(string? macroId, SolverOverrideMode solverOverride, List<UserMacro> allMacros)
-    {
-        return solverOverride switch
+        => solverOverride switch
         {
-            SolverOverrideMode.StandardSolver     => "Standard Solver",
-            SolverOverrideMode.RaphaelSolver      => "Raphael Solver",
-            SolverOverrideMode.ProgressOnlySolver => "Progress Only",
-            _ when !string.IsNullOrEmpty(macroId) => allMacros.FirstOrDefault(m => m.Id == macroId)?.Name ?? "(Macro Not Found)",
-            _                                     => "Default (Use Solver)",
+            SolverOverrideMode.StandardSolver => "Standard solver",
+            SolverOverrideMode.RaphaelSolver => "Raphael solver",
+            SolverOverrideMode.ProgressOnlySolver => "Progress only",
+            _ when !string.IsNullOrEmpty(macroId) => allMacros.Find(m => m.Id == macroId)?.Name ?? "(macro not found)",
+            _ => "Default, use the solver",
         };
-    }
 
-    private void DrawFoodSelector(ref uint? itemId, ref bool hq, string idSuffix, ref string search)
+    private static string ItemLabel(string name, bool hq)
+        => hq ? $"{name} {(char)SeIconChar.HighQuality}" : name;
+
+    private static void DrawConsumableSelector(string label, string id, List<(uint ItemId, string Name, bool IsHQ)> items, ref uint? itemId, ref bool hq)
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Food:");
-        ImGui.SameLine(SelectorLabelWidth);
-
-        var current = GetDisplayName(itemId, hq);
-        ImGui.SetNextItemWidth(SelectorComboWidth);
-        if (ImGui.BeginCombo($"##Food{idSuffix}", current))
+        SelectorLabel(label);
+        var current = itemId;
+        var currentHq = hq;
+        var index = current.HasValue ? items.FindIndex(i => i.ItemId == current.Value && i.IsHQ == currentHq) + 1 : 0;
+        if (!M3Widgets.Combo(id, ref index, items.Count + 1, i => i == 0 ? "None" : ItemLabel(items[i - 1].Name, items[i - 1].IsHQ), SelectorComboWidth, "None",
+                items.Count > 8))
         {
-            if (ImGui.Selectable("None", !itemId.HasValue))
-            {
-                itemId = null;
-                hq = false;
-            }
+            return;
+        }
 
-            ImGui.Separator();
-            ImGui.InputTextWithHint($"##FoodSearch{idSuffix}", "Search food...", ref search, 128);
-
-            var searchValue = search;
-            var filtered = string.IsNullOrWhiteSpace(searchValue)
-                ? _foodItems
-                : _foodItems.Where(f => f.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
-
-            foreach (var entry in filtered)
-            {
-                var displayName = entry.Name + (entry.IsHQ ? $" {(char)SeIconChar.HighQuality}" : "");
-                var isSelected = itemId == entry.ItemId && hq == entry.IsHQ;
-                if (ImGui.Selectable(displayName, isSelected))
-                {
-                    itemId = entry.ItemId;
-                    hq = entry.IsHQ;
-                }
-            }
-
-            ImGui.EndCombo();
+        if (index <= 0)
+        {
+            itemId = null;
+            hq = false;
+        }
+        else
+        {
+            itemId = items[index - 1].ItemId;
+            hq = items[index - 1].IsHQ;
         }
     }
 
-    private void DrawMedicineSelector(ref uint? itemId, ref bool hq, string idSuffix, ref string search)
+    private static void DrawManualSelector(string label, string id, List<(uint ItemId, string Name)> items, ref uint? itemId)
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Medicine:");
-        ImGui.SameLine(SelectorLabelWidth);
-
-        var current = GetDisplayName(itemId, hq);
-        ImGui.SetNextItemWidth(SelectorComboWidth);
-        if (ImGui.BeginCombo($"##Medicine{idSuffix}", current))
+        SelectorLabel(label);
+        var current = itemId ?? 0;
+        var index = current == 0 ? 0 : items.FindIndex(i => i.ItemId == current) + 1;
+        if (M3Widgets.Combo(id, ref index, items.Count + 1, i => i == 0 ? "None" : items[i - 1].Name, SelectorComboWidth, "None"))
         {
-            if (ImGui.Selectable("None", !itemId.HasValue))
-            {
-                itemId = null;
-                hq = false;
-            }
-
-            ImGui.Separator();
-            ImGui.InputTextWithHint($"##MedicineSearch{idSuffix}", "Search medicine...", ref search, 128);
-
-            var searchValue = search;
-            var filtered = string.IsNullOrWhiteSpace(searchValue)
-                ? _medicineItems
-                : _medicineItems.Where(m => m.Name.Contains(searchValue, StringComparison.OrdinalIgnoreCase)).ToList();
-
-            foreach (var entry in filtered)
-            {
-                var displayName = entry.Name + (entry.IsHQ ? $" {(char)SeIconChar.HighQuality}" : "");
-                var isSelected = itemId == entry.ItemId && hq == entry.IsHQ;
-                if (ImGui.Selectable(displayName, isSelected))
-                {
-                    itemId = entry.ItemId;
-                    hq = entry.IsHQ;
-                }
-            }
-
-            ImGui.EndCombo();
-        }
-    }
-
-    private void DrawManualSelector(ref uint? itemId, string idSuffix)
-    {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Manual:");
-        ImGui.SameLine(SelectorLabelWidth);
-
-        var manualId = itemId ?? 0;
-        var current = manualId == 0 ? "None" : GetItemName(manualId);
-        ImGui.SetNextItemWidth(SelectorComboWidth);
-        if (ImGui.BeginCombo($"##Manual{idSuffix}", current))
-        {
-            if (ImGui.Selectable("None", manualId == 0))
-                itemId = null;
-
-            foreach (var (id, name) in _manualItems)
-            {
-                var isSelected = id == manualId;
-                if (ImGui.Selectable(name, isSelected))
-                    itemId = id;
-            }
-
-            ImGui.EndCombo();
-        }
-    }
-
-    private void DrawSquadronManualSelector(ref uint? itemId, string idSuffix)
-    {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Squadron Manual:");
-        ImGui.SameLine(SelectorLabelWidth);
-
-        var squadronId = itemId ?? 0;
-        var current = squadronId == 0 ? "None" : GetItemName(squadronId);
-        ImGui.SetNextItemWidth(SelectorComboWidth);
-        if (ImGui.BeginCombo($"##Squadron{idSuffix}", current))
-        {
-            if (ImGui.Selectable("None", squadronId == 0))
-                itemId = null;
-
-            foreach (var (id, name) in _squadronManualItems)
-            {
-                var isSelected = id == squadronId;
-                if (ImGui.Selectable(name, isSelected))
-                    itemId = id;
-            }
-
-            ImGui.EndCombo();
+            itemId = index <= 0 ? null : items[index - 1].ItemId;
         }
     }
 
@@ -354,7 +235,9 @@ public class CraftingListConsumablesPopup
         _squadronManualItems.Clear();
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null)
+        {
             return;
+        }
 
         foreach (var item in itemSheet)
         {
@@ -365,7 +248,9 @@ public class CraftingListConsumablesPopup
                 {
                     _foodItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _foodItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersPot(item))
@@ -375,7 +260,9 @@ public class CraftingListConsumablesPopup
                 {
                     _medicineItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _medicineItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersManual(item))
@@ -396,59 +283,129 @@ public class CraftingListConsumablesPopup
             }
         }
 
-        _foodItems = _foodItems
-            .OrderBy(f => !HasItemInInventory(f.ItemId, f.IsHQ))
-            .ThenBy(f => f.Name)
-            .ThenBy(f => f.IsHQ ? 0 : 1)
-            .ToList();
-        _medicineItems = _medicineItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, m.IsHQ))
-            .ThenBy(m => m.Name)
-            .ThenBy(m => m.IsHQ ? 0 : 1)
-            .ToList();
-        _manualItems = _manualItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
-        _squadronManualItems = _squadronManualItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
+        _foodItems = SortConsumables(_foodItems);
+        _medicineItems = SortConsumables(_medicineItems);
+        _manualItems = SortConsumables(_manualItems);
+        _squadronManualItems = SortConsumables(_squadronManualItems);
+    }
+
+    private static List<(uint ItemId, string Name, bool IsHQ)> SortConsumables(List<(uint ItemId, string Name, bool IsHQ)> items)
+    {
+        var keyedItems = new List<((uint ItemId, string Name, bool IsHQ) Item, bool Missing, int Index)>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            keyedItems.Add((items[i], !HasItemInInventory(items[i].ItemId, items[i].IsHQ), i));
+        }
+
+        keyedItems.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Missing.CompareTo(rhs.Missing);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = string.Compare(lhs.Item.Name, rhs.Item.Name, StringComparison.CurrentCulture);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = (lhs.Item.IsHQ ? 0 : 1).CompareTo(rhs.Item.IsHQ ? 0 : 1);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return keyedItems.ConvertAll(static keyed => keyed.Item);
+    }
+
+    private static List<(uint ItemId, string Name)> SortConsumables(List<(uint ItemId, string Name)> items)
+    {
+        var keyedItems = new List<((uint ItemId, string Name) Item, bool Missing, int Index)>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            keyedItems.Add((items[i], !HasItemInInventory(items[i].ItemId, false), i));
+        }
+
+        keyedItems.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Missing.CompareTo(rhs.Missing);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = string.Compare(lhs.Item.Name, rhs.Item.Name, StringComparison.CurrentCulture);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return keyedItems.ConvertAll(static keyed => keyed.Item);
+    }
+
+    private static bool HasParam(ItemFood? consumable, Predicate<uint> match)
+    {
+        if (consumable == null)
+        {
+            return false;
+        }
+
+        foreach (var param in consumable.Value.Params)
+        {
+            if (match(param.BaseParam.RowId))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static ItemFood? GetItemConsumableProperties(Item item, bool hq)
     {
         if (!item.ItemAction.IsValid)
+        {
             return null;
+        }
+
         var action = item.ItemAction.Value;
         var actionParams = hq ? action.DataHQ : action.Data;
         if (actionParams[0] is not 48 and not 49)
+        {
             return null;
+        }
+
         return Dalamud.GameData.GetExcelSheet<ItemFood>()?.GetRow(actionParams[1]);
     }
 
     private static bool IsCraftersFood(Item item)
     {
         if (item.ItemUICategory.RowId != 46)
+        {
             return false;
-        var consumable = GetItemConsumableProperties(item, false);
-        return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71);
+        }
+
+        return HasParam(GetItemConsumableProperties(item, false), static id => id is 11 or 70 or 71);
     }
 
     private static bool IsCraftersPot(Item item)
     {
         if (item.ItemUICategory.RowId != 44)
+        {
             return false;
-        var consumable = GetItemConsumableProperties(item, false);
-        return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71 or 69 or 68);
+        }
+
+        return HasParam(GetItemConsumableProperties(item, false), static id => id is 11 or 70 or 71 or 69 or 68);
     }
 
     private static bool IsCraftersManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 300 or 301 or 1751 or 5329;
     }
@@ -456,9 +413,15 @@ public class CraftingListConsumablesPopup
     private static bool IsSquadronManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 2291 or 2292 or 2293 or 2294;
     }
@@ -470,7 +433,10 @@ public class CraftingListConsumablesPopup
     {
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet != null && itemSheet.TryGetRow(itemId, out var item))
+        {
             return item.Name.ExtractText();
+        }
+
         return "Unknown";
     }
 
@@ -491,7 +457,9 @@ public class CraftingListConsumablesPopup
     private void Save()
     {
         if (_list == null)
+        {
             return;
+        }
 
         _list.Consumables = _workingDefaults;
         _list.DefaultPrecraftMacroId = _workingDefaultPrecraftMacroId;

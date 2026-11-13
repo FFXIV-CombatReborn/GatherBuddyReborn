@@ -1,8 +1,8 @@
+using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Plugin;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Plugin;
 
 namespace GatherBuddy.Crafting;
 
@@ -26,7 +26,9 @@ internal static class RetainerItemQuery
     public static int GetTotalCount(uint itemId)
     {
         if (!IsReady)
+        {
             return 0;
+        }
 
         try
         {
@@ -45,13 +47,13 @@ internal static class RetainerItemQuery
     internal static HashSet<ulong> GetOwnedRetainerIds()
     {
         if (!IsReady)
+        {
             return [];
+        }
 
         try
         {
-            return AllaganTools.GetCharactersOwnedByActive(false)
-                .Where(id => id != 0)
-                .ToHashSet();
+            return [.. AllaganTools.GetCharactersOwnedByActive(false).Where(id => id != 0)];
         }
         catch (Exception ex)
         {
@@ -65,7 +67,7 @@ internal sealed class RetainerItemSnapshot
 {
     public static RetainerItemSnapshot Empty { get; } = new([]);
 
-    private readonly Dictionary<uint, (int NQ, int HQ)> _counts = new();
+    private readonly Dictionary<uint, (int NQ, int HQ)> _counts = [];
     public bool IsComplete { get; }
 
     public RetainerItemSnapshot(IEnumerable<uint> itemIds)

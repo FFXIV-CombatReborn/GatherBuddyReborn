@@ -1,4 +1,3 @@
-using ElliLib.Filesystem;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
@@ -7,7 +6,6 @@ using GatherBuddy.Plugin;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather.Lists;
 
@@ -26,19 +24,25 @@ public partial class AutoGatherListsManager
         }
         Save();
         if (list.HasItems())
+        {
             SetActiveItems();
+        }
     }
 
     public void DeleteList(AutoGatherList list)
     {
         if (!_fileSystem.TryGetValue(list, out var leaf))
+        {
             return;
+        }
 
         var enabled = list.HasItems();
         _fileSystem.Delete(leaf);
         Save();
         if (enabled)
+        {
             SetActiveItems();
+        }
     }
 
     public void CreateFolder(string name, FileSystem<AutoGatherList>.Folder? parent = null)
@@ -58,7 +62,9 @@ public partial class AutoGatherListsManager
     public void DeleteFolder(FileSystem<AutoGatherList>.Folder folder)
     {
         if (folder.IsRoot)
+        {
             return;
+        }
 
         try
         {
@@ -71,10 +77,50 @@ public partial class AutoGatherListsManager
         }
     }
 
+    public void RenameFolder(FileSystem<AutoGatherList>.Folder folder, string newName)
+    {
+        if (folder.IsRoot)
+        {
+            return;
+        }
+
+        try
+        {
+            _fileSystem.Rename(folder, newName);
+            Save();
+        }
+        catch (Exception e)
+        {
+            GatherBuddy.Log.Warning($"Failed to rename folder: {e.Message}");
+        }
+    }
+
+    public bool MoveToFolder(FileSystem<AutoGatherList>.IPath path, FileSystem<AutoGatherList>.Folder folder)
+    {
+        try
+        {
+            _fileSystem.Move(path, folder);
+            Save();
+            if (path is FileSystem<AutoGatherList>.Folder)
+            {
+                ListOrderChanged?.Invoke();
+            }
+
+            return true;
+        }
+        catch (Exception e)
+        {
+            GatherBuddy.Log.Warning($"Failed to move {path.Name}: {e.Message}");
+            return false;
+        }
+    }
+
     public void ChangeName(AutoGatherList list, string newName)
     {
         if (newName == list.Name || !_fileSystem.TryGetValue(list, out var leaf))
+        {
             return;
+        }
 
         try
         {
@@ -91,7 +137,9 @@ public partial class AutoGatherListsManager
     public void ChangeDescription(AutoGatherList list, string newDescription)
     {
         if (newDescription == list.Description)
+        {
             return;
+        }
 
         list.Description = newDescription;
         Save();
@@ -103,27 +151,42 @@ public partial class AutoGatherListsManager
         {
             return;
         }
-        
+
         if (!list.Enabled && !ValidateGatherablePerception(list))
         {
             return;
         }
-        
+
         list.Enabled = !list.Enabled;
         Save();
         if (list.Items.Count > 0)
+        {
             SetActiveItems();
+        }
     }
-    
+
     private unsafe bool ValidateFishingBait(AutoGatherList list)
     {
         if (GatherBuddy.Config.AutoGatherConfig.UseAutoHookGlobalPreset)
+        {
             return true;
+        }
+
         try
         {
-            var fishInList = list.Items.OfType<Fish>().Where(f => !f.IsSpearFish && list.EnabledItems.TryGetValue(f, out var enabled) && enabled).ToList();
+            var fishInList = new List<Fish>();
+            foreach (var listItem in list.Items)
+            {
+                if (listItem is Fish { IsSpearFish: false } listFish && list.EnabledItems.TryGetValue(listFish, out var enabled) && enabled)
+                {
+                    fishInList.Add(listFish);
+                }
+            }
+
             if (fishInList.Count == 0)
+            {
                 return true;
+            }
 
             static uint GetInventoryItemCount(uint itemRowId)
             {
@@ -142,7 +205,9 @@ public partial class AutoGatherListsManager
             {
                 var baitId = fish.InitialBait?.Id ?? 0;
                 if (baitId == 0)
+                {
                     continue;
+                }
 
                 if (customPresetBaitIds != null && customPresetBaitIds.TryGetValue(fish.ItemId, out var customBaitId))
                 {
@@ -157,14 +222,19 @@ public partial class AutoGatherListsManager
                 }
 
                 if (baitCount > 0 || versatileLureCount > 0)
+                {
                     continue;
+                }
 
                 missingBaits.Add(baitId);
             }
 
             stopwatch.Stop();
             if (stopwatch.ElapsedMilliseconds >= 10)
+            {
                 GatherBuddy.Log.Debug($"[Auto-Gather] Validated fishing bait for list '{list.Name}' in {stopwatch.ElapsedMilliseconds} ms ({fishInList.Count} fish, {inventoryCounts.Count} unique bait IDs).");
+            }
+
             if (missingBaits.Count > 0)
             {
                 var baitIds = string.Join(", ", missingBaits);
@@ -172,7 +242,7 @@ public partial class AutoGatherListsManager
                 GatherBuddy.Log.Error($"[Auto-Gather] List '{list.Name}' not enabled: Missing bait IDs {baitIds} and no Versatile Lure");
                 return false;
             }
-            
+
             return true;
         }
         catch (System.Exception ex)
@@ -181,40 +251,50 @@ public partial class AutoGatherListsManager
             return true;
         }
     }
-    
+
     private unsafe bool ValidateSingleFishBait(IGatherable item)
     {
         if (item is not Fish fish || fish.IsSpearFish)
+        {
             return true;
+        }
+
         if (GatherBuddy.Config.AutoGatherConfig.UseAutoHookGlobalPreset)
+        {
             return true;
-        
+        }
+
         try
         {
             static uint GetInventoryItemCount(uint itemRowId)
             {
                 return (uint)FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance()->GetInventoryItemCount(itemRowId < 100000 ? itemRowId : itemRowId - 100000, itemRowId >= 100000);
             }
-            
+
             const uint VersatileLureId = 29717;
             var baitId = fish.InitialBait?.Id ?? 0;
-            
+
             if (baitId == 0)
+            {
                 return true;
+            }
+
             if (GatherBuddy.Config.AutoGatherConfig.UseExistingAutoHookPresets)
             {
                 var customBaitId = GetCustomPresetBaitId(fish.ItemId);
                 if (customBaitId.HasValue)
+                {
                     baitId = customBaitId.Value;
+                }
             }
-            
+
             if (GetInventoryItemCount(baitId) == 0 && GetInventoryItemCount(VersatileLureId) == 0)
             {
                 Communicator.PrintError($"[Auto-Gather] Cannot add/enable {fish.Name[GatherBuddy.Language]}: Missing bait ID {baitId} and no Versatile Lure");
                 GatherBuddy.Log.Error($"[Auto-Gather] Fish {fish.ItemId} not enabled: Missing bait ID {baitId} and no Versatile Lure");
                 return false;
             }
-            
+
             return true;
         }
         catch (System.Exception ex)
@@ -223,56 +303,68 @@ public partial class AutoGatherListsManager
             return true;
         }
     }
-    
-    private bool ValidateGatherablePerception(AutoGatherList list)
+
+    private static bool ValidateGatherablePerception(AutoGatherList list)
     {
         try
         {
-            var gatherablesInList = list.Items.OfType<Gatherable>().Where(g => list.EnabledItems.TryGetValue(g, out var enabled) && enabled).ToList();
+            var gatherablesInList = new List<Gatherable>();
+            foreach (var listItem in list.Items)
+            {
+                if (listItem is Gatherable listGatherable && list.EnabledItems.TryGetValue(listGatherable, out var enabled) && enabled)
+                {
+                    gatherablesInList.Add(listGatherable);
+                }
+            }
+
             if (gatherablesInList.Count == 0)
+            {
                 return true;
-            
+            }
+
             var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
             var isMiner = currentJob == 16;
             var isBotanist = currentJob == 17;
-            
+
             if (!isMiner && !isBotanist)
             {
                 GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation - player not on Miner or Botanist (current job: {currentJob})");
                 return true;
             }
-            
+
             var playerPerception = DiscipleOfLand.Perception;
             var insufficientPerception = new System.Collections.Generic.List<(string Name, int Required, int Current)>();
-            
+
             foreach (var gatherable in gatherablesInList)
             {
                 var requiredPerception = (int)gatherable.GatheringData.PerceptionReq;
                 if (requiredPerception == 0)
-                    continue;
-                
-                var gatheringType = gatherable.GatheringType.ToGroup();
-                if ((isMiner && gatheringType != GatheringType.Miner) || (isBotanist && gatheringType != GatheringType.Botanist))
                 {
                     continue;
                 }
-                
+
+                var gatheringType = gatherable.GatheringType.ToGroup();
+                if (isMiner && gatheringType != GatheringType.Miner || isBotanist && gatheringType != GatheringType.Botanist)
+                {
+                    continue;
+                }
+
                 GatherBuddy.Log.Debug($"[Auto-Gather] Validating {gatherable.Name[GatherBuddy.Language]}: requires {requiredPerception} perception (current: {playerPerception})");
-                
+
                 if (playerPerception < requiredPerception)
                 {
                     insufficientPerception.Add((gatherable.Name[GatherBuddy.Language], requiredPerception, playerPerception));
                 }
             }
-            
+
             if (insufficientPerception.Count > 0)
             {
-                var itemDetails = string.Join(", ", insufficientPerception.Select(x => $"{x.Name} (needs {x.Required})"));
+                var itemDetails = string.Join(", ", insufficientPerception.ConvertAll(x => $"{x.Name} (needs {x.Required})"));
                 Communicator.PrintError($"[Auto-Gather] Cannot enable list '{list.Name}': Insufficient perception (current: {playerPerception}): {itemDetails}");
                 GatherBuddy.Log.Error($"[Auto-Gather] List '{list.Name}' not enabled: Insufficient perception {playerPerception}");
                 return false;
             }
-            
+
             return true;
         }
         catch (System.Exception ex)
@@ -281,46 +373,50 @@ public partial class AutoGatherListsManager
             return true;
         }
     }
-    
-    private bool ValidateSingleGatherablePerception(IGatherable item)
+
+    private static bool ValidateSingleGatherablePerception(IGatherable item)
     {
         if (item is not Gatherable gatherable)
+        {
             return true;
-        
+        }
+
         try
         {
             var requiredPerception = (int)gatherable.GatheringData.PerceptionReq;
             if (requiredPerception == 0)
+            {
                 return true;
-            
+            }
+
             var currentJob = Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0;
             var gatheringType = gatherable.GatheringType.ToGroup();
             var isMiner = currentJob == 16;
             var isBotanist = currentJob == 17;
-            
+
             if (!isMiner && !isBotanist)
             {
                 GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation for {gatherable.Name[GatherBuddy.Language]} - player not on Miner or Botanist (current job: {currentJob})");
                 return true;
             }
-            
-            if ((isMiner && gatheringType != GatheringType.Miner) || (isBotanist && gatheringType != GatheringType.Botanist))
+
+            if (isMiner && gatheringType != GatheringType.Miner || isBotanist && gatheringType != GatheringType.Botanist)
             {
                 GatherBuddy.Log.Debug($"[Auto-Gather] Skipping perception validation for {gatherable.Name[GatherBuddy.Language]} - item is for different gathering job");
                 return true;
             }
-            
+
             var playerPerception = DiscipleOfLand.Perception;
-            
+
             GatherBuddy.Log.Debug($"[Auto-Gather] Validating {gatherable.Name[GatherBuddy.Language]}: requires {requiredPerception} perception (current: {playerPerception})");
-            
+
             if (playerPerception < requiredPerception)
             {
                 Communicator.PrintError($"[Auto-Gather] Cannot add/enable {gatherable.Name[GatherBuddy.Language]}: Insufficient perception (needs {requiredPerception}, current: {playerPerception})");
                 GatherBuddy.Log.Error($"[Auto-Gather] Gatherable {gatherable.ItemId} not enabled: Needs {requiredPerception} perception, current: {playerPerception}");
                 return false;
             }
-            
+
             return true;
         }
         catch (System.Exception ex)
@@ -329,40 +425,52 @@ public partial class AutoGatherListsManager
             return true;
         }
     }
-    
-    private Dictionary<uint, uint>? GetCustomPresetBaitIds()
+
+    private static Dictionary<uint, uint>? GetCustomPresetBaitIds()
     {
         try
         {
             var pluginConfigsDir = Dalamud.PluginInterface.ConfigDirectory.Parent?.FullName;
             if (string.IsNullOrEmpty(pluginConfigsDir))
+            {
                 return null;
+            }
 
             var configPath = System.IO.Path.Combine(pluginConfigsDir, "AutoHook.json");
             if (!System.IO.File.Exists(configPath))
+            {
                 return null;
+            }
 
             var json = System.IO.File.ReadAllText(configPath);
             var config = Newtonsoft.Json.Linq.JObject.Parse(json);
 
             var customPresets = config["HookPresets"]?["CustomPresets"] as Newtonsoft.Json.Linq.JArray;
             if (customPresets == null)
+            {
                 return null;
+            }
 
             var customPresetBaitIds = new Dictionary<uint, uint>();
             foreach (var preset in customPresets)
             {
                 var presetName = preset?["PresetName"]?.ToString();
                 if (presetName == null || !uint.TryParse(presetName, out var presetFishId))
+                {
                     continue;
+                }
 
                 var forcedBaitIdToken = preset?["ExtraCfg"]?["ForcedBaitId"];
                 if (forcedBaitIdToken == null)
+                {
                     continue;
+                }
 
                 var forcedBaitId = forcedBaitIdToken.ToObject<uint>();
                 if (forcedBaitId > 0)
+                {
                     customPresetBaitIds[presetFishId] = forcedBaitId;
+                }
             }
 
             return customPresetBaitIds.Count > 0 ? customPresetBaitIds : null;
@@ -378,7 +486,9 @@ public partial class AutoGatherListsManager
     {
         var customPresetBaitIds = GetCustomPresetBaitIds();
         if (customPresetBaitIds == null || !customPresetBaitIds.TryGetValue(fishId, out var forcedBaitId))
+        {
             return null;
+        }
 
         GatherBuddy.Log.Debug($"[Auto-Gather] Found custom preset for fish {fishId} with bait ID {forcedBaitId}");
         return forcedBaitId;
@@ -389,36 +499,52 @@ public partial class AutoGatherListsManager
         list.Fallback = value;
         Save();
         if (list.Items.Count > 0)
+        {
             SetActiveItems();
+        }
     }
 
     public void SetRemoveCompletedItems(AutoGatherList list, bool value)
     {
         if (list.RemoveCompletedItems == value)
+        {
             return;
+        }
 
         list.RemoveCompletedItems = value;
         Save();
         if (value && list.Enabled && !list.Fallback && list.Items.Count > 0)
+        {
             SetActiveItems(true);
+        }
     }
 
     public bool RemoveCompletedItemFromLists(IGatherable item)
     {
         var removedAny = false;
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (!list.Enabled || !list.RemoveCompletedItems || list.Fallback)
+            {
                 continue;
+            }
+
             if (!list.EnabledItems.TryGetValue(item, out var itemEnabled) || !itemEnabled)
+            {
                 continue;
+            }
+
             var totalCount = item.GetTotalCount(list.UsesRetainerInventory);
             if (!list.Quantities.TryGetValue(item, out var quantity) || totalCount < quantity)
+            {
                 continue;
+            }
 
             var index = list.Items.IndexOf(item);
             if (index < 0)
+            {
                 continue;
+            }
 
             GatherBuddy.Log.Debug(
                 $"[Auto-Gather] Auto-removing completed item '{item.Name[GatherBuddy.Language]}' from list '{list.Name}' ({totalCount}/{quantity}).");
@@ -427,7 +553,9 @@ public partial class AutoGatherListsManager
         }
 
         if (!removedAny)
+        {
             return false;
+        }
 
         Save();
         SetActiveItems();
@@ -437,7 +565,9 @@ public partial class AutoGatherListsManager
     public bool RemoveCompletedItemsFromLists()
     {
         if (!RemoveCompletedItemsFromEnabledLists())
+        {
             return false;
+        }
 
         Save();
         SetActiveItems();
@@ -447,22 +577,31 @@ public partial class AutoGatherListsManager
     private bool RemoveCompletedItemsFromEnabledLists()
     {
         var removedAny = false;
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (!list.Enabled || !list.RemoveCompletedItems || list.Fallback)
+            {
                 continue;
+            }
 
             for (var i = list.Items.Count - 1; i >= 0; --i)
             {
                 var item = list.Items[i];
                 if (!list.EnabledItems.TryGetValue(item, out var itemEnabled) || !itemEnabled)
+                {
                     continue;
+                }
+
                 if (!list.Quantities.TryGetValue(item, out var quantity))
+                {
                     continue;
+                }
 
                 var totalCount = item.GetTotalCount(list.UsesRetainerInventory);
                 if (totalCount < quantity)
+                {
                     continue;
+                }
 
                 GatherBuddy.Log.Debug(
                     $"[Auto-Gather] Auto-removing completed item '{item.Name[GatherBuddy.Language]}' from list '{list.Name}' ({totalCount}/{quantity}).");
@@ -488,31 +627,41 @@ public partial class AutoGatherListsManager
             }
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
     public void RemoveItem(AutoGatherList list, int idx)
     {
         if (idx < 0 || idx >= list.Items.Count)
+        {
             return;
+        }
 
         list.RemoveAt(idx);
         Save();
         if (list.Enabled)
+        {
             SetActiveItems();
+        }
     }
 
     public void ChangeItem(AutoGatherList list, IGatherable item, int idx)
     {
         if (idx < 0 || idx >= list.Items.Count)
+        {
             return;
+        }
 
         if (list.Replace(idx, item))
         {
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
@@ -522,7 +671,9 @@ public partial class AutoGatherListsManager
         {
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
@@ -532,17 +683,19 @@ public partial class AutoGatherListsManager
         {
             return;
         }
-        
+
         if (enabled && list.Enabled && !ValidateSingleGatherablePerception(item))
         {
             return;
         }
-        
+
         if (list.SetEnabled(item, enabled))
         {
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
@@ -569,13 +722,17 @@ public partial class AutoGatherListsManager
         }
 
         if (skipped > 0)
+        {
             GatherBuddy.Log.Debug($"[Auto-Gather] Skipped enabling {skipped:N0} visible item(s) in list '{list.Name}' because validation failed.");
+        }
 
         if (changed)
         {
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
@@ -585,7 +742,9 @@ public partial class AutoGatherListsManager
         {
             Save();
             if (list.Enabled)
+            {
                 SetActiveItems();
+            }
         }
     }
 
@@ -605,13 +764,18 @@ public partial class AutoGatherListsManager
         source.RemoveAt(idx);
         Save();
         if (source.Enabled || destination.Enabled)
+        {
             SetActiveItems();
+        }
     }
 
     public void ChangePreferredLocation(AutoGatherList list, IGatherable? item, ILocation? location)
     {
         if (item == null)
+        {
             return;
+        }
+
         if (list.SetPreferredLocation(item, location))
         {
             Save();
@@ -623,20 +787,27 @@ public partial class AutoGatherListsManager
     public void MoveList(FileSystem<AutoGatherList>.Leaf movedList, FileSystem<AutoGatherList>.Leaf insertAt, bool movedFromUpperPart)
     {
         if (movedList.Parent != insertAt.Parent)
+        {
             throw new InvalidOperationException();
+        }
 
         var insertIdx = insertAt.Value.Order;
-        if (movedFromUpperPart || movedList.Value.Order < insertIdx) insertIdx++;
+        if (movedFromUpperPart || movedList.Value.Order < insertIdx)
+        {
+            insertIdx++;
+        }
 
         // Using an O(n) algorithm makes the numbering sparse, but it's fine for ordering.
         foreach (var leaf in movedList.Parent.GetLeaves())
         {
             if (leaf.Value.Order >= insertIdx)
+            {
                 leaf.Value.Order++;
+            }
         }
         movedList.Value.Order = insertIdx;
         Save();
-        ListOrderChanged?.Invoke();        
+        ListOrderChanged?.Invoke();
     }
 
     public void MoveListUp(FileSystem<AutoGatherList>.Leaf list)
@@ -652,7 +823,9 @@ public partial class AutoGatherListsManager
         foreach (var sibling in list.Parent.GetLeaves())
         {
             if (sibling != list && sibling.Value.Order < list.Value.Order ^ down && (neighbor == null || neighbor.Value.Order < sibling.Value.Order ^ down))
+            {
                 neighbor = sibling;
+            }
         }
 
         if (neighbor != null)
@@ -665,7 +838,7 @@ public partial class AutoGatherListsManager
 
     public ILocation? GetPreferredLocation(IGatherable item)
     {
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (list.Enabled && !list.Fallback && list.PreferredLocations.TryGetValue(item, out var loc))
             {

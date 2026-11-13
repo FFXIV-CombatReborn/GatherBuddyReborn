@@ -1,8 +1,8 @@
-using System;
-using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
+using System;
+using System.Runtime.InteropServices;
 
 namespace GatherBuddy.SeFunctions;
 
@@ -20,7 +20,9 @@ public unsafe class MacroManager : IDisposable
         _macro->Name.Ctor();
 
         for (var i = 0; i < _macro->Lines.Length; ++i)
+        {
             _macro->Lines[i].Ctor();
+        }
 
         _macro->Lines[0].SetString(GatherBuddy.FullIdentify);
         _macro->Lines[1].SetString(GatherBuddy.FullMapMarker);
@@ -33,12 +35,16 @@ public unsafe class MacroManager : IDisposable
     public void Dispose()
     {
         if (_macro == null)
+        {
             return;
+        }
 
         _macro->Name.Dtor(false);
 
         for (var i = 0; i < _macro->Lines.Length; ++i)
+        {
             _macro->Lines[i].Dtor(false);
+        }
 
         Marshal.FreeHGlobal((IntPtr)_macro);
         _macro = null;

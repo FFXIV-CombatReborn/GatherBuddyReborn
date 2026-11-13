@@ -9,19 +9,18 @@ namespace GatherBuddy.Levenshtein;
 public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, IComparable<string>
 {
     private readonly string _data;
-    private readonly int    _start;
-    public           int    Length { get; }
+    private readonly int _start;
+    public int Length { get; }
 
     public StringView(string data, int start = 0, int size = int.MaxValue)
     {
-        if (data == null)
-            throw new ArgumentNullException(nameof(data));
-        if (start < 0)
-            throw new ArgumentOutOfRangeException(nameof(start));
-        if (size < 0)
-            throw new ArgumentOutOfRangeException(nameof(size));
+        ArgumentNullException.ThrowIfNull(data);
 
-        _data  = string.Intern(data);
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+
+        _data = string.Intern(data);
         _start = start;
         Length = Math.Min(_data.Length - _start, size);
     }
@@ -35,7 +34,9 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public IEnumerator<char> GetEnumerator()
     {
         for (var i = _start; i < Length; ++i)
+        {
             yield return _data[i];
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -52,11 +53,15 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
             var a = this[i];
             var b = rhs[i];
             if (a != b)
+            {
                 return a - b;
+            }
         }
 
         if (Length < rhs.Length)
+        {
             return -1;
+        }
 
         return Length > rhs.Length ? 1 : 0;
     }
@@ -64,7 +69,9 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public int CompareTo(string? rhs)
     {
         if (rhs == null)
+        {
             return 1;
+        }
 
         var min = Math.Min(Length, rhs.Length);
         for (var i = 0; i < min; ++i)
@@ -72,11 +79,15 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
             var a = this[i];
             var b = rhs[i];
             if (a != b)
+            {
                 return a - b;
+            }
         }
 
         if (Length < rhs.Length)
+        {
             return -1;
+        }
 
         return Length > rhs.Length ? 1 : 0;
     }
@@ -84,7 +95,9 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public override bool Equals(object? obj)
     {
         if (obj == null)
+        {
             return false;
+        }
 
         return obj is IEnumerable<char> chars && chars.SequenceEqual(this);
     }
@@ -101,13 +114,15 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public int FindFirstDifference(StringView rhs)
     {
         var length = Math.Min(rhs.Length, Length);
-        var l      = _start;
-        var r      = rhs._start;
-        var end    = l + length;
+        var l = _start;
+        var r = rhs._start;
+        var end = l + length;
         for (; l != end; ++l, ++r)
         {
             if (_data[l] != rhs._data[r])
+            {
                 return l - _start;
+            }
         }
 
         return length;
@@ -116,15 +131,19 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public bool StartsWith(StringView rhs)
     {
         if (Length < rhs.Length)
+        {
             return false;
+        }
 
-        var l   = _start;
-        var r   = rhs._start;
+        var l = _start;
+        var r = rhs._start;
         var end = r + rhs.Length;
         for (; r != end; ++l, ++r)
         {
             if (_data[l] != rhs._data[r])
+            {
                 return false;
+            }
         }
 
         return true;
@@ -133,15 +152,19 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public bool EndsWith(StringView rhs)
     {
         if (Length < rhs.Length)
+        {
             return false;
+        }
 
-        var l   = _start + Length - 1;
-        var r   = rhs._start + rhs.Length - 1;
+        var l = _start + Length - 1;
+        var r = rhs._start + rhs.Length - 1;
         var end = rhs._start - 1;
         for (; r != end; --l, --r)
         {
             if (_data[l] != rhs._data[r])
+            {
                 return false;
+            }
         }
 
         return true;
@@ -150,25 +173,33 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public bool Contains(StringView rhs)
     {
         if (Length < rhs.Length)
+        {
             return false;
+        }
 
         for (var i = _start; i < Length; ++i)
         {
             var broken = false;
             if (i + rhs.Length >= rhs.Length)
+            {
                 return false;
+            }
 
             for (var j = 0; j < rhs.Length; ++j)
             {
                 if (_data[i + j] == rhs[j])
+                {
                     continue;
+                }
 
                 broken = true;
                 break;
             }
 
             if (!broken)
+            {
                 return true;
+            }
         }
 
         return false;
@@ -197,13 +228,17 @@ public readonly struct StringView : IEnumerable<char>, IComparable<StringView>, 
     public IEnumerable<StringView> AllPrefixes()
     {
         for (var i = Length - 1; i > 0; --i)
+        {
             yield return Substring(0, i);
+        }
     }
 
     public static IEnumerable<StringView> AllPrefixes(string word)
     {
         for (var i = word.Length - 1; i > 0; --i)
+        {
             yield return new StringView(word, 0, i);
+        }
     }
 
     public static implicit operator StringView(string word)

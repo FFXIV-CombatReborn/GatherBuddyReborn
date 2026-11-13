@@ -6,8 +6,8 @@ public class FishRecordTimes
 {
     public struct Times
     {
-        public ushort Min     = ushort.MaxValue;
-        public ushort Max     = 0;
+        public ushort Min = ushort.MaxValue;
+        public ushort Max = 0;
         public ushort MinChum = ushort.MaxValue;
         public ushort MaxChum = 0;
 
@@ -22,7 +22,7 @@ public class FishRecordTimes
                 if (duration > MaxChum)
                 {
                     MaxChum = duration;
-                    ret     = true;
+                    ret = true;
                 }
             }
             else
@@ -43,25 +43,27 @@ public class FishRecordTimes
             if (duration < MinChum)
             {
                 MinChum = duration;
-                ret     = true;
+                ret = true;
             }
 
             return ret;
         }
     }
 
-    public Times                   All  = new();
-    public SortedList<uint, Times> Data = new();
+    public Times All = new();
+    public SortedList<uint, Times> Data = [];
 
     public bool Apply(uint baitId, ushort duration, bool chum)
     {
         var ret = All.Apply(duration, chum);
         if (baitId == 0)
+        {
             return ret;
+        }
 
         var baitTimes = Data.TryGetValue(baitId, out var b) ? b : new Times();
-        ret          |= baitTimes.Apply(duration, chum);
-        Data[baitId] =  baitTimes;
+        ret |= baitTimes.Apply(duration, chum);
+        Data[baitId] = baitTimes;
 
         return ret;
     }

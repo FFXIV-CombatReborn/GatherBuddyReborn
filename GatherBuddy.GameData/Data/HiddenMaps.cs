@@ -4,7 +4,7 @@ public static class HiddenMaps
 {
     // @formatter:off
     public static readonly (uint MapId, uint[] NodeIds)[] Maps =
-    {
+    [
         (6688,  [20, 49, 137, 140, 141, 180]),                                 // Leather
         (6689,  [46, 142, 143, 185, 186]),                                     // Goatskin
         (6690,  [198, 294, 197, 147, 199, 149, 189, 284, 210, 209, 150, 151]), // Toadskin
@@ -23,7 +23,7 @@ public static class HiddenMaps
         (43556, [981, 983, 983, 985, 989, 990, 991, 1001, 1002, 1003]),        // Loboskin
         (43557, [981, 983, 983, 985, 989, 990, 991, 1001, 1002, 1003]),        // Br'aaxskin
         (46185, [1004, 1019]),                                                 // Gargantua
-    };
+    ];
     // @formatter:on
 
     public static void Apply(GameData data)

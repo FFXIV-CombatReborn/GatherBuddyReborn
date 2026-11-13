@@ -1,24 +1,21 @@
+using Dalamud.Game;
+using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Interface;
+using GatherBuddy.Alarms;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Classes;
+using GatherBuddy.GatherHelper;
+using GatherBuddy.Interfaces;
+using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI.Tables;
+using GatherBuddy.Structs;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Game;
-using Dalamud.Game.Text.SeStringHandling;
-using GatherBuddy.Alarms;
-using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Classes;
-using GatherBuddy.Config;
-using GatherBuddy.GatherHelper;
-using GatherBuddy.Interfaces;
-using GatherBuddy.Plugin;
-using GatherBuddy.Structs;
-using ElliLib.Table;
-using ImRaii  = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -30,79 +27,80 @@ public partial class Interface
     {
         // Only timed items.
         if (item.InternalLocationId <= 0)
-            return;
-
-        var current = _alarmCache.Selector.EnsureCurrent();
-        if (ImGui.Selectable("Add to Alarm Preset"))
         {
-            if (current == null)
-            {
-                _plugin.AlarmManager.AddGroup(new AlarmGroup()
-                {
-                    Description = AutomaticallyGenerated,
-                    Enabled     = true,
-                    Alarms      = new List<Alarm> { new(item) { Enabled = true } },
-                });
-                current = _alarmCache.Selector.EnsureCurrent();
-            }
-            else
-            {
-                _plugin.AlarmManager.AddAlarm(current, new Alarm(item));
-            }
+            return;
         }
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new alarm preset." : CheckUnnamed(current.Name))}");
+        var current = _alarmCache.Selector.EnsureCurrent();
+        if (!M3Menu.Item("##addAlarm", "Add to alarm preset", FontAwesomeIcon.Bell,
+                tooltip: $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new alarm preset." : CheckUnnamed(current.Name))}"))
+        {
+            return;
+        }
+
+        if (current == null)
+        {
+            _plugin.AlarmManager.AddGroup(new AlarmGroup()
+            {
+                Description = AutomaticallyGenerated,
+                Enabled = true,
+                Alarms = [new(item) { Enabled = true }],
+            });
+            _alarmCache.Selector.EnsureCurrent();
+        }
+        else
+        {
+            _plugin.AlarmManager.AddAlarm(current, new Alarm(item));
+        }
     }
 
     private void DrawAddToGatherGroup(IGatherable item)
     {
-        var       current = _gatherGroupCache.Selector.EnsureCurrent();
-        using var color   = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), current == null);
-        if (ImGui.Selectable("Add to Gather Group") && current != null)
-            if (_plugin.GatherGroupManager.ChangeGroupNode(current, current.Nodes.Count, item, null, null, null, false))
-                _plugin.GatherGroupManager.Save();
-
-        color.Pop();
-
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(current == null
-                ? "Requires a Gather Group to be setup and selected."
-                : $"Add {item.Name[GatherBuddy.Language]} to {current.Name}");
+        var current = _gatherGroupCache.Selector.EnsureCurrent();
+        if (M3Menu.Item("##addGroup", "Add to gather group", FontAwesomeIcon.LayerGroup, current != null,
+                tooltip: current == null
+                    ? "Set up and select a gather group first."
+                    : $"Add {item.Name[GatherBuddy.Language]} to {current.Name}")
+         && current != null
+         && GatherGroup.GatherGroupManager.ChangeGroupNode(current, current.Nodes.Count, item, null, null, null, false))
+        {
+            _plugin.GatherGroupManager.Save();
+        }
     }
 
     private void DrawAddGatherWindow(IGatherable item)
     {
         var current = _gatherWindowCache.Selector.EnsureCurrent();
-
-        if (ImGui.Selectable("Add to Gather Window Preset"))
+        if (!M3Menu.Item("##addWindow", "Add to gather window preset", FontAwesomeIcon.ListUl,
+                tooltip: $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new gather window preset." : CheckUnnamed(current.Name))}"))
         {
-            if (current == null)
-                _plugin.GatherWindowManager.AddPreset(new GatherWindowPreset
-                {
-                    Enabled     = true,
-                    Items       = new List<IGatherable> { item },
-                    Description = AutomaticallyGenerated,
-                });
-            else
-                _plugin.GatherWindowManager.AddItem(current, item);
+            return;
         }
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new gather window preset." : CheckUnnamed(current.Name))}");
+        if (current == null)
+        {
+            _plugin.GatherWindowManager.AddPreset(new GatherWindowPreset
+            {
+                Enabled = true,
+                Items = [item],
+                Description = AutomaticallyGenerated,
+            });
+        }
+        else
+        {
+            _plugin.GatherWindowManager.AddItem(current, item);
+        }
     }
 
     private static string TeamCraftAddressEnd(string type, uint id)
     {
         var lang = GatherBuddy.Language switch
         {
-            ClientLanguage.English  => "en",
-            ClientLanguage.German   => "de",
-            ClientLanguage.French   => "fr",
+            ClientLanguage.English => "en",
+            ClientLanguage.German => "de",
+            ClientLanguage.French => "fr",
             ClientLanguage.Japanese => "ja",
-            _                       => "en",
+            _ => "en",
         };
 
         return $"db/{lang}/{type}/{id}";
@@ -111,18 +109,25 @@ public partial class Interface
     private static string TeamCraftAddressEnd(FishingSpot s)
         => s.Spearfishing
             ? TeamCraftAddressEnd("spearfishing-spot", s.SpearfishingSpotData!.Value.GatheringPointBase.RowId)
-            : TeamCraftAddressEnd("fishing-spot",      s.Id);
+            : TeamCraftAddressEnd("fishing-spot", s.Id);
 
     private static string GarlandToolsItemAddress(uint itemId)
         => $"https://www.garlandtools.org/db/#item/{itemId}";
 
+    private static void DrawCreateLink(uint itemId)
+    {
+        if (M3Menu.Item("##link", "Link in chat", FontAwesomeIcon.Link))
+        {
+            Communicator.Print(SeString.CreateItemLink(itemId));
+        }
+    }
+
     private static void DrawOpenInGarlandTools(uint itemId)
     {
-        if (itemId == 0)
+        if (itemId == 0 || !M3Menu.Item("##garland", "Open in GarlandTools", FontAwesomeIcon.ExternalLinkAlt))
+        {
             return;
-
-        if (!ImGui.Selectable("Open in GarlandTools"))
-            return;
+        }
 
         try
         {
@@ -137,13 +142,34 @@ public partial class Interface
     private static void DrawOpenInTeamCraft(uint itemId)
     {
         if (itemId == 0)
+        {
             return;
+        }
 
-        if (ImGui.Selectable("Open in TeamCraft (Browser)"))
-            OpenInTeamCraftWeb(TeamCraftAddressEnd("item", itemId));
+        DrawOpenInTeamCraft(TeamCraftAddressEnd("item", itemId));
+    }
 
-        if (ImGui.Selectable("Open in TeamCraft (App)"))
-            OpenInTeamCraftLocal(TeamCraftAddressEnd("item", itemId));
+    private static void DrawOpenInTeamCraft(FishingSpot fs)
+    {
+        if (fs.Id == 0)
+        {
+            return;
+        }
+
+        DrawOpenInTeamCraft(TeamCraftAddressEnd(fs));
+    }
+
+    private static void DrawOpenInTeamCraft(string addressEnd)
+    {
+        if (M3Menu.Item("##tcWeb", "Open in TeamCraft (browser)", FontAwesomeIcon.Globe))
+        {
+            OpenInTeamCraftWeb(addressEnd);
+        }
+
+        if (M3Menu.Item("##tcApp", "Open in TeamCraft (app)", FontAwesomeIcon.Desktop))
+        {
+            OpenInTeamCraftLocal(addressEnd);
+        }
     }
 
     private static void OpenInTeamCraftWeb(string addressEnd)
@@ -160,7 +186,7 @@ public partial class Interface
         {
             try
             {
-                using var request  = new HttpRequestMessage(HttpMethod.Get, $"http://localhost:14500/{addressEnd}");
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"http://localhost:14500/{addressEnd}");
                 using var response = GatherBuddy.HttpClient.Send(request);
             }
             catch
@@ -168,10 +194,12 @@ public partial class Interface
                 try
                 {
                     if (Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ffxiv-teamcraft")))
+                    {
                         Process.Start(new ProcessStartInfo($"teamcraft:///{addressEnd}")
                         {
                             UseShellExecute = true,
                         });
+                    }
                 }
                 catch
                 {
@@ -181,33 +209,21 @@ public partial class Interface
         });
     }
 
-    private static void DrawOpenInTeamCraft(FishingSpot fs)
-    {
-        if (fs.Id == 0)
-            return;
-
-        if (ImGui.Selectable("Open in TeamCraft (Browser)"))
-            OpenInTeamCraftWeb(TeamCraftAddressEnd(fs));
-
-        if (ImGui.Selectable("Open in TeamCraft (App)"))
-            OpenInTeamCraftLocal(TeamCraftAddressEnd(fs));
-    }
-
     public void CreateContextMenu(IGatherable item)
     {
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-            ImGui.OpenPopup(item.Name[GatherBuddy.Language]);
-
-        using var popup = ImRaii.Popup(item.Name[GatherBuddy.Language]);
-        if (!popup)
+        using var menu = M3Menu.BeginContext(item.Name[GatherBuddy.Language]);
+        if (!menu.IsOpen)
+        {
             return;
+        }
 
+        M3Menu.Heading(item.Name[GatherBuddy.Language]);
         DrawAddAlarm(item);
         DrawAddToGatherGroup(item);
         DrawAddGatherWindow(item);
         DrawAddToAutoGather(item);
-        if (ImGui.Selectable("Create Link"))
-            Communicator.Print(SeString.CreateItemLink(item.ItemId));
+        M3Menu.Divider();
+        DrawCreateLink(item.ItemId);
         DrawOpenInGarlandTools(item.ItemId);
         DrawOpenInTeamCraft(item.ItemId);
     }
@@ -217,69 +233,84 @@ public partial class Interface
     private void DrawAddToAutoGather(IGatherable item)
     {
         var current = _autoGatherListsCache.Selector.Selected;
-
-        if (ImGui.Selectable("Add to Auto-Gather List"))
+        if (!M3Menu.Item("##addAutoGather", "Add to auto-gather list", FontAwesomeIcon.Robot,
+                tooltip: $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new auto-gather list." : CheckUnnamed(current.Name))}"))
         {
-            if (current == null)
-                CreateAndAddPreset(item);
-            else
-                _plugin.AutoGatherListsManager.AddItem(current, item);
+            return;
         }
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                $"Add {item.Name[GatherBuddy.Language]} to {(current == null ? "a new gather window preset." : CheckUnnamed(current.Name))}");
+        if (current == null)
+        {
+            CreateAndAddPreset(item);
+        }
+        else
+        {
+            _plugin.AutoGatherListsManager.AddItem(current, item);
+        }
     }
 
-    private void DrawAddAllFilteredToAutoGather<T>(Table<T> table, Func<T, IGatherable> selector, string label)
+    private static bool DrawAddAllFilteredToAutoGather<T>(Table<T> table, Func<T, IGatherable> selector, string label)
     {
-        var lists = _plugin.AutoGatherListsManager.Lists.ToList();
+        var lists = new List<AutoGatherList>(_plugin.AutoGatherListsManager.Lists);
         if (lists.Count == 0)
-            return;
+        {
+            return false;
+        }
 
         var popupId = $"##AddAllFiltered{label}Popup";
-        if (ImGui.Button($"Add All Filtered {label} to Auto-Gather List..."))
-            ImGui.OpenPopup(popupId);
-
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip($"Add all currently visible {label.ToLowerInvariant()} to a selected auto-gather list.\n"
-              + "Items already present in the list are skipped.");
-
-        using var popup = ImRaii.Popup(popupId);
-        if (!popup)
-            return;
-
-        foreach (var list in lists)
+        var lower = label.ToLowerInvariant();
+        if (M3Widgets.Button($"##addAllFiltered{label}", $"Add shown {lower} to a list", M3ButtonStyle.Tonal, FontAwesomeIcon.Robot,
+                enabled: table.CurrentItems > 0,
+                tooltip: $"Add all {lower} the table shows to an auto-gather list.\nItems already in the list are skipped."))
         {
-            if (!ImGui.Selectable(CheckUnnamed(list.Name)))
+            M3Menu.Open(popupId);
+        }
+
+        using var menu = M3Menu.Begin(popupId);
+        if (!menu.IsOpen)
+        {
+            return true;
+        }
+
+        M3Menu.Heading("Add to auto-gather list");
+        for (var index = 0; index < lists.Count; ++index)
+        {
+            var list = lists[index];
+            if (!M3Menu.Item($"##list{index}", CheckUnnamed(list.Name), list.Enabled ? FontAwesomeIcon.CheckCircle : FontAwesomeIcon.Circle))
+            {
                 continue;
+            }
 
             var added = 0;
             foreach (var (row, _) in table.GetFilteredItems())
             {
                 var item = selector(row);
-                if (!item.Locations.Any())
-                    continue;
-
-                if (list.Add(item))
+                if (item.Locations.Count > 0 && list.Add(item))
+                {
                     added++;
+                }
             }
 
             _plugin.AutoGatherListsManager.Save();
             if (list.Enabled)
+            {
                 _plugin.AutoGatherListsManager.SetActiveItems();
+            }
 
-            GatherBuddy.Log.Information($"[GatherUI] Added {added} {label.ToLowerInvariant()} to auto-gather list '{list.Name}'.");
+            GatherBuddy.Log.Information($"[GatherUI] Added {added} {lower} to auto-gather list '{list.Name}'.");
+            M3Snackbar.Show(added == 1 ? $"Added 1 item to {CheckUnnamed(list.Name)}." : $"Added {added} items to {CheckUnnamed(list.Name)}.");
         }
+
+        return true;
     }
 
     private static AutoGatherList CreateAndAddPreset(IGatherable item)
     {
         var preset = new AutoGatherList
         {
-            Enabled     = true,
+            Enabled = true,
             Description = AutomaticallyGenerated,
-            Name        = PresetName
+            Name = PresetName
         };
         preset.Add(item);
         _plugin.AutoGatherListsManager.AddList(preset);
@@ -290,14 +321,17 @@ public partial class Interface
     public static void CreateGatherWindowContextMenu(IGatherable item, bool clicked)
     {
         if (clicked)
-            ImGui.OpenPopup(item.Name[GatherBuddy.Language]);
+        {
+            M3Menu.Open(item.Name[GatherBuddy.Language]);
+        }
 
-        using var popup = ImRaii.Popup(item.Name[GatherBuddy.Language]);
-        if (!popup)
+        using var menu = M3Menu.Begin(item.Name[GatherBuddy.Language]);
+        if (!menu.IsOpen)
+        {
             return;
+        }
 
-        if (ImGui.Selectable("Create Link"))
-            Communicator.Print(SeString.CreateItemLink(item.ItemId));
+        DrawCreateLink(item.ItemId);
         DrawOpenInGarlandTools(item.ItemId);
         DrawOpenInTeamCraft(item.ItemId);
     }
@@ -305,17 +339,17 @@ public partial class Interface
     public static void CreateContextMenu(Bait bait)
     {
         if (bait.Id == 0)
+        {
             return;
+        }
 
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-            ImGui.OpenPopup(bait.Name);
-
-        using var popup = ImRaii.Popup(bait.Name);
-        if (!popup)
+        using var menu = M3Menu.BeginContext(bait.Name);
+        if (!menu.IsOpen)
+        {
             return;
+        }
 
-        if (ImGui.Selectable("Create Link"))
-            Communicator.Print(SeString.CreateItemLink(bait.Id));
+        DrawCreateLink(bait.Id);
         DrawOpenInGarlandTools(bait.Id);
         DrawOpenInTeamCraft(bait.Id);
     }
@@ -323,14 +357,15 @@ public partial class Interface
     public static void CreateContextMenu(FishingSpot? spot)
     {
         if (spot == null)
+        {
             return;
+        }
 
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-            ImGui.OpenPopup(spot.Name);
-
-        using var popup = ImRaii.Popup(spot.Name);
-        if (!popup)
+        using var menu = M3Menu.BeginContext(spot.Name);
+        if (!menu.IsOpen)
+        {
             return;
+        }
 
         DrawOpenInTeamCraft(spot);
     }

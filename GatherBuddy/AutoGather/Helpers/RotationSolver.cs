@@ -1,14 +1,13 @@
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.AutoGather.AtkReaders;
+using GatherBuddy.CustomInfo;
+using GatherBuddy.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Actions = GatherBuddy.AutoGather.AutoGather.Actions;
-using GatherBuddy.AutoGather.AtkReaders;
-using GatherBuddy.CustomInfo;
-using GatherBuddy.Data;
 
 namespace GatherBuddy.AutoGather.Helpers
 {
@@ -126,21 +125,45 @@ namespace GatherBuddy.AutoGather.Helpers
             public bool Filter(ItemSlot slot)
             {
                 if (_action == null)
+                {
                     return true;
+                }
+
                 if (_action.MinLevel > Player.Level)
+                {
                     return false;
+                }
+
                 if (_action.QuestId != 0 && !QuestManager.IsQuestComplete(_action.QuestId))
+                {
                     return false;
+                }
+
                 if (_action.EffectType is Actions.EffectType.CrystalsYield && !slot.Item.IsCrystal)
+                {
                     return false;
+                }
+
                 if (_action.EffectType is Actions.EffectType.BoonChance or Actions.EffectType.BoonYield && slot.BoonChance <= 0)
+                {
                     return false;
+                }
+
                 if (_action.EffectType is not Actions.EffectType.Other and not Actions.EffectType.GatherChance && slot.IsRare)
+                {
                     return false;
+                }
+
                 if (_action == Actions.GivingLand && !AutoGather.IsGivingLandOffCooldown)
+                {
                     return false;
+                }
+
                 if (_action == Actions.TwelvesBounty && (Player.Level < 50 && slot.Item.Level == 50 || Player.Level < 41 && slot.Item.Level == 25))
+                {
                     return false;
+                }
+
                 return true;
             }
 
@@ -255,7 +278,9 @@ namespace GatherBuddy.AutoGather.Helpers
             Debug.Assert(Player.Available);
 
             if (slot.IsRare)
+            {
                 return [];
+            }
 
             var timer = new Stopwatch();
             timer.Start();
@@ -264,27 +289,27 @@ namespace GatherBuddy.AutoGather.Helpers
 
             var global = new GlobalState()
             {
-                PlayerJob              = Player.Job,
-                PlayerLevel            = Player.Level,
-                MaxGP                  = Player.Object.MaxGp,
-                InitialGP              = Player.Object.CurrentGp,
-                MaxIntegrity           = gatheringWindow.IntegrityMax,
-                BountifulYield         = AutoGather.CalculateBountifulBonus(slot.Item),
-                BountyYield            = Player.Level >= 71 ? 3 : 2,
-                IsCrystal              = slot.Item.IsCrystal,
-                OptimizeForCost        = slot.Item.NodeType == Enums.NodeType.Regular,
-                AvailableActions       = SolverActions.Where(a => a.Filter(slot)).ToList(),
-                GPRegenPerTick         = gpQuest ? (Player.Level switch { >= 83 => 8u, >= 80 => 7u, _ => 6u }) : 5u,
-                GPRegenPerHit          = (gpQuest && Player.Level >= 80) ? 6u : 5u,
+                PlayerJob = Player.Job,
+                PlayerLevel = Player.Level,
+                MaxGP = Player.Object.MaxGp,
+                InitialGP = Player.Object.CurrentGp,
+                MaxIntegrity = gatheringWindow.IntegrityMax,
+                BountifulYield = AutoGather.CalculateBountifulBonus(slot.Item),
+                BountyYield = Player.Level >= 71 ? 3 : 2,
+                IsCrystal = slot.Item.IsCrystal,
+                OptimizeForCost = slot.Item.NodeType == Enums.NodeType.Regular,
+                AvailableActions = [.. SolverActions.Where(a => a.Filter(slot))],
+                GPRegenPerTick = gpQuest ? (Player.Level switch { >= 83 => 8u, >= 80 => 7u, _ => 6u }) : 5u,
+                GPRegenPerHit = (gpQuest && Player.Level >= 80) ? 6u : 5u,
                 SpendGPOnBestNodesOnly = config.SpendGPOnBestNodesOnly,
-                BaseBoonChance         = slot.BoonChance > 0 ? CalculateBoonChance(slot.Item.GatheringData.GatheringItemLevel.RowId) : 0
+                BaseBoonChance = slot.BoonChance > 0 ? CalculateBoonChance(slot.Item.GatheringData.GatheringItemLevel.RowId) : 0
             };
             var state = new State()
             {
-                Global     = global,
+                Global = global,
                 TotalYield = 0,
-                GP         = (ushort)Player.Object.CurrentGp,
-                Integrity  = (byte)gatheringWindow.IntegrityRemaining,
+                GP = (ushort)Player.Object.CurrentGp,
+                Integrity = (byte)gatheringWindow.IntegrityRemaining,
                 BoonChance = (byte)Math.Max((int)slot.BoonChance, 0),
                 Yield = (byte)(slot.Yield
                     - (Player.Status.Any(s => s.StatusId == Actions.BountifulII.EffectId || s.StatusId == Actions.Bountiful.EffectId) ? global.BountifulYield : 0)
@@ -373,10 +398,12 @@ namespace GatherBuddy.AutoGather.Helpers
                     //Start with little less than full GP
                     var startingGP = (ushort)state.Global.MaxGP;
                     var startingGPDelta = KeepGPBelowMaxMinus + (bounty?.Action?.GpCost ?? bountiful?.Action?.GpCost ?? 0);
-                    if (startingGP > startingGPDelta) startingGP -= (ushort)startingGPDelta;
+                    if (startingGP > startingGPDelta)
+                    {
+                        startingGP -= (ushort)startingGPDelta;
+                    }
 
-                    List<(string tag, State state)> tasks = new(4);
-                    tasks.Add(("current", state));
+                    List<(string tag, State state)> tasks = [with(4), ("current", state)];
 
                     if (!inTheDiadem)
                     {
@@ -495,7 +522,11 @@ namespace GatherBuddy.AutoGather.Helpers
                 //Aim for 200 GP 10s before The Giving Land is off cooldown (2s/gather, 2s close; 1s/Bountiful is not accounted for, covered by 10s buffer).
                 var keepGP = canUseGiving ? Actions.GivingLand.GpCost - Math.Max((int)((givingCooldown - 10 - state.Integrity * 2 - 2) * state.Global.GPRegenPerTick / 3), 0) : 0;
                 //If Bountiful bonus is +1, we may consider using Tidings
-                if (fillerYield <= 1000 && state.Global.PlayerLevel >= Actions.Tidings.MinLevel) keepGP = Math.Max(keepGP, Actions.Tidings.GpCost);
+                if (fillerYield <= 1000 && state.Global.PlayerLevel >= Actions.Tidings.MinLevel)
+                {
+                    keepGP = Math.Max(keepGP, Actions.Tidings.GpCost);
+                }
+
                 var overcapGP = bestSimulatedYield > fillerYield ? (int)state.Global.MaxGP - KeepGPBelowMaxMinus : 0;
                 keepGP = Math.Clamp(keepGP, 0, (int)state.Global.MaxGP);
                 overcapGP = Math.Clamp(overcapGP, 0, (int)state.Global.MaxGP);
@@ -557,13 +588,31 @@ namespace GatherBuddy.AutoGather.Helpers
                 return 0;
             }
             var basePerception = WorldData.IlvConvertTable[(int)glvl].BasePerception;
-            if (basePerception == 0) return 0;
+            if (basePerception == 0)
+            {
+                return 0;
+            }
 
             var score = (uint)Math.Min(150, 100 * DiscipleOfLand.Perception / basePerception);
-            if (score >= 100) return (score - 100) * (60 - 35) / (150 - 100) + 35;
-            if (score >=  80) return (score -  80) * (35 - 15) / (100 -  80) + 15;
-            if (score >=  70) return (score -  70) * (15 - 10) / ( 80 -  70) + 10;
-            if (score >=  60) return (score -  60) * (10 -  0) / ( 70 -  60);
+            if (score >= 100)
+            {
+                return (score - 100) * (60 - 35) / (150 - 100) + 35;
+            }
+
+            if (score >= 80)
+            {
+                return (score - 80) * (35 - 15) / (100 - 80) + 15;
+            }
+
+            if (score >= 70)
+            {
+                return (score - 70) * (15 - 10) / (80 - 70) + 10;
+            }
+
+            if (score >= 60)
+            {
+                return (score - 60) * (10 - 0) / (70 - 60);
+            }
 
             return 0;
         }

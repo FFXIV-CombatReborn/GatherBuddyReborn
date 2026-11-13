@@ -1,21 +1,21 @@
-﻿using System;
-using Dalamud.Plugin.Ipc;
+﻿using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
+using System;
 
 namespace GatherBuddy.Plugin;
 
 public class WotsitIpc : IDisposable
 {
     private readonly ICallGateSubscriber<string, string, uint, string>? _register;
-    private readonly ICallGateSubscriber<string, bool>?                 _unregister;
-    private readonly ICallGateSubscriber<string, bool>?                 _invoke;
-    private readonly string                                             _guid;
+    private readonly ICallGateSubscriber<string, bool>? _unregister;
+    private readonly ICallGateSubscriber<string, bool>? _invoke;
+    private readonly string _guid;
 
     public WotsitIpc()
     {
-        _register   = Dalamud.PluginInterface.GetIpcSubscriber<string, string, uint, string>("FA.Register");
+        _register = Dalamud.PluginInterface.GetIpcSubscriber<string, string, uint, string>("FA.Register");
         _unregister = Dalamud.PluginInterface.GetIpcSubscriber<string, bool>("FA.UnregisterAll");
-        _invoke     = Dalamud.PluginInterface.GetIpcSubscriber<string, bool>("FA.Invoke");
+        _invoke = Dalamud.PluginInterface.GetIpcSubscriber<string, bool>("FA.Invoke");
 
         try
         {

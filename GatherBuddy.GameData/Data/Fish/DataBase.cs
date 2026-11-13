@@ -1,13 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using GatherBuddy.Enums;
 using GatherBuddy.Structs;
 using GatherBuddy.Time;
+using GatherBuddy.Utility;
 using Newtonsoft.Json;
-using ElliLib.Extensions;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace GatherBuddy.Data;
 
@@ -28,14 +27,15 @@ public static partial class Fish
     private static Classes.Fish? Transition(this Classes.Fish? fish, GameData data, params uint[] previousWeathers)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         try
         {
-            fish!.PreviousWeather = previousWeathers.Select(w => data.Weathers.TryGetValue(w, out var weather)
-                    ? weather
-                    : throw new Exception($"Could not find weather {w}."))
-                .ToArray();
+            fish!.PreviousWeather = Array.ConvertAll(previousWeathers, w => data.Weathers.TryGetValue(w, out var weather)
+                ? weather
+                : throw new Exception($"Could not find weather {w}."));
             fish.FishRestrictions |= FishRestrictions.Weather;
         }
         catch (Exception e)
@@ -49,14 +49,15 @@ public static partial class Fish
     private static Classes.Fish? Weather(this Classes.Fish? fish, GameData data, params uint[] weathers)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         try
         {
-            fish!.CurrentWeather = weathers.Select(w => data.Weathers.TryGetValue(w, out var weather)
-                    ? weather
-                    : throw new Exception($"Could not find weather {w}."))
-                .ToArray();
+            fish!.CurrentWeather = Array.ConvertAll(weathers, w => data.Weathers.TryGetValue(w, out var weather)
+                ? weather
+                : throw new Exception($"Could not find weather {w}."));
             fish.FishRestrictions |= FishRestrictions.Weather;
         }
         catch (Exception e)
@@ -70,10 +71,14 @@ public static partial class Fish
     private static Classes.Fish? Bait(this Classes.Fish? fish, GameData data, uint? baitId = null)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (baitId == null)
+        {
             return fish;
+        }
 
         if (fish.IsSpearFish)
         {
@@ -84,14 +89,20 @@ public static partial class Fish
         try
         {
             if (data.Bait.TryGetValue(baitId.Value, out var bait))
+            {
                 fish.InitialBait = bait;
+            }
             else if (data.Fishes.TryGetValue(baitId.Value, out var fsh))
+            {
                 fish.Mooches =
                 [
                     fsh,
                 ];
+            }
             else
+            {
                 throw new Exception($"Could not find bait {baitId.Value}.");
+            }
         }
         catch (Exception e)
         {
@@ -104,7 +115,9 @@ public static partial class Fish
     private static Classes.Fish? Lure(this Classes.Fish? fish, Lure lure)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.Lure = lure;
         return fish;
@@ -113,7 +126,9 @@ public static partial class Fish
     private static Classes.Fish? Mooch(this Classes.Fish? fish, GameData data, uint moochId)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (fish.IsSpearFish)
         {
@@ -124,12 +139,16 @@ public static partial class Fish
         try
         {
             if (data.Fishes.TryGetValue(moochId, out var fsh))
+            {
                 fish.Mooches =
                 [
                     fsh,
                 ];
+            }
             else
+            {
                 throw new Exception($"Could not find fish {moochId}.");
+            }
         }
         catch (Exception e)
         {
@@ -142,7 +161,9 @@ public static partial class Fish
     private static Classes.Fish? Mooch(this Classes.Fish? fish, GameData data, uint baitId, uint mooch1, params uint[] items)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (fish.IsSpearFish)
         {
@@ -153,10 +174,14 @@ public static partial class Fish
         try
         {
             fish.InitialBait = data.Bait.TryGetValue(baitId, out var bait) ? bait : throw new Exception($"Could not find bait {baitId}.");
-            fish.Mooches = items.Prepend(mooch1).Select(f => data.Fishes.TryGetValue(f, out var fsh)
-                    ? fsh
-                    : throw new Exception($"Could not find fish {f}."))
-                .ToArray();
+            var mooches = new Classes.Fish[items.Length + 1];
+            mooches[0] = GetFish(data, mooch1);
+            for (var i = 0; i < items.Length; ++i)
+            {
+                mooches[i + 1] = GetFish(data, items[i]);
+            }
+
+            fish.Mooches = mooches;
         }
         catch (Exception e)
         {
@@ -169,19 +194,28 @@ public static partial class Fish
     private static Classes.Fish? Predators(this Classes.Fish? fish, GameData data, int intuitionLength, params (uint, int)[] predators)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (predators.Length == 0 || intuitionLength < 0)
+        {
             return fish;
+        }
 
         try
         {
             fish.IntuitionLength = intuitionLength;
-            fish.Predators = predators.Where(p => p.Item2 > 0)
-                .Select(p => data.Fishes.TryGetValue(p.Item1, out var fsh)
-                    ? (fsh, p.Item2)
-                    : throw new Exception($"Could not find fish {p.Item1}."))
-                .ToArray();
+            var resolved = new List<(Classes.Fish, int)>(predators.Length);
+            foreach (var (predatorId, amount) in predators)
+            {
+                if (amount > 0)
+                {
+                    resolved.Add((GetFish(data, predatorId), amount));
+                }
+            }
+
+            fish.Predators = [.. resolved];
         }
         catch (Exception e)
         {
@@ -191,12 +225,17 @@ public static partial class Fish
         return fish;
     }
 
+    private static Classes.Fish GetFish(GameData data, uint fishId)
+        => data.Fishes.TryGetValue(fishId, out var fish) ? fish : throw new Exception($"Could not find fish {fishId}.");
+
     private static Classes.Fish? Time(this Classes.Fish? fish, int uptimeMinuteOfDayStart, int uptimeMinuteOfDayEnd)
     {
         if (fish == null)
+        {
             return null;
+        }
 
-        fish.Interval         =  RepeatingInterval.FromEorzeanMinutes(uptimeMinuteOfDayStart, uptimeMinuteOfDayEnd);
+        fish.Interval = RepeatingInterval.FromEorzeanMinutes(uptimeMinuteOfDayStart, uptimeMinuteOfDayEnd);
         fish.FishRestrictions |= FishRestrictions.Time;
         return fish;
     }
@@ -204,7 +243,9 @@ public static partial class Fish
     private static Classes.Fish? Snag(this Classes.Fish? fish, GameData data, Snagging snagging)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (fish.IsSpearFish)
         {
@@ -219,7 +260,9 @@ public static partial class Fish
     private static Classes.Fish? Bite(this Classes.Fish? fish, GameData data, HookSet hookSet, BiteType biteType = BiteType.Unknown)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (fish.IsSpearFish)
         {
@@ -227,7 +270,7 @@ public static partial class Fish
             return fish;
         }
 
-        fish.HookSet  = hookSet == HookSet.Unknown ? fish.HookSet : hookSet;
+        fish.HookSet = hookSet == HookSet.Unknown ? fish.HookSet : hookSet;
         fish.BiteType = biteType == BiteType.Unknown ? fish.BiteType : biteType;
         return fish;
     }
@@ -236,7 +279,9 @@ public static partial class Fish
         SpearfishSpeed speed = SpearfishSpeed.Unknown)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         if (!fish.IsSpearFish)
         {
@@ -244,7 +289,7 @@ public static partial class Fish
             return fish;
         }
 
-        fish.Size  = size == SpearfishSize.Unknown ? fish.Size : size;
+        fish.Size = size == SpearfishSize.Unknown ? fish.Size : size;
         fish.Speed = speed == SpearfishSpeed.Unknown ? fish.Speed : speed;
         return fish;
     }
@@ -252,7 +297,9 @@ public static partial class Fish
     private static Classes.Fish? ForceBig(this Classes.Fish? fish, bool value)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.FishType = value
             ? fish.FishType is FishType.Legendary ? FishType.Legendary : FishType.Big
@@ -263,7 +310,9 @@ public static partial class Fish
     private static Classes.Fish? ForceLegendary(this Classes.Fish? fish)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.FishType = FishType.Legendary;
         return fish;
@@ -272,7 +321,9 @@ public static partial class Fish
     private static Classes.Fish? Slap(this Classes.Fish? fish, GameData data, uint fishId)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.SurfaceSlap = data.Fishes.TryGetValue(fishId, out var fsh)
             ? fsh
@@ -283,7 +334,9 @@ public static partial class Fish
     private static Classes.Fish? Comment(this Classes.Fish? fish, string value)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.Guide = value;
         return fish;
@@ -292,7 +345,9 @@ public static partial class Fish
     private static Classes.Fish? MultiHook(this Classes.Fish? fish, byte value)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.MultiHookLower = value;
         fish.MultiHookUpper = value;
@@ -302,7 +357,9 @@ public static partial class Fish
     private static Classes.Fish? MultiHook(this Classes.Fish? fish, byte valueLower, byte valueUpper)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.MultiHookLower = valueLower;
         fish.MultiHookUpper = valueUpper;
@@ -312,7 +369,9 @@ public static partial class Fish
     private static Classes.Fish? Points(this Classes.Fish? fish, short value)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.Points = value;
         return fish;
@@ -321,7 +380,9 @@ public static partial class Fish
     private static Classes.Fish? Mission(this Classes.Fish? fish, GameData data, ushort value)
     {
         if (fish == null)
+        {
             return null;
+        }
 
         fish.CosmicMission = data.CosmicFishingMissions.TryGetValue(value, out var mission)
             ? mission
@@ -332,43 +393,68 @@ public static partial class Fish
     private static Classes.Fish? Ocean(this Classes.Fish? fish, params OceanTime[] times)
     {
         if (fish == null)
+        {
             return null;
+        }
 
-        fish.OceanTime = times.Aggregate(OceanTime.Never, (a, b) => a | b);
+        var oceanTime = OceanTime.Never;
+        foreach (var time in times)
+        {
+            oceanTime |= time;
+        }
+
+        fish.OceanTime = oceanTime;
         if (fish.OceanTime != OceanTime.Always)
+        {
             fish.FishRestrictions |= FishRestrictions.Time;
+        }
+
         return fish;
     }
 
     private static Classes.Fish? OceanType(this Classes.Fish? fish, OceanSpecies value)
     {
         if (fish == null)
+        {
             return null;
-        
+        }
+
         fish.OceanSpecies = value;
         return fish;
     }
 
     private static void ApplyMooches(this GameData data)
     {
-        foreach (var fish in data.Fishes.Values.Where(f => !f.IsSpearFish))
-            ApplyMooch(fish);
+        foreach (var fish in data.Fishes.Values)
+        {
+            if (!fish.IsSpearFish)
+            {
+                ApplyMooch(fish);
+            }
+        }
+
         return;
 
         (Bait, Classes.Fish[]) ApplyMooch(Classes.Fish fish)
         {
             if (fish.InitialBait != Structs.Bait.Unknown)
+            {
                 return (fish.InitialBait, fish.Mooches);
+            }
 
             if (fish.Mooches.Length == 0)
+            {
                 return (Structs.Bait.Unknown, []);
+            }
 
             var (b, m) = ApplyMooch(fish.Mooches[^1]);
             if (b == Structs.Bait.Unknown)
+            {
                 return (Structs.Bait.Unknown, []);
+            }
 
             fish.InitialBait = b;
-            fish.Mooches     = m.Append(fish.Mooches[^1]).ToArray();
+            fish.Mooches = [.. m, fish.Mooches[^1]];
             return (fish.InitialBait, fish.Mooches);
         }
     }
@@ -420,12 +506,16 @@ public static partial class Fish
         try
         {
             if (!File.Exists(data.OverrideFile))
+            {
                 return false;
+            }
 
             var text = File.ReadAllText(data.OverrideFile);
             var list = JsonConvert.DeserializeObject<List<FishOverrideData>>(text);
             if (list is null)
+            {
                 return false;
+            }
 
             var count = 0;
             foreach (var (custom, index) in list.WithIndex())
@@ -441,27 +531,42 @@ public static partial class Fish
                     fish.HasOverridenData = true;
 
                     if (custom.BaitId is { } bait)
+                    {
                         fish.Bait(data, bait);
+                    }
 
                     if (custom.MoochId is { } mooch)
+                    {
                         fish.Mooch(data, mooch);
+                    }
 
                     if (custom.HookSet is not HookSet.Unknown)
+                    {
                         fish.Bite(data, custom.HookSet, custom.BiteType is not BiteType.Unknown ? custom.BiteType : fish.BiteType);
+                    }
                     else if (custom.BiteType is not BiteType.Unknown)
+                    {
                         fish.Bite(data, fish.HookSet, custom.BiteType);
+                    }
 
                     if (custom.Lure is { } lure)
+                    {
                         fish.Lure(lure);
+                    }
 
                     if (custom.IntuitionLength is { } intuition)
-                        fish.Predators(data, intuition, custom.Predators ?? fish.Predators.Select(p => (p.Item1.ItemId, p.Item2)).ToArray());
+                    {
+                        fish.Predators(data, intuition, custom.Predators ?? Array.ConvertAll(fish.Predators, p => (p.Item1.ItemId, p.Item2)));
+                    }
                     else if (custom.Predators is { } predators)
+                    {
                         fish.Predators(data, fish.IntuitionLength, predators);
+                    }
 
                     switch (custom.MultiHookLower, custom.MultiHookUpper)
                     {
-                        case (null, null): break;
+                        case (null, null):
+                            break;
                         case (null, _) v:
                             fish.MultiHook(
                                 fish.MultiHookLower > 0 && fish.MultiHookLower <= v.MultiHookUpper!.Value
@@ -475,19 +580,30 @@ public static partial class Fish
                     }
 
                     if (custom.Points is { } points)
+                    {
                         fish.Points(points);
+                    }
 
                     if (custom.Snagging is { } snagging)
+                    {
                         fish.Snag(data, snagging ? Snagging.Required : Snagging.None);
+                    }
 
                     if (custom is { UptimeMinuteOfDayStart: { } start, UptimeMinuteOfDayEnd: { } end })
+                    {
                         fish.Time(start, end);
+                    }
 
                     if (custom.Transition is { } transition)
+                    {
                         fish.Transition(data, transition);
+                    }
 
                     if (custom.Weather is { } weather)
+                    {
                         fish.Transition(data, weather);
+                    }
+
                     ++count;
                 }
                 catch (Exception e)
@@ -510,9 +626,9 @@ public static partial class Fish
     {
         try
         {
-            var       path   = Path.Combine(Path.GetDirectoryName(directory) ?? string.Empty, $"Data{patch.ToMajor()}.{patch.ToMinor()}.cs");
+            var path = Path.Combine(Path.GetDirectoryName(directory) ?? string.Empty, $"Data{patch.ToMajor()}.{patch.ToMinor()}.cs");
             using var stream = File.Open(path, FileMode.Create);
-            using var w      = new StreamWriter(stream);
+            using var w = new StreamWriter(stream);
             w.WriteLine("using GatherBuddy.Enums;");
             w.WriteLine(string.Empty);
             w.WriteLine("namespace GatherBuddy.Data;");
@@ -522,7 +638,21 @@ public static partial class Fish
             w.WriteLine("    // @formatter:off");
             w.WriteLine($"    private static void Apply{patch}(this GameData data)");
             w.WriteLine("    {");
-            foreach (var f in fish.Where(f => f.Patch is Patch.Unknown && f.InLog).OrderBy(f => f.IsSpearFish).ThenBy(f => f.ItemId))
+            var unknown = new List<Classes.Fish>();
+            foreach (var f in fish)
+            {
+                if (f.Patch is Patch.Unknown && f.InLog)
+                {
+                    unknown.Add(f);
+                }
+            }
+
+            unknown.Sort(static (a, b) =>
+            {
+                var order = a.IsSpearFish.CompareTo(b.IsSpearFish);
+                return order != 0 ? order : a.ItemId.CompareTo(b.ItemId);
+            });
+            foreach (var f in unknown)
             {
                 w.WriteLine($"        data.Apply({f.ItemId}, Patch.{patch}) // {f.Name.English}");
                 w.WriteLine("            .Bait(data)");

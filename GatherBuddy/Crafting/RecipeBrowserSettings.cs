@@ -1,7 +1,7 @@
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.Crafting;
 
@@ -31,7 +31,7 @@ public class RecipeCraftSettings
     public uint? ManualItemId { get; set; }
     public ConsumableOverrideMode SquadronManualMode { get; set; } = ConsumableOverrideMode.Inherit;
     public uint? SquadronManualItemId { get; set; }
-    public Dictionary<uint, int> IngredientPreferences { get; set; } = new();
+    public Dictionary<uint, int> IngredientPreferences { get; set; } = [];
     public bool UseAllNQ { get; set; } = false;
     public string? SelectedMacroId { get; set; }
     public MacroOverrideMode MacroMode { get; set; } = MacroOverrideMode.Inherit;
@@ -67,7 +67,7 @@ public class RecipeCraftSettings
             ManualItemId = ManualItemId,
             SquadronManualMode = SquadronManualMode,
             SquadronManualItemId = SquadronManualItemId,
-            IngredientPreferences = new Dictionary<uint, int>(IngredientPreferences),
+            IngredientPreferences = [with(IngredientPreferences)],
             UseAllNQ = UseAllNQ,
             SelectedMacroId = SelectedMacroId,
             MacroMode = MacroMode,
@@ -97,7 +97,7 @@ public class RecipeCraftSettings
 
 public class RecipeBrowserSettings
 {
-    private Dictionary<uint, RecipeCraftSettings> _settings = new();
+    private Dictionary<uint, RecipeCraftSettings> _settings = [];
 
     public RecipeCraftSettings GetOrCreate(uint recipeId)
     {
@@ -122,9 +122,13 @@ public class RecipeBrowserSettings
     public void Set(uint recipeId, RecipeCraftSettings settings)
     {
         if (settings.HasAnySettings())
+        {
             _settings[recipeId] = settings;
+        }
         else
+        {
             _settings.Remove(recipeId);
+        }
     }
 
     public void Remove(uint recipeId)
@@ -152,21 +156,22 @@ public class RecipeBrowserSettings
         {
             if (string.IsNullOrEmpty(GatherBuddy.Config.RecipeBrowserSettings))
             {
-                _settings = new();
+                _settings = [];
                 return;
             }
 
-            _settings = JsonConvert.DeserializeObject<Dictionary<uint, RecipeCraftSettings>>(GatherBuddy.Config.RecipeBrowserSettings) ?? new();
-            
+            _settings = JsonConvert.DeserializeObject<Dictionary<uint, RecipeCraftSettings>>(GatherBuddy.Config.RecipeBrowserSettings) ?? [];
+
             var toRemove = _settings.Where(kvp => !kvp.Value.HasAnySettings()).Select(kvp => kvp.Key).ToList();
             foreach (var key in toRemove)
+            {
                 _settings.Remove(key);
-
+            }
         }
         catch (Exception ex)
         {
             GatherBuddy.Log.Error($"[RecipeBrowserSettings] Error loading: {ex.Message}");
-            _settings = new();
+            _settings = [];
         }
     }
 

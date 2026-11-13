@@ -1,53 +1,75 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
-using Dalamud.Interface.Textures;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
-using ElliLib;
-using ElliLib.Raii;
-using ElliLib.Text;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
-public class CraftingMaterialsWindow : Window
+public class CraftingMaterialsWindow : M3PanelWindow
 {
-    private static float GetRemainingLineWidth()
-        => Math.Max(0f, ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X - ImGui.GetItemRectMax().X);
-    private CraftingListEditor? _editor;
-    private bool _matsOvercapPercent;
-    private bool _matsShowPrecrafts;
-    private bool _matsPreferVendors;
-    private bool _matsKeepFulfilled;
+    public const string WindowId = "Materials###CraftingMaterials";
+    private const uint MobDropIconId = 60041u;
 
-    private static readonly Vector4 AccentGather = new(0.45f, 1.00f, 0.45f, 1f);
-    private static readonly Vector4 AccentDrop   = new(1.00f, 0.45f, 0.45f, 1f);
-    private static readonly Vector4 AccentShop   = new(0.80f, 0.55f, 1.00f, 1f);
-    private static readonly Vector4 AccentVendor = new(1.00f, 0.85f, 0.20f, 1f);
-    private static readonly Vector4 AccentCraft  = new(0.35f, 0.90f, 0.90f, 1f);
-    private static readonly Vector4 MobDropMarkerButtonColor   = new(0.45f, 0.80f, 1.00f, 1f);
-    private static readonly Vector4 MobDropTeleportButtonColor = new(0.60f, 0.95f, 0.60f, 1f);
+    private const string PreferVendorsTooltip =
+        "Default priority:\n"
+      + "  Gather > Fish > Scrip > Drops > Craft > Vendor > Tomes > Other\n\n"
+      + "When on, a gil vendor wins over Gather, Fish, Drops and Craft\n"
+      + "for items also sold at a gil shop.";
+
+    private static readonly Vector2 DefaultSize = new(640f, 560f);
+
+    private static readonly WindowSizeConstraints DefaultConstraints = new()
+    {
+        MinimumSize = new Vector2(420f, 320f),
+        MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
+    };
+
+    private static readonly M3WindowAction[] MaterialsWindowActions =
+    [
+        new("##materials_tree", FontAwesomeIcon.Sitemap, "Show the crafting tree for this list"),
+        new("##materials_vulcan", FontAwesomeIcon.Hammer, "Open Vulcan's crafting lists"),
+    ];
+
+    private static readonly Vector4 HueGather = new(0.45f, 1.00f, 0.45f, 1f);
+    private static readonly Vector4 HueDrop = new(1.00f, 0.45f, 0.45f, 1f);
+    private static readonly Vector4 HueShop = new(0.80f, 0.55f, 1.00f, 1f);
+    private static readonly Vector4 HueVendor = new(1.00f, 0.85f, 0.20f, 1f);
+    private static readonly Vector4 HueCraft = new(0.35f, 0.90f, 0.90f, 1f);
+    private static readonly Vector4 HueMapMarker = new(0.45f, 0.80f, 1.00f, 1f);
+    private static readonly Vector4 HueTeleport = new(0.60f, 0.95f, 0.60f, 1f);
+
     private static float MaterialRowIconSpacing
         => VulcanUiScaling.Scaled(4f);
 
     private static float MaterialRowIconGutter
         => VulcanUiScaling.Scaled(8f);
-    private static readonly Dictionary<string, bool> MobDropZoneOpenStates = new(StringComparer.Ordinal);
+
+    private static float MinPanelWidth
+        => VulcanUiScaling.Scaled(300f);
+
+    private static float MinPanelHeight
+        => VulcanUiScaling.Scaled(150f);
+
+    private static readonly Dictionary<string, bool> MobDropZoneOpenStates = [with(StringComparer.Ordinal)];
+
     private enum RetainerColumnMode
     {
         None,
         Total,
         Split,
     }
+
     private readonly record struct MaterialEntry(
         uint ItemId,
         int Have,
@@ -60,11 +82,14 @@ public class CraftingMaterialsWindow : Window
         bool IsPrecraft,
         IReadOnlyList<CurrencyOption> CurrencyOptions,
         MobDropItemInfo DropInfo);
+
     private sealed record MaterialPanel(
         string Id,
         string Label,
-        Vector4 Accent,
+        FontAwesomeIcon Icon,
+        Vector4 Hue,
         List<MaterialEntry> Entries,
+        int Missing,
         RetainerColumnMode RetainerColumns,
         IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? VendorTargets,
         bool ShowCurrencyTotals = false,
@@ -73,7 +98,14 @@ public class CraftingMaterialsWindow : Window
     private readonly record struct CurrencyOption(uint CurrencyItemId, uint CostPerItem, string Name, ushort IconId, VendorCurrencyGroup Group);
     private readonly record struct CurrencyTotal(uint CurrencyItemId, long Amount, string Name, ushort IconId);
 
-    private readonly Dictionary<uint, uint> _userSelectedCurrencyByItem = new();
+    private CraftingListEditor? _editor;
+    private bool _matsOvercapPercent;
+    private bool _matsShowPrecrafts;
+    private bool _matsPreferVendors;
+    private bool _matsKeepFulfilled;
+    private string? _windowNameListName;
+
+    private readonly Dictionary<uint, uint> _userSelectedCurrencyByItem = [];
     private bool _cachedMaterialViewValid;
     private bool _cachedHasMaterials;
     private bool _cachedHasVisibleEntries;
@@ -88,139 +120,207 @@ public class CraftingMaterialsWindow : Window
     private bool _cachedMobDropInfoInitialized;
     private List<MaterialPanel> _cachedPanels = [];
 
-    public CraftingMaterialsWindow() : base("Materials###CraftingMaterials")
+    public CraftingMaterialsWindow()
+        : base(WindowId, "Materials", DefaultSize, DefaultConstraints)
     {
-        Size           = VulcanUiScaling.Scaled(560f, 520f);
-        SizeCondition  = ImGuiCond.FirstUseEver;
-        SizeConstraints = new WindowSizeConstraints
-        {
-            MinimumSize = VulcanUiScaling.Scaled(400f, 300f),
-            MaximumSize = VulcanUiScaling.Scaled(1200f, 1400f),
-        };
+        BlocksGameInput = false;
     }
 
     public void SetEditor(CraftingListEditor? editor)
     {
         if (!ReferenceEquals(_editor, editor))
+        {
             InvalidateMaterialView();
+        }
+
         _editor = editor;
     }
 
-    public override void PreDraw()
+    protected override M3WindowAction[] WindowActions
+        => MaterialsWindowActions;
+
+    protected override void OnWindowAction(int index)
     {
-        if (_editor != null)
-            WindowName = $"Materials \u2014 {_editor.ListName}###CraftingMaterials";
+        switch (index)
+        {
+            case 0:
+                {
+                    var tree = GatherBuddy.CraftingTreeWindow;
+                    if (tree != null)
+                    {
+                        tree.SetEditor(_editor);
+                        tree.OpenAndRestore();
+                    }
+
+                    break;
+                }
+            case 1:
+                GatherBuddy.VulcanWindow?.OpenToCraftingLists();
+                break;
+        }
     }
 
-    public override void Draw()
+    protected override (string Text, Vector4? Color) Status
     {
-        static float GetCheckboxWidth(string label)
+        get
         {
-            var style = ImGui.GetStyle();
-            return ImGui.GetFrameHeight() + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X;
-        }
+            if (_editor == null)
+            {
+                return ("No list open", null);
+            }
 
-        static float GetSmallButtonWidth(string label)
-        {
-            var style = ImGui.GetStyle();
-            return ImGui.CalcTextSize(label).X + style.FramePadding.X * 2f;
-        }
+            if (_editor.IsGeneratingMaterials)
+            {
+                return ($"{_editor.ListName} · calculating materials...", M3.Scheme.Primary);
+            }
 
-        static void SameLineIfFits(float nextItemWidth)
-        {
-            var style = ImGui.GetStyle();
-            if (GetRemainingLineWidth() >= style.ItemSpacing.X + nextItemWidth)
-                ImGui.SameLine();
+            if (!_cachedMaterialViewValid || !_cachedHasMaterials)
+            {
+                return (_editor.ListName, null);
+            }
+
+            return _cachedTotalMissing == 0
+                ? ($"{_editor.ListName} · all {_cachedTotalReady} ready", M3.Scheme.Success)
+                : ($"{_editor.ListName} · {_cachedTotalMissing} missing · {_cachedTotalReady} ready", null);
         }
-        if (_editor == null)
+    }
+
+    protected override void PreDrawFold()
+    {
+        var listName = _editor?.ListName;
+        if (listName == _windowNameListName)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "No list open.");
             return;
         }
 
-        using var theme = VulcanUiStyle.PushTheme();
+        _windowNameListName = listName;
+        WindowName = listName == null ? WindowId : $"Materials — {listName}###CraftingMaterials";
+    }
+
+    protected override void DrawContents()
+    {
+        if (_editor == null)
+        {
+            if (M3Widgets.EmptyState("##materials_no_list", "No list open", "Open a crafting list in Vulcan to see the materials it needs.",
+                    FontAwesomeIcon.ClipboardList, "Open Vulcan"))
+            {
+                GatherBuddy.VulcanWindow?.OpenToCraftingLists();
+            }
+
+            return;
+        }
 
         if (!_editor.HasCachedDisplayMaterials && !_editor.IsGeneratingMaterials)
+        {
             _editor.TriggerMaterialsRegeneration();
+        }
 
         MobDropInfoCache.EnsureInitializeStarted();
 
         if (_editor.IsGeneratingMaterials)
         {
-            ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1), "Calculating materials...");
+            DrawCalculating();
             return;
         }
+
         var showRetainer = AllaganTools.Enabled;
         if (ShouldRebuildMaterialView(showRetainer))
+        {
             RebuildMaterialView(showRetainer);
+        }
 
         if (!_cachedHasMaterials)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "No materials needed.");
+            M3Widgets.EmptyState("##materials_none", "No materials needed",
+                "Nothing on this list needs gathering, buying or crafting first.", FontAwesomeIcon.CheckCircle);
             return;
         }
 
-        var overcapCheckboxWidth = GetCheckboxWidth("150%");
-        var precraftsCheckboxWidth = GetCheckboxWidth("Precrafts");
-        var preferVendorsCheckboxWidth = GetCheckboxWidth("Prefer Vendors");
-        var keepFulfilledCheckboxWidth = GetCheckboxWidth("Keep Fulfilled");
-        var refreshRetainersButtonWidth = GetSmallButtonWidth("Refresh Retainers");
-
-        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"{_cachedTotalMissing} missing  ·  {_cachedTotalReady} ready");
-        SameLineIfFits(overcapCheckboxWidth);
-        ImGui.Checkbox("150%##overcap", ref _matsOvercapPercent);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Show % beyond 100 when you have more than needed");
-        SameLineIfFits(precraftsCheckboxWidth);
-        ImGui.Checkbox("Precrafts##precrafts", ref _matsShowPrecrafts);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Include intermediate craftable components and non-gear final craftables");
-        SameLineIfFits(preferVendorsCheckboxWidth);
-        ImGui.Checkbox("Prefer Vendors##preferVendors", ref _matsPreferVendors);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                "Default priority:\n" +
-                "  Gather > Fish > Scrip > Drops > Craft > Vendor > Tomes > Other\n\n" +
-                "When ON: Gil Vendor overrides Gather, Fish, Drops, and Craft\n" +
-                "for items also sold at a Gil shop.");
-        SameLineIfFits(keepFulfilledCheckboxWidth);
-        ImGui.Checkbox("Keep Fulfilled##keepFulfilled", ref _matsKeepFulfilled);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Keep fulfilled materials visible even when \"Skip if Already Have Enough\" is enabled on the list.");
-        if (showRetainer)
+        DrawToolbar(showRetainer);
+        if (!_cachedHasVisibleEntries)
         {
-            SameLineIfFits(refreshRetainersButtonWidth);
-            if (ImGui.SmallButton("Refresh Retainers"))
+            M3Widgets.EmptyState("##materials_all_ready", "All materials ready",
+                "You have everything this list needs. Turn on Keep fulfilled to list them anyway.", FontAwesomeIcon.CheckDouble);
+            return;
+        }
+
+        DrawPanels();
+    }
+
+    private static void DrawCalculating()
+    {
+        const string text = "Calculating materials...";
+        var scale = M3.Scale;
+        var width = ImGui.GetContentRegionAvail().X;
+        var diameter = 32f * scale;
+
+        ImGui.Dummy(new Vector2(width, 24f * scale));
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (width - diameter) * 0.5f));
+        M3Widgets.CircularProgress(diameter);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (width - ImGui.CalcTextSize(text).X) * 0.5f));
+        M3Text.Draw(text, M3TextStyle.Muted);
+    }
+
+    private void DrawToolbar(bool showRetainer)
+    {
+        var flow = new M3Flow();
+        FilterChip(ref flow, "##materials_overcap", "Over 100%", FontAwesomeIcon.Percent, ref _matsOvercapPercent,
+            "Show percentages above 100 when you have more than you need.");
+        FilterChip(ref flow, "##materials_precrafts", "Precrafts", FontAwesomeIcon.LayerGroup, ref _matsShowPrecrafts,
+            "Include intermediate craftable components and non-gear final craftables.");
+        FilterChip(ref flow, "##materials_prefer_vendors", "Prefer vendors", FontAwesomeIcon.Store, ref _matsPreferVendors,
+            PreferVendorsTooltip);
+        FilterChip(ref flow, "##materials_keep_fulfilled", "Keep fulfilled", FontAwesomeIcon.CheckDouble, ref _matsKeepFulfilled,
+            "Keep fulfilled materials visible even when \"Skip if Already Have Enough\" is enabled on the list.");
+
+        if (showRetainer && _editor != null)
+        {
+            const string refreshLabel = "Refresh retainers";
+            flow.Next(M3Widgets.ChipWidth(refreshLabel, FontAwesomeIcon.Sync));
+            if (M3Widgets.Chip("##materials_refresh_retainers", refreshLabel, false, FontAwesomeIcon.Sync,
+                    "Refresh retainer NQ/HQ counts. They don't refresh on their own here, to avoid hitches."))
             {
                 _editor.InvalidateRetainerSnapshot();
                 InvalidateMaterialView();
+                M3Snackbar.Show("Refreshed retainer counts.");
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Refresh retainer NQ/HQ counts. Automatic refresh is disabled here to avoid UI hitching.");
         }
-        ImGui.Separator();
-        if (!_cachedHasVisibleEntries)
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+    }
+
+    private static void FilterChip(ref M3Flow flow, string id, string label, FontAwesomeIcon icon, ref bool value, string tooltip)
+    {
+        flow.Next(M3Widgets.ChipWidth(label, icon));
+        if (M3Widgets.Chip(id, label, value, icon, tooltip))
         {
-            ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.4f, 1f), "All materials ready.");
+            value = !value;
+        }
+    }
+
+    private void DrawPanels()
+    {
+        if (_cachedPanels.Count == 0)
+        {
             return;
         }
 
-        var avail   = ImGui.GetContentRegionAvail();
+        var avail = ImGui.GetContentRegionAvail();
         var spacing = ImGui.GetStyle().ItemSpacing;
-        var minTwoColumnPanelWidth = VulcanUiScaling.Scaled(240f);
-        var panelColumns = avail.X >= minTwoColumnPanelWidth * 2f + spacing.X ? 2 : 1;
-        var panelW = panelColumns == 1 ? avail.X : (avail.X - spacing.X) / 2f;
+        var columns = avail.X >= MinPanelWidth * 2f + spacing.X ? 2 : 1;
+        var panelWidth = columns == 1 ? avail.X : MathF.Floor((avail.X - spacing.X) / 2f);
+        var rows = (_cachedPanels.Count + columns - 1) / columns;
+        var panelHeight = MathF.Max(MinPanelHeight, MathF.Floor((avail.Y - spacing.Y * (rows - 1)) / rows));
 
-        var rows   = (_cachedPanels.Count + panelColumns - 1) / panelColumns;
-        var panelH = (avail.Y - spacing.Y * (rows - 1)) / rows;
         for (var i = 0; i < _cachedPanels.Count; i++)
         {
-            var panel = _cachedPanels[i];
-            var isLast   = i == _cachedPanels.Count - 1;
-            var spanFull = panelColumns == 1 || isLast && _cachedPanels.Count % 2 == 1;
-            DrawMaterialPanel(panel.Id, panel.Label, panel.Accent, panel.Entries, panel.RetainerColumns, spanFull ? avail.X : panelW, panelH, panel.VendorTargets, panel.ShowCurrencyTotals, panel.PreferBicolorDefault);
-            if (panelColumns == 2 && !spanFull && i % 2 == 0)
+            var isLast = i == _cachedPanels.Count - 1;
+            var spanFull = columns == 1 || isLast && _cachedPanels.Count % 2 == 1;
+            DrawMaterialPanel(_cachedPanels[i], spanFull ? avail.X : panelWidth, panelHeight);
+            if (columns == 2 && !spanFull && i % 2 == 0)
+            {
                 ImGui.SameLine();
+            }
         }
     }
 
@@ -239,19 +339,32 @@ public class CraftingMaterialsWindow : Window
     private bool ShouldRebuildMaterialView(bool showRetainer)
     {
         if (_editor == null)
+        {
             return false;
+        }
 
         if (!_cachedMaterialViewValid || !ReferenceEquals(_cachedMaterialViewEditor, _editor))
+        {
             return true;
+        }
+
         if (_cachedMaterialViewVersion != _editor.MaterialCacheVersion)
+        {
             return true;
+        }
+
         if (_cachedMaterialViewShowPrecrafts != _matsShowPrecrafts
          || _cachedMaterialViewPreferVendors != _matsPreferVendors
          || _cachedMaterialViewKeepFulfilled != _matsKeepFulfilled
          || _cachedMaterialViewShowRetainer != showRetainer)
+        {
             return true;
+        }
+
         if (_cachedMobDropInfoInitialized != MobDropInfoCache.IsInitialized)
+        {
             return true;
+        }
 
         return false;
     }
@@ -259,7 +372,9 @@ public class CraftingMaterialsWindow : Window
     private void RebuildMaterialView(bool showRetainer)
     {
         if (_editor == null)
+        {
             return;
+        }
 
         try
         {
@@ -288,10 +403,17 @@ public class CraftingMaterialsWindow : Window
             var craftMaterials = _matsShowPrecrafts
                 ? _editor.GetDisplayPrecraftMaterials()
                 : null;
-            var snapshotItemIds = materials.Keys.Concat(craftMaterials != null ? craftMaterials.Keys : Enumerable.Empty<uint>());
-            var retainerSnapshot = showRetainer
-                ? _editor.GetRetainerSnapshot(snapshotItemIds)
-                : RetainerItemSnapshot.Empty;
+            var retainerSnapshot = RetainerItemSnapshot.Empty;
+            if (showRetainer)
+            {
+                var snapshotItemIds = new List<uint>(materials.Keys);
+                if (craftMaterials != null)
+                {
+                    snapshotItemIds.AddRange(craftMaterials.Keys);
+                }
+
+                retainerSnapshot = _editor.GetRetainerSnapshot(snapshotItemIds);
+            }
 
             var gatherList = new List<MaterialEntry>();
             var dropList = new List<MaterialEntry>();
@@ -302,12 +424,18 @@ public class CraftingMaterialsWindow : Window
             void AddEntry(MaterialEntry entry)
             {
                 if (entry.EffectiveAvailable < entry.Needed)
+                {
                     _cachedTotalMissing++;
+                }
                 else
+                {
                     _cachedTotalReady++;
+                }
 
                 if (hideSatisfiedRows && entry.EffectiveAvailable >= entry.Needed)
+                {
                     return;
+                }
 
                 _cachedHasVisibleEntries = true;
                 switch (MaterialSourceClassifier.Classify(entry.ItemId, _matsPreferVendors))
@@ -336,7 +464,9 @@ public class CraftingMaterialsWindow : Window
             foreach (var (itemId, needed) in materials)
             {
                 if (TryCreateMaterialEntry(itemSheet, itemId, needed, false, retainerSnapshot, countRetainersTowardNeed, out var entry))
+                {
                     AddEntry(entry);
+                }
             }
 
             if (craftMaterials != null)
@@ -344,7 +474,9 @@ public class CraftingMaterialsWindow : Window
                 foreach (var (itemId, needed) in craftMaterials)
                 {
                     if (TryCreateMaterialEntry(itemSheet, itemId, needed, true, retainerSnapshot, countRetainersTowardNeed, out var entry))
+                    {
                         AddEntry(entry);
+                    }
                 }
             }
 
@@ -353,15 +485,41 @@ public class CraftingMaterialsWindow : Window
             SortEntries(shopList);
             SortEntries(vendorList);
             if (craftList != null)
+            {
                 SortEntries(craftList);
+            }
 
             var nonCraftRetainerMode = showRetainer ? RetainerColumnMode.Total : RetainerColumnMode.None;
             var craftRetainerMode = showRetainer ? RetainerColumnMode.Split : RetainerColumnMode.None;
-            if (gatherList.Count > 0) _cachedPanels.Add(new MaterialPanel("##gather", "Gather", AccentGather, gatherList, nonCraftRetainerMode, null));
-            if (dropList.Count > 0) _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", AccentDrop, dropList, nonCraftRetainerMode, null, ShowCurrencyTotals: true, PreferBicolorDefault: true));
-            if (shopList.Count > 0) _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", AccentShop, shopList, nonCraftRetainerMode, BuildVendorBuyListTargets(shopList), ShowCurrencyTotals: true));
-            if (vendorList.Count > 0) _cachedPanels.Add(new MaterialPanel("##vendor", "Vendor", AccentVendor, vendorList, nonCraftRetainerMode, BuildVendorBuyListTargets(vendorList)));
-            if (craftList is { Count: > 0 }) _cachedPanels.Add(new MaterialPanel("##craft", "Craft", AccentCraft, craftList, craftRetainerMode, null));
+            if (gatherList.Count > 0)
+            {
+                _cachedPanels.Add(new MaterialPanel("##gather", "Gather", FontAwesomeIcon.Leaf, HueGather, gatherList, CountMissing(gatherList),
+                    nonCraftRetainerMode, null));
+            }
+
+            if (dropList.Count > 0)
+            {
+                _cachedPanels.Add(new MaterialPanel("##drop", "Drops / Bicolor", FontAwesomeIcon.Skull, HueDrop, dropList, CountMissing(dropList),
+                    nonCraftRetainerMode, null, ShowCurrencyTotals: true, PreferBicolorDefault: true));
+            }
+
+            if (shopList.Count > 0)
+            {
+                _cachedPanels.Add(new MaterialPanel("##shop", "Special Currency", FontAwesomeIcon.Coins, HueShop, shopList, CountMissing(shopList),
+                    nonCraftRetainerMode, BuildVendorBuyListTargets(shopList), ShowCurrencyTotals: true));
+            }
+
+            if (vendorList.Count > 0)
+            {
+                _cachedPanels.Add(new MaterialPanel("##vendor", "Vendor", FontAwesomeIcon.Store, HueVendor, vendorList, CountMissing(vendorList),
+                    nonCraftRetainerMode, BuildVendorBuyListTargets(vendorList)));
+            }
+
+            if (craftList is { Count: > 0 })
+            {
+                _cachedPanels.Add(new MaterialPanel("##craft", "Craft", FontAwesomeIcon.Hammer, HueCraft, craftList, CountMissing(craftList),
+                    craftRetainerMode, null));
+            }
 
             UpdateMaterialViewCacheMetadata(showRetainer);
         }
@@ -370,6 +528,20 @@ public class CraftingMaterialsWindow : Window
             GatherBuddy.Log.Error($"[CraftingMaterialsWindow] Failed to rebuild materials view for list '{_editor.ListName}': {ex.Message}");
             InvalidateMaterialView();
         }
+    }
+
+    private static int CountMissing(List<MaterialEntry> entries)
+    {
+        var missing = 0;
+        foreach (var entry in entries)
+        {
+            if (entry.EffectiveAvailable < entry.Needed)
+            {
+                missing++;
+            }
+        }
+
+        return missing;
     }
 
     private void UpdateMaterialViewCacheMetadata(bool showRetainer)
@@ -389,31 +561,63 @@ public class CraftingMaterialsWindow : Window
     {
         entry = default;
         if (!itemSheet.TryGetRow(itemId, out var item))
+        {
             return false;
+        }
 
-        var have  = _editor?.GetInventoryCount(itemId) ?? 0;
+        var have = _editor?.GetInventoryCount(itemId) ?? 0;
         var retNQ = retainerSnapshot.GetCountNQ(itemId);
         var retHQ = retainerSnapshot.GetCountHQ(itemId);
         var effectiveAvailable = isPrecraft
             ? _editor?.GetDisplayCraftMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0
             : _editor?.GetDisplayMaterialAvailableCount(itemId, retNQ, retHQ, countRetainersTowardNeed) ?? 0;
         var skipExtras = CraftingRowIcons.IsElementalCrystal(itemId);
-        var currencyOptions = skipExtras ? Array.Empty<CurrencyOption>() : ResolveCurrencyOptions(itemId);
+        var currencyOptions = skipExtras ? [] : ResolveCurrencyOptions(itemId);
         var dropInfo = skipExtras ? MobDropItemInfo.Empty : MobDropInfoCache.GetDropInfoForItem(itemId);
         entry = new MaterialEntry(itemId, have, retNQ, retHQ, needed, effectiveAvailable, item.Name.ExtractText(), item.Icon, isPrecraft, currencyOptions, dropInfo);
         return true;
     }
 
-    private static IReadOnlyList<CurrencyOption> ResolveCurrencyOptions(uint itemId)
+    private static List<CurrencyOption> ResolveCurrencyOptions(uint itemId)
     {
         Dictionary<uint, CurrencyOption>? options = null;
-        foreach (var entry in VendorShopResolver.GilShopEntries
-                     .Concat(VendorShopResolver.SpecialShopEntries)
-                     .Concat(VendorShopResolver.GcShopEntries.Where(VendorShopResolver.MatchesCurrentGrandCompany)))
+        AddCurrencyOptions(ref options, VendorShopResolver.GilShopEntries, itemId, false);
+        AddCurrencyOptions(ref options, VendorShopResolver.SpecialShopEntries, itemId, false);
+        AddCurrencyOptions(ref options, VendorShopResolver.GcShopEntries, itemId, true);
+        if (options == null)
         {
-            if (entry.ItemId != itemId || entry.Cost == 0 || entry.CurrencyItemId == 0)
+            return [];
+        }
+
+        var sorted = new List<CurrencyOption>(options.Values);
+        sorted.Sort(static (a, b) =>
+        {
+            var order = a.CostPerItem.CompareTo(b.CostPerItem);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+            return order != 0 ? order : a.CurrencyItemId.CompareTo(b.CurrencyItemId);
+        });
+        return sorted;
+    }
+
+    private static void AddCurrencyOptions(ref Dictionary<uint, CurrencyOption>? options, IReadOnlyList<VendorShopEntry> entries, uint itemId,
+        bool currentGrandCompanyOnly)
+    {
+        foreach (var entry in entries)
+        {
+            if (entry.ItemId != itemId
+             || entry.Cost == 0
+             || entry.CurrencyItemId == 0
+             || currentGrandCompanyOnly && !VendorShopResolver.MatchesCurrentGrandCompany(entry))
+            {
                 continue;
-            options ??= new Dictionary<uint, CurrencyOption>();
+            }
+
+            options ??= [];
             if (!options.TryGetValue(entry.CurrencyItemId, out var existing) || entry.Cost < existing.CostPerItem)
             {
                 options[entry.CurrencyItemId] = new CurrencyOption(
@@ -424,26 +628,51 @@ public class CraftingMaterialsWindow : Window
                     entry.Group);
             }
         }
-        if (options == null)
-            return Array.Empty<CurrencyOption>();
-        return options.Values
-            .OrderBy(option => option.CostPerItem)
-            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    }
+
+    private static int IndexOfCurrencyOption(IReadOnlyList<CurrencyOption> options, uint currencyItemId)
+    {
+        for (var i = 0; i < options.Count; i++)
+        {
+            if (options[i].CurrencyItemId == currencyItemId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private uint GetSelectedCurrencyItemId(MaterialEntry entry, bool preferBicolor)
     {
         if (entry.CurrencyOptions.Count == 0)
+        {
             return 0;
+        }
+
         if (_userSelectedCurrencyByItem.TryGetValue(entry.ItemId, out var selected)
-         && entry.CurrencyOptions.Any(option => option.CurrencyItemId == selected))
+         && IndexOfCurrencyOption(entry.CurrencyOptions, selected) >= 0)
+        {
             return selected;
+        }
+
         if (preferBicolor)
         {
-            var bicolor = entry.CurrencyOptions.FirstOrDefault(option => option.Group == VendorCurrencyGroup.BicolorGemstones);
-            if (bicolor.CurrencyItemId != 0)
-                return bicolor.CurrencyItemId;
+            for (var i = 0; i < entry.CurrencyOptions.Count; i++)
+            {
+                var option = entry.CurrencyOptions[i];
+                if (option.Group != VendorCurrencyGroup.BicolorGemstones)
+                {
+                    continue;
+                }
+
+                if (option.CurrencyItemId != 0)
+                {
+                    return option.CurrencyItemId;
+                }
+
+                break;
+            }
         }
         return entry.CurrencyOptions[0].CurrencyItemId;
     }
@@ -456,358 +685,392 @@ public class CraftingMaterialsWindow : Window
             var rightReady = right.EffectiveAvailable >= right.Needed;
             var readyComparison = leftReady.CompareTo(rightReady);
             if (readyComparison != 0)
+            {
                 return readyComparison;
+            }
+
             return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
         });
     }
 
-    private void DrawMaterialPanel(
-        string id, string label, Vector4 accent,
-        IReadOnlyList<MaterialEntry> entries,
-        RetainerColumnMode retainerColumnMode, float width, float height, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets,
-        bool showCurrencyTotals, bool preferBicolorDefault)
+    private static Vector4 SourceColor(Vector4 hue)
+        => M3.CustomColor(hue).Color;
+
+    private void DrawMaterialPanel(MaterialPanel panel, float width, float height)
     {
-        static void DrawCenteredHeader(string text, string? tooltip = null)
-        {
-            var textWidth = ImGui.CalcTextSize(text).X;
-            var availableWidth = ImGui.GetContentRegionAvail().X;
-            var offset = (availableWidth - textWidth) * 0.5f;
-            if (offset > 0f)
-                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+        var s = M3.Scheme;
+        var scale = M3.Scale;
+        var accent = SourceColor(panel.Hue);
 
-            ImGui.TextUnformatted(text);
-            if (tooltip != null && ImGui.IsItemHovered())
-                ImGui.SetTooltip(tooltip);
+        ImGui.BeginGroup();
+        var min = ImGui.GetCursorScreenPos();
+        var max = min + new Vector2(width, height);
+        var drawList = ImGui.GetWindowDrawList();
+        M3Card.Paint(drawList, min, max, accent, M3CardStyle.Filled, M3Draw.MouseOver(min, max, true));
+
+        var innerWidth = MathF.Max(1f, width - M3Card.ContentInset - M3Card.RightInset);
+        var x = min.X + M3Card.ContentInset;
+        var y = min.Y + M3Card.TopPadding;
+
+        float titleHeight;
+        using (ImRaii.PushFont(M3.TitleMedium))
+        {
+            titleHeight = ImGui.CalcTextSize(panel.Label).Y;
         }
 
-        using (VulcanUiStyle.PushPanel())
+        var iconSize = M3Draw.MeasureIcon(panel.Icon);
+        M3Draw.Icon(drawList, panel.Icon, new Vector2(x, y + (titleHeight - iconSize.Y) * 0.5f), accent);
+        var titleX = x + iconSize.X + 8f * scale;
+
+        var (count, countColor) = panel.Missing > 0
+            ? ($"{panel.Missing} of {panel.Entries.Count} missing", s.Error)
+            : ($"{panel.Entries.Count} ready", s.Success);
+        var countSize = ImGui.CalcTextSize(count);
+        var countX = MathF.Max(titleX, x + innerWidth - countSize.X);
+        drawList.AddText(new Vector2(countX, y + (titleHeight - countSize.Y) * 0.5f), M3.U32(countColor, 0.95f), count);
+        using (ImRaii.PushFont(M3.TitleMedium))
         {
-            ImGui.BeginChild(id, new Vector2(width, height), true);
-            if (showCurrencyTotals)
-            {
-                var currencyTotals = ComputeCurrencyTotals(entries, preferBicolorDefault, ignoreOwned: _matsKeepFulfilled);
-                if (currencyTotals.Count > 0)
-                {
-                    DrawCurrencyTotalsRow(currencyTotals, accent);
-                    ImGui.Separator();
-                }
-            }
-            var colCount = retainerColumnMode switch
-            {
-                RetainerColumnMode.None  => 4,
-                RetainerColumnMode.Total => 5,
-                RetainerColumnMode.Split => 6,
-                _                        => 4,
-            };
-            var numW = VulcanUiScaling.Scaled(36f);
-            var barW = VulcanUiScaling.Scaled(46f);
-            var tableFlags = ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
-                           | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingFixedFit;
-
-            if (ImGui.BeginTable($"{id}_tbl", colCount, tableFlags, new Vector2(0, ImGui.GetContentRegionAvail().Y)))
-            {
-                ImGui.TableSetupScrollFreeze(0, 1);
-                ImGui.TableSetupColumn("",     ImGuiTableColumnFlags.WidthStretch);
-                ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, numW);
-                switch (retainerColumnMode)
-                {
-                    case RetainerColumnMode.Total:
-                        ImGui.TableSetupColumn("Ret", ImGuiTableColumnFlags.WidthFixed, numW);
-                        break;
-                    case RetainerColumnMode.Split:
-                        ImGui.TableSetupColumn("RNQ", ImGuiTableColumnFlags.WidthFixed, numW);
-                        ImGui.TableSetupColumn("RHQ", ImGuiTableColumnFlags.WidthFixed, numW);
-                        break;
-                }
-                ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, numW);
-                ImGui.TableSetupColumn("%",    ImGuiTableColumnFlags.WidthFixed, barW);
-                var needIdx = retainerColumnMode switch
-                {
-                    RetainerColumnMode.None  => 2,
-                    RetainerColumnMode.Total => 3,
-                    RetainerColumnMode.Split => 4,
-                    _                        => 2,
-                };
-
-                ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
-                ImGui.TableSetColumnIndex(0);
-                using (ImRaii.PushColor(ImGuiCol.Text, accent))
-                    ImGui.TableHeader(label);
-                ImGui.TableSetColumnIndex(1);
-                DrawCenteredHeader("Have");
-                switch (retainerColumnMode)
-                {
-                    case RetainerColumnMode.Total:
-                        ImGui.TableSetColumnIndex(2);
-                        DrawCenteredHeader("Ret", "Retainer total (via Allagan Tools)");
-                        break;
-                    case RetainerColumnMode.Split:
-                        ImGui.TableSetColumnIndex(2);
-                        DrawCenteredHeader("RNQ", "Retainer NQ (via Allagan Tools)");
-                        ImGui.TableSetColumnIndex(3);
-                        DrawCenteredHeader("RHQ", "Retainer HQ (via Allagan Tools)");
-                        break;
-                }
-                ImGui.TableSetColumnIndex(needIdx);
-                DrawCenteredHeader("Need");
-                ImGui.TableSetColumnIndex(needIdx + 1);
-                DrawCenteredHeader("%");
-
-                if (entries.Count == 0)
-                {
-                    ImGui.TableNextRow();
-                    ImGui.TableSetColumnIndex(0);
-                    ImGui.TextColored(new Vector4(0.4f, 0.4f, 0.4f, 1f), "  \u2014");
-                }
-                else
-                {
-                    var maxNameWidth = 0f;
-                    for (var i = 0; i < entries.Count; i++)
-                    {
-                        var w = ImGui.CalcTextSize(entries[i].Name).X;
-                        if (w > maxNameWidth)
-                            maxNameWidth = w;
-                    }
-                    var clipper = ImGui.ImGuiListClipper();
-                    clipper.Begin(entries.Count);
-                    while (clipper.Step())
-                    {
-                        for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                            DrawPanelRow(entries[i], retainerColumnMode, vendorTargets, maxNameWidth, preferBicolorDefault);
-                    }
-                    clipper.End();
-                    clipper.Destroy();
-                }
-
-                ImGui.EndTable();
-            }
-
-            ImGui.EndChild();
+            drawList.AddText(new Vector2(titleX, y), M3.U32(s.OnSurface),
+                M3Navigation.Truncate(panel.Label, MathF.Max(8f * scale, countX - 8f * scale - titleX)));
         }
+
+        y += titleHeight + M3.Space2;
+
+        if (panel.ShowCurrencyTotals)
+        {
+            var totals = ComputeCurrencyTotals(panel.Entries, panel.PreferBicolorDefault, ignoreOwned: _matsKeepFulfilled);
+            if (totals.Count > 0)
+            {
+                ImGui.SetCursorScreenPos(new Vector2(x, y));
+                ImGui.BeginGroup();
+                DrawCurrencyTotals(totals, innerWidth);
+                ImGui.EndGroup();
+                y = ImGui.GetItemRectMax().Y + M3.Space2;
+            }
+        }
+
+        ImGui.SetCursorScreenPos(new Vector2(x, y));
+        DrawMaterialTable(panel, new Vector2(innerWidth, MathF.Max(1f, max.Y - M3.Space2 - y)));
+
+        ImGui.SetCursorScreenPos(min);
+        ImGui.Dummy(new Vector2(width, height));
+        ImGui.EndGroup();
     }
 
-    private void DrawPanelRow(MaterialEntry entry, RetainerColumnMode retainerColumnMode,
-        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets, float maxNameWidth, bool preferBicolorDefault)
+    private void DrawMaterialTable(MaterialPanel panel, Vector2 size)
     {
-        var itemId            = entry.ItemId;
-        var have              = entry.Have;
-        var retNQ             = entry.RetNQ;
-        var retHQ             = entry.RetHQ;
-        var needed            = entry.Needed;
-        var name              = entry.Name;
-        var iconId            = entry.IconId;
-        var effectiveAvailable = entry.EffectiveAvailable;
-        var satisfied         = effectiveAvailable >= needed;
-        var isPrecraft        = entry.IsPrecraft;
-        ImGui.TableNextRow();
-        Vector4 rowColor = (satisfied, isPrecraft) switch
+        var mode = panel.RetainerColumns;
+        var columnCount = mode switch
         {
-            (true,  false) => new Vector4(0.15f, 0.50f, 0.15f, 0.25f),
-            (true,  true)  => new Vector4(0.05f, 0.40f, 0.45f, 0.25f),
-            (false, false) => new Vector4(0.50f, 0.15f, 0.15f, 0.25f),
-            (false, true)  => new Vector4(0.55f, 0.35f, 0.05f, 0.25f),
+            RetainerColumnMode.Total => 5,
+            RetainerColumnMode.Split => 6,
+            _ => 4,
         };
-        ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg1, ImGui.ColorConvertFloat4ToU32(rowColor));
 
-        var lineH    = ImGui.GetTextLineHeight();
-        var iconSize = new Vector2(lineH, lineH);
-
-        static string Trunc(int v) => v > 9999 ? "9999" : v.ToString();
-        void CenterNum(int raw, Vector4 color)
+        float headerWidth;
+        using (ImRaii.PushFont(M3.LabelSmall))
         {
-            var s   = Trunc(raw);
-            var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize(s).X) * 0.5f;
-            if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off);
-            ImGui.TextColored(color, s);
-            if (raw > 9999 && ImGui.IsItemHovered())
-                ImGui.SetTooltip(raw.ToString());
+            headerWidth = ImGui.CalcTextSize("Need").X;
+        }
+
+        var numberWidth = MathF.Max(headerWidth, ImGui.CalcTextSize("9999").X) + 4f * M3.Scale;
+        var barWidth = ImGui.CalcTextSize("100%").X + 14f * M3.Scale;
+        const ImGuiTableFlags tableFlags = ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit
+                                         | ImGuiTableFlags.PadOuterX;
+
+        using var colors = M3Table.PushStyle();
+        if (!ImGui.BeginTable($"{panel.Id}_tbl", columnCount, tableFlags, size))
+        {
+            return;
+        }
+
+        ImGui.TableSetupScrollFreeze(0, 1);
+        ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, numberWidth);
+        switch (mode)
+        {
+            case RetainerColumnMode.Total:
+                ImGui.TableSetupColumn("Ret", ImGuiTableColumnFlags.WidthFixed, numberWidth);
+                break;
+            case RetainerColumnMode.Split:
+                ImGui.TableSetupColumn("RNQ", ImGuiTableColumnFlags.WidthFixed, numberWidth);
+                ImGui.TableSetupColumn("RHQ", ImGuiTableColumnFlags.WidthFixed, numberWidth);
+                break;
+        }
+
+        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, numberWidth);
+        ImGui.TableSetupColumn("%", ImGuiTableColumnFlags.WidthFixed, barWidth);
+
+        ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
+        ImGui.TableNextColumn();
+        M3Table.Header("Item", center: false);
+        ImGui.TableNextColumn();
+        M3Table.Header("Have", "In your inventory");
+        switch (mode)
+        {
+            case RetainerColumnMode.Total:
+                ImGui.TableNextColumn();
+                M3Table.Header("Ret", "Retainer total (via Allagan Tools)");
+                break;
+            case RetainerColumnMode.Split:
+                ImGui.TableNextColumn();
+                M3Table.Header("RNQ", "Retainer NQ (via Allagan Tools)");
+                ImGui.TableNextColumn();
+                M3Table.Header("RHQ", "Retainer HQ (via Allagan Tools)");
+                break;
         }
 
         ImGui.TableNextColumn();
-        var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-        if (icon.TryGetWrap(out var wrap, out _))
-            ImGui.Image(wrap.Handle, iconSize);
-        else
-            ImGui.Dummy(iconSize);
+        M3Table.Header("Need");
+        ImGui.TableNextColumn();
+        M3Table.Header("%", "How much of the need you already have");
+
+        var entries = panel.Entries;
+        var maxNameWidth = 0f;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            maxNameWidth = MathF.Max(maxNameWidth, ImGui.CalcTextSize(entries[i].Name).X);
+        }
+
+        var clipper = ImGui.ImGuiListClipper();
+        clipper.Begin(entries.Count);
+        while (clipper.Step())
+        {
+            for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+            {
+                DrawPanelRow(entries[i], mode, panel.VendorTargets, maxNameWidth, panel.PreferBicolorDefault);
+            }
+        }
+
+        clipper.End();
+        clipper.Destroy();
+
+        ImGui.EndTable();
+    }
+
+    private void DrawPanelRow(MaterialEntry entry, RetainerColumnMode mode,
+        IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets, float maxNameWidth, bool preferBicolorDefault)
+    {
+        var s = M3.Scheme;
+        var satisfied = entry.EffectiveAvailable >= entry.Needed;
+        var lineHeight = ImGui.GetTextLineHeight();
+
+        using var rowId = ImRaii.PushId((int)(entry.ItemId * 2 + (entry.IsPrecraft ? 1u : 0u)));
+        ImGui.TableNextRow();
+        var rowTone = (satisfied, entry.IsPrecraft) switch
+        {
+            (true, false) => s.Success,
+            (true, true) => s.Info,
+            (false, false) => s.Error,
+            (false, true) => s.Warning,
+        };
+        ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg1, M3.U32(rowTone, 0.10f));
+
+        ImGui.TableNextColumn();
+        M3Widgets.GameIcon(entry.IconId, lineHeight);
         ImGui.SameLine(0, MaterialRowIconSpacing);
         var nameTextStartX = ImGui.GetCursorScreenPos().X;
-        if (ImGui.Selectable(name, false, ImGuiSelectableFlags.AllowItemOverlap))
+        if (ImGui.Selectable(entry.Name, false, ImGuiSelectableFlags.AllowItemOverlap))
         {
-            try { ImGui.SetClipboardText(name); } catch { /* ignored */ }
+            CopyName(entry.Name);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Click to copy to clipboard.");
-        if (ImGui.BeginPopupContextItem($"##mbctx_{itemId}_{(isPrecraft ? 1 : 0)}_{(int)retainerColumnMode}"))
-        {
-            if (ImGui.Selectable("Create Link"))
-                Communicator.Print(SeString.CreateItemLink(itemId));
-            if (ImGui.Selectable("Search Marketboard"))
-            {
-                GatherBuddy.MarketboardService?.QueueLookup(itemId, name, iconId);
-                GatherBuddy.VulcanWindow?.OpenToMarketboardItem(itemId);
-            }
 
-            DrawVendorBuyListPopup(entry, vendorTargets);
-            ImGui.EndPopup();
-        }
+        DrawItemContextMenu(entry, vendorTargets);
+        M3Tooltip.Hovered("Click to copy the name. Right-click for more.");
 
         var sourceIcons = GetVisibleSourceIcons(entry);
-        var hasCurrencyOrDrop = entry.CurrencyOptions.Count > 0 || entry.DropInfo.HasData;
-        var hasTrailingIcons = sourceIcons.Count > 0 || hasCurrencyOrDrop;
-        if (hasTrailingIcons)
+        if (sourceIcons.Count > 0 || entry.CurrencyOptions.Count > 0 || entry.DropInfo.HasData)
         {
-            var iconColumnTargetX = nameTextStartX + maxNameWidth + MaterialRowIconGutter;
+            var iconColumnX = nameTextStartX + maxNameWidth + MaterialRowIconGutter;
             ImGui.SameLine(0, 0);
-            var currentX = ImGui.GetCursorScreenPos().X;
-            var gap = iconColumnTargetX - currentX;
-            if (gap > 0f)
-            {
-                ImGui.Dummy(new Vector2(gap, 0));
-                ImGui.SameLine(0, 0);
-            }
-            else
-            {
-                ImGui.Dummy(new Vector2(MaterialRowIconSpacing, 0));
-                ImGui.SameLine(0, 0);
-            }
+            var gap = iconColumnX - ImGui.GetCursorScreenPos().X;
+            ImGui.Dummy(new Vector2(gap > 0f ? gap : MaterialRowIconSpacing, 0));
+            ImGui.SameLine(0, 0);
 
             var hasDrawnIcon = false;
             if (sourceIcons.Count > 0)
             {
-                CraftingRowIcons.DrawIconsRightAligned(sourceIcons, lineH, MaterialRowIconSpacing);
+                CraftingRowIcons.DrawIconsRightAligned(sourceIcons, lineHeight, MaterialRowIconSpacing);
                 hasDrawnIcon = true;
             }
+
             if (entry.CurrencyOptions.Count > 0)
             {
                 if (hasDrawnIcon)
+                {
                     ImGui.SameLine(0, MaterialRowIconSpacing);
-                hasDrawnIcon = DrawCurrencyPicker(entry, preferBicolorDefault);
+                }
+
+                hasDrawnIcon = DrawCurrencyPicker(entry, preferBicolorDefault, lineHeight);
             }
+
             if (entry.DropInfo.HasData)
             {
-                DrawMobDropIcon(entry, hasDrawnIcon);
+                DrawMobDropIcon(entry, hasDrawnIcon, lineHeight);
             }
         }
 
-        var haveColor = satisfied ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.45f, 0.45f, 1f);
         ImGui.TableNextColumn();
-        CenterNum(have, haveColor);
-        switch (retainerColumnMode)
+        CenterNumber(entry.Have, satisfied ? s.Success : s.Error);
+        switch (mode)
         {
             case RetainerColumnMode.Total:
-            {
                 ImGui.TableNextColumn();
-                var totalRetainer = retNQ + retHQ;
-                var retainerColor = totalRetainer > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-                if (totalRetainer > 0)
-                    CenterNum(totalRetainer, retainerColor);
-                else
-                {
-                    var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f;
-                    if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off);
-                    ImGui.TextColored(retainerColor, "-");
-                }
+                CenterCount(entry.RetNQ + entry.RetHQ, s.OnSurface);
                 break;
-            }
             case RetainerColumnMode.Split:
-            {
                 ImGui.TableNextColumn();
-                var nqColor = retNQ > 0 ? new Vector4(0.9f, 0.85f, 0.3f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-                if (retNQ > 0) CenterNum(retNQ, nqColor);
-                else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(nqColor, "-"); }
-
+                CenterCount(entry.RetNQ, s.OnSurface);
                 ImGui.TableNextColumn();
-                var hqColor = retHQ > 0 ? new Vector4(0.5f, 0.85f, 1.0f, 1f) : new Vector4(0.4f, 0.4f, 0.4f, 1f);
-                if (retHQ > 0) CenterNum(retHQ, hqColor);
-                else { var off = (ImGui.GetColumnWidth() - ImGui.CalcTextSize("-").X) * 0.5f; if (off > 0f) ImGui.SetCursorPosX(ImGui.GetCursorPosX() + off); ImGui.TextColored(hqColor, "-"); }
-                break;
-            }
-            case RetainerColumnMode.None:
-            default:
+                CenterCount(entry.RetHQ, s.Info);
                 break;
         }
 
         ImGui.TableNextColumn();
-        CenterNum(needed, new Vector4(1f, 1f, 1f, 1f));
+        CenterNumber(entry.Needed, s.OnSurface);
 
         ImGui.TableNextColumn();
-        var ratio    = needed > 0 ? (float)effectiveAvailable / needed : 1f;
-        var progress = Math.Clamp(ratio, 0f, 1f);
-        ImGui.PushStyleColor(ImGuiCol.PlotHistogram,
-            satisfied ? new Vector4(0.2f, 0.65f, 0.2f, 0.9f) : new Vector4(0.65f, 0.2f, 0.2f, 0.9f));
-        ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.12f, 0.12f, 0.12f, 0.9f));
-        ImGui.ProgressBar(progress, new Vector2(ImGui.GetContentRegionAvail().X, lineH), "");
-        ImGui.PopStyleColor(2);
-        var pctText = _matsOvercapPercent ? $"{ratio * 100f:F0}%" : $"{progress * 100f:F0}%";
-        var pctSize = ImGui.CalcTextSize(pctText);
-        var barMin  = ImGui.GetItemRectMin();
-        var barMax  = ImGui.GetItemRectMax();
-        ImGui.GetWindowDrawList().AddText(
-            new Vector2(
-                barMin.X + (barMax.X - barMin.X - pctSize.X) * 0.5f,
-                barMin.Y + (barMax.Y - barMin.Y - pctSize.Y) * 0.5f),
-            ImGui.GetColorU32(ImGuiCol.Text),
-            pctText);
+        DrawProgressCell(entry, satisfied, lineHeight);
     }
 
-    private void DrawVendorBuyListPopup(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+    private static void CopyName(string name)
     {
-        var buyListManager = GatherBuddy.VendorBuyListManager;
-        if (buyListManager == null)
+        try
+        {
+            ImGui.SetClipboardText(name);
+            M3Snackbar.Show($"Copied {name}.");
+        }
+        catch
+        {
+        }
+    }
+
+    private static void CenterCount(int value, Vector4 color)
+    {
+        if (value > 0)
+        {
+            CenterNumber(value, color);
+        }
+        else
+        {
+            M3Table.CenteredText("—", M3Text.ColorOf(M3TextStyle.Faint));
+        }
+    }
+
+    private static void CenterNumber(int value, Vector4 color)
+    {
+        M3Table.CenteredText(value > 9999 ? "9999" : value.ToString(), color);
+        if (value > 9999)
+        {
+            M3Tooltip.Hovered(value.ToString("N0"));
+        }
+    }
+
+    private void DrawProgressCell(MaterialEntry entry, bool satisfied, float height)
+    {
+        var ratio = entry.Needed > 0 ? (float)entry.EffectiveAvailable / entry.Needed : 1f;
+        var progress = Math.Clamp(ratio, 0f, 1f);
+        var text = $"{(_matsOvercapPercent ? ratio : progress) * 100f:F0}%";
+        M3Table.Progress(progress, text, satisfied ? M3.Scheme.Success : M3.Scheme.Error, height);
+    }
+
+    private static void DrawItemContextMenu(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+    {
+        using var menu = M3Menu.BeginContext("##material_menu");
+        if (!menu.IsOpen)
+        {
             return;
+        }
+
+        if (M3Menu.Item("##material_link", "Create link", FontAwesomeIcon.Link, tooltip: "Print the item's link in chat"))
+        {
+            Communicator.Print(SeString.CreateItemLink(entry.ItemId));
+        }
+
+        if (M3Menu.Item("##material_marketboard", "Search marketboard", FontAwesomeIcon.ChartLine))
+        {
+            GatherBuddy.MarketboardService?.QueueLookup(entry.ItemId, entry.Name, entry.IconId);
+            GatherBuddy.VulcanWindow?.OpenToMarketboardItem(entry.ItemId);
+        }
+
+        DrawVendorBuyListMenu(entry, vendorTargets);
+    }
+
+    private static void DrawVendorBuyListMenu(MaterialEntry entry, IReadOnlyList<VendorBuyListManager.VendorTargetRequest>? vendorTargets)
+    {
+        if (GatherBuddy.VendorBuyListManager == null)
+        {
+            return;
+        }
 
         var hasSingleTarget = TryCreateVendorBuyListTarget(entry, out var singleTarget);
-        var hasBatchTargets = vendorTargets is { Count: > 0 };
+        var hasBatchTargets = vendorTargets is { Count: > 1 };
         if (!hasSingleTarget && !hasBatchTargets)
+        {
             return;
+        }
 
-        ImGui.Separator();
-
+        M3Menu.Divider();
+        M3Menu.Heading("Vendor buy lists");
         if (hasSingleTarget)
         {
-            DrawVendorBuyListExistingListMenu("Add to Existing List", new[] { singleTarget });
-            if (ImGui.Selectable("Create New List"))
-                OpenCreateVendorBuyListPopup(new[] { singleTarget });
+            DrawVendorBuyListExistingListMenu("##material_add_existing", "Add to existing list", [singleTarget]);
+            if (M3Menu.Item("##material_new_list", "Create new list", FontAwesomeIcon.Plus))
+            {
+                OpenCreateVendorBuyListPopup([singleTarget]);
+            }
         }
 
-        if (hasBatchTargets && vendorTargets!.Count > 1)
+        if (hasBatchTargets)
         {
-            DrawVendorBuyListExistingListMenu("Add Current Vendor View to Existing List", vendorTargets);
-            if (ImGui.Selectable("Create New List from Current Vendor View"))
-                OpenCreateVendorBuyListPopup(vendorTargets);
+            DrawVendorBuyListExistingListMenu("##material_add_all_existing", "Add all missing to existing list", vendorTargets!);
+            if (M3Menu.Item("##material_new_list_all", "Create new list with all missing", FontAwesomeIcon.Plus,
+                    tooltip: "Every missing item in this panel that a vendor sells"))
+            {
+                OpenCreateVendorBuyListPopup(vendorTargets!);
+            }
         }
     }
 
-    private void DrawVendorBuyListExistingListMenu(string label, IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
+    private static void DrawVendorBuyListExistingListMenu(string id, string label, IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
     {
         var buyListManager = GatherBuddy.VendorBuyListManager;
         if (buyListManager == null)
-            return;
-
-        if (!ImGui.BeginMenu(label, buyListManager.Lists.Count > 0))
-            return;
-
-        foreach (var list in buyListManager.Lists.OrderByDescending(list => list.CreatedAt))
         {
-            if (ImGui.Selectable(list.Name))
+            return;
+        }
+
+        using var sub = M3Menu.BeginSub(id, label, FontAwesomeIcon.ListUl, VendorBuyListManager.Lists.Count > 0);
+        if (!sub.IsOpen)
+        {
+            return;
+        }
+
+        foreach (var list in VendorBuyListManager.GetListsByCreation(true))
+        {
+            if (M3Menu.Item($"##vendor_list_{list.Id}", list.Name))
+            {
                 AddTargetsToVendorBuyList(list.Id, list.Name, targets);
+            }
         }
-
-        ImGui.EndMenu();
     }
 
-    private void AddTargetsToVendorBuyList(Guid listId, string listName, IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
+    private static void AddTargetsToVendorBuyList(Guid listId, string listName, IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
     {
         var buyListManager = GatherBuddy.VendorBuyListManager;
         if (buyListManager == null)
+        {
             return;
+        }
 
         var addedCount = buyListManager.TrySetTargets(listId, targets, selectList: true, openWindow: true, announce: true);
         if (addedCount == 0)
+        {
             GatherBuddy.Log.Debug($"[CraftingMaterialsWindow] Unable to add {targets.Count:N0} vendor target(s) to vendor buy list '{listName}'.");
+        }
     }
 
-    private void OpenCreateVendorBuyListPopup(IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
+    private static void OpenCreateVendorBuyListPopup(IReadOnlyList<VendorBuyListManager.VendorTargetRequest> targets)
     {
         var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
         if (vendorBuyListWindow == null)
@@ -817,29 +1080,50 @@ public class CraftingMaterialsWindow : Window
         }
 
         if (!vendorBuyListWindow.OpenCreateListPopup(targets))
+        {
             GatherBuddy.Log.Debug($"[CraftingMaterialsWindow] Unable to create a new vendor buy list for {targets.Count:N0} vendor target(s).");
+        }
     }
 
     private static List<VendorBuyListManager.VendorTargetRequest> BuildVendorBuyListTargets(IEnumerable<MaterialEntry> entries)
-        => entries
-            .Select(entry => TryCreateVendorBuyListTarget(entry, out var target)
-                ? target
-                : default)
-            .Where(target => target.ItemId != 0 && target.TargetQuantity > 0)
-            .GroupBy(target => target.ItemId)
-            .Select(group => new VendorBuyListManager.VendorTargetRequest(group.Key, group.Max(target => target.TargetQuantity)))
-            .ToList();
+    {
+        var targets = new List<VendorBuyListManager.VendorTargetRequest>();
+        var targetIndexes = new Dictionary<uint, int>();
+        foreach (var entry in entries)
+        {
+            if (!TryCreateVendorBuyListTarget(entry, out var target) || target.ItemId == 0 || target.TargetQuantity == 0)
+            {
+                continue;
+            }
+
+            if (!targetIndexes.TryGetValue(target.ItemId, out var targetIndex))
+            {
+                targetIndexes.Add(target.ItemId, targets.Count);
+                targets.Add(target);
+            }
+            else if (target.TargetQuantity > targets[targetIndex].TargetQuantity)
+            {
+                targets[targetIndex] = target;
+            }
+        }
+
+        return targets;
+    }
 
     private static bool TryCreateVendorBuyListTarget(MaterialEntry entry, out VendorBuyListManager.VendorTargetRequest target)
     {
         target = default;
         var buyListManager = GatherBuddy.VendorBuyListManager;
-        if (buyListManager == null || !buyListManager.CanAddSupportedItem(entry.ItemId))
+        if (buyListManager == null || !VendorBuyListManager.CanAddSupportedItem(entry.ItemId))
+        {
             return false;
+        }
 
         var missingQuantity = entry.Needed - entry.EffectiveAvailable;
         if (missingQuantity <= 0)
+        {
             return false;
+        }
 
         var currentCount = (uint)Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
         target = new VendorBuyListManager.VendorTargetRequest(entry.ItemId, currentCount + (uint)missingQuantity);
@@ -855,64 +1139,110 @@ public class CraftingMaterialsWindow : Window
                 ? entry.Needed
                 : entry.Needed - entry.EffectiveAvailable;
             if (quantity <= 0)
+            {
                 continue;
+            }
+
             var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
             if (selectedCurrencyId == 0)
+            {
                 continue;
-            var option = entry.CurrencyOptions.First(o => o.CurrencyItemId == selectedCurrencyId);
+            }
+
+            var option = entry.CurrencyOptions[IndexOfCurrencyOption(entry.CurrencyOptions, selectedCurrencyId)];
             var totalCost = (long)option.CostPerItem * quantity;
             if (totals.TryGetValue(option.CurrencyItemId, out var existing))
+            {
                 totals[option.CurrencyItemId] = (existing.Amount + totalCost, existing.Name, existing.IconId);
+            }
             else
+            {
                 totals[option.CurrencyItemId] = (totalCost, option.Name, option.IconId);
+            }
         }
-        return totals
-            .Select(kvp => new CurrencyTotal(kvp.Key, kvp.Value.Amount, kvp.Value.Name, kvp.Value.IconId))
-            .OrderByDescending(t => t.Amount)
-            .ToList();
+        var sortedTotals = new List<(CurrencyTotal Total, int Index)>(totals.Count);
+        foreach (var (currencyItemId, total) in totals)
+        {
+            sortedTotals.Add((new CurrencyTotal(currencyItemId, total.Amount, total.Name, total.IconId), sortedTotals.Count));
+        }
+
+        sortedTotals.Sort(static (lhs, rhs) =>
+        {
+            var order = rhs.Total.Amount.CompareTo(lhs.Total.Amount);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return sortedTotals.ConvertAll(static entry => entry.Total);
     }
 
     private static ushort ResolveCurrencyIconId(uint currencyItemId)
     {
         var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Item>();
         if (sheet != null && sheet.TryGetRow(currencyItemId, out var item))
+        {
             return (ushort)item.Icon;
+        }
+
         return 0;
     }
 
-    private static void DrawCurrencyTotalsRow(IReadOnlyList<CurrencyTotal> totals, Vector4 accent)
+    private static void DrawCurrencyTotals(IReadOnlyList<CurrencyTotal> totals, float width)
     {
-        var lineH    = ImGui.GetTextLineHeight();
-        var iconSize = new Vector2(lineH, lineH);
-        float GetCurrencyTotalWidth(CurrencyTotal total)
-        {
-            var width = ImGui.CalcTextSize($"{total.Amount:N0}").X;
-            if (total.IconId != 0)
-                width += iconSize.X + MaterialRowIconSpacing;
-            return width;
-        }
-
-        using (ImRaii.PushColor(ImGuiCol.Text, accent))
-            ImGui.TextUnformatted("Totals:");
-
+        var flow = new M3Flow(M3.Space1, width);
         for (var i = 0; i < totals.Count; i++)
         {
-            var t = totals[i];
-            var sameLineSpacing = i == 0 ? VulcanUiScaling.Scaled(8f) : VulcanUiScaling.Scaled(12f);
-            if (GetRemainingLineWidth() >= sameLineSpacing + GetCurrencyTotalWidth(t))
-                ImGui.SameLine(0, sameLineSpacing);
-            if (t.IconId != 0)
+            var total = totals[i];
+            var label = total.Amount.ToString("N0");
+            var size = CurrencyPillSize(label, total.IconId != 0);
+            flow.Next(size.X);
+            DrawCurrencyPill(total, label, size);
+        }
+    }
+
+    private static Vector2 CurrencyPillSize(string label, bool hasIcon)
+    {
+        var scale = M3.Scale;
+        var height = M3.FitText(24f, 3f);
+        var width = ImGui.CalcTextSize(label).X + 18f * scale;
+        if (hasIcon)
+        {
+            width += height - 6f * scale + 6f * scale;
+        }
+
+        return new Vector2(width, height);
+    }
+
+    private static void DrawCurrencyPill(CurrencyTotal total, string label, Vector2 size)
+    {
+        var s = M3.Scheme;
+        var scale = M3.Scale;
+        ImGui.Dummy(size);
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var drawList = ImGui.GetWindowDrawList();
+        var rounding = size.Y * 0.5f;
+        drawList.AddRectFilled(min, max, M3.U32(s.SurfaceContainerHighest, 0.7f), rounding);
+        drawList.AddRect(min, max, M3.U32(s.OutlineVariant, 0.6f), rounding, ImDrawFlags.None, 1f * scale);
+
+        var x = min.X + 8f * scale;
+        if (total.IconId != 0)
+        {
+            var iconSize = size.Y - 6f * scale;
+            x = min.X + 4f * scale;
+            var wrap = M3ActionIcon.GameIcon(total.IconId);
+            if (wrap != null)
             {
-                var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(t.IconId));
-                if (icon.TryGetWrap(out var wrap, out _))
-                    ImGui.Image(wrap.Handle, iconSize);
-                else
-                    ImGui.Dummy(iconSize);
-                ImGui.SameLine(0, MaterialRowIconSpacing);
+                M3Draw.Texture(drawList, wrap, new Vector2(x, min.Y + 3f * scale), iconSize);
             }
-            ImGui.TextUnformatted($"{t.Amount:N0}");
-            if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(t.Name))
-                ImGui.SetTooltip(t.Name);
+
+            x += iconSize + 6f * scale;
+        }
+
+        var textSize = ImGui.CalcTextSize(label);
+        drawList.AddText(new Vector2(x, min.Y + (size.Y - textSize.Y) * 0.5f), M3.U32(s.OnSurface), label);
+
+        if (!string.IsNullOrEmpty(total.Name) && ImGui.IsItemHovered())
+        {
+            M3Tooltip.Show(total.Name);
         }
     }
 
@@ -920,284 +1250,314 @@ public class CraftingMaterialsWindow : Window
     {
         var sourceIcons = CraftingRowIcons.GetMaterialIcons(entry.ItemId, entry.IsPrecraft);
         if (entry.CurrencyOptions.Count == 0 || sourceIcons.Count == 0)
+        {
             return sourceIcons;
+        }
 
         var currencyIconIds = new HashSet<uint>();
         foreach (var option in entry.CurrencyOptions)
+        {
             currencyIconIds.Add(option.IconId);
+        }
 
         var filtered = new List<CraftingRowIcons.RowIcon>(sourceIcons.Count);
         foreach (var sourceIcon in sourceIcons)
+        {
             if (!currencyIconIds.Contains(sourceIcon.IconId))
+            {
                 filtered.Add(sourceIcon);
+            }
+        }
 
         return filtered;
     }
 
-    private bool DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault)
+    private bool DrawCurrencyPicker(MaterialEntry entry, bool preferBicolorDefault, float size)
     {
         if (entry.CurrencyOptions.Count == 0)
+        {
             return false;
+        }
 
         var selectedCurrencyId = GetSelectedCurrencyItemId(entry, preferBicolorDefault);
-        var lineH = ImGui.GetTextLineHeight();
-        var iconSize = new Vector2(lineH, lineH);
-        var drawList = ImGui.GetWindowDrawList();
-
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
-
+        var choosable = entry.CurrencyOptions.Count > 1;
         for (var i = 0; i < entry.CurrencyOptions.Count; i++)
         {
             if (i > 0)
+            {
                 ImGui.SameLine(0, MaterialRowIconSpacing);
+            }
+
             var option = entry.CurrencyOptions[i];
             var isSelected = option.CurrencyItemId == selectedCurrencyId;
-
-            ImGui.PushID($"##matcur_{entry.ItemId}_{option.CurrencyItemId}");
-            var clicked = false;
-            var cursorPosBefore = ImGui.GetCursorScreenPos();
-            if (option.IconId != 0)
-            {
-                var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(option.IconId));
-                if (icon.TryGetWrap(out var wrap, out _))
-                    clicked = ImGui.ImageButton(wrap.Handle, iconSize);
-                else
-                    ImGui.Dummy(iconSize);
-            }
-            else
-            {
-                ImGui.Dummy(iconSize);
-            }
-
-            if (!isSelected)
-                drawList.AddRectFilled(cursorPosBefore, cursorPosBefore + iconSize,
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.55f)));
-
+            var clicked = M3Widgets.GameIconButton($"##currency_{option.CurrencyItemId}", option.IconId, size, isSelected ? 1f : 0.35f);
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"{option.Name}: {option.CostPerItem:N0} per item\nClick to use for totals.");
+            {
+                M3Tooltip.Show(!choosable
+                    ? $"{option.Name}: {option.CostPerItem:N0} each"
+                    : isSelected
+                        ? $"{option.Name}: {option.CostPerItem:N0} each\nUsed for the totals."
+                        : $"{option.Name}: {option.CostPerItem:N0} each\nClick to use it for the totals.");
+            }
 
             if (clicked)
+            {
                 _userSelectedCurrencyByItem[entry.ItemId] = option.CurrencyItemId;
-
-            ImGui.PopID();
+            }
         }
 
-        ImGui.PopStyleColor(3);
-        ImGui.PopStyleVar();
         return true;
     }
 
-    private static bool DrawMobDropIcon(MaterialEntry entry, bool addLeadingSpacing)
+    private static void DrawMobDropIcon(MaterialEntry entry, bool addLeadingSpacing, float size)
     {
-        if (!entry.DropInfo.HasData)
-            return false;
-
-        const uint MobDropIconId = 60041u;
-        var lineH = ImGui.GetTextLineHeight();
-        var iconSize = new Vector2(lineH, lineH);
-        var popupId = $"##mobdrops_{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}";
+        const string popupId = "##mob_drops";
         if (addLeadingSpacing)
+        {
             ImGui.SameLine(0, MaterialRowIconSpacing);
+        }
 
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.15f));
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.30f));
-        var clicked = false;
-        ImGui.PushID(popupId);
-        var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(MobDropIconId));
-        if (icon.TryGetWrap(out var wrap, out _))
-            clicked = ImGui.ImageButton(wrap.Handle, iconSize);
-        else
-            ImGui.Dummy(iconSize);
-        ImGui.PopID();
-        ImGui.PopStyleColor(3);
-        ImGui.PopStyleVar();
-
+        var clicked = M3Widgets.GameIconButton("##mob_drops_button", MobDropIconId, size);
         if (ImGui.IsItemHovered() && !ImGui.IsPopupOpen(popupId))
         {
-            const int MaxMobsShown = 6;
-            var lines = new List<string>(MaxMobsShown + 3)
-            {
-                $"Drops from {BuildMobDropSummaryText(entry.DropInfo)}.",
-            };
-            for (var i = 0; i < entry.DropInfo.Mobs.Count && i < MaxMobsShown; i++)
-            {
-                var mob = entry.DropInfo.Mobs[i];
-                var mobDisplayName = NormalizeMobDisplayName(mob.MobName);
-                var zoneSummary = mob.ZoneCount == 1
-                    ? mob.Zones[0].ZoneName
-                    : $"{mob.ZoneCount} {Pluralize("zone", mob.ZoneCount)}";
-                lines.Add($"{mobDisplayName} — {zoneSummary} · {mob.ClusterCount} {Pluralize("area", mob.ClusterCount)}");
-            }
-            if (entry.DropInfo.MobCount > MaxMobsShown)
-            {
-                var remainingMobCount = entry.DropInfo.MobCount - MaxMobsShown;
-                lines.Add($"...and {remainingMobCount} more {Pluralize("mob", remainingMobCount)}");
-            }
-            lines.Add("Click for grouped flags.");
-            ImGui.SetTooltip(string.Join('\n', lines));
+            M3Tooltip.Show(BuildMobDropTooltip(entry.DropInfo));
         }
 
         if (clicked)
+        {
             ImGui.OpenPopup(popupId);
+        }
 
         DrawMobDropPopup(entry, popupId);
-        return true;
+    }
+
+    private static string BuildMobDropTooltip(MobDropItemInfo dropInfo)
+    {
+        const int MaxMobsShown = 6;
+        var lines = new List<string>(MaxMobsShown + 3)
+        {
+            $"Drops from {BuildMobDropSummaryText(dropInfo)}.",
+        };
+        for (var i = 0; i < dropInfo.Mobs.Count && i < MaxMobsShown; i++)
+        {
+            var mob = dropInfo.Mobs[i];
+            var mobDisplayName = NormalizeMobDisplayName(mob.MobName);
+            var zoneSummary = mob.ZoneCount == 1
+                ? mob.Zones[0].ZoneName
+                : $"{mob.ZoneCount} {Pluralize("zone", mob.ZoneCount)}";
+            lines.Add($"{mobDisplayName} — {zoneSummary} · {mob.ClusterCount} {Pluralize("area", mob.ClusterCount)}");
+        }
+
+        if (dropInfo.MobCount > MaxMobsShown)
+        {
+            var remainingMobCount = dropInfo.MobCount - MaxMobsShown;
+            lines.Add($"...and {remainingMobCount} more {Pluralize("mob", remainingMobCount)}");
+        }
+
+        lines.Add("Click for map flags and teleports.");
+        return string.Join('\n', lines);
     }
 
     private static void DrawMobDropPopup(MaterialEntry entry, string popupId)
     {
-        if (!ImGui.BeginPopup(popupId))
+        var width = VulcanUiScaling.Scaled(440f);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(width, 0f), new Vector2(width, VulcanUiScaling.Scaled(480f)));
+        var padding = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, new Vector2(14f, 12f) * M3.PaddingScale);
+        var background = ImRaii.PushColor(ImGuiCol.PopupBg, M3.Scheme.SurfaceContainer);
+        var open = ImGui.BeginPopup(popupId);
+        background.Dispose();
+        padding.Dispose();
+        if (!open)
+        {
             return;
+        }
 
-        ImGui.TextUnformatted($"Drops for {entry.Name}");
-        ImGui.TextColored(new Vector4(0.65f, 0.65f, 0.70f, 1f), BuildMobDropSummaryText(entry.DropInfo));
-        ImGui.Separator();
+        try
+        {
+            DrawMobDropPopupContents(entry);
+        }
+        finally
+        {
+            ImGui.EndPopup();
+        }
+    }
 
-        var zoneGroups = entry.DropInfo.Mobs
-            .SelectMany(mob => mob.Zones.Select(zone => (Mob: mob, Zone: zone)))
-            .GroupBy(data => (data.Zone.TerritoryTypeId, data.Zone.ZoneName))
-            .OrderBy(group => group.Key.ZoneName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var maxPopupContentHeight = VulcanUiScaling.Scaled(440f);
+    private static void DrawMobDropPopupContents(MaterialEntry entry)
+    {
+        var scale = M3.Scale;
+        using (ImRaii.PushFont(M3.TitleMedium))
+        {
+            ImGui.TextUnformatted($"Drops for {entry.Name}");
+        }
+
+        M3Text.Draw(BuildMobDropSummaryText(entry.DropInfo), M3TextStyle.Muted);
+        M3Widgets.Divider(4f);
+
+        var zoneGroups = new List<(uint TerritoryTypeId, string ZoneName, List<(MobDropMobInfo Mob, MobDropZoneInfo Zone)> Entries, int Index)>();
+        var zoneIndexes = new Dictionary<(uint, string), int>();
+        foreach (var mob in entry.DropInfo.Mobs)
+        {
+            foreach (var zone in mob.Zones)
+            {
+                if (!zoneIndexes.TryGetValue((zone.TerritoryTypeId, zone.ZoneName), out var zoneIndex))
+                {
+                    zoneIndex = zoneGroups.Count;
+                    zoneIndexes.Add((zone.TerritoryTypeId, zone.ZoneName), zoneIndex);
+                    zoneGroups.Add((zone.TerritoryTypeId, zone.ZoneName, [], zoneIndex));
+                }
+
+                zoneGroups[zoneIndex].Entries.Add((mob, zone));
+            }
+        }
+
+        zoneGroups.Sort(static (lhs, rhs) =>
+        {
+            var order = StringComparer.OrdinalIgnoreCase.Compare(lhs.ZoneName, rhs.ZoneName);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
         var isAppearing = ImGui.IsWindowAppearing();
         var defaultZoneOpen = entry.DropInfo.ZoneCount == 1;
-        var childHeight = CalculateMobDropPopupContentHeight(zoneGroups, popupId, defaultZoneOpen, isAppearing);
-        ImGui.BeginChild($"{popupId}_scroll", new Vector2(VulcanUiScaling.Scaled(460f), Math.Min(childHeight, maxPopupContentHeight)), false);
+        var buttonSize = MathF.Max(ImGui.GetFrameHeight(), 26f * scale);
+        var flagTint = SourceColor(HueMapMarker);
+        var teleportTint = SourceColor(HueTeleport);
+        var zoneTint = SourceColor(HueDrop);
+        var childIndent = 26f * scale;
+
         for (var i = 0; i < zoneGroups.Count; i++)
         {
             var zoneGroup = zoneGroups[i];
-            var zoneEntries = zoneGroup
-                .OrderBy(grouped => NormalizeMobDisplayName(grouped.Mob.MobName), StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            var zonePrimaryCluster = GetZonePrimaryCluster(zoneEntries);
-            var zoneStateId = GetMobDropZoneStateId(popupId, zoneGroup.Key.TerritoryTypeId, i);
-            if (isAppearing && defaultZoneOpen)
-                MobDropZoneOpenStates[zoneStateId] = true;
-            var zoneOpenState = GetMobDropZoneOpenState(zoneStateId, defaultZoneOpen);
+            var sortedZoneEntries = new List<(string MobName, (MobDropMobInfo Mob, MobDropZoneInfo Zone) Entry, int Index)>(zoneGroup.Entries.Count);
+            for (var entryIndex = 0; entryIndex < zoneGroup.Entries.Count; entryIndex++)
+            {
+                var zoneEntry = zoneGroup.Entries[entryIndex];
+                sortedZoneEntries.Add((NormalizeMobDisplayName(zoneEntry.Mob.MobName), zoneEntry, entryIndex));
+            }
 
-            ImGui.PushID($"zone_{zoneGroup.Key.TerritoryTypeId}_{i}");
+            sortedZoneEntries.Sort(static (lhs, rhs) =>
+            {
+                var order = StringComparer.OrdinalIgnoreCase.Compare(lhs.MobName, rhs.MobName);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            var zoneEntries = sortedZoneEntries.ConvertAll(static sorted => sorted.Entry);
+            var zoneStateId = $"{entry.ItemId}_{(entry.IsPrecraft ? 1 : 0)}_{zoneGroup.TerritoryTypeId}_{i}";
+            if (isAppearing && defaultZoneOpen)
+            {
+                MobDropZoneOpenStates[zoneStateId] = true;
+            }
+
+            var zoneOpen = MobDropZoneOpenStates.TryGetValue(zoneStateId, out var known) ? known : defaultZoneOpen;
+
+            using var zoneId = ImRaii.PushId(i);
+            var buttonsWidth = buttonSize * 2f;
+            var headerWidth = MathF.Max(1f, ImGui.GetContentRegionAvail().X - buttonsWidth - M3.Space1);
+            var mobCount = $"{zoneEntries.Count} {Pluralize("mob", zoneEntries.Count)}";
+            if (DrawZoneHeader("##zone", zoneGroup.ZoneName, mobCount, zoneOpen, zoneTint, new Vector2(headerWidth, buttonSize)))
+            {
+                zoneOpen = !zoneOpen;
+            }
+
+            MobDropZoneOpenStates[zoneStateId] = zoneOpen;
+
+            ImGui.SameLine(0, M3.Space1);
+            var zonePrimaryCluster = GetZonePrimaryCluster(zoneEntries);
             if (zonePrimaryCluster.HasValue)
             {
-                DrawMobDropFlagButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "flag_zone",
+                DrawMobDropFlagButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "##flag_zone",
                     "Place a map marker near the center of this zone's mob locations.",
-                    "No zone-level coordinates are available for this zone.");
-
-                ImGui.SameLine();
-                DrawMobDropTeleportButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "teleport_zone",
+                    "No zone-level coordinates are available for this zone.", flagTint, buttonSize);
+                ImGui.SameLine(0, 0);
+                DrawMobDropTeleportButton(zonePrimaryCluster.Value.Cluster, zonePrimaryCluster.Value.MobName, "##teleport_zone",
                     "Teleport to the nearest aetheryte for this zone and place a map marker there.",
-                    "No teleport target available for this zone.");
+                    "No teleport target available for this zone.", teleportTint, buttonSize);
             }
             else
             {
-                DrawMobDropIconButton("flag_zone", FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor,
-                    "No zone-level coordinates are available for this zone.", true);
-
-                ImGui.SameLine();
-                DrawMobDropIconButton("teleport_zone", FontAwesomeIcon.Running, MobDropTeleportButtonColor,
-                    "No teleport target available for this zone.", true);
+                M3Widgets.IconButton("##flag_zone", FontAwesomeIcon.MapMarkerAlt, "No zone-level coordinates are available for this zone.",
+                    diameter: buttonSize, enabled: false);
+                ImGui.SameLine(0, 0);
+                M3Widgets.IconButton("##teleport_zone", FontAwesomeIcon.Running, "No teleport target available for this zone.",
+                    diameter: buttonSize, enabled: false);
             }
-
-            ImGui.SameLine();
-            ImGui.SetNextItemOpen(zoneOpenState, ImGuiCond.Always);
-            bool zoneOpen;
-            using (ImRaii.PushColor(ImGuiCol.Text, AccentDrop))
-                zoneOpen = ImGui.TreeNodeEx(zoneGroup.Key.ZoneName);
-            MobDropZoneOpenStates[zoneStateId] = zoneOpen;
 
             if (zoneOpen)
             {
+                ImGui.Indent(childIndent);
                 for (var zoneEntryIndex = 0; zoneEntryIndex < zoneEntries.Count; zoneEntryIndex++)
                 {
                     var (mob, zone) = zoneEntries[zoneEntryIndex];
                     var mobDisplayName = NormalizeMobDisplayName(mob.MobName);
 
-                    ImGui.PushID($"{mob.BNpcNameId}_{zone.TerritoryTypeId}");
+                    using var mobId = ImRaii.PushId($"{mob.BNpcNameId}_{zone.TerritoryTypeId}");
+                    ImGui.Dummy(new Vector2(0f, 2f * scale));
                     ImGui.TextUnformatted(mobDisplayName);
-                    ImGui.Indent();
 
                     for (var clusterIndex = 0; clusterIndex < zone.Clusters.Count; clusterIndex++)
                     {
                         var cluster = zone.Clusters[clusterIndex];
-                        ImGui.PushID(clusterIndex);
+                        using var clusterId = ImRaii.PushId(clusterIndex);
 
-                        DrawMobDropFlagButton(cluster, mobDisplayName, "flag",
+                        DrawMobDropFlagButton(cluster, mobDisplayName, "##flag",
                             "Place a map marker for this location.",
-                            "No coordinates available for this location.");
-                        ImGui.SameLine();
-                        DrawMobDropTeleportButton(cluster, mobDisplayName, "teleport",
+                            "No coordinates available for this location.", flagTint, buttonSize);
+                        ImGui.SameLine(0, 0);
+                        DrawMobDropTeleportButton(cluster, mobDisplayName, "##teleport",
                             "Teleport to the nearest aetheryte for this location and place a map marker there.",
-                            "No teleport target available for this location.");
-                        ImGui.SameLine();
-                        ImGui.TextUnformatted(BuildMobDropClusterText(cluster));
-                        ImGui.PopID();
+                            "No teleport target available for this location.", teleportTint, buttonSize);
+                        ImGui.SameLine(0, M3.Space2);
+                        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (buttonSize - ImGui.GetTextLineHeight()) * 0.5f);
+                        M3Text.Draw(BuildMobDropClusterText(cluster), cluster.HasCoordinates ? M3TextStyle.Muted : M3TextStyle.Faint);
                     }
-
-                    ImGui.Unindent();
-                    ImGui.PopID();
-
-                    if (zoneEntryIndex < zoneEntries.Count - 1)
-                        ImGui.Spacing();
                 }
 
-                ImGui.TreePop();
+                ImGui.Unindent(childIndent);
             }
-            ImGui.PopID();
+
             if (i < zoneGroups.Count - 1)
             {
-                ImGui.Spacing();
-                ImGui.Separator();
+                M3Widgets.Divider(4f);
             }
         }
-
-        ImGui.EndChild();
-        ImGui.EndPopup();
     }
 
-    private static float CalculateMobDropPopupContentHeight(
-        IReadOnlyList<IGrouping<(uint TerritoryTypeId, string ZoneName), (MobDropMobInfo Mob, MobDropZoneInfo Zone)>> zoneGroups,
-        string popupId,
-        bool defaultZoneOpen,
-        bool isAppearing)
+    private static bool DrawZoneHeader(string id, string zoneName, string trailing, bool open, Vector4 tint, Vector2 size)
     {
-        var style = ImGui.GetStyle();
-        var rowHeight = ImGui.GetTextLineHeight() + style.ItemSpacing.Y;
-        var visibleRowCount = 0;
-        for (var i = 0; i < zoneGroups.Count; i++)
+        var s = M3.Scheme;
+        var scale = M3.Scale;
+        var pressed = ImGui.InvisibleButton(id, size);
+        var hovered = ImGui.IsItemHovered();
+        var held = ImGui.IsItemActive();
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var drawList = ImGui.GetWindowDrawList();
+
+        if (hovered || held)
         {
-            var zoneStateId = GetMobDropZoneStateId(popupId, zoneGroups[i].Key.TerritoryTypeId, i);
-            if (isAppearing && defaultZoneOpen)
-                MobDropZoneOpenStates[zoneStateId] = true;
-            var zoneOpen = GetMobDropZoneOpenState(zoneStateId, defaultZoneOpen);
-            visibleRowCount += 1;
-            if (zoneOpen)
-            {
-                var zoneEntries = zoneGroups[i]
-                    .OrderBy(grouped => NormalizeMobDisplayName(grouped.Mob.MobName), StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                visibleRowCount += zoneEntries.Count;
-                visibleRowCount += zoneEntries.Sum(entry => entry.Zone.Clusters.Count);
-                if (zoneEntries.Count > 1)
-                    visibleRowCount += zoneEntries.Count - 1;
-            }
-            if (i < zoneGroups.Count - 1)
-                visibleRowCount += 1;
+            drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), M3.ShapeSmall);
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
         }
-        return Math.Max(1, visibleRowCount) * rowHeight + style.FramePadding.Y * 2f + style.ItemSpacing.Y;
-    }
 
-    private static string GetMobDropZoneStateId(string popupId, uint territoryTypeId, int zoneIndex)
-        => $"{popupId}_zone_{territoryTypeId}_{zoneIndex}";
+        var chevronSlot = 20f * scale;
+        M3Draw.Chevron(drawList, new Vector2(min.X + chevronSlot * 0.5f + 2f * scale, (min.Y + max.Y) * 0.5f), open ? 1f : 0f,
+            M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.8f), chevronSlot * 0.22f);
 
-    private static bool GetMobDropZoneOpenState(string zoneStateId, bool defaultZoneOpen)
-    {
-        if (MobDropZoneOpenStates.TryGetValue(zoneStateId, out var zoneOpen))
-            return zoneOpen;
-        return defaultZoneOpen;
+        var x = min.X + chevronSlot + 6f * scale;
+        var iconSize = M3Draw.MeasureIcon(FontAwesomeIcon.Map);
+        M3Draw.Icon(drawList, FontAwesomeIcon.Map, new Vector2(x, min.Y + (size.Y - iconSize.Y) * 0.5f), tint);
+        x += iconSize.X + 8f * scale;
+
+        var trailingSize = ImGui.CalcTextSize(trailing);
+        var label = M3Navigation.Truncate(zoneName, MathF.Max(8f * scale, max.X - x - trailingSize.X - 16f * scale));
+        var labelSize = ImGui.CalcTextSize(label);
+        drawList.AddText(new Vector2(x, min.Y + (size.Y - labelSize.Y) * 0.5f), M3.U32(s.OnSurface), label);
+        drawList.AddText(new Vector2(max.X - 8f * scale - trailingSize.X, min.Y + (size.Y - trailingSize.Y) * 0.5f),
+            M3.U32(s.OnSurfaceVariant, 0.85f), trailing);
+
+        if (hovered && label != zoneName)
+        {
+            M3Tooltip.Show(zoneName);
+        }
+
+        return pressed;
     }
 
     private static string BuildMobDropSummaryText(MobDropItemInfo dropInfo)
@@ -1211,16 +1571,27 @@ public class CraftingMaterialsWindow : Window
     private static (MobDropClusterInfo Cluster, string MobName)? GetZonePrimaryCluster(
         IReadOnlyList<(MobDropMobInfo Mob, MobDropZoneInfo Zone)> zoneEntries)
     {
-        var candidates = zoneEntries
-            .SelectMany(
-                entry => entry.Zone.Clusters
-                    .Where(cluster => cluster.HasCoordinates)
-                    .Select(cluster => (Cluster: cluster, MobName: NormalizeMobDisplayName(entry.Mob.MobName))))
-            .ToList();
+        var candidates = new List<(MobDropClusterInfo Cluster, string MobName)>();
+        foreach (var (mob, zone) in zoneEntries)
+        {
+            foreach (var cluster in zone.Clusters)
+            {
+                if (cluster.HasCoordinates)
+                {
+                    candidates.Add((cluster, NormalizeMobDisplayName(mob.MobName)));
+                }
+            }
+        }
+
         if (candidates.Count == 0)
+        {
             return null;
+        }
+
         if (candidates.Count == 1)
+        {
             return candidates[0];
+        }
 
         var bestCandidate = candidates[0];
         var bestScore = double.PositiveInfinity;
@@ -1232,14 +1603,20 @@ public class CraftingMaterialsWindow : Window
                 var weight = Math.Max(1, candidates[j].Cluster.SpawnPointCount);
                 var deltaX = candidates[i].Cluster.MapX - candidates[j].Cluster.MapX;
                 var deltaY = candidates[i].Cluster.MapY - candidates[j].Cluster.MapY;
-                score += weight * ((deltaX * deltaX) + (deltaY * deltaY));
+                score += weight * (deltaX * deltaX + deltaY * deltaY);
             }
 
             if (score > bestScore)
+            {
                 continue;
+            }
+
             if (Math.Abs(score - bestScore) < 0.0001d
              && candidates[i].Cluster.SpawnPointCount < bestCandidate.Cluster.SpawnPointCount)
+            {
                 continue;
+            }
+
             bestScore = score;
             bestCandidate = candidates[i];
         }
@@ -1250,7 +1627,9 @@ public class CraftingMaterialsWindow : Window
     private static string NormalizeMobDisplayName(string mobName)
     {
         if (string.IsNullOrWhiteSpace(mobName))
+        {
             return mobName;
+        }
 
         var chars = mobName.ToLowerInvariant().ToCharArray();
         var capitalizeNext = true;
@@ -1260,7 +1639,10 @@ public class CraftingMaterialsWindow : Window
             if (char.IsLetter(c))
             {
                 if (capitalizeNext)
+                {
                     chars[i] = char.ToUpperInvariant(c);
+                }
+
                 capitalizeNext = false;
                 continue;
             }
@@ -1280,94 +1662,75 @@ public class CraftingMaterialsWindow : Window
     private static string Pluralize(string singular, int count)
         => count == 1 ? singular : $"{singular}s";
 
-    private static bool DrawMobDropIconButton(string id, FontAwesomeIcon icon, Vector4 color, string tooltip, bool disabled = false)
-    {
-        var hoveredFlags = disabled ? ImGuiHoveredFlags.AllowWhenDisabled : ImGuiHoveredFlags.None;
-        var size = Vector2.One * ImGui.GetFrameHeight();
-
-        bool DrawCenteredButton()
-        {
-            using var font = ImRaii.PushFont(UiBuilder.IconFont);
-            var iconText = icon.ToIconString();
-            var cursor = ImGui.GetCursorScreenPos();
-            var iconSize = ImGui.CalcTextSize(iconText);
-
-            bool clicked;
-            using (ImRaii.PushId(id))
-                clicked = ImGui.Button(string.Empty, size);
-
-            var iconPos = cursor + ((size - iconSize) / 2f);
-            ImGui.GetWindowDrawList().AddText(iconPos, ImGui.GetColorU32(color), iconText);
-            return clicked;
-        }
-
-        if (disabled)
-        {
-            bool disabledHovered;
-            using (ImRaii.Disabled())
-            {
-                DrawCenteredButton();
-                disabledHovered = ImGui.IsItemHovered(hoveredFlags);
-            }
-
-            if (disabledHovered)
-                ImGui.SetTooltip(tooltip);
-            return false;
-        }
-
-        var clicked = DrawCenteredButton();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(tooltip);
-        return clicked;
-    }
-
-    private static void DrawMobDropFlagButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip)
+    private static void DrawMobDropFlagButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip,
+        Vector4 tint, float size)
     {
         if (!cluster.HasCoordinates)
         {
-            DrawMobDropIconButton(id, FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor, unavailableTooltip, true);
+            M3Widgets.IconButton(id, FontAwesomeIcon.MapMarkerAlt, unavailableTooltip, diameter: size, enabled: false);
             return;
         }
 
-        if (DrawMobDropIconButton(id, FontAwesomeIcon.MapMarkerAlt, MobDropMarkerButtonColor, tooltip))
+        if (M3Widgets.IconButton(id, FontAwesomeIcon.MapMarkerAlt, tooltip, tint: tint, diameter: size))
+        {
             PlaceMobDropFlag(cluster, mobName);
+        }
     }
 
-    private static void DrawMobDropTeleportButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip)
+    private static void DrawMobDropTeleportButton(MobDropClusterInfo cluster, string mobName, string id, string tooltip, string unavailableTooltip,
+        Vector4 tint, float size)
     {
         var aetheryte = ResolveMobDropAetheryte(cluster);
         if (aetheryte == null)
         {
-            DrawMobDropIconButton(id, FontAwesomeIcon.Running, MobDropTeleportButtonColor, unavailableTooltip, true);
+            M3Widgets.IconButton(id, FontAwesomeIcon.Running, unavailableTooltip, diameter: size, enabled: false);
             return;
         }
-        if (DrawMobDropIconButton(id, FontAwesomeIcon.Running, MobDropTeleportButtonColor, tooltip))
+
+        if (M3Widgets.IconButton(id, FontAwesomeIcon.Running, tooltip, tint: tint, diameter: size))
+        {
             TeleportToMobDropAetheryte(cluster, mobName, aetheryte);
+        }
     }
 
     private static global::GatherBuddy.Classes.Aetheryte? ResolveMobDropAetheryte(MobDropClusterInfo cluster)
     {
         if (!cluster.HasCoordinates || cluster.TerritoryTypeId == 0)
+        {
             return null;
+        }
 
         if (!GatherBuddy.GameData.Territories.TryGetValue(cluster.TerritoryTypeId, out var territory))
         {
             var territorySheet = Dalamud.GameData.GetExcelSheet<TerritoryType>();
             if (territorySheet == null || !territorySheet.TryGetRow(cluster.TerritoryTypeId, out var territoryRow))
+            {
                 return null;
+            }
 
             territory = GatherBuddy.GameData.FindOrAddTerritory(territoryRow);
         }
 
         if (territory == null || territory.Aetherytes.Count == 0)
+        {
             return null;
+        }
 
         var mapX = (int)MathF.Round(cluster.MapX * 100f);
         var mapY = (int)MathF.Round(cluster.MapY * 100f);
-        return territory.Aetherytes
-            .OrderBy(aetheryte => aetheryte.WorldDistance(territory.Id, mapX, mapY))
-            .ThenBy(aetheryte => aetheryte.Id)
-            .FirstOrDefault();
+        global::GatherBuddy.Classes.Aetheryte? closest = null;
+        var closestDistance = 0;
+        foreach (var aetheryte in territory.Aetherytes)
+        {
+            var distance = aetheryte.WorldDistance(territory.Id, mapX, mapY);
+            if (closest == null || distance < closestDistance || distance == closestDistance && aetheryte.Id < closest.Id)
+            {
+                closest = aetheryte;
+                closestDistance = distance;
+            }
+        }
+
+        return closest;
     }
 
     private static void TeleportToMobDropAetheryte(MobDropClusterInfo cluster, string mobName, global::GatherBuddy.Classes.Aetheryte aetheryte)

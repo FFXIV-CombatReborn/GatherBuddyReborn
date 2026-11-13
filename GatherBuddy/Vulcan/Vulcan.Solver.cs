@@ -4,7 +4,7 @@ namespace GatherBuddy.Vulcan;
 
 public interface ISolverDefinition
 {
-    public record struct Desc(ISolverDefinition Def, int Flavor, int Priority, string Name, string UnsupportedReason = "")
+    record struct Desc(ISolverDefinition Def, int Flavor, int Priority, string Name, string UnsupportedReason = "")
     {
         public Solver? CreateSolver(CraftState craft)
         {
@@ -12,8 +12,8 @@ public interface ISolverDefinition
         }
     }
 
-    public IEnumerable<Desc> Flavors(CraftState craft);
-    public Solver Create(CraftState craft, int flavor);
+    IEnumerable<Desc> Flavors(CraftState craft);
+    Solver Create(CraftState craft, int flavor);
 }
 
 public abstract class Solver
@@ -26,13 +26,13 @@ public abstract class Solver
 
 public interface ICraftValidator
 {
-    public bool Validate(CraftState craft);
+    bool Validate(CraftState craft);
 }
 
-public struct SolverRef
+public readonly struct SolverRef
 {
     public string Name { get; private init; } = "";
-    private Solver? _solver;
+    private readonly Solver? _solver;
 
     public SolverRef(string name, Solver? solver = null)
     {

@@ -1,8 +1,8 @@
+using GatherBuddy.Classes;
+using GatherBuddy.Time;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GatherBuddy.Classes;
-using GatherBuddy.Time;
 
 namespace GatherBuddy.Weather;
 
@@ -10,8 +10,8 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
 {
     public const int MillisecondsPerWeather = EorzeaTimeStampExtensions.MillisecondsPerEorzeaWeather;
 
-    public Territory            Territory { get; }
-    public List<WeatherListing> List      { get; }
+    public Territory Territory { get; }
+    public List<WeatherListing> List { get; }
     public WeatherListing CurrentWeather
         => Get(1);
 
@@ -22,16 +22,21 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
     {
         TrimFront();
         if (List.Count <= idx)
+        {
             Append((uint)(idx + 1 - List.Count));
+        }
+
         return List[(int)idx];
     }
 
     public void TrimFront()
     {
-        var now    = GatherBuddy.Time.ServerTime;
+        var now = GatherBuddy.Time.ServerTime;
         var remove = List.FindIndex(w => w.Offset(now) < 2 * MillisecondsPerWeather);
         if (remove > 0)
+        {
             List.RemoveRange(0, remove);
+        }
     }
 
     private IEnumerable<WeatherListing> RequestData(uint amount, long millisecondOffset)
@@ -47,14 +52,17 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
     {
         TrimFront();
         if (List.Count < amount)
+        {
             Append((uint)(amount - List.Count));
+        }
+
         return this;
     }
 
     public WeatherTimeline(Territory territory, uint cache = 32)
     {
         Territory = territory;
-        List      = RequestData(cache, -MillisecondsPerWeather).ToList();
+        List = [.. RequestData(cache, -MillisecondsPerWeather)];
     }
 
     public int CompareTo(WeatherTimeline? other)
@@ -66,7 +74,7 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
     {
         TrimFront();
         var previousFit = false;
-        var idx         = 1;
+        var idx = 1;
 
         var maxDate = now.AddDays(100);
         while (true)
@@ -78,10 +86,12 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
                     var w = List[idx];
                     if (weather.Count == 0 || weather.Contains(w.Weather))
                     {
-                        var overlap  = w.Uptime.FirstOverlap(eorzeanHours);
+                        var overlap = w.Uptime.FirstOverlap(eorzeanHours);
                         var duration = overlap.Duration;
                         if (duration > 0 && overlap.End > now)
+                        {
                             return w;
+                        }
                     }
                 }
 
@@ -90,7 +100,9 @@ public class WeatherTimeline : IComparable<WeatherTimeline>
 
             Append(increment);
             if (List.Last().Timestamp >= maxDate)
+            {
                 return new WeatherListing(Structs.Weather.Invalid, TimeStamp.Epoch);
+            }
         }
     }
 

@@ -52,9 +52,15 @@ public struct Angle(float radians = 0)
     {
         var r = Rad;
         while (r < -MathF.PI)
+        {
             r += 2 * MathF.PI;
+        }
+
         while (r > MathF.PI)
+        {
             r -= 2 * MathF.PI;
+        }
+
         return new(r);
     }
 

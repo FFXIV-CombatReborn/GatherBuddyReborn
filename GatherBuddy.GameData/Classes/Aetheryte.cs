@@ -1,18 +1,18 @@
-using System;
-using System.Linq;
 using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
+using System;
+using System.Linq;
 using AetheryteRow = Lumina.Excel.Sheets.Aetheryte;
 
 namespace GatherBuddy.Classes;
 
 public class Aetheryte : IComparable<Aetheryte>
 {
-    public AetheryteRow Data      { get; set; }
-    public string       Name      { get; set; }
-    public Territory    Territory { get; set; }
-    public int          XCoord    { get; set; }
-    public int          YCoord    { get; set; }
+    public AetheryteRow Data { get; set; }
+    public string Name { get; set; }
+    public Territory Territory { get; set; }
+    public int XCoord { get; set; }
+    public int YCoord { get; set; }
 
     public ushort XStream
         => Territory.XStream;
@@ -28,8 +28,8 @@ public class Aetheryte : IComparable<Aetheryte>
 
     public Aetheryte(GameData gameData, AetheryteRow data)
     {
-        Data      = data;
-        Name      = MultiString.ParseSeStringLumina(data.PlaceName.ValueNullable?.Name);
+        Data = data;
+        Name = MultiString.ParseSeStringLumina(data.PlaceName.ValueNullable?.Name);
         Territory = gameData.FindOrAddTerritory(data.Territory.ValueNullable) ?? Territory.Invalid;
         var mapMarker = gameData.DataManager.GetSubrowExcelSheet<MapMarker>().SelectMany(m => m).Cast<MapMarker?>().FirstOrDefault(m => m!.Value.DataType == 3 && m.Value.DataKey.RowId == data.RowId);
         if (mapMarker == null)

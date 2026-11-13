@@ -1,55 +1,42 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Threading;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text;
-using Dalamud.Interface.Colors;
-using Lumina.Excel.Sheets;
-using ElliLib.Raii;
-using ImRaii = ElliLib.Raii.ImRaii;
+using Dalamud.Interface;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
 using GatherBuddy.Vulcan;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using Dalamud.Plugin.Services;
+using Lumina.Excel.Sheets;
+using RebornMaterial;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public class RecipeCraftSettingsPopup
 {
-    private static int _nextInstanceId;
-    private static int _activeInstanceId;
-    private bool _isOpen;
-    private bool _shouldOpen;
     private uint _recipeId;
     private string _recipeName = string.Empty;
-    private readonly int _instanceId = Interlocked.Increment(ref _nextInstanceId);
     private RecipeCraftSettings _editingSettings = new();
     private CraftingListItem? _editingListItem;
     private CraftingListDefinition? _editingList;
     private bool _isPrecraftMode;
-    
-    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = new();
-    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = new();
-    private List<(uint ItemId, string Name)> _manualItems = new();
-    private List<(uint ItemId, string Name)> _squadronManualItems = new();
-    private string _foodSearch = string.Empty;
-    private string _medicineSearch = string.Empty;
-    private string _macroSearch = string.Empty;
+
+    private List<(uint ItemId, string Name, bool IsHQ)> _foodItems = [];
+    private List<(uint ItemId, string Name, bool IsHQ)> _medicineItems = [];
+    private List<(uint ItemId, string Name)> _manualItems = [];
+    private List<(uint ItemId, string Name)> _squadronManualItems = [];
 
     private MacroValidationResult? _validationResult;
     private string? _resolvedMacroId;
     private string? _lastValidatedMacroId;
-    private uint?   _lastValidatedFoodId;
-    private bool    _lastValidatedFoodHQ;
-    private uint?   _lastValidatedMedicineId;
-    private bool    _lastValidatedMedicineHQ;
-    private int     _lastValidatedStartingQuality;
-    
-    private static readonly string[] OverrideModeLabels = { "Inherit", "None", "Specific" };
-    private static readonly string[] MacroModeLabels    = { "Inherit", "Specific" };
-    
+    private uint? _lastValidatedFoodId;
+    private bool _lastValidatedFoodHQ;
+    private uint? _lastValidatedMedicineId;
+    private bool _lastValidatedMedicineHQ;
+    private int _lastValidatedStartingQuality;
+
+
     private class IngredientData
     {
         public uint ItemId { get; set; }
@@ -61,23 +48,31 @@ public class RecipeCraftSettingsPopup
         public bool CanBeHQ { get; set; }
     }
 
+    internal static RebornUI.HostedPanelWindow CreateWindow()
+        => new("GatherBuddyRecipeCraftSettings", "Craft Settings", new Vector2(500f, 600f), new Vector2(460f, 320f), bodyScrolls: false);
+
     private void Activate()
     {
-        _activeInstanceId = _instanceId;
-        _shouldOpen = true;
+        GatherBuddy.RecipeCraftSettingsWindow?.Show(this, DrawContents, () => Subtitle);
     }
-    
-    private List<IngredientData> _ingredients = new();
+
+    public void Close()
+    {
+        GatherBuddy.RecipeCraftSettingsWindow?.Hide(this);
+    }
+
+    private string Subtitle
+        => _editingList == null ? _recipeName
+            : _isPrecraftMode ? $"{_recipeName} · precraft in {_editingList.Name}"
+            : $"{_recipeName} · {_editingList.Name}";
+
+    private readonly List<IngredientData> _ingredients = [];
     private bool _useAllNQ = false;
     public System.Action? OnSaved { get; set; }
-    private static float SettingLabelWidth => VulcanUiScaling.Scaled(120f);
-    private static float OverrideModeWidth => VulcanUiScaling.Scaled(90f);
-    private static Vector2 ActionButtonSize => VulcanUiScaling.Scaled(100f, 0f);
-    private static float IngredientNameColumnWidth => VulcanUiScaling.Scaled(150f);
-    private static float IngredientCountColumnWidth => VulcanUiScaling.Scaled(50f);
-    private static float IngredientUseHqColumnWidth => VulcanUiScaling.Scaled(100f);
-    private static float IngredientInputWidth => VulcanUiScaling.Scaled(80f);
-    
+    private static float SettingLabelWidth => VulcanUiScaling.Scaled(130f);
+    private static float IngredientCountColumnWidth => VulcanUiScaling.Scaled(46f);
+    private static float IngredientUseHqColumnWidth => VulcanUiScaling.Scaled(130f);
+    private static float IngredientInputWidth => VulcanUiScaling.Scaled(120f);
 
     public void Open(uint recipeId, string recipeName)
     {
@@ -87,7 +82,7 @@ public class RecipeCraftSettingsPopup
         _editingListItem = null;
         _editingList = null;
         _isPrecraftMode = false;
-        
+
         var existing = GatherBuddy.RecipeBrowserSettings.Get(recipeId);
         if (existing != null)
         {
@@ -103,7 +98,7 @@ public class RecipeCraftSettingsPopup
                 ManualItemId = existing.ManualItemId,
                 SquadronManualMode = existing.SquadronManualMode,
                 SquadronManualItemId = existing.SquadronManualItemId,
-                IngredientPreferences = new Dictionary<uint, int>(existing.IngredientPreferences),
+                IngredientPreferences = [with(existing.IngredientPreferences)],
                 UseAllNQ = existing.UseAllNQ,
                 SelectedMacroId = existing.SelectedMacroId,
                 SolverOverride = existing.SolverOverride,
@@ -113,14 +108,13 @@ public class RecipeCraftSettingsPopup
         {
             _editingSettings = new RecipeCraftSettings();
         }
-        
+
         LoadConsumables();
         LoadIngredients();
         ResetValidationState();
         Activate();
-        GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag");
     }
-    
+
     public void OpenForListItem(CraftingListItem item, CraftingListDefinition list, string recipeName)
     {
         GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Opening popup for list item {item.RecipeId}: {recipeName}");
@@ -129,7 +123,7 @@ public class RecipeCraftSettingsPopup
         _editingListItem = item;
         _editingList = list;
         _isPrecraftMode = false;
-        
+
         var cs = item.CraftSettings;
         _editingSettings = new RecipeCraftSettings
         {
@@ -143,7 +137,7 @@ public class RecipeCraftSettingsPopup
             ManualItemId = cs?.ManualItemId,
             SquadronManualMode = cs?.SquadronManualMode ?? ConsumableOverrideMode.Inherit,
             SquadronManualItemId = cs?.SquadronManualItemId,
-            IngredientPreferences = cs != null ? new Dictionary<uint, int>(cs.IngredientPreferences) : new(),
+            IngredientPreferences = cs != null ? [with(cs.IngredientPreferences)] : [],
             UseAllNQ = cs?.UseAllNQ ?? false,
             MacroMode = (cs != null && (cs.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs.SelectedMacroId) || cs.SolverOverride != SolverOverrideMode.Default))
                 ? MacroOverrideMode.Specific
@@ -151,12 +145,11 @@ public class RecipeCraftSettingsPopup
             SelectedMacroId = cs?.SelectedMacroId,
             SolverOverride = cs?.SolverOverride ?? SolverOverrideMode.Default,
         };
-        
+
         LoadConsumables();
         LoadIngredients();
         ResetValidationState();
         Activate();
-        GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag for list item");
     }
 
     public void OpenForPrecraft(uint recipeId, string recipeName, CraftingListDefinition list)
@@ -181,7 +174,7 @@ public class RecipeCraftSettingsPopup
             ManualItemId = cs?.ManualItemId,
             SquadronManualMode = cs?.SquadronManualMode ?? ConsumableOverrideMode.Inherit,
             SquadronManualItemId = cs?.SquadronManualItemId,
-            IngredientPreferences = cs != null ? new Dictionary<uint, int>(cs.IngredientPreferences) : new(),
+            IngredientPreferences = cs != null ? [with(cs.IngredientPreferences)] : [],
             UseAllNQ = cs?.UseAllNQ ?? false,
             MacroMode = (cs != null && (cs.MacroMode == MacroOverrideMode.Specific || !string.IsNullOrEmpty(cs.SelectedMacroId) || cs.SolverOverride != SolverOverrideMode.Default))
                 ? MacroOverrideMode.Specific
@@ -194,119 +187,110 @@ public class RecipeCraftSettingsPopup
         LoadIngredients();
         ResetValidationState();
         Activate();
-        GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Setting shouldOpen flag for precraft");
     }
 
-    public void Draw()
+    private void DrawContents()
     {
-        if (_activeInstanceId != 0 && _activeInstanceId != _instanceId)
+        RefreshValidationIfNeeded();
+        var footer = M3Widgets.ButtonHeight + M3.Space1 + ImGui.GetStyle().ItemSpacing.Y * 2f;
+        using (var body = ImRaii.Child("##craftSettingsBody", new Vector2(-1, -footer), false))
         {
-            _isOpen = false;
-            _shouldOpen = false;
-            return;
-        }
-        if (_shouldOpen)
-        {
-            GatherBuddy.Log.Debug($"[RecipeCraftSettingsPopup] Opening window in Draw()");
-            _shouldOpen = false;
-            _isOpen = true;
-        }
-        
-        if (!_isOpen) return;
-        
-        ImGui.SetNextWindowSize(VulcanUiScaling.Scaled(450f, 450f), ImGuiCond.Appearing);
-        ImGui.SetNextWindowSizeConstraints(VulcanUiScaling.Scaled(450f, 0f), new Vector2(float.MaxValue, float.MaxValue));
-        
-        if (ImGui.Begin($"Craft Settings - {_recipeName}###RecipeCraftSettings_{_instanceId}", ref _isOpen))
-        {
-            RefreshValidationIfNeeded();
-            DrawMacroSelector();
-            DrawMacroValidationStatus();
-            DrawRaphaelValidationStatus();
-            DrawFoodSelector();
-            DrawMedicineSelector();
-            DrawManualSelector();
-            DrawSquadronManualSelector();
-            DrawIngredientQuality();
-
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            if (ImGui.Button("Save", ActionButtonSize))
+            if (body)
             {
-                if (!string.IsNullOrEmpty(_resolvedMacroId))
-                    MacroValidator.Invalidate(_recipeId, _resolvedMacroId);
-                SaveIngredientPreferences();
-                if (_editingListItem != null && _editingList != null)
+                using (M3Card.Begin("##craftSolver", "Macro or solver", FontAwesomeIcon.Scroll, M3.AccentFor(0)))
                 {
-                    _editingListItem.CraftSettings = BuildPersistedSettings();
-                    _editingListItem.IngredientPreferences.Clear();
-                    GatherBuddy.CraftingListManager.SaveList(_editingList);
+                    DrawMacroSelector();
+                    DrawMacroValidationStatus();
+                    DrawRaphaelValidationStatus();
                 }
-                else if (_isPrecraftMode && _editingList != null)
-                {
-                    _editingList.SetPrecraftCraftSettings(_recipeId, BuildPersistedSettings());
-                    GatherBuddy.CraftingListManager.SaveList(_editingList);
-                }
-                else
-                {
-                    _editingSettings = BuildPersistedSettings() ?? new RecipeCraftSettings();
-                    GatherBuddy.RecipeBrowserSettings.Set(_recipeId, _editingSettings);
-                    GatherBuddy.RecipeBrowserSettings.Save();
-                }
-                QueueCurrentRaphaelWarmup();
-                OnSaved?.Invoke();
-            }
 
-            ImGui.SameLine();
-            if (ImGui.Button("Clear All", ActionButtonSize))
-            {
-                _editingSettings.Clear();
-                
-                if (_editingListItem != null && _editingList != null)
+                using (M3Card.Begin("##craftConsumables", "Consumables", FontAwesomeIcon.Utensils, M3.AccentFor(1)))
                 {
-                    _editingListItem.CraftSettings = null;
-                    _editingListItem.IngredientPreferences.Clear();
-                    GatherBuddy.CraftingListManager.SaveList(_editingList);
+                    DrawFoodSelector();
+                    DrawMedicineSelector();
+                    DrawManualSelector();
+                    DrawSquadronManualSelector();
                 }
-                else if (_isPrecraftMode && _editingList != null)
-                {
-                    _editingList.SetPrecraftCraftSettings(_recipeId, null);
-                    GatherBuddy.CraftingListManager.SaveList(_editingList);
-                }
-                else
-                {
-                    GatherBuddy.RecipeBrowserSettings.Remove(_recipeId);
-                    GatherBuddy.RecipeBrowserSettings.Save();
-                }
-                QueueCurrentRaphaelWarmup();
-                OnSaved?.Invoke();
-            }
 
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", ActionButtonSize))
-            {
-                _isOpen = false;
+                DrawIngredientQuality();
             }
-
-            ImGui.End();
         }
 
-        if (!_isOpen && _activeInstanceId == _instanceId)
-            _activeInstanceId = 0;
+        ImGui.Dummy(new Vector2(0, M3.Space1));
+        if (M3Widgets.Button("##save", "Save", M3ButtonStyle.Filled, FontAwesomeIcon.Save))
+        {
+            if (!string.IsNullOrEmpty(_resolvedMacroId))
+            {
+                MacroValidator.Invalidate(_recipeId, _resolvedMacroId);
+            }
+
+            SaveIngredientPreferences();
+            if (_editingListItem != null && _editingList != null)
+            {
+                _editingListItem.CraftSettings = BuildPersistedSettings();
+                _editingListItem.IngredientPreferences.Clear();
+                GatherBuddy.CraftingListManager.SaveList(_editingList);
+            }
+            else if (_isPrecraftMode && _editingList != null)
+            {
+                _editingList.SetPrecraftCraftSettings(_recipeId, BuildPersistedSettings());
+                GatherBuddy.CraftingListManager.SaveList(_editingList);
+            }
+            else
+            {
+                _editingSettings = BuildPersistedSettings() ?? new RecipeCraftSettings();
+                GatherBuddy.RecipeBrowserSettings.Set(_recipeId, _editingSettings);
+                GatherBuddy.RecipeBrowserSettings.Save();
+            }
+
+            QueueCurrentRaphaelWarmup();
+            OnSaved?.Invoke();
+            M3Snackbar.Show($"Saved the craft settings for {_recipeName}.");
+        }
+
+        ImGui.SameLine(0, M3.Space2);
+        if (M3Widgets.Button("##clearAll", "Clear all", M3ButtonStyle.Text, FontAwesomeIcon.Eraser,
+                tooltip: "Remove every setting for this recipe."))
+        {
+            _editingSettings.Clear();
+            if (_editingListItem != null && _editingList != null)
+            {
+                _editingListItem.CraftSettings = null;
+                _editingListItem.IngredientPreferences.Clear();
+                GatherBuddy.CraftingListManager.SaveList(_editingList);
+            }
+            else if (_isPrecraftMode && _editingList != null)
+            {
+                _editingList.SetPrecraftCraftSettings(_recipeId, null);
+                GatherBuddy.CraftingListManager.SaveList(_editingList);
+            }
+            else
+            {
+                GatherBuddy.RecipeBrowserSettings.Remove(_recipeId);
+                GatherBuddy.RecipeBrowserSettings.Save();
+            }
+
+            QueueCurrentRaphaelWarmup();
+            OnSaved?.Invoke();
+        }
+
+        ImGui.SameLine(0, M3.Space2);
+        if (M3Widgets.Button("##cancel", "Close", M3ButtonStyle.Text))
+        {
+            Close();
+        }
     }
 
     private void ResetValidationState()
     {
-        _validationResult             = null;
-        _resolvedMacroId              = null;
-        _lastValidatedMacroId         = null;
-        _lastValidatedFoodId          = null;
-        _lastValidatedFoodHQ          = false;
-        _lastValidatedMedicineId      = null;
-        _lastValidatedMedicineHQ      = false;
+        _validationResult = null;
+        _resolvedMacroId = null;
+        _lastValidatedMacroId = null;
+        _lastValidatedFoodId = null;
+        _lastValidatedFoodHQ = false;
+        _lastValidatedMedicineId = null;
+        _lastValidatedMedicineHQ = false;
         _lastValidatedStartingQuality = -1;
-        _macroSearch                  = string.Empty;
     }
 
     private RecipeCraftSettings BuildCurrentSettings()
@@ -328,7 +312,9 @@ public class RecipeCraftSettingsPopup
         var settings = BuildCurrentSettings();
         var recipe = RecipeManager.GetRecipe(_recipeId);
         if (_editingList == null || !recipe.HasValue)
+        {
             return settings;
+        }
 
         return CraftingQualityPolicyResolver.BuildEffectiveSettings(recipe.Value, settings, _editingList.UseAllHQ) ?? settings;
     }
@@ -337,10 +323,14 @@ public class RecipeCraftSettingsPopup
     {
         var settings = BuildCurrentSettings();
         if (_editingListItem == null && !_isPrecraftMode)
+        {
             settings.MacroMode = MacroOverrideMode.Specific;
+        }
 
         if (!settings.HasAnySettings())
+        {
             return null;
+        }
 
         return new RecipeCraftSettings
         {
@@ -354,7 +344,7 @@ public class RecipeCraftSettingsPopup
             ManualItemId = settings.ManualMode == ConsumableOverrideMode.Specific ? settings.ManualItemId : null,
             SquadronManualMode = settings.SquadronManualMode,
             SquadronManualItemId = settings.SquadronManualMode == ConsumableOverrideMode.Specific ? settings.SquadronManualItemId : null,
-            IngredientPreferences = new Dictionary<uint, int>(settings.IngredientPreferences),
+            IngredientPreferences = [with(settings.IngredientPreferences)],
             UseAllNQ = settings.UseAllNQ,
             MacroMode = settings.MacroMode,
             SelectedMacroId = settings.MacroMode == MacroOverrideMode.Specific ? settings.SelectedMacroId : null,
@@ -368,12 +358,16 @@ public class RecipeCraftSettingsPopup
         if (_isPrecraftMode && _editingList != null)
         {
             if (RaphaelAssessmentService.TryAssessListPrecraft(_recipeId, _editingList, evaluationSettings, out var precraftAssessment))
+            {
                 return precraftAssessment;
+            }
         }
         else if (_editingList != null)
         {
             if (RaphaelAssessmentService.TryAssessListRecipe(_recipeId, _editingList, evaluationSettings, out var listAssessment))
+            {
                 return listAssessment;
+            }
         }
         else if (RaphaelAssessmentService.TryAssessRecipe(_recipeId, evaluationSettings, out var recipeAssessment))
         {
@@ -393,7 +387,9 @@ public class RecipeCraftSettingsPopup
         {
             var recipe = RecipeManager.GetRecipe(_recipeId);
             if (!recipe.HasValue)
+            {
                 return true;
+            }
 
             var item = new CraftingListItem(_recipeId, 1)
             {
@@ -419,10 +415,10 @@ public class RecipeCraftSettingsPopup
         SaveIngredientPreferences();
         if (!UsesRaphaelSolverForEdit())
         {
-            ImGui.Spacing();
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "Raphael: inactive for current solver selection.");
+            M3Text.Draw("Raphael isn't used with this choice.", M3TextStyle.Faint);
             return;
         }
+
         var assessment = GetRaphaelAssessment();
         var color = assessment.State switch
         {
@@ -430,18 +426,14 @@ public class RecipeCraftSettingsPopup
                 or RaphaelAssessmentOutcome.CollectibleTier3
                 or RaphaelAssessmentOutcome.MinimumQualityMet
                 or RaphaelAssessmentOutcome.NoQualityRequired
-                => ImGuiColors.ParsedGreen,
-            RaphaelAssessmentState.Ready => ImGuiColors.DalamudYellow,
-            RaphaelAssessmentState.Generating => ImGuiColors.DalamudGrey,
-            RaphaelAssessmentState.Failed => ImGuiColors.DalamudRed,
-            RaphaelAssessmentState.Unavailable => ImGuiColors.DalamudYellow,
-            _ => ImGuiColors.DalamudGrey,
+                => M3.Scheme.Success,
+            RaphaelAssessmentState.Ready => M3.Scheme.Warning,
+            RaphaelAssessmentState.Failed => M3.Scheme.Error,
+            RaphaelAssessmentState.Unavailable => M3.Scheme.Warning,
+            _ => M3.Scheme.Outline,
         };
 
-        ImGui.Spacing();
-        ImGui.TextColored(color, $"Raphael: {assessment.Summary}");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(assessment.Details);
+        M3Badge.Draw($"Raphael: {assessment.Summary}", color, assessment.Details);
     }
 
     private void QueueCurrentRaphaelWarmup()
@@ -465,19 +457,26 @@ public class RecipeCraftSettingsPopup
     private string? ResolveEffectiveMacroIdForEdit()
     {
         if (_editingListItem == null && !_isPrecraftMode)
+        {
             return _editingSettings.SolverOverride == SolverOverrideMode.Default
                 ? _editingSettings.SelectedMacroId
                 : null;
+        }
+
         if (_editingSettings.MacroMode == MacroOverrideMode.Specific)
+        {
             return _editingSettings.SolverOverride == SolverOverrideMode.Default
                 ? _editingSettings.SelectedMacroId
                 : null;
+        }
 
         var inheritedSolverOverride = _isPrecraftMode
             ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
             : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
         if (inheritedSolverOverride != SolverOverrideMode.Default)
+        {
             return null;
+        }
 
         return _isPrecraftMode ? _editingList?.DefaultPrecraftMacroId : _editingList?.DefaultFinalMacroId;
     }
@@ -492,26 +491,26 @@ public class RecipeCraftSettingsPopup
         var effectiveFoodId = evaluationSettings.FoodMode switch
         {
             ConsumableOverrideMode.Specific => evaluationSettings.FoodItemId,
-            ConsumableOverrideMode.Inherit  => listConsumables?.FoodItemId,
-            _                               => null,
+            ConsumableOverrideMode.Inherit => listConsumables?.FoodItemId,
+            _ => null,
         };
         var effectiveFoodHQ = evaluationSettings.FoodMode switch
         {
             ConsumableOverrideMode.Specific => evaluationSettings.FoodHQ,
-            ConsumableOverrideMode.Inherit  => listConsumables?.FoodHQ ?? false,
-            _                               => false,
+            ConsumableOverrideMode.Inherit => listConsumables?.FoodHQ ?? false,
+            _ => false,
         };
         var effectiveMedicineId = evaluationSettings.MedicineMode switch
         {
             ConsumableOverrideMode.Specific => evaluationSettings.MedicineItemId,
-            ConsumableOverrideMode.Inherit  => listConsumables?.MedicineItemId,
-            _                               => null,
+            ConsumableOverrideMode.Inherit => listConsumables?.MedicineItemId,
+            _ => null,
         };
         var effectiveMedicineHQ = evaluationSettings.MedicineMode switch
         {
             ConsumableOverrideMode.Specific => evaluationSettings.MedicineHQ,
-            ConsumableOverrideMode.Inherit  => listConsumables?.MedicineHQ ?? false,
-            _                               => false,
+            ConsumableOverrideMode.Inherit => listConsumables?.MedicineHQ ?? false,
+            _ => false,
         };
 
         var recipe = RecipeManager.GetRecipe(_recipeId);
@@ -525,13 +524,15 @@ public class RecipeCraftSettingsPopup
             && effectiveMedicineId == _lastValidatedMedicineId
             && effectiveMedicineHQ == _lastValidatedMedicineHQ
             && startingQuality == _lastValidatedStartingQuality)
+        {
             return;
+        }
 
-        _lastValidatedMacroId         = macroId;
-        _lastValidatedFoodId          = effectiveFoodId;
-        _lastValidatedFoodHQ          = effectiveFoodHQ;
-        _lastValidatedMedicineId      = effectiveMedicineId;
-        _lastValidatedMedicineHQ      = effectiveMedicineHQ;
+        _lastValidatedMacroId = macroId;
+        _lastValidatedFoodId = effectiveFoodId;
+        _lastValidatedFoodHQ = effectiveFoodHQ;
+        _lastValidatedMedicineId = effectiveMedicineId;
+        _lastValidatedMedicineHQ = effectiveMedicineHQ;
         _lastValidatedStartingQuality = startingQuality;
 
         if (string.IsNullOrEmpty(macroId))
@@ -548,364 +549,305 @@ public class RecipeCraftSettingsPopup
     private void DrawMacroValidationStatus()
     {
         if (string.IsNullOrEmpty(_resolvedMacroId))
+        {
             return;
-
-        ImGui.Spacing();
+        }
 
         if (_validationResult == null || _validationResult.Failure == MacroValidationFailure.NoStats)
         {
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "Validation: No gear stats available for this job.");
+            M3Text.Draw("Validation: no gear stats are available for this job.", M3TextStyle.Faint);
             return;
         }
 
+        var details = $"Progress: {_validationResult.FinalProgress}/{_validationResult.RequiredProgress}\n"
+          + $"Quality: {_validationResult.FinalQuality}\n"
+          + $"Remaining durability: {_validationResult.FinalDurability}";
         if (_validationResult.IsValid)
         {
-            ImGui.TextColored(ImGuiColors.ParsedGreen, "Validation: PASS");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(
-                    $"Macro will complete the craft.\n" +
-                    $"Progress: {_validationResult.FinalProgress}/{_validationResult.RequiredProgress}\n" +
-                    $"Quality: {_validationResult.FinalQuality}\n" +
-                    $"Remaining Durability: {_validationResult.FinalDurability}" +
-                    (_validationResult.SkippedConditionGatedCount > 0
-                        ? $"\nSkipped {_validationResult.SkippedConditionGatedCount} condition-gated action(s)"
-                        : ""));
+            M3Badge.Draw("Validation: passes", M3.Scheme.Success, "The macro completes the craft.\n" + details
+              + (_validationResult.SkippedConditionGatedCount > 0
+                    ? $"\nSkipped {_validationResult.SkippedConditionGatedCount} condition-gated actions"
+                    : string.Empty));
+            return;
         }
-        else
+
+        var (color, label) = _validationResult.Failure switch
         {
-            var (color, label) = _validationResult.Failure switch
-            {
-                MacroValidationFailure.CPExhausted          => (ImGuiColors.DalamudRed,    "FAIL \u2014 CP exhausted"),
-                MacroValidationFailure.DurabilityFailed     => (ImGuiColors.DalamudRed,    "FAIL \u2014 durability broke"),
-                MacroValidationFailure.InsufficientProgress => (ImGuiColors.DalamudYellow, "WARN \u2014 insufficient progress"),
-                MacroValidationFailure.ActionUnusable       => (ImGuiColors.DalamudYellow, "WARN \u2014 action unusable"),
-                _                                           => (ImGuiColors.DalamudRed,    "FAIL"),
-            };
-            ImGui.TextColored(color, $"Validation: {label} (step {_validationResult.FailedAtStep})");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(
-                    $"Progress: {_validationResult.FinalProgress}/{_validationResult.RequiredProgress}\n" +
-                    $"Quality: {_validationResult.FinalQuality}\n" +
-                    $"Remaining Durability: {_validationResult.FinalDurability}");
+            MacroValidationFailure.CPExhausted => (M3.Scheme.Error, "fails, CP runs out"),
+            MacroValidationFailure.DurabilityFailed => (M3.Scheme.Error, "fails, durability breaks"),
+            MacroValidationFailure.InsufficientProgress => (M3.Scheme.Warning, "warning, not enough progress"),
+            MacroValidationFailure.ActionUnusable => (M3.Scheme.Warning, "warning, an action can't be used"),
+            _ => (M3.Scheme.Error, "fails"),
+        };
+        M3Badge.Draw($"Validation: {label} at step {_validationResult.FailedAtStep}", color, details);
+    }
+
+    private static readonly M3Segment[] MacroModeSegments = [new("Inherit", FontAwesomeIcon.LevelDownAlt, "Use the list's choice"), new("Specific", FontAwesomeIcon.Check)];
+
+    private static readonly M3Segment[] OverrideModeSegments =
+    [
+        new("Inherit", FontAwesomeIcon.LevelDownAlt, "Use the list's choice"),
+        new("None", FontAwesomeIcon.Ban, "Use nothing"),
+        new("Specific", FontAwesomeIcon.Check),
+    ];
+
+    private bool InListContext
+        => _editingListItem != null || _isPrecraftMode;
+
+    private static void SettingLabel(string label)
+    {
+        var height = MathF.Max(M3Widgets.ComboHeight, M3Widgets.SegmentedHeight);
+        var start = ImGui.GetCursorPosY();
+        ImGui.SetCursorPosY(start + (height - ImGui.GetTextLineHeight()) * 0.5f);
+        ImGui.TextUnformatted(label);
+        ImGui.SameLine(SettingLabelWidth);
+        ImGui.SetCursorPosY(start);
+    }
+
+    private static bool DrawModeChoice(string id, ref int mode, M3Segment[] segments, string inheritedLabel, int specificIndex)
+    {
+        var picked = M3Widgets.SegmentedButtons(id, segments, mode, M3Widgets.SegmentedWidth(segments));
+        if (picked != mode)
+        {
+            mode = picked;
         }
+
+        if (mode == 0)
+        {
+            ImGui.SameLine(0, M3.Space2);
+            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SegmentedHeight - ImGui.GetTextLineHeight()) * 0.5f);
+            M3Text.Draw($"List: {inheritedLabel}", M3TextStyle.Muted);
+            return false;
+        }
+
+        if (mode != specificIndex)
+        {
+            return false;
+        }
+
+        ImGui.SetCursorPosX(SettingLabelWidth);
+        return true;
     }
 
     private void DrawMacroSelector()
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Macro:");
-        ImGui.SameLine(SettingLabelWidth);
-
+        SettingLabel("Macro");
         var allMacros = CraftingGameInterop.UserMacroLibrary.GetAllMacros();
-
-        if (_editingListItem != null || _isPrecraftMode)
+        if (InListContext)
         {
             var mode = (int)_editingSettings.MacroMode;
-            ImGui.SetNextItemWidth(OverrideModeWidth);
-            if (ImGui.Combo("##MacroMode", ref mode, MacroModeLabels, MacroModeLabels.Length))
-                _editingSettings.MacroMode = (MacroOverrideMode)mode;
-
-            if (_editingSettings.MacroMode == MacroOverrideMode.Inherit)
+            var inheritedId = _isPrecraftMode ? _editingList?.DefaultPrecraftMacroId : _editingList?.DefaultFinalMacroId;
+            var inheritedSolverOverride = _isPrecraftMode
+                ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
+                : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
+            var specific = DrawModeChoice("##MacroMode", ref mode, MacroModeSegments, GetMacroSelectionName(inheritedId, inheritedSolverOverride, allMacros), 1);
+            _editingSettings.MacroMode = (MacroOverrideMode)mode;
+            if (!specific)
             {
-                ImGui.SameLine();
-                var inheritedId = _isPrecraftMode ? _editingList?.DefaultPrecraftMacroId : _editingList?.DefaultFinalMacroId;
-                var inheritedSolverOverride = _isPrecraftMode
-                    ? _editingList?.DefaultPrecraftSolverOverride ?? SolverOverrideMode.Default
-                    : _editingList?.DefaultFinalSolverOverride ?? SolverOverrideMode.Default;
-                var inheritedName = GetMacroSelectionName(inheritedId, inheritedSolverOverride, allMacros);
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {inheritedName}");
                 return;
             }
-
-            ImGui.SameLine();
         }
 
         DrawMacroCombo(allMacros);
     }
 
-    private void DrawMacroCombo(System.Collections.Generic.List<UserMacro> allMacros)
+    private static readonly (string Label, SolverOverrideMode Mode, string? Tooltip)[] SolverChoices =
+    [
+        ("Default, use the solver", SolverOverrideMode.Default, null),
+        ("Standard solver", SolverOverrideMode.StandardSolver, null),
+        ("Raphael solver", SolverOverrideMode.RaphaelSolver, null),
+        ("Progress only", SolverOverrideMode.ProgressOnlySolver, "Only progress-building actions, no quality steps. Fast NQ crafts."),
+    ];
+
+    private void DrawMacroCombo(List<UserMacro> allMacros)
     {
-        var currentMacroName = GetMacroSelectionName(_editingSettings.SelectedMacroId, _editingSettings.SolverOverride, allMacros);
-
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.BeginCombo("##MacroSelector", currentMacroName))
+        int index;
+        if (!string.IsNullOrEmpty(_editingSettings.SelectedMacroId) && _editingSettings.SolverOverride == SolverOverrideMode.Default)
         {
-            var isDefault = _editingSettings.SolverOverride == SolverOverrideMode.Default && string.IsNullOrEmpty(_editingSettings.SelectedMacroId);
-            if (ImGui.Selectable("Default (Use Solver)", isDefault))
-            {
-                _editingSettings.SelectedMacroId = null;
-                _editingSettings.SolverOverride = SolverOverrideMode.Default;
-            }
-            if (ImGui.Selectable("Standard Solver", _editingSettings.SolverOverride == SolverOverrideMode.StandardSolver))
-            {
-                _editingSettings.SelectedMacroId = null;
-                _editingSettings.SolverOverride = SolverOverrideMode.StandardSolver;
-            }
-            if (ImGui.Selectable("Raphael Solver", _editingSettings.SolverOverride == SolverOverrideMode.RaphaelSolver))
-            {
-                _editingSettings.SelectedMacroId = null;
-                _editingSettings.SolverOverride = SolverOverrideMode.RaphaelSolver;
-            }
-            if (ImGui.Selectable("Progress Only", _editingSettings.SolverOverride == SolverOverrideMode.ProgressOnlySolver))
-            {
-                _editingSettings.SelectedMacroId = null;
-                _editingSettings.SolverOverride = SolverOverrideMode.ProgressOnlySolver;
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Use only progress-building actions, no quality steps. Fast NQ crafts.");
+            var macroIndex = allMacros.FindIndex(m => m.Id == _editingSettings.SelectedMacroId);
+            index = macroIndex < 0 ? -1 : SolverChoices.Length + macroIndex;
+        }
+        else
+        {
+            index = Array.FindIndex(SolverChoices, c => c.Mode == _editingSettings.SolverOverride);
+        }
 
-            if (allMacros.Count > 0)
+        string Label(int i)
+        {
+            if (i < SolverChoices.Length)
             {
-                ImGui.Separator();
-                ImGui.InputTextWithHint("##MacroSearch", "Search macros...", ref _macroSearch, 128);
-                var filteredMacros = string.IsNullOrWhiteSpace(_macroSearch)
-                    ? allMacros
-                    : allMacros.Where(m => m.Name.Contains(_macroSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-                foreach (var macro in filteredMacros)
-                {
-                    var isSelected = _editingSettings.SelectedMacroId == macro.Id;
-                    var displayName = macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
-                        ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
-                        : macro.Name;
-                    if (ImGui.Selectable(displayName, isSelected))
-                    {
-                        _editingSettings.SelectedMacroId = macro.Id;
-                        _editingSettings.SolverOverride = SolverOverrideMode.Default;
-                    }
-                }
+                return SolverChoices[i].Label;
             }
 
-            ImGui.EndCombo();
+            var macro = allMacros[i - SolverChoices.Length];
+            return macro.MinCraftsmanship > 0 || macro.MinControl > 0 || macro.MinCP > 0
+                ? $"{macro.Name} ({macro.MinCraftsmanship}/{macro.MinControl}/{macro.MinCP})"
+                : macro.Name;
+        }
+
+        if (!M3Widgets.Combo("##MacroSelector", ref index, SolverChoices.Length + allMacros.Count, Label, ImGui.GetContentRegionAvail().X - M3Card.RightInset,
+                GetMacroSelectionName(_editingSettings.SelectedMacroId, _editingSettings.SolverOverride, allMacros), allMacros.Count > 6,
+                itemTooltip: i => i < SolverChoices.Length ? SolverChoices[i].Tooltip : null))
+        {
+            return;
+        }
+
+        if (index < SolverChoices.Length)
+        {
+            _editingSettings.SelectedMacroId = null;
+            _editingSettings.SolverOverride = SolverChoices[index].Mode;
+        }
+        else
+        {
+            _editingSettings.SelectedMacroId = allMacros[index - SolverChoices.Length].Id;
+            _editingSettings.SolverOverride = SolverOverrideMode.Default;
         }
     }
 
     private static string GetMacroSelectionName(string? macroId, SolverOverrideMode solverOverride, List<UserMacro> allMacros)
-    {
-        return solverOverride switch
+        => solverOverride switch
         {
-            SolverOverrideMode.StandardSolver     => "Standard Solver",
-            SolverOverrideMode.RaphaelSolver      => "Raphael Solver",
-            SolverOverrideMode.ProgressOnlySolver => "Progress Only",
-            _ when !string.IsNullOrEmpty(macroId) => allMacros.FirstOrDefault(m => m.Id == macroId)?.Name ?? "(Macro Not Found)",
-            _                                     => "Default (Use Solver)",
+            SolverOverrideMode.StandardSolver => "Standard solver",
+            SolverOverrideMode.RaphaelSolver => "Raphael solver",
+            SolverOverrideMode.ProgressOnlySolver => "Progress only",
+            _ when !string.IsNullOrEmpty(macroId) => allMacros.Find(m => m.Id == macroId)?.Name ?? "(macro not found)",
+            _ => "Default, use the solver",
         };
+
+    private static string ItemLabel(string name, bool hq)
+        => hq ? $"{name} {(char)SeIconChar.HighQuality}" : name;
+
+    private static bool DrawConsumableCombo(string id, List<(uint ItemId, string Name, bool IsHQ)> items, ref uint? itemId, ref bool hq)
+    {
+        var current = itemId;
+        var currentHq = hq;
+        var index = current.HasValue ? items.FindIndex(i => i.ItemId == current.Value && i.IsHQ == currentHq) + 1 : 0;
+        if (!M3Widgets.Combo(id, ref index, items.Count + 1, i => i == 0 ? "None" : ItemLabel(items[i - 1].Name, items[i - 1].IsHQ),
+                ImGui.GetContentRegionAvail().X - M3Card.RightInset, "None", items.Count > 8))
+        {
+            return false;
+        }
+
+        if (index <= 0)
+        {
+            itemId = null;
+            hq = false;
+        }
+        else
+        {
+            itemId = items[index - 1].ItemId;
+            hq = items[index - 1].IsHQ;
+        }
+
+        return true;
+    }
+
+    private static bool DrawManualCombo(string id, List<(uint ItemId, string Name)> items, ref uint? itemId)
+    {
+        var current = itemId ?? 0;
+        var index = current == 0 ? 0 : items.FindIndex(i => i.ItemId == current) + 1;
+        if (!M3Widgets.Combo(id, ref index, items.Count + 1, i => i == 0 ? "None" : items[i - 1].Name, ImGui.GetContentRegionAvail().X - M3Card.RightInset, "None"))
+        {
+            return false;
+        }
+
+        itemId = index <= 0 ? null : items[index - 1].ItemId;
+        return true;
     }
 
     private void DrawFoodSelector()
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Food:");
-        ImGui.SameLine(SettingLabelWidth);
-
-        if (_editingListItem != null || _isPrecraftMode)
+        SettingLabel("Food");
+        if (InListContext)
         {
             var mode = (int)_editingSettings.FoodMode;
-            ImGui.SetNextItemWidth(OverrideModeWidth);
-            if (ImGui.Combo("##FoodMode", ref mode, OverrideModeLabels, OverrideModeLabels.Length))
-                _editingSettings.FoodMode = (ConsumableOverrideMode)mode;
-
-            if (_editingSettings.FoodMode == ConsumableOverrideMode.Inherit)
+            var specific = DrawModeChoice("##FoodMode", ref mode, OverrideModeSegments,
+                GetConsumableDisplayName(_editingList?.Consumables.FoodItemId, _editingList?.Consumables.FoodHQ ?? false), 2);
+            _editingSettings.FoodMode = (ConsumableOverrideMode)mode;
+            if (!specific)
             {
-                ImGui.SameLine();
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {GetConsumableDisplayName(_editingList?.Consumables.FoodItemId, _editingList?.Consumables.FoodHQ ?? false)}");
+                return;
             }
-            else if (_editingSettings.FoodMode == ConsumableOverrideMode.Specific)
-            {
-                ImGui.SameLine();
-                DrawFoodCombo();
-            }
-            return;
         }
 
-        DrawFoodCombo();
-    }
-
-    private void DrawFoodCombo()
-    {
-        var currentFood = _editingSettings.FoodItemId.HasValue
-            ? GetItemName(_editingSettings.FoodItemId.Value) + (_editingSettings.FoodHQ ? $" {(char)SeIconChar.HighQuality}" : "")
-            : "None";
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.BeginCombo("##FoodSelector", currentFood))
+        var foodId = _editingSettings.FoodItemId;
+        var foodHq = _editingSettings.FoodHQ;
+        if (DrawConsumableCombo("##FoodSelector", _foodItems, ref foodId, ref foodHq))
         {
-            if (ImGui.Selectable("None", !_editingSettings.FoodItemId.HasValue))
-            {
-                _editingSettings.FoodItemId = null;
-                _editingSettings.FoodHQ = false;
-            }
-            ImGui.Separator();
-            ImGui.InputTextWithHint("##FoodSearch", "Search food...", ref _foodSearch, 128);
-            var filteredFood = string.IsNullOrWhiteSpace(_foodSearch)
-                ? _foodItems
-                : _foodItems.Where(f => f.Name.Contains(_foodSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-            foreach (var (itemId, name, isHQ) in filteredFood)
-            {
-                var displayName = name + (isHQ ? $" {(char)SeIconChar.HighQuality}" : "");
-                if (ImGui.Selectable(displayName, _editingSettings.FoodItemId == itemId && _editingSettings.FoodHQ == isHQ))
-                {
-                    _editingSettings.FoodItemId = itemId;
-                    _editingSettings.FoodHQ = isHQ;
-                }
-            }
-            ImGui.EndCombo();
+            _editingSettings.FoodItemId = foodId;
+            _editingSettings.FoodHQ = foodHq;
         }
     }
 
     private void DrawMedicineSelector()
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Medicine:");
-        ImGui.SameLine(SettingLabelWidth);
-
-        if (_editingListItem != null || _isPrecraftMode)
+        SettingLabel("Medicine");
+        if (InListContext)
         {
             var mode = (int)_editingSettings.MedicineMode;
-            ImGui.SetNextItemWidth(OverrideModeWidth);
-            if (ImGui.Combo("##MedicineMode", ref mode, OverrideModeLabels, OverrideModeLabels.Length))
-                _editingSettings.MedicineMode = (ConsumableOverrideMode)mode;
-
-            if (_editingSettings.MedicineMode == ConsumableOverrideMode.Inherit)
+            var specific = DrawModeChoice("##MedicineMode", ref mode, OverrideModeSegments,
+                GetConsumableDisplayName(_editingList?.Consumables.MedicineItemId, _editingList?.Consumables.MedicineHQ ?? false), 2);
+            _editingSettings.MedicineMode = (ConsumableOverrideMode)mode;
+            if (!specific)
             {
-                ImGui.SameLine();
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {GetConsumableDisplayName(_editingList?.Consumables.MedicineItemId, _editingList?.Consumables.MedicineHQ ?? false)}");
+                return;
             }
-            else if (_editingSettings.MedicineMode == ConsumableOverrideMode.Specific)
-            {
-                ImGui.SameLine();
-                DrawMedicineCombo();
-            }
-            return;
         }
 
-        DrawMedicineCombo();
-    }
-
-    private void DrawMedicineCombo()
-    {
-        var currentMedicine = _editingSettings.MedicineItemId.HasValue
-            ? GetItemName(_editingSettings.MedicineItemId.Value) + (_editingSettings.MedicineHQ ? $" {(char)SeIconChar.HighQuality}" : "")
-            : "None";
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.BeginCombo("##MedicineSelector", currentMedicine))
+        var medicineId = _editingSettings.MedicineItemId;
+        var medicineHq = _editingSettings.MedicineHQ;
+        if (DrawConsumableCombo("##MedicineSelector", _medicineItems, ref medicineId, ref medicineHq))
         {
-            if (ImGui.Selectable("None", !_editingSettings.MedicineItemId.HasValue))
-            {
-                _editingSettings.MedicineItemId = null;
-                _editingSettings.MedicineHQ = false;
-            }
-            ImGui.Separator();
-            ImGui.InputTextWithHint("##MedicineSearch", "Search medicine...", ref _medicineSearch, 128);
-            var filteredMedicine = string.IsNullOrWhiteSpace(_medicineSearch)
-                ? _medicineItems
-                : _medicineItems.Where(m => m.Name.Contains(_medicineSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-            foreach (var (itemId, name, isHQ) in filteredMedicine)
-            {
-                var displayName = name + (isHQ ? $" {(char)SeIconChar.HighQuality}" : "");
-                if (ImGui.Selectable(displayName, _editingSettings.MedicineItemId == itemId && _editingSettings.MedicineHQ == isHQ))
-                {
-                    _editingSettings.MedicineItemId = itemId;
-                    _editingSettings.MedicineHQ = isHQ;
-                }
-            }
-            ImGui.EndCombo();
+            _editingSettings.MedicineItemId = medicineId;
+            _editingSettings.MedicineHQ = medicineHq;
         }
     }
 
     private void DrawManualSelector()
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Manual:");
-        ImGui.SameLine(SettingLabelWidth);
-
-        if (_editingListItem != null || _isPrecraftMode)
+        SettingLabel("Manual");
+        if (InListContext)
         {
             var mode = (int)_editingSettings.ManualMode;
-            ImGui.SetNextItemWidth(OverrideModeWidth);
-            if (ImGui.Combo("##ManualMode", ref mode, OverrideModeLabels, OverrideModeLabels.Length))
-                _editingSettings.ManualMode = (ConsumableOverrideMode)mode;
-
-            if (_editingSettings.ManualMode == ConsumableOverrideMode.Inherit)
+            var listManualId = _editingList?.Consumables.ManualItemId;
+            var specific = DrawModeChoice("##ManualMode", ref mode, OverrideModeSegments, listManualId.HasValue ? GetItemName(listManualId.Value) : "None", 2);
+            _editingSettings.ManualMode = (ConsumableOverrideMode)mode;
+            if (!specific)
             {
-                ImGui.SameLine();
-                var listManualId = _editingList?.Consumables.ManualItemId;
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {(listManualId.HasValue ? GetItemName(listManualId.Value) : "None")}");
+                return;
             }
-            else if (_editingSettings.ManualMode == ConsumableOverrideMode.Specific)
-            {
-                ImGui.SameLine();
-                DrawManualCombo();
-            }
-            return;
         }
 
-        DrawManualCombo();
-    }
-
-    private void DrawManualCombo()
-    {
-        var manualId = _editingSettings.ManualItemId ?? 0;
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.BeginCombo("##ManualSelector", manualId == 0 ? "None" : GetItemName(manualId)))
+        var manualId = _editingSettings.ManualItemId;
+        if (DrawManualCombo("##ManualSelector", _manualItems, ref manualId))
         {
-            if (ImGui.Selectable("None", manualId == 0))
-                _editingSettings.ManualItemId = null;
-            foreach (var (itemId, name) in _manualItems)
-            {
-                if (ImGui.Selectable(name, itemId == manualId))
-                    _editingSettings.ManualItemId = itemId;
-            }
-            ImGui.EndCombo();
+            _editingSettings.ManualItemId = manualId;
         }
     }
 
     private void DrawSquadronManualSelector()
     {
-        ImGui.AlignTextToFramePadding();
-        ImGui.Text("Squadron Manual:");
-        ImGui.SameLine(SettingLabelWidth);
-
-        if (_editingListItem != null || _isPrecraftMode)
+        SettingLabel("Squadron manual");
+        if (InListContext)
         {
             var mode = (int)_editingSettings.SquadronManualMode;
-            ImGui.SetNextItemWidth(OverrideModeWidth);
-            if (ImGui.Combo("##SquadronMode", ref mode, OverrideModeLabels, OverrideModeLabels.Length))
-                _editingSettings.SquadronManualMode = (ConsumableOverrideMode)mode;
-
-            if (_editingSettings.SquadronManualMode == ConsumableOverrideMode.Inherit)
+            var listSquadronId = _editingList?.Consumables.SquadronManualItemId;
+            var specific = DrawModeChoice("##SquadronMode", ref mode, OverrideModeSegments, listSquadronId.HasValue ? GetItemName(listSquadronId.Value) : "None", 2);
+            _editingSettings.SquadronManualMode = (ConsumableOverrideMode)mode;
+            if (!specific)
             {
-                ImGui.SameLine();
-                var listSquadronId = _editingList?.Consumables.SquadronManualItemId;
-                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), $"List: {(listSquadronId.HasValue ? GetItemName(listSquadronId.Value) : "None")}");
+                return;
             }
-            else if (_editingSettings.SquadronManualMode == ConsumableOverrideMode.Specific)
-            {
-                ImGui.SameLine();
-                DrawSquadronManualCombo();
-            }
-            return;
         }
 
-        DrawSquadronManualCombo();
-    }
-
-    private void DrawSquadronManualCombo()
-    {
-        var squadronId = _editingSettings.SquadronManualItemId ?? 0;
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.BeginCombo("##SquadronManualSelector", squadronId == 0 ? "None" : GetItemName(squadronId)))
+        var squadronId = _editingSettings.SquadronManualItemId;
+        if (DrawManualCombo("##SquadronManualSelector", _squadronManualItems, ref squadronId))
         {
-            if (ImGui.Selectable("None", squadronId == 0))
-                _editingSettings.SquadronManualItemId = null;
-            foreach (var (itemId, name) in _squadronManualItems)
-            {
-                if (ImGui.Selectable(name, itemId == squadronId))
-                    _editingSettings.SquadronManualItemId = itemId;
-            }
-            ImGui.EndCombo();
+            _editingSettings.SquadronManualItemId = squadronId;
         }
     }
 
-    private string GetConsumableDisplayName(uint? itemId, bool hq)
+    private static string GetConsumableDisplayName(uint? itemId, bool hq)
         => itemId.HasValue ? GetItemName(itemId.Value) + (hq ? $" {(char)SeIconChar.HighQuality}" : "") : "None";
 
     private void LoadConsumables()
@@ -917,7 +859,9 @@ public class RecipeCraftSettingsPopup
 
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet == null)
+        {
             return;
+        }
 
         foreach (var item in itemSheet)
         {
@@ -928,7 +872,9 @@ public class RecipeCraftSettingsPopup
                 {
                     _foodItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _foodItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersPot(item))
@@ -938,7 +884,9 @@ public class RecipeCraftSettingsPopup
                 {
                     _medicineItems.Add((item.RowId, name, false));
                     if (item.CanBeHq)
+                    {
                         _medicineItems.Add((item.RowId, name, true));
+                    }
                 }
             }
             else if (IsCraftersManual(item))
@@ -959,59 +907,129 @@ public class RecipeCraftSettingsPopup
             }
         }
 
-        _foodItems = _foodItems
-            .OrderBy(f => !HasItemInInventory(f.ItemId, f.IsHQ))
-            .ThenBy(f => f.Name)
-            .ThenBy(f => f.IsHQ ? 0 : 1)
-            .ToList();
-        _medicineItems = _medicineItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, m.IsHQ))
-            .ThenBy(m => m.Name)
-            .ThenBy(m => m.IsHQ ? 0 : 1)
-            .ToList();
-        _manualItems = _manualItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
-        _squadronManualItems = _squadronManualItems
-            .OrderBy(m => !HasItemInInventory(m.ItemId, false))
-            .ThenBy(m => m.Name)
-            .ToList();
+        _foodItems = SortConsumables(_foodItems);
+        _medicineItems = SortConsumables(_medicineItems);
+        _manualItems = SortConsumables(_manualItems);
+        _squadronManualItems = SortConsumables(_squadronManualItems);
     }
-    
+
+    private static List<(uint ItemId, string Name, bool IsHQ)> SortConsumables(List<(uint ItemId, string Name, bool IsHQ)> items)
+    {
+        var keyedItems = new List<((uint ItemId, string Name, bool IsHQ) Item, bool Missing, int Index)>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            keyedItems.Add((items[i], !HasItemInInventory(items[i].ItemId, items[i].IsHQ), i));
+        }
+
+        keyedItems.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Missing.CompareTo(rhs.Missing);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = string.Compare(lhs.Item.Name, rhs.Item.Name, StringComparison.CurrentCulture);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = (lhs.Item.IsHQ ? 0 : 1).CompareTo(rhs.Item.IsHQ ? 0 : 1);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return keyedItems.ConvertAll(static keyed => keyed.Item);
+    }
+
+    private static List<(uint ItemId, string Name)> SortConsumables(List<(uint ItemId, string Name)> items)
+    {
+        var keyedItems = new List<((uint ItemId, string Name) Item, bool Missing, int Index)>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            keyedItems.Add((items[i], !HasItemInInventory(items[i].ItemId, false), i));
+        }
+
+        keyedItems.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Missing.CompareTo(rhs.Missing);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = string.Compare(lhs.Item.Name, rhs.Item.Name, StringComparison.CurrentCulture);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return keyedItems.ConvertAll(static keyed => keyed.Item);
+    }
+
+    private static bool HasParam(ItemFood? consumable, Predicate<uint> match)
+    {
+        if (consumable == null)
+        {
+            return false;
+        }
+
+        foreach (var param in consumable.Value.Params)
+        {
+            if (match(param.BaseParam.RowId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static ItemFood? GetItemConsumableProperties(Item item, bool hq)
     {
         if (!item.ItemAction.IsValid)
+        {
             return null;
+        }
+
         var action = item.ItemAction.Value;
         var actionParams = hq ? action.DataHQ : action.Data;
         if (actionParams[0] is not 48 and not 49)
+        {
             return null;
+        }
+
         return Dalamud.GameData.GetExcelSheet<ItemFood>()?.GetRow(actionParams[1]);
     }
-    
+
     private static bool IsCraftersFood(Item item)
     {
         if (item.ItemUICategory.RowId != 46)
+        {
             return false;
-        var consumable = GetItemConsumableProperties(item, false);
-        return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71);
+        }
+
+        return HasParam(GetItemConsumableProperties(item, false), static id => id is 11 or 70 or 71);
     }
-    
+
     private static bool IsCraftersPot(Item item)
     {
         if (item.ItemUICategory.RowId != 44)
+        {
             return false;
-        var consumable = GetItemConsumableProperties(item, false);
-        return consumable != null && consumable.Value.Params.Any(p => p.BaseParam.RowId is 11 or 70 or 71 or 69 or 68);
+        }
+
+        return HasParam(GetItemConsumableProperties(item, false), static id => id is 11 or 70 or 71 or 69 or 68);
     }
 
     private static bool IsCraftersManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 300 or 301 or 1751 or 5329;
     }
@@ -1019,43 +1037,57 @@ public class RecipeCraftSettingsPopup
     private static bool IsSquadronManual(Item item)
     {
         if (item.ItemUICategory.RowId != 63)
+        {
             return false;
+        }
+
         if (!item.ItemAction.IsValid)
+        {
             return false;
+        }
+
         var action = item.ItemAction.Value;
         return action.Action.RowId == 816 && action.Data[0] is 2291 or 2292 or 2293 or 2294;
     }
 
-    private string GetItemName(uint itemId)
+    private static string GetItemName(uint itemId)
     {
         var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
         if (itemSheet != null && itemSheet.TryGetRow(itemId, out var item))
+        {
             return item.Name.ExtractText();
+        }
+
         return "Unknown";
     }
-    
+
     private void LoadIngredients()
     {
         _ingredients.Clear();
         var recipe = RecipeManager.GetRecipe(_recipeId);
         if (!recipe.HasValue)
+        {
             return;
+        }
 
         var qualityDisplaySettings = _editingList != null
             ? CraftingQualityPolicyResolver.BuildEffectiveSettings(recipe.Value, _editingSettings, _editingList.UseAllHQ) ?? _editingSettings.Clone()
             : _editingSettings.Clone();
         _useAllNQ = qualityDisplaySettings.UseAllNQ;
-        
+
         var ingredients = RecipeManager.GetIngredients(recipe.Value);
         foreach (var (itemId, amount) in ingredients)
         {
             var item = Dalamud.GameData.GetExcelSheet<Item>()?.GetRow(itemId);
-            if (item == null) continue;
-            
+            if (item == null)
+            {
+                continue;
+            }
+
             var (availNQ, availHQ) = GetInventoryCountSplit(itemId);
             var desiredHQ = qualityDisplaySettings.IngredientPreferences.GetValueOrDefault(itemId, 0);
             var canBeHQ = item.Value.CanBeHq;
-            
+
             _ingredients.Add(new IngredientData
             {
                 ItemId = itemId,
@@ -1068,14 +1100,16 @@ public class RecipeCraftSettingsPopup
             });
         }
     }
-    
+
     private void SaveIngredientPreferences()
     {
         _editingSettings.IngredientPreferences.Clear();
         foreach (var ing in _ingredients)
         {
             if (ing.DesiredHQ > 0)
+            {
                 _editingSettings.IngredientPreferences[ing.ItemId] = ing.DesiredHQ;
+            }
         }
         _editingSettings.UseAllNQ = _useAllNQ;
 
@@ -1089,120 +1123,97 @@ public class RecipeCraftSettingsPopup
             _editingSettings.IngredientPreferences.Clear();
         }
     }
-    
+
     private int CalculateCurrentQuality(Recipe recipe)
     {
         var preferences = new Dictionary<uint, int>();
         foreach (var ing in _ingredients)
         {
             if (ing.DesiredHQ > 0)
+            {
                 preferences[ing.ItemId] = ing.DesiredHQ;
+            }
         }
         return QualityCalculator.CalculateInitialQuality(recipe, preferences);
     }
-    
-    private int CalculateMaxQuality(Recipe recipe)
+
+    private static int CalculateMaxQuality(Recipe recipe)
     {
         var lt = recipe.RecipeLevelTable.Value;
         return (int)(lt.Quality * recipe.QualityFactor / 100);
     }
-    
+
     private void DrawIngredientQuality()
     {
         if (_ingredients.Count == 0)
+        {
             return;
-        
-        ImGui.Separator();
-        ImGui.Spacing();
-        
-        var recipe = RecipeManager.GetRecipe(_recipeId);
-        if (recipe.HasValue)
-        {
-            var currentQuality = CalculateCurrentQuality(recipe.Value);
-            var maxQuality = CalculateMaxQuality(recipe.Value);
-            
-            ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1), "Ingredient Quality:");
-            ImGui.SameLine();
-            ImGui.TextColored(new Vector4(1.0f, 1.0f, 0.5f, 1), $"{currentQuality}/{maxQuality}");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Starting quality from HQ materials: {currentQuality}\nRecipe's maximum quality: {maxQuality}");
         }
-        else
-        {
-            ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.9f, 1), "Ingredient Quality:");
-        }
-        
-        ImGui.Spacing();
-        
-        ImGui.Checkbox("Prefer NQ##ingredientNQ", ref _useAllNQ);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use NQ materials by default, falling back to HQ only when there isn't enough NQ.\nPer-ingredient HQ amounts below still apply.");
 
-        if (_editingList != null && _editingList.UseAllHQ)
+        var recipe = RecipeManager.GetRecipe(_recipeId);
+        var subtitle = recipe.HasValue ? $"Starting quality {CalculateCurrentQuality(recipe.Value)} of {CalculateMaxQuality(recipe.Value)}" : null;
+        using var card = M3Card.Begin("##craftIngredients", "Ingredient quality", FontAwesomeIcon.Gem, M3.AccentFor(2), subtitle: subtitle);
+        M3Widgets.LabeledCheckbox("Prefer NQ##ingredientNQ", ref _useAllNQ,
+            tooltip: "Use NQ materials by default, falling back to HQ only when there isn't enough NQ.\nThe HQ amounts below still apply.");
+        if (_editingList is { UseAllHQ: true })
         {
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "List default is All HQ.\nChange the ingredient counts below to override this item.");
+            M3Text.Draw("The list uses all HQ by default. Change the amounts below to override it for this item.", M3TextStyle.Muted, true);
         }
-        
-        ImGui.Spacing();
-        
-        ImGui.BeginChild("IngredientsScrollRegion", VulcanUiScaling.Scaled(-1f, 150f), true);
-        
-        ImGui.Columns(5, "IngredientColumns", true);
-        ImGui.SetColumnWidth(0, IngredientNameColumnWidth);
-        ImGui.SetColumnWidth(1, IngredientCountColumnWidth);
-        ImGui.SetColumnWidth(2, IngredientCountColumnWidth);
-        ImGui.SetColumnWidth(3, IngredientCountColumnWidth);
-        ImGui.SetColumnWidth(4, IngredientUseHqColumnWidth);
-        
-        ImGui.Text("Ingredient");
-        ImGui.NextColumn();
-        ImGui.Text("Need");
-        ImGui.NextColumn();
-        ImGui.Text("NQ");
-        ImGui.NextColumn();
-        ImGui.Text("HQ");
-        ImGui.NextColumn();
-        ImGui.Text("Use HQ");
-        ImGui.NextColumn();
-        ImGui.Separator();
-        
-        for (int i = 0; i < _ingredients.Count; i++)
+
+        using var style = M3Table.PushStyle();
+        using var table = ImRaii.Table("##ingredients", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.PadOuterX,
+            new Vector2(ImGui.GetContentRegionAvail().X - M3Card.RightInset, 0));
+        if (!table)
+        {
+            return;
+        }
+
+        ImGui.TableSetupColumn("Ingredient", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
+        ImGui.TableSetupColumn("NQ", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
+        ImGui.TableSetupColumn("HQ", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
+        ImGui.TableSetupColumn("Use HQ", ImGuiTableColumnFlags.WidthFixed, IngredientUseHqColumnWidth);
+        ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
+        ImGui.TableNextColumn();
+        M3Table.Header("Ingredient", center: false);
+        ImGui.TableNextColumn();
+        M3Table.Header("Need");
+        ImGui.TableNextColumn();
+        M3Table.Header("NQ", "In your bags");
+        ImGui.TableNextColumn();
+        M3Table.Header("HQ", "In your bags");
+        ImGui.TableNextColumn();
+        M3Table.Header("Use HQ", "How many HQ ones to use");
+
+        for (var i = 0; i < _ingredients.Count; i++)
         {
             var ing = _ingredients[i];
-            
-            ImGui.Text(ing.ItemName);
-            ImGui.NextColumn();
-            
-            ImGui.Text(ing.TotalNeeded.ToString());
-            ImGui.NextColumn();
-            
-            ImGui.Text(ing.AvailableNQ.ToString());
-            ImGui.NextColumn();
-            
-            ImGui.Text(ing.AvailableHQ.ToString());
-            ImGui.NextColumn();
-            
+            using var id = ImRaii.PushId(i);
+            ImGui.TableNextColumn();
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(ing.ItemName);
+            ImGui.TableNextColumn();
+            M3Table.CenteredText(ing.TotalNeeded.ToString());
+            ImGui.TableNextColumn();
+            M3Table.CenteredText(ing.AvailableNQ.ToString(), ing.AvailableNQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : null);
+            ImGui.TableNextColumn();
+            M3Table.CenteredText(ing.AvailableHQ.ToString(), ing.AvailableHQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : M3.Scheme.Info);
+            ImGui.TableNextColumn();
             if (ing.CanBeHQ)
             {
-                ImGui.SetNextItemWidth(IngredientInputWidth);
-                int desiredHQ = ing.DesiredHQ;
-                if (ImGui.InputInt($"##hq_{i}", ref desiredHQ, 1))
+                var desiredHQ = ing.DesiredHQ;
+                if (M3Widgets.NumberField("##hq", ref desiredHQ, IngredientInputWidth, 1, 0, ing.TotalNeeded))
                 {
                     ing.DesiredHQ = Math.Clamp(desiredHQ, 0, ing.TotalNeeded);
                 }
             }
             else
             {
-                ImGui.TextDisabled("N/A");
+                M3Table.CenteredText("N/A", M3Text.ColorOf(M3TextStyle.Faint));
             }
-            ImGui.NextColumn();
         }
-        
-        ImGui.Columns(1);
-        ImGui.EndChild();
-        ImGui.Spacing();
     }
-    
+
     private static unsafe bool HasItemInInventory(uint itemId, bool hq)
     {
         try
@@ -1223,37 +1234,49 @@ public class RecipeCraftSettingsPopup
         {
             var inventoryManager = InventoryManager.Instance();
             if (inventoryManager == null)
+            {
                 return (0, 0);
-            
-            int nqCount = 0;
-            int hqCount = 0;
-            
+            }
+
+            var nqCount = 0;
+            var hqCount = 0;
+
             var inventories = new InventoryType[]
             {
                 InventoryType.Inventory1, InventoryType.Inventory2,
                 InventoryType.Inventory3, InventoryType.Inventory4
             };
-            
+
             foreach (var invType in inventories)
             {
                 var container = inventoryManager->GetInventoryContainer(invType);
-                if (container == null) continue;
-                
-                for (int i = 0; i < container->Size; i++)
+                if (container == null)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < container->Size; i++)
                 {
                     var item = container->GetInventorySlot(i);
-                    if (item == null || item->ItemId == 0) continue;
-                    
+                    if (item == null || item->ItemId == 0)
+                    {
+                        continue;
+                    }
+
                     if (item->ItemId == itemId)
                     {
                         if ((item->Flags & InventoryItem.ItemFlags.HighQuality) != 0)
+                        {
                             hqCount += (int)item->Quantity;
+                        }
                         else
+                        {
                             nqCount += (int)item->Quantity;
+                        }
                     }
                 }
             }
-            
+
             return (nqCount, hqCount);
         }
         catch (Exception ex)

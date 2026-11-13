@@ -1,23 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.Plugin;
 
 public class ContextMenu : IDisposable
 {
     private readonly IContextMenu _contextMenu;
-    private readonly Executor     _executor;
-    private          IGatherable? _lastGatherable;
-    private          uint?        _lastRecipeId;
-    private          uint?        _lastVendorBuyListItemId;
-    private          GatherBuddy  _plugin;
+    private readonly Executor _executor;
+    private IGatherable? _lastGatherable;
+    private uint? _lastRecipeId;
+    private uint? _lastVendorBuyListItemId;
+    private readonly GatherBuddy _plugin;
 
     private readonly MenuItem _menuItem;
     private readonly MenuItem _menuItemAuto;
@@ -29,16 +28,16 @@ public class ContextMenu : IDisposable
     {
         _plugin = plugin;
         _contextMenu = menu;
-        _executor    = executor;
+        _executor = executor;
 
         _menuItem = new MenuItem
         {
-            IsEnabled   = true,
-            IsReturn    = false,
-            PrefixChar  = 'G',
-            Name        = "Gather Manually",
-            OnClicked   = OnClick,
-            IsSubmenu   = false,
+            IsEnabled = true,
+            IsReturn = false,
+            PrefixChar = 'G',
+            Name = "Gather Manually",
+            OnClicked = OnClick,
+            IsSubmenu = false,
             PrefixColor = 42,
         };
 
@@ -66,31 +65,33 @@ public class ContextMenu : IDisposable
 
         _menuItemVulcanRecipe = new MenuItem
         {
-            IsEnabled   = true,
-            IsReturn    = false,
-            PrefixChar  = 'V',
-            Name        = "Open in Vulcan",
-            OnClicked   = OnClickVulcanRecipe,
-            IsSubmenu   = false,
+            IsEnabled = true,
+            IsReturn = false,
+            PrefixChar = 'V',
+            Name = "Open in Vulcan",
+            OnClicked = OnClickVulcanRecipe,
+            IsSubmenu = false,
             PrefixColor = 42,
         };
 
         _menuItemVendorBuyList = new MenuItem
         {
-            IsEnabled   = true,
-            IsReturn    = false,
-            PrefixChar  = 'V',
-            Name        = "Add to Vendor Buy List",
-            OnClicked   = OnClickVendorBuyList,
-            IsSubmenu   = true,
+            IsEnabled = true,
+            IsReturn = false,
+            PrefixChar = 'V',
+            Name = "Add to Vendor Buy List",
+            OnClicked = OnClickVendorBuyList,
+            IsSubmenu = true,
             PrefixColor = 42,
         };
 
         if (GatherBuddy.Config.AddIngameContextMenus)
+        {
             Enable();
+        }
     }
 
-    private void OpenCreateVendorBuyListPopup(uint itemId)
+    private static void OpenCreateVendorBuyListPopup(uint itemId)
     {
         var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
         if (vendorBuyListWindow == null)
@@ -101,19 +102,25 @@ public class ContextMenu : IDisposable
 
         GatherBuddy.Log.Debug($"[ContextMenu] Opening Create Vendor List popup for item {itemId}");
         if (!vendorBuyListWindow.OpenCreateListPopup(itemId))
+        {
             GatherBuddy.Log.Debug($"[ContextMenu] Unable to create a new vendor buy list for item {itemId}.");
+        }
     }
 
-    private void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
+    private static void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
     {
         if (!GatherBuddy.VendorBuyListManager.TryIncrementTarget(listId, itemId, 1, selectList: true, openWindow: true, announce: true))
+        {
             GatherBuddy.Log.Debug($"[ContextMenu] Unable to add item {itemId} to vendor buy list '{listName}'.");
+        }
     }
 
     private void OnClick(IMenuItemClickedArgs args)
     {
         if (_lastGatherable != null)
+        {
             _executor.GatherItem(_lastGatherable);
+        }
     }
 
     private void OnClickAuto(IMenuItemClickedArgs args)
@@ -190,10 +197,22 @@ public class ContextMenu : IDisposable
             var maxLists = Math.Max(1, GatherBuddy.Config.MaxRecentCraftingListsInContextMenu);
             GatherBuddy.Log.Debug($"[ContextMenu] Total lists: {allLists.Count}, Max to show: {maxLists}");
 
-            var recentLists = allLists
-                .OrderByDescending(l => l.CreatedAt)
-                .Take(maxLists)
-                .ToList();
+            var orderedLists = new List<(Crafting.CraftingListDefinition List, int Index)>(allLists.Count);
+            for (var listIndex = 0; listIndex < allLists.Count; listIndex++)
+            {
+                orderedLists.Add((allLists[listIndex], listIndex));
+            }
+
+            orderedLists.Sort(static (lhs, rhs) =>
+            {
+                var order = rhs.List.CreatedAt.CompareTo(lhs.List.CreatedAt);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            var recentLists = new List<Crafting.CraftingListDefinition>(Math.Min(maxLists, orderedLists.Count));
+            for (var listIndex = 0; listIndex < orderedLists.Count && listIndex < maxLists; listIndex++)
+            {
+                recentLists.Add(orderedLists[listIndex].List);
+            }
 
             GatherBuddy.Log.Debug($"[ContextMenu] Recent lists filtered: {recentLists.Count}");
 
@@ -221,7 +240,9 @@ public class ContextMenu : IDisposable
         }
 
         if (menuItems.Count > 0)
+        {
             args.OpenSubmenu(menuItems);
+        }
     }
 
     private void OnClickVendorBuyList(IMenuItemClickedArgs args)
@@ -243,7 +264,7 @@ public class ContextMenu : IDisposable
             },
         };
 
-        foreach (var list in GatherBuddy.VendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        foreach (var list in Vulcan.Vendors.VendorBuyListManager.GetListsByCreation(true))
         {
             var listId = list.Id;
             var listName = list.Name;
@@ -259,7 +280,7 @@ public class ContextMenu : IDisposable
         args.OpenSubmenu(menuItems);
     }
 
-    private void OpenCreateCraftingListPopup(uint recipeId)
+    private static void OpenCreateCraftingListPopup(uint recipeId)
     {
         var vulcanWindow = GatherBuddy.VulcanWindow;
         if (vulcanWindow == null)
@@ -272,9 +293,9 @@ public class ContextMenu : IDisposable
         vulcanWindow.OpenCreateListPopup(recipeId);
     }
 
-    private void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
+    private static void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
     {
-        var existingItem = list.Recipes.FirstOrDefault(x => x.RecipeId == recipe.RowId);
+        var existingItem = list.Recipes.Find(x => x.RecipeId == recipe.RowId);
         if (existingItem != null)
         {
             existingItem.Quantity += 1;
@@ -308,14 +329,25 @@ public class ContextMenu : IDisposable
         var contextItemId = GetContextItemId(args);
         _lastGatherable = contextItemId.HasValue ? ResolveGatherable(contextItemId.Value) : null;
         if (contextItemId.HasValue && SupportsRecipeActions(args))
+        {
             _lastRecipeId = GetRecipeIdFromContext(args);
-        if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
+        }
+
+        if (contextItemId.HasValue && Vulcan.Vendors.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
+        {
             _lastVendorBuyListItemId = contextItemId.Value;
+        }
 
         if (_lastGatherable != null)
+        {
             args.AddMenuItem(_menuItem);
+        }
+
         if (_lastGatherable is Gatherable)
+        {
             args.AddMenuItem(_menuItemAuto);
+        }
+
         if (GatherBuddy.Config.VulcanContextMenuEntries && _lastRecipeId.HasValue)
         {
             _menuItemCrafting.IsEnabled = true;
@@ -334,7 +366,9 @@ public class ContextMenu : IDisposable
     {
         var itemId = GetContextItemId(args);
         if (!itemId.HasValue)
+        {
             return null;
+        }
 
         var recipe = Crafting.RecipeManager.GetRecipeForItem(itemId.Value);
         return recipe?.RowId;
@@ -354,15 +388,15 @@ public class ContextMenu : IDisposable
 
         return args.AddonName switch
         {
-            null                 => GetSatisfactionSupplyItemId(),
+            null => GetSatisfactionSupplyItemId(),
             "ContentsInfoDetail" => NormalizeItemId(AgentContentsTimer.Instance()->ContextMenuItemId),
-            "RecipeNote"         => NormalizeItemId(AgentRecipeNote.Instance()->ContextMenuResultItemId),
-            "RecipeTree"         => NormalizeItemId(AgentRecipeItemContext.Instance()->ResultItemId),
+            "RecipeNote" => NormalizeItemId(AgentRecipeNote.Instance()->ContextMenuResultItemId),
+            "RecipeTree" => NormalizeItemId(AgentRecipeItemContext.Instance()->ResultItemId),
             "RecipeMaterialList" => NormalizeItemId(AgentRecipeItemContext.Instance()->ResultItemId),
-            "GatheringNote"      => GetGatheringNoteItemId(args),
-            "ItemSearch"         => NormalizeItemId((uint)AgentContext.Instance()->UpdateCheckerParam),
-            "ChatLog"            => GetChatLogItemId(),
-            _                    => null,
+            "GatheringNote" => GetGatheringNoteItemId(args),
+            "ItemSearch" => NormalizeItemId((uint)AgentContext.Instance()->UpdateCheckerParam),
+            "ChatLog" => GetChatLogItemId(),
+            _ => null,
         };
     }
 
@@ -370,7 +404,9 @@ public class ContextMenu : IDisposable
     {
         var discriminator = *(byte*)(args.AgentPtr + Offsets.GatheringNoteContextDiscriminator);
         if (discriminator != 4)
+        {
             return null;
+        }
 
         return NormalizeItemId(AgentGatheringNote.Instance()->ContextMenuItemId);
     }
@@ -380,7 +416,9 @@ public class ContextMenu : IDisposable
         var agent = AgentChatLog.Instance();
 
         if (*(uint*)((nint)(&agent->ContextItemId) + 8) != 3)
+        {
             return null;
+        }
 
         return NormalizeItemId(agent->ContextItemId);
     }
@@ -388,9 +426,13 @@ public class ContextMenu : IDisposable
     private static uint NormalizeItemId(uint itemId)
     {
         if (itemId >= 1000000u)
+        {
             itemId -= 1000000u;
+        }
         else if (itemId >= 500000u)
+        {
             itemId -= 500000u;
+        }
 
         return itemId;
     }
@@ -398,13 +440,19 @@ public class ContextMenu : IDisposable
     private static IGatherable? ResolveGatherable(uint itemId)
     {
         if (itemId == 0)
+        {
             return null;
+        }
 
         if (Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var rawItemId))
+        {
             itemId = rawItemId;
+        }
 
         if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var g))
+        {
             return g;
+        }
 
         return GatherBuddy.GameData.Fishes.GetValueOrDefault(itemId);
     }
@@ -413,15 +461,21 @@ public class ContextMenu : IDisposable
     {
         var agent = AgentSatisfactionSupply.Instance();
         if (!agent->IsAgentActive())
+        {
             return null;
+        }
 
         var agentContext = AgentContext.Instance();
         if (agentContext->CurrentContextMenuTarget != null)
+        {
             return null;
+        }
 
         var itemIdx = agent->NpcInfo.SelectedItemIndex;
         if (itemIdx < 0 || itemIdx >= agent->Items.Length)
+        {
             return null;
+        }
 
         return NormalizeItemId(agent->Items[itemIdx].Id);
     }

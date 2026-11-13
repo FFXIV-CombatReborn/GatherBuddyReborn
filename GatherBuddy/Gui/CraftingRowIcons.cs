@@ -1,11 +1,10 @@
-using System.Collections.Generic;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using GatherBuddy.Enums;
-using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
+using System.Numerics;
 using GatheringType = GatherBuddy.Enums.GatheringType;
 
 namespace GatherBuddy.Gui;
@@ -14,15 +13,15 @@ internal static class CraftingRowIcons
 {
     internal readonly record struct RowIcon(uint IconId, string Tooltip);
 
-    private static readonly Dictionary<(uint ItemId, bool IsPrecraft), IReadOnlyList<RowIcon>> _materialIconCache = new();
-    private static readonly Dictionary<uint, RowIcon>                                          _crafterIconCache  = new();
-    private static readonly Dictionary<uint, ushort>                                           _currencyIconCache = new();
-    private static readonly Dictionary<uint, string>                                           _currencyNameCache = new();
-    private static readonly Dictionary<uint, string>                                           _classJobNameCache = new();
+    private static readonly Dictionary<(uint ItemId, bool IsPrecraft), IReadOnlyList<RowIcon>> _materialIconCache = [];
+    private static readonly Dictionary<uint, RowIcon> _crafterIconCache = [];
+    private static readonly Dictionary<uint, ushort> _currencyIconCache = [];
+    private static readonly Dictionary<uint, string> _currencyNameCache = [];
+    private static readonly Dictionary<uint, string> _classJobNameCache = [];
 
-    private const uint MinerClassJobId    = 16;
+    private const uint MinerClassJobId = 16;
     private const uint BotanistClassJobId = 17;
-    private const uint FisherClassJobId   = 18;
+    private const uint FisherClassJobId = 18;
 
     public static bool IsElementalCrystal(uint itemId)
         => itemId is >= 2 and <= 19;
@@ -31,41 +30,54 @@ internal static class CraftingRowIcons
     {
         var preferredJobId = GatherBuddy.Config.PreferredGatheringType.ToGroup() switch
         {
-            GatheringType.Miner    => MinerClassJobId,
+            GatheringType.Miner => MinerClassJobId,
             GatheringType.Botanist => BotanistClassJobId,
-            _                      => 0u,
+            _ => 0u,
         };
         if (preferredJobId == 0)
-            return new List<RowIcon>(0);
-        return new List<RowIcon>(1) { new(GetClassJobIconId(preferredJobId), GetClassJobName(preferredJobId)) };
+        {
+            return [];
+        }
+
+        return [new(GetClassJobIconId(preferredJobId), GetClassJobName(preferredJobId))];
     }
 
     public static IReadOnlyList<RowIcon> GetMaterialIcons(uint itemId, bool isPrecraft)
     {
         if (IsElementalCrystal(itemId))
+        {
             return GetCrystalIcons();
+        }
 
         var key = (itemId, isPrecraft);
         if (_materialIconCache.TryGetValue(key, out var cached))
+        {
             return cached;
+        }
 
         var icons = new List<RowIcon>();
 
         // 1. Gather class icon (Miner / Botanist / Fisher)
         if (TryGetGatherClassJobId(itemId, out var classJobId))
+        {
             icons.Add(new RowIcon(GetClassJobIconId(classJobId), GetClassJobName(classJobId)));
+        }
 
         // 2. Currency icon
         if (TryResolveCurrencyItemId(itemId, out var currencyItemId))
         {
             var currencyIcon = GetCurrencyIconId(currencyItemId);
             if (currencyIcon != 0)
+            {
                 icons.Add(new RowIcon(currencyIcon, GetCurrencyName(currencyItemId)));
+            }
         }
 
         // 3. Crafter class icon (only on precraft material rows)
         if (isPrecraft && TryGetCrafterClassJobIdForItem(itemId, out var crafterClassJobId))
+        {
             icons.Add(new RowIcon(GetClassJobIconId(crafterClassJobId), GetClassJobName(crafterClassJobId)));
+        }
 
         IReadOnlyList<RowIcon> result = icons;
         _materialIconCache[key] = result;
@@ -76,7 +88,9 @@ internal static class CraftingRowIcons
     {
         var craftType = recipe.CraftType.RowId;
         if (_crafterIconCache.TryGetValue(craftType, out var cached))
+        {
             return cached;
+        }
 
         var classJobId = craftType + 8;
         var icon = new RowIcon(GetClassJobIconId(classJobId), GetClassJobName(classJobId));
@@ -87,17 +101,28 @@ internal static class CraftingRowIcons
     public static void DrawIconsRightAligned(IReadOnlyList<RowIcon> icons, float iconSize = -1f, float spacing = -1f)
     {
         if (icons.Count == 0)
+        {
             return;
+        }
 
         if (iconSize <= 0f)
+        {
             iconSize = VulcanUiScaling.Scaled(16f);
+        }
+
         if (spacing < 0f)
+        {
             spacing = VulcanUiScaling.Scaled(4f);
+        }
+
         var size = new Vector2(iconSize, iconSize);
         for (var i = 0; i < icons.Count; i++)
         {
             if (i > 0)
+            {
                 ImGui.SameLine(0, spacing);
+            }
+
             DrawIcon(icons[i], size);
         }
     }
@@ -106,12 +131,18 @@ internal static class CraftingRowIcons
     {
         var texture = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(icon.IconId));
         if (texture.TryGetWrap(out var wrap, out _))
+        {
             ImGui.Image(wrap.Handle, size);
+        }
         else
+        {
             ImGui.Dummy(size);
+        }
 
         if (!string.IsNullOrEmpty(icon.Tooltip) && ImGui.IsItemHovered())
+        {
             ImGui.SetTooltip(icon.Tooltip);
+        }
     }
 
     private static bool TryGetGatherClassJobId(uint itemId, out uint classJobId)
@@ -121,13 +152,15 @@ internal static class CraftingRowIcons
             var group = gatherable.GatheringType.ToGroup();
             classJobId = group switch
             {
-                GatheringType.Miner    => MinerClassJobId,
+                GatheringType.Miner => MinerClassJobId,
                 GatheringType.Botanist => BotanistClassJobId,
-                GatheringType.Fisher   => FisherClassJobId,
-                _                      => 0,
+                GatheringType.Fisher => FisherClassJobId,
+                _ => 0,
             };
             if (classJobId != 0)
+            {
                 return true;
+            }
         }
 
         if (GatherBuddy.GameData.Fishes.ContainsKey(itemId))
@@ -168,15 +201,20 @@ internal static class CraftingRowIcons
         foreach (var entry in VendorShopResolver.SpecialShopEntries)
         {
             if (entry.ItemId != itemId || entry.Cost == 0)
+            {
                 continue;
+            }
+
             if (entry.Cost < bestCost)
             {
-                bestCost       = entry.Cost;
+                bestCost = entry.Cost;
                 currencyItemId = entry.CurrencyItemId;
             }
         }
         if (currencyItemId != 0)
+        {
             return true;
+        }
 
         // Grand Company seal exchange
         foreach (var entry in VendorShopResolver.GcShopEntries)
@@ -207,10 +245,12 @@ internal static class CraftingRowIcons
     private static ushort GetCurrencyIconId(uint currencyItemId)
     {
         if (_currencyIconCache.TryGetValue(currencyItemId, out var cached))
+        {
             return cached;
+        }
 
         var sheet = Dalamud.GameData.GetExcelSheet<Item>();
-        ushort iconId = sheet != null && sheet.TryGetRow(currencyItemId, out var item)
+        var iconId = sheet != null && sheet.TryGetRow(currencyItemId, out var item)
             ? (ushort)item.Icon
             : (ushort)0;
         _currencyIconCache[currencyItemId] = iconId;
@@ -220,7 +260,9 @@ internal static class CraftingRowIcons
     private static string GetCurrencyName(uint currencyItemId)
     {
         if (_currencyNameCache.TryGetValue(currencyItemId, out var cached))
+        {
             return cached;
+        }
 
         var sheet = Dalamud.GameData.GetExcelSheet<Item>();
         var name = sheet != null && sheet.TryGetRow(currencyItemId, out var item)
@@ -233,7 +275,9 @@ internal static class CraftingRowIcons
     private static string GetClassJobName(uint classJobId)
     {
         if (_classJobNameCache.TryGetValue(classJobId, out var cached))
+        {
             return cached;
+        }
 
         var sheet = Dalamud.GameData.GetExcelSheet<ClassJob>();
         var name = sheet != null && sheet.TryGetRow(classJobId, out var job)

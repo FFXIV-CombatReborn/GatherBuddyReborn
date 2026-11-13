@@ -1,17 +1,15 @@
 ﻿using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Plugin.Services;
-using ElliLib.Extensions;
 using GatherBuddy.Classes;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Enums;
 using GatherBuddy.Helpers;
-using GatherBuddy.Plugin;
+using GatherBuddy.Utility;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Numerics;
 using PathCache = System.Collections.Generic.Dictionary<(System.Numerics.Vector3, uint, uint), (float, System.Collections.Immutable.ImmutableArray<byte>)>;
 
@@ -92,25 +90,38 @@ namespace GatherBuddy.AutoGather.Helpers
                 [GatheringType.Botanist] = results[1]
             }.ToFrozenDictionary();
 
-            RegularBaseNodes = GatherBuddy.GameData.GatheringNodes.Values
-                .Where(n => n.WorldPositions.Keys.Any(nodeId => nodeId is >= FirstNode and <= LastNode))
-                .ToFrozenSet();
+            var regularBaseNodes = new List<GatheringNode>();
+            var regularItems = new HashSet<Gatherable>();
+            foreach (var node in GatherBuddy.GameData.GatheringNodes.Values)
+            {
+                foreach (var nodeId in node.WorldPositions.Keys)
+                {
+                    if (nodeId is >= FirstNode and <= LastNode)
+                    {
+                        regularBaseNodes.Add(node);
+                        regularItems.UnionWith(node.Items);
+                        break;
+                    }
+                }
+            }
 
-            RegularItems = RegularBaseNodes.SelectMany(bn => bn.Items).ToFrozenSet();
+            RegularBaseNodes = regularBaseNodes.ToFrozenSet();
+            RegularItems = regularItems.ToFrozenSet();
 
             OddlyDelicateItems = [GatherBuddy.GameData.Gatherables[31767], GatherBuddy.GameData.Gatherables[31769]];
 
-            var inspectionData = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.HWDGathererInspection>()
-                .SelectMany(x => x.HWDGathererInspectionData)
-                .Where(x => x.RequiredItem.IsValid && x.RequiredItem.RowId != 0 && x.ItemReceived.IsValid && x.ItemReceived.RowId != 0)
-                .Where(x => x.RequiredItem.Value.Item.Is<Lumina.Excel.Sheets.Item>() && x.RequiredItem.Value.Item.RowId != 0)
-                .Select(x => new
+            var inspectionData = new List<(uint RawItemId, uint ApprovedItemId, uint BatchSize)>();
+            foreach (var inspection in Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.HWDGathererInspection>())
+            {
+                foreach (var x in inspection.HWDGathererInspectionData)
                 {
-                    RawItemId = x.RequiredItem.Value.Item.RowId,
-                    ApprovedItemId = x.ItemReceived.RowId,
-                    BatchSize = x.AmountRequired == 0 ? 1u : (uint)x.AmountRequired,
-                })
-                .ToArray();
+                    if (x.RequiredItem.IsValid && x.RequiredItem.RowId != 0 && x.ItemReceived.IsValid && x.ItemReceived.RowId != 0
+                     && x.RequiredItem.Value.Item.Is<Lumina.Excel.Sheets.Item>() && x.RequiredItem.Value.Item.RowId != 0)
+                    {
+                        inspectionData.Add((x.RequiredItem.Value.Item.RowId, x.ItemReceived.RowId, x.AmountRequired == 0 ? 1u : (uint)x.AmountRequired));
+                    }
+                }
+            }
 
             RawToApprovedItemIds = inspectionData.ToFrozenDictionary(x => x.RawItemId, x => x.ApprovedItemId);
             RawInspectionBatchSizes = inspectionData.ToFrozenDictionary(x => x.RawItemId, x => x.BatchSize);
@@ -131,7 +142,9 @@ namespace GatherBuddy.AutoGather.Helpers
         public bool IsNodeAvailable(uint nodeId)
         {
             if (nodeId < FirstNode || nodeId > LastNode)
+            {
                 throw new ArgumentOutOfRangeException(nameof(nodeId));
+            }
 
             var offset = nodeId - FirstNode;
             var path = offset / NodesPerPath;
@@ -142,11 +155,15 @@ namespace GatherBuddy.AutoGather.Helpers
         private static (float, ImmutableArray<byte>) FindShortestPath(PathCache cache, Vector3 pos, uint job, uint path0, uint path1)
         {
             if (path0 == NodesPerPath && path1 == NodesPerPath)
+            {
                 return (Vector3.Distance(pos, GetNodePosition(job, 0, 0)), []);
+            }
 
             var key = (pos, path0, path1);
             if (cache.TryGetValue(key, out var val))
+            {
                 return val;
+            }
 
             float dist0 = float.PositiveInfinity, dist1 = float.PositiveInfinity;
             ImmutableArray<byte> list0 = default, list1 = default;
@@ -167,9 +184,13 @@ namespace GatherBuddy.AutoGather.Helpers
 
             (float, ImmutableArray<byte>) result;
             if (dist0 < dist1)
+            {
                 result = (dist0, list0.Add(0));
+            }
             else
+            {
                 result = (dist1, list1.Add(1));
+            }
 
             cache[key] = result;
             return result;
@@ -209,7 +230,7 @@ namespace GatherBuddy.AutoGather.Helpers
             else if (!isGathering && _lastNode != 0)
             {
                 // Wait until the node becomes untargetable.
-                if (!Dalamud.Objects.Any(obj => obj.ObjectKind == ObjectKind.GatheringPoint && obj.IsTargetable && obj.BaseId == _lastNode))
+                if (!HasTargetableGatheringPoint(_lastNode))
                 {
                     var pathIndex = (_lastNode - FirstNode) / NodesPerPath;
                     var nodeIndex = (_lastNode - FirstNode + 1u) % NodesPerChain; // +1 to target the next node in chain
@@ -223,20 +244,36 @@ namespace GatherBuddy.AutoGather.Helpers
                 // This is needed to support enabling/rebuilding the plugin inside The Diadem.
 
                 var jobOffset = Player.Job switch { 16 /*MIN*/ => 0, 17 /*BTN*/ => (int)PathsPerJob, _ => -1 };
-                if (jobOffset < 0) return;
-
-                var effectId = AutoGather.Actions.Prospect.EffectId;
-                if (!Player.Status?.Any(s => s.StatusId == effectId) ?? true) return;
-
-                foreach (var obj in Dalamud.Objects.Where(obj => obj.ObjectKind == ObjectKind.GatheringPoint))
+                if (jobOffset < 0)
                 {
+                    return;
+                }
+
+                if (!Player.HasStatus(AutoGather.Actions.Prospect.EffectId))
+                {
+                    return;
+                }
+
+                foreach (var obj in Dalamud.Objects)
+                {
+                    if (obj.ObjectKind != ObjectKind.GatheringPoint)
+                    {
+                        continue;
+                    }
+
                     var nodeId = obj.BaseId;
-                    if (nodeId < FirstNode || nodeId > LastNode) continue;
+                    if (nodeId < FirstNode || nodeId > LastNode)
+                    {
+                        continue;
+                    }
 
                     var pathIndex = (int)((nodeId - FirstNode) / NodesPerPath);
                     var nodeIndex = (nodeId - FirstNode) % NodesPerChain;
-                    
-                    if ((_initialized & (1 << pathIndex)) != 0) continue;
+
+                    if ((_initialized & (1 << pathIndex)) != 0)
+                    {
+                        continue;
+                    }
 
                     if (obj.IsTargetable)
                     {
@@ -252,8 +289,8 @@ namespace GatherBuddy.AutoGather.Helpers
                         if (_indexes[pathIndex] == nodeIndex
                             && nodeId >= FirstNode + jobOffset * NodesPerPath
                             && nodeId < FirstNode + (jobOffset + PathsPerJob) * NodesPerPath
-                            && GatherBuddy.GameData.WorldCoords[nodeId].All(v => v.DistanceToPlayer() < AutoGather.NodeVisibilityDistance)
-                            && !Dalamud.Objects.Where(obj => obj.ObjectKind == ObjectKind.GatheringPoint && obj.BaseId == nodeId && obj.IsTargetable).Any())
+                            && GatherBuddy.GameData.WorldCoords[nodeId].TrueForAll(v => v.DistanceToPlayer() < AutoGather.NodeVisibilityDistance)
+                            && !HasTargetableGatheringPoint(nodeId))
                         {
                             GatherBuddy.Log.Debug($"[Diadem] Node #{nodeIndex} not visible on path {pathIndex}; incrementing the index to {(_indexes[pathIndex] + 1) % NodesPerChain} as a fallback.");
                             _indexes[pathIndex] = (byte)((_indexes[pathIndex] + 1u) % NodesPerChain);
@@ -261,6 +298,19 @@ namespace GatherBuddy.AutoGather.Helpers
                     }
                 }
             }
+        }
+
+        private static bool HasTargetableGatheringPoint(uint baseId)
+        {
+            foreach (var obj in Dalamud.Objects)
+            {
+                if (obj.ObjectKind == ObjectKind.GatheringPoint && obj.BaseId == baseId && obj.IsTargetable)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

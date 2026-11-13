@@ -1,10 +1,11 @@
+using Dalamud.Plugin;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Dalamud.Plugin;
 
 namespace GatherBuddy.Utility;
 
@@ -27,11 +28,15 @@ internal static class DalamudPluginToggleHelper
         try
         {
             if (!ReflectionHelpers.TryGetInstalledPluginEntry(internalName, out var localPlugin, false))
+            {
                 return new PluginToggleState(false, false, false, $"{internalName} is not installed.");
+            }
 
             var isLoaded = localPlugin.GetFoP("IsLoaded") is bool loaded && loaded;
             if (!TryBuildPluginToggleContext(localPlugin, internalName, out var context, out var failureReason))
+            {
                 return new PluginToggleState(true, isLoaded, false, failureReason ?? $"Could not inspect {internalName}.");
+            }
 
             return new PluginToggleState(true, context.IsLoaded, context.BlockedReason == null, context.BlockedReason);
         }
@@ -56,7 +61,9 @@ internal static class DalamudPluginToggleHelper
             }
 
             if (!TryBuildPluginToggleContext(localPlugin, internalName, out var context, out failureReason))
+            {
                 return false;
+            }
 
             GatherBuddy.Log.Debug($"[DalamudPluginToggleHelper] Plugin {internalName} loaded={context.IsLoaded}, requested={enable}, blocked={context.BlockedReason != null}.");
 
@@ -143,7 +150,9 @@ internal static class DalamudPluginToggleHelper
         foreach (var profile in profiles)
         {
             if (profile == null)
+            {
                 continue;
+            }
 
             if (!TryProfileContainsPlugin(profile, workingPluginId, out var containsPlugin))
             {
@@ -153,7 +162,9 @@ internal static class DalamudPluginToggleHelper
             }
 
             if (containsPlugin)
+            {
                 matchingProfiles.Add(profile);
+            }
         }
 
         var defaultProfile = profileManager.GetFoP("DefaultProfile");
@@ -245,7 +256,9 @@ internal static class DalamudPluginToggleHelper
     private static async Task InvokeProfileAddOrUpdateAsync(object profile, Guid workingPluginId, string internalName, bool state)
     {
         if (!TryInvokeTaskMethod(profile, "AddOrUpdateAsync", [typeof(Guid), typeof(string), typeof(bool), typeof(bool)], [workingPluginId, internalName, state, false], out var operationTask))
+        {
             throw new InvalidOperationException($"Could not update {internalName}'s collection state.");
+        }
 
         await operationTask.ConfigureAwait(false);
     }
@@ -322,11 +335,14 @@ internal static class DalamudPluginToggleHelper
         }
 
         if (invocationResult != null)
+        {
             GatherBuddy.Log.Debug($"[DalamudPluginToggleHelper] {name} on {target.GetType().FullName} did not return a boolean.");
+        }
+
         return false;
     }
 
-    private static bool TryInvokeTaskMethod(object target, string name, Type[] parameterTypes, object?[] args, out Task? operationTask)
+    private static bool TryInvokeTaskMethod(object target, string name, Type[] parameterTypes, object?[] args, [NotNullWhen(true)] out Task? operationTask)
     {
         operationTask = null;
         var invocationResult = InvokeMethod(target, name, parameterTypes, args);
@@ -337,7 +353,10 @@ internal static class DalamudPluginToggleHelper
         }
 
         if (invocationResult != null)
+        {
             GatherBuddy.Log.Debug($"[DalamudPluginToggleHelper] {name} on {target.GetType().FullName} did not return a task.");
+        }
+
         return false;
     }
 }

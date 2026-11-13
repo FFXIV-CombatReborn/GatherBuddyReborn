@@ -1,9 +1,8 @@
+using GatherBuddy.Crafting;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using GatherBuddy.Crafting;
 
 namespace GatherBuddy.Vulcan;
 
@@ -19,20 +18,20 @@ public class UserMacroSolverDefinition : ISolverDefinition
     public IEnumerable<ISolverDefinition.Desc> Flavors(CraftState craft)
     {
         var selectedMacroId = CraftingGameInterop.GetSelectedMacro();
-        
+
         if (!string.IsNullOrEmpty(selectedMacroId))
         {
             var selectedMacro = _macroLibrary.GetMacroByStringId(selectedMacroId);
             if (selectedMacro != null)
             {
-                var statsOk = selectedMacro.MinCraftsmanship <= craft.StatCraftsmanship 
-                           && selectedMacro.MinControl <= craft.StatControl 
+                var statsOk = selectedMacro.MinCraftsmanship <= craft.StatCraftsmanship
+                           && selectedMacro.MinControl <= craft.StatControl
                            && selectedMacro.MinCP <= craft.StatCP;
-                
+
                 var flavorId = selectedMacro.Id.GetHashCode();
                 var priority = statsOk ? 100 : 95;
                 var warningMsg = statsOk ? "" : "You do not meet the minimum stats for this macro";
-                
+
                 GatherBuddy.Log.Debug($"[UserMacroSolver] Using selected macro '{selectedMacro.Name}' for recipe {craft.RecipeId}");
                 yield return new(this, flavorId, priority, $"User Macro: {selectedMacro.Name}", warningMsg);
                 yield break;
@@ -42,9 +41,9 @@ public class UserMacroSolverDefinition : ISolverDefinition
                 GatherBuddy.Log.Warning($"[UserMacroSolver] Selected macro '{selectedMacroId}' not found");
             }
         }
-        
+
         var macros = _macroLibrary.GetMacrosForRecipe(craft.RecipeId);
-        
+
         if (macros.Count == 0)
         {
             yield break;
@@ -52,14 +51,14 @@ public class UserMacroSolverDefinition : ISolverDefinition
 
         foreach (var macro in macros)
         {
-            var statsOk = macro.MinCraftsmanship <= craft.StatCraftsmanship 
-                       && macro.MinControl <= craft.StatControl 
+            var statsOk = macro.MinCraftsmanship <= craft.StatCraftsmanship
+                       && macro.MinControl <= craft.StatControl
                        && macro.MinCP <= craft.StatCP;
-            
+
             var flavorId = macro.Id.GetHashCode();
             var priority = statsOk ? 90 : 10;
             var warningMsg = statsOk ? "" : "You do not meet the minimum stats for this macro";
-            
+
             yield return new(this, flavorId, priority, $"User Macro: {macro.Name}", warningMsg);
         }
     }
@@ -80,9 +79,9 @@ public class UserMacroSolverDefinition : ISolverDefinition
 
 public class UserMacroSolver : Solver
 {
-    private readonly UserMacro  _macro;
+    private readonly UserMacro _macro;
     private readonly CraftState _craft;
-    private int     _currentActionIndex = 0;
+    private int _currentActionIndex = 0;
     private Solver? _fallback;
 
     public UserMacroSolver(UserMacro macro, CraftState craft)
@@ -157,7 +156,7 @@ public class UserMacro
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "Unnamed Macro";
-    public List<uint> Actions { get; set; } = new();
+    public List<uint> Actions { get; set; } = [];
     public int MinCraftsmanship { get; set; }
     public int MinControl { get; set; }
     public int MinCP { get; set; }
@@ -169,18 +168,20 @@ public class UserMacro
 
 public class UserMacroLibrary
 {
-    private readonly List<UserMacro> _macros = new();
-    private readonly Dictionary<uint, List<UserMacro>> _macrosByRecipe = new();
+    private readonly List<UserMacro> _macros = [];
+    private readonly Dictionary<uint, List<UserMacro>> _macrosByRecipe = [];
 
     public void AddMacro(UserMacro macro, uint recipeId = 0)
     {
         _macros.Add(macro);
-        
+
         if (recipeId > 0)
         {
             if (!_macrosByRecipe.ContainsKey(recipeId))
-                _macrosByRecipe[recipeId] = new();
-            
+            {
+                _macrosByRecipe[recipeId] = [];
+            }
+
             _macrosByRecipe[recipeId].Add(macro);
         }
 
@@ -194,10 +195,12 @@ public class UserMacroLibrary
         if (macro != null)
         {
             _macros.Remove(macro);
-            
+
             foreach (var list in _macrosByRecipe.Values)
+            {
                 list.RemoveAll(m => m.Id == macroId);
-            
+            }
+
             GatherBuddy.Log.Debug($"[UserMacroLibrary] Removed macro '{macro.Name}'");
             SaveToConfig();
         }
@@ -206,16 +209,18 @@ public class UserMacroLibrary
     public List<UserMacro> GetMacrosForRecipe(uint recipeId)
     {
         if (_macrosByRecipe.TryGetValue(recipeId, out var macros))
+        {
             return macros;
-        
-        return new();
+        }
+
+        return [];
     }
 
     public UserMacro? GetMacroById(int id)
     {
         return _macros.Find(m => m.Id.GetHashCode() == id);
     }
-    
+
     public UserMacro? GetMacroByStringId(string id)
     {
         return _macros.Find(m => m.Id == id);
@@ -223,7 +228,7 @@ public class UserMacroLibrary
 
     public List<UserMacro> GetAllMacros()
     {
-        return new(_macros);
+        return [with(_macros)];
     }
 
     public void Save() => SaveToConfig();
@@ -241,11 +246,15 @@ public class UserMacroLibrary
         {
             var json = GatherBuddy.Config.UserMacros;
             if (string.IsNullOrWhiteSpace(json))
+            {
                 return;
+            }
 
             var data = JsonSerializer.Deserialize<UserMacroLibraryData>(json);
             if (data == null)
+            {
                 return;
+            }
 
             _macros.Clear();
             _macrosByRecipe.Clear();
@@ -291,6 +300,6 @@ public class UserMacroLibrary
 
 public class UserMacroLibraryData
 {
-    public List<UserMacro> Macros { get; set; } = new();
-    public Dictionary<uint, List<UserMacro>> MacrosByRecipe { get; set; } = new();
+    public List<UserMacro> Macros { get; set; } = [];
+    public Dictionary<uint, List<UserMacro>> MacrosByRecipe { get; set; } = [];
 }

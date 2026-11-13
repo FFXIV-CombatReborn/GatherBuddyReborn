@@ -1,6 +1,7 @@
-using System.Collections.Generic;
-using System.Linq;
 using GatherBuddy.Plugin;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace GatherBuddy.Crafting;
 
@@ -63,7 +64,9 @@ public sealed class CraftingExecutionPlan
     public void RefreshForRetainerWithdrawal()
     {
         if (!_useRetainerCraftableAvailability)
+        {
             return;
+        }
 
         ApplyResolvedPlan(_planningSnapshot.CreatePlan(true));
     }
@@ -87,26 +90,28 @@ public sealed class CraftingExecutionPlan
             }
 
             if (target.Total > totalNeeded)
+            {
                 targets[itemId] = target.ConsumeUnknownQuality(target.Total - totalNeeded, out _);
+            }
         }
 
         return targets;
     }
 
+    [MemberNotNull(nameof(ResolvedPlan))]
     private void ApplyResolvedPlan(CraftingListPlan resolvedPlan)
     {
         Version++;
         ResolvedPlan = resolvedPlan;
-        Materials = new Dictionary<uint, int>(resolvedPlan.Materials);
-        Precrafts = new Dictionary<uint, int>(resolvedPlan.Precrafts);
-        RetainerConsumedCraftables = new Dictionary<uint, int>(resolvedPlan.RetainerConsumedCraftables);
-        IngredientDemands = new Dictionary<uint, IngredientQualityDemand>(resolvedPlan.IngredientDemands);
-        OriginalRecipes = resolvedPlan.OriginalRecipes
+        Materials = [with(resolvedPlan.Materials)];
+        Precrafts = [with(resolvedPlan.Precrafts)];
+        RetainerConsumedCraftables = [with(resolvedPlan.RetainerConsumedCraftables)];
+        IngredientDemands = [with(resolvedPlan.IngredientDemands)];
+        OriginalRecipes = [.. resolvedPlan.OriginalRecipes
             .Select(item => new CraftingListItem(item.RecipeId, item.Quantity)
             {
                 IsOriginalRecipe = true,
-            })
-            .ToList();
+            })];
         Queue = CraftingListQueueBuilder.CreateExpandedQueue(_planningSnapshot, resolvedPlan);
     }
 }

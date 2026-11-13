@@ -1,195 +1,69 @@
-﻿using System;
-using System.Numerics;
-using Dalamud.Bindings.ImGui;
-using GatherBuddy.Plugin;
-using GatherBuddy.Vulcan;
-using ImRaii = ElliLib.Raii.ImRaii;
+﻿using Dalamud.Interface;
+using GatherBuddy.RebornUI.Settings;
+using RebornMaterial;
+using System;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
-    private void DrawStandardSolverConfigTab()
-    {
-        IDisposable tabItem;
-        bool tabOpen;
-        
-        if (GatherBuddy.ControllerSupport != null)
-        {
-        var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Standard Solver##standardSolverTab", 4, 9);
-            tabItem = handle;
-            tabOpen = handle;
-        }
-        else
-        {
-            var handle = ImRaii.TabItem("Standard Solver##standardSolverTab");
-            tabItem = handle;
-            tabOpen = handle.Success;
-        }
-        
-        using (tabItem)
-        {
-            if (!tabOpen)
-                return;
+    private static readonly string[] CollectibleModeNames = ["Tier 1 (lowest)", "Tier 2 (middle)", "Tier 3 (highest)"];
 
+    private static void DrawStandardSolverPage()
+    {
         var config = GatherBuddy.Config.StandardSolverConfig;
 
-        ImGui.Text("Standard Solver Configuration");
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1), "Configure the dynamic Standard Solver behavior");
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.BeginGroup();
-        ImGui.Text("Tricks of the Trade Settings");
-        ImGui.Spacing();
-        
-        var useTricksGood = config.UseTricksGood;
-        if (ImGui.Checkbox("Use Tricks on Good Condition", ref useTricksGood))
+        using (M3Card.Begin("standard_solver_tricks", "Tricks of the Trade", FontAwesomeIcon.Magic, M3.AccentFor(0)))
         {
-            config.UseTricksGood = useTricksGood;
-            GatherBuddy.Config.Save();
+            SettingRows.Switch("Use on Good condition", "Use Tricks of the Trade when the condition is Good.",
+                config.UseTricksGood, v => config.UseTricksGood = v);
+            SettingRows.Switch("Use on Excellent condition", "Use Tricks of the Trade when the condition is Excellent.",
+                config.UseTricksExcellent, v => config.UseTricksExcellent = v);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use Tricks of the Trade when condition is Good");
 
-        var useTricksExcellent = config.UseTricksExcellent;
-        if (ImGui.Checkbox("Use Tricks on Excellent Condition", ref useTricksExcellent))
+        using (M3Card.Begin("standard_solver_quality", "Quality", FontAwesomeIcon.Star, M3.AccentFor(1)))
         {
-            config.UseTricksExcellent = useTricksExcellent;
-            GatherBuddy.Config.Save();
+            SettingRows.Slider("Target HQ chance", "The HQ percentage to aim for on normal crafts.",
+                config.MaxPercentage, 0, 100, v => config.MaxPercentage = v);
+            SettingRows.Switch("Use a quality starter (Reflect)", "Open with Reflect for quality instead of Muscle Memory for progress.",
+                config.UseQualityStarter, v => config.UseQualityStarter = v);
+            SettingRows.Slider("Max Inner Quiet for Preparatory Touch", "The most Inner Quiet stacks before Preparatory Touch is used.",
+                config.MaxIQPrepTouch, 0, 10, v => config.MaxIQPrepTouch = v);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use Tricks of the Trade when condition is Excellent");
-        ImGui.EndGroup();
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.BeginGroup();
-        ImGui.Text("Quality Settings");
-        ImGui.Spacing();
-
-        var maxPercentage = config.MaxPercentage;
-        ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
-        if (ImGui.SliderInt("Target HQ %##maxPercentage", ref maxPercentage, 0, 100))
+        using (M3Card.Begin("standard_solver_collectables", "Collectables", FontAwesomeIcon.Gem, M3.AccentFor(2)))
         {
-            config.MaxPercentage = maxPercentage;
-            GatherBuddy.Config.Save();
+            var mode = Math.Clamp(config.SolverCollectibleMode - 1, 0, CollectibleModeNames.Length - 1);
+            SettingRows.Combo("Collectable target", "Which collectability tier to aim for.", mode, CollectibleModeNames,
+                i => config.SolverCollectibleMode = i + 1);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Target HQ percentage for normal crafts (0-100)");
 
-        var useQualityStarter = config.UseQualityStarter;
-        if (ImGui.Checkbox("Use Quality Starter (Reflect)", ref useQualityStarter))
+        using (M3Card.Begin("standard_solver_specialist", "Specialist", FontAwesomeIcon.Award, M3.AccentFor(0)))
         {
-            config.UseQualityStarter = useQualityStarter;
-            GatherBuddy.Config.Save();
+            SettingRows.Switch("Use specialist actions", "Use Careful Observation and Heart and Soul when they are available.",
+                config.UseSpecialist, v => config.UseSpecialist = v);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use Reflect at the start for quality instead of Muscle Memory for progress");
 
-        var maxIQPrepTouch = config.MaxIQPrepTouch;
-        ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
-        if (ImGui.SliderInt("Max IQ for Prep Touch##maxIQPrepTouch", ref maxIQPrepTouch, 0, 10))
+        using (M3Card.Begin("standard_solver_miracle", "Material Miracle", FontAwesomeIcon.Gift, M3.AccentFor(1)))
         {
-            config.MaxIQPrepTouch = maxIQPrepTouch;
-            GatherBuddy.Config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Maximum Inner Quiet stacks before using Preparatory Touch");
-        ImGui.EndGroup();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.BeginGroup();
-        ImGui.Text("Collectible Settings");
-        ImGui.Spacing();
-
-        ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(200f));
-        var collectibleModes = new[] { "Tier 1 (Min)", "Tier 2 (Mid)", "Tier 3 (Max)" };
-        var collectibleMode = Math.Clamp(config.SolverCollectibleMode - 1, 0, collectibleModes.Length - 1);
-        if (ImGui.Combo("Collectible Target##collectibleMode", ref collectibleMode, collectibleModes, collectibleModes.Length))
-        {
-            config.SolverCollectibleMode = collectibleMode + 1;
-            GatherBuddy.Config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Which collectible tier to aim for (1=lowest, 3=highest)");
-        ImGui.EndGroup();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.BeginGroup();
-        ImGui.Text("Specialist Settings");
-        ImGui.Spacing();
-
-        var useSpecialist = config.UseSpecialist;
-        if (ImGui.Checkbox("Use Specialist Actions", ref useSpecialist))
-        {
-            config.UseSpecialist = useSpecialist;
-            GatherBuddy.Config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use Careful Observation and Heart & Soul when available");
-        ImGui.EndGroup();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.BeginGroup();
-        ImGui.Text("Material Miracle Settings");
-        ImGui.Spacing();
-
-        var useMaterialMiracle = config.UseMaterialMiracle;
-        if (ImGui.Checkbox("Use Material Miracle", ref useMaterialMiracle))
-        {
-            config.UseMaterialMiracle = useMaterialMiracle;
-            GatherBuddy.Config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Use Material Miracle action during crafts");
-
-        if (config.UseMaterialMiracle)
-        {
-            var minSteps = config.MinimumStepsBeforeMiracle;
-            ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
-            if (ImGui.SliderInt("Min Steps Before Miracle##minSteps", ref minSteps, 1, 10))
+            SettingRows.Switch("Use Material Miracle", "Use Material Miracle during crafts.",
+                config.UseMaterialMiracle, v => config.UseMaterialMiracle = v);
+            if (config.UseMaterialMiracle)
             {
-                config.MinimumStepsBeforeMiracle = minSteps;
-                GatherBuddy.Config.Save();
+                using var sub = M3SubGroup.Begin();
+                SettingRows.Slider("Minimum steps before Material Miracle", "How many crafting steps to take before it is used.",
+                    config.MinimumStepsBeforeMiracle, 1, 10, v => config.MinimumStepsBeforeMiracle = v);
+                SettingRows.Switch("Allow more than one Material Miracle", "Let it be used several times in one craft.",
+                    config.MaterialMiracleMulti, v => config.MaterialMiracleMulti = v);
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Minimum crafting steps before using Material Miracle");
-
-            var materialMiracleMulti = config.MaterialMiracleMulti;
-            if (ImGui.Checkbox("Allow Multiple Material Miracles", ref materialMiracleMulti))
-            {
-                config.MaterialMiracleMulti = materialMiracleMulti;
-                GatherBuddy.Config.Save();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Allow using Material Miracle multiple times in a single craft");
         }
-        ImGui.EndGroup();
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.Button("Reset to Defaults", VulcanUiScaling.Scaled(200f, 0f)))
+        if (M3Widgets.RowHoldButton("Reset the Standard Solver settings", "Reset to defaults",
+                "Puts every setting on this page back to its default. Hold the button to confirm.", 0.6f, M3ButtonStyle.Outlined, FontAwesomeIcon.Undo))
         {
             GatherBuddy.Config.StandardSolverConfig = new Vulcan.StandardSolverConfig();
             GatherBuddy.Config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Reset all Standard Solver settings to their default values");
+            M3Snackbar.Show("Reset the Standard Solver settings.");
         }
     }
 }

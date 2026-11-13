@@ -1,162 +1,274 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Textures;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
-using ElliLib;
 using GatherBuddy.Crafting;
-using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
-public class CraftingTreeWindow : Window
+public class CraftingTreeWindow : M3PanelWindow
 {
-    private CraftingListEditor? _editor;
-
-    private static readonly Vector4 ColorRoot     = new(0.95f, 0.85f, 0.45f, 1f);
-    private static readonly Vector4 ColorSubCraft = new(0.45f, 0.90f, 0.95f, 1f);
-    private static readonly Vector4 ColorGather   = new(0.55f, 1.00f, 0.55f, 1f);
-    private static readonly Vector4 ColorFish     = new(0.55f, 0.85f, 1.00f, 1f);
-    private static readonly Vector4 ColorVendor   = new(1.00f, 0.85f, 0.30f, 1f);
-    private static readonly Vector4 ColorScrip    = new(0.85f, 0.55f, 1.00f, 1f);
-    private static readonly Vector4 ColorDrop     = new(1.00f, 0.55f, 0.55f, 1f);
-    private static readonly Vector4 ColorOther    = new(0.70f, 0.70f, 0.70f, 1f);
-    private static readonly Vector4 ColorMuted    = new(0.55f, 0.55f, 0.60f, 1f);
-    private static readonly Vector4 ColorConnector = new(0.55f, 0.55f, 0.62f, 0.9f);
-
-    private static float IndentPerLevel => VulcanUiScaling.Scaled(22f);
-    private static float ConnectorThickness => VulcanUiScaling.Scaled(1.4f);
+    public const string WindowId = "Crafting Tree###CraftingTree";
     private const int MaxRecursionDepth = 24;
-    private static float IconColumnPadding => VulcanUiScaling.Scaled(12f);
-    private static float PostDisclosureSpacing => VulcanUiScaling.Scaled(2f);
-    private static float PostIconSpacing => VulcanUiScaling.Scaled(4f);
-    private static float IconOverflowGap => VulcanUiScaling.Scaled(6f);
+    private const int MaxVendorsShown = 6;
+
+    private static readonly Vector2 DefaultSize = new(600f, 620f);
+
+    private static readonly WindowSizeConstraints DefaultConstraints = new()
+    {
+        MinimumSize = new Vector2(400f, 280f),
+        MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
+    };
+
+    private static readonly M3WindowAction[] TreeWindowActions =
+    [
+        new("##tree_materials", FontAwesomeIcon.Boxes, "Show the materials for this list"),
+        new("##tree_vulcan", FontAwesomeIcon.Hammer, "Open Vulcan's crafting lists"),
+    ];
+
+    private static readonly Vector4 HueRoot = new(0.95f, 0.85f, 0.45f, 1f);
+    private static readonly Vector4 HueSubCraft = new(0.45f, 0.90f, 0.95f, 1f);
+    private static readonly Vector4 HueGather = new(0.55f, 1.00f, 0.55f, 1f);
+    private static readonly Vector4 HueFish = new(0.55f, 0.85f, 1.00f, 1f);
+    private static readonly Vector4 HueVendor = new(1.00f, 0.85f, 0.30f, 1f);
+    private static readonly Vector4 HueScrip = new(0.85f, 0.55f, 1.00f, 1f);
+    private static readonly Vector4 HueDrop = new(1.00f, 0.55f, 0.55f, 1f);
+
+    private static readonly string[] TagLabels = ["Final", "Craft", "Gather", "Fish", "Vendor", "Currency", "Scrip", "Drop", "Other"];
+
+    private static float IndentPerLevel
+        => VulcanUiScaling.Scaled(22f);
+
+    private static float IconColumnPadding
+        => VulcanUiScaling.Scaled(12f);
+
+    private static float IconOverflowGap
+        => VulcanUiScaling.Scaled(6f);
+
+    private CraftingListEditor? _editor;
+    private string? _windowNameListName;
 
     private List<TreeNode> _cachedTree = [];
     private long _cachedVersion = -1;
     private CraftingListEditor? _cachedEditor;
     private bool _cachedMobDropInfoInitialized;
+    private string _cachedSummary = string.Empty;
 
-    private readonly List<bool> _ancestorHasMoreSiblings = new();
+    private readonly List<bool> _ancestorHasMoreSiblings = [];
+    private float _originX;
+    private float _visibleWidth;
+    private float _rowHeight;
+    private float _iconSize;
+    private float _gap;
+    private Vector2 _tagSize;
     private float _iconColumnScreenX;
+    private Vector2 _itemSpacing;
 
-    public CraftingTreeWindow() : base("Crafting Tree###CraftingTree")
+    public CraftingTreeWindow()
+        : base(WindowId, "Crafting Tree", DefaultSize, DefaultConstraints)
     {
-        Size           = VulcanUiScaling.Scaled(560f, 600f);
-        SizeCondition  = ImGuiCond.FirstUseEver;
-        SizeConstraints = new WindowSizeConstraints
-        {
-            MinimumSize = VulcanUiScaling.Scaled(380f, 240f),
-            MaximumSize = VulcanUiScaling.Scaled(1400f, 1600f),
-        };
+        BlocksGameInput = false;
     }
 
     public void SetEditor(CraftingListEditor? editor)
     {
         if (!ReferenceEquals(_editor, editor))
+        {
             InvalidateTree();
+        }
+
         _editor = editor;
     }
 
-    public override void PreDraw()
+    protected override bool BodyScrolls
+        => false;
+
+    protected override M3WindowAction[] WindowActions
+        => TreeWindowActions;
+
+    protected override void OnWindowAction(int index)
     {
-        if (_editor != null)
-            WindowName = $"Crafting Tree — {_editor.ListName}###CraftingTree";
+        switch (index)
+        {
+            case 0:
+                {
+                    var materials = GatherBuddy.CraftingMaterialsWindow;
+                    if (materials != null)
+                    {
+                        materials.SetEditor(_editor);
+                        materials.OpenAndRestore();
+                    }
+
+                    break;
+                }
+            case 1:
+                GatherBuddy.VulcanWindow?.OpenToCraftingLists();
+                break;
+        }
     }
 
-    public override void Draw()
+    protected override (string Text, Vector4? Color) Status
+    {
+        get
+        {
+            if (_editor == null)
+            {
+                return ("No list open", null);
+            }
+
+            return _cachedSummary.Length == 0
+                ? (_editor.ListName, null)
+                : ($"{_editor.ListName} · {_cachedSummary}", null);
+        }
+    }
+
+    protected override void PreDrawFold()
+    {
+        var listName = _editor?.ListName;
+        if (listName == _windowNameListName)
+        {
+            return;
+        }
+
+        _windowNameListName = listName;
+        WindowName = listName == null ? WindowId : $"Crafting Tree — {listName}###CraftingTree";
+    }
+
+    protected override void DrawContents()
     {
         if (_editor == null)
         {
-            ImGui.TextColored(ColorMuted, "No list open.");
+            if (M3Widgets.EmptyState("##tree_no_list", "No list open", "Open a crafting list in Vulcan to see how its recipes break down.",
+                    FontAwesomeIcon.Sitemap, "Open Vulcan"))
+            {
+                GatherBuddy.VulcanWindow?.OpenToCraftingLists();
+            }
+
             return;
         }
 
-        using var theme = VulcanUiStyle.PushTheme();
         MobDropInfoCache.EnsureInitializeStarted();
 
         if (ShouldRebuild())
+        {
             RebuildTree();
+        }
 
         if (_cachedTree.Count == 0)
         {
-            ImGui.TextColored(ColorMuted, "List is empty or has no resolvable recipes.");
+            M3Widgets.EmptyState("##tree_empty", "Nothing to show", "This list is empty, or its recipes couldn't be resolved.",
+                FontAwesomeIcon.Sitemap);
             return;
         }
 
-        DrawHeader();
-        ImGui.Separator();
-
-        ImGui.BeginChild("##craftingTreeBody", new Vector2(0, 0), false, ImGuiWindowFlags.HorizontalScrollbar);
-        var bodyOriginX = ImGui.GetCursorScreenPos().X;
-        _iconColumnScreenX = bodyOriginX + ComputeMaxLabelEndOffset() + IconColumnPadding;
-        _ancestorHasMoreSiblings.Clear();
-        for (var i = 0; i < _cachedTree.Count; i++)
-            DrawTreeNode(_cachedTree[i], depth: 0, isLast: i == _cachedTree.Count - 1);
-        ImGui.EndChild();
+        DrawToolbar();
+        DrawTree();
     }
 
-    private float ComputeMaxLabelEndOffset()
+    private void DrawToolbar()
     {
-        var lineHeight    = ImGui.GetTextLineHeight();
-        var disclosureW   = lineHeight;
-        var iconW         = lineHeight;
-        var postDisclosure = PostDisclosureSpacing;
-        var postIcon       = PostIconSpacing;
+        const string expandLabel = "Expand all";
+        const string collapseLabel = "Collapse all";
+        var flow = new M3Flow();
+        flow.Next(M3Widgets.ChipWidth(expandLabel, FontAwesomeIcon.AngleDoubleDown));
+        if (M3Widgets.Chip("##tree_expand", expandLabel, false, FontAwesomeIcon.AngleDoubleDown, "Show every ingredient"))
+        {
+            SetExpandedAll(true);
+        }
 
+        flow.Next(M3Widgets.ChipWidth(collapseLabel, FontAwesomeIcon.AngleDoubleUp));
+        if (M3Widgets.Chip("##tree_collapse", collapseLabel, false, FontAwesomeIcon.AngleDoubleUp, "Show only the final items"))
+        {
+            SetExpandedAll(false);
+        }
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+    }
+
+    private void DrawTree()
+    {
+        using var body = ImRaii.Child("##craftingTreeBody", Vector2.Zero, false, ImGuiWindowFlags.HorizontalScrollbar);
+        if (!body)
+        {
+            return;
+        }
+
+        _itemSpacing = ImGui.GetStyle().ItemSpacing;
+        using var spacing = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, _itemSpacing with { Y = 0f });
+        var scale = M3.Scale;
+        var lineHeight = ImGui.GetTextLineHeight();
+        _rowHeight = M3.FitText(28f, 3f);
+        _iconSize = MathF.Min(_rowHeight - 4f * scale, lineHeight + 2f * scale);
+        _gap = 6f * scale;
+        _tagSize = Vector2.Zero;
+        foreach (var label in TagLabels)
+        {
+            _tagSize = Vector2.Max(_tagSize, M3Badge.Size(label));
+        }
+
+        _originX = ImGui.GetCursorScreenPos().X;
+        _visibleWidth = ImGui.GetContentRegionAvail().X;
+        _iconColumnScreenX = _originX + ComputeMaxLabelEnd() + IconColumnPadding;
+        _ancestorHasMoreSiblings.Clear();
+        for (var i = 0; i < _cachedTree.Count; i++)
+        {
+            DrawTreeNode(_cachedTree[i], 0, i == _cachedTree.Count - 1);
+        }
+    }
+
+    private float LabelOffset
+        => IndentPerLevel + _iconSize + _gap + _tagSize.X + _gap;
+
+    private static float LabelWidth(TreeNode node)
+        => ImGui.CalcTextSize(node.ItemName).X + (node.QuantityText.Length > 0 ? ImGui.CalcTextSize(node.QuantityText).X : 0f);
+
+    private float ComputeMaxLabelEnd()
+    {
         var max = 0f;
         foreach (var root in _cachedTree)
-            WalkForMaxLabelEnd(root, depth: 0, disclosureW, iconW, postDisclosure, postIcon, ref max);
+        {
+            WalkForMaxLabelEnd(root, 0, ref max);
+        }
+
         return max;
     }
 
-    private static void WalkForMaxLabelEnd(TreeNode node, int depth, float disclosureW, float iconW,
-        float postDisclosure, float postIcon, ref float max)
+    private void WalkForMaxLabelEnd(TreeNode node, int depth, ref float max)
     {
-        var (label, _) = BuildNodeLabel(node);
-        var labelW = ImGui.CalcTextSize(label).X;
-        var rowEnd = depth * IndentPerLevel + disclosureW + postDisclosure + iconW + postIcon + labelW;
-        if (rowEnd > max)
-            max = rowEnd;
-
+        max = MathF.Max(max, depth * IndentPerLevel + LabelOffset + LabelWidth(node));
         if (!node.Expanded)
+        {
             return;
+        }
+
         foreach (var child in node.Children)
-            WalkForMaxLabelEnd(child, depth + 1, disclosureW, iconW, postDisclosure, postIcon, ref max);
-    }
-
-    private void DrawHeader()
-    {
-        var roots = _cachedTree.Count;
-        var totalCrafts = SumCrafts(_cachedTree);
-        var totalGather = SumLeaves(_cachedTree, MaterialSource.Gatherable, MaterialSource.Fish);
-        var totalVendor = SumLeaves(_cachedTree, MaterialSource.GilVendor, MaterialSource.SpecialCurrency, MaterialSource.Scrip);
-
-        ImGui.TextColored(ColorMuted, $"{roots} root(s)  ·  {totalCrafts} sub-craft(s)  ·  {totalGather} gather  ·  {totalVendor} vendor/scrip");
-        ImGui.SameLine();
-        if (ImGui.SmallButton("Expand All##craftingTreeExpand"))
-            SetExpandedAll(true);
-        ImGui.SameLine();
-        if (ImGui.SmallButton("Collapse All##craftingTreeCollapse"))
-            SetExpandedAll(false);
+        {
+            WalkForMaxLabelEnd(child, depth + 1, ref max);
+        }
     }
 
     private void SetExpandedAll(bool expanded)
     {
         foreach (var root in _cachedTree)
+        {
             SetExpandedRecursive(root, expanded);
+        }
     }
 
     private static void SetExpandedRecursive(TreeNode node, bool expanded)
     {
         node.Expanded = expanded;
         foreach (var child in node.Children)
+        {
             SetExpandedRecursive(child, expanded);
+        }
     }
 
     private static int SumCrafts(IEnumerable<TreeNode> nodes)
@@ -165,7 +277,10 @@ public class CraftingTreeWindow : Window
         foreach (var node in nodes)
         {
             if (node.IsCraft && !node.IsRoot)
+            {
                 total++;
+            }
+
             total += SumCrafts(node.Children);
         }
         return total;
@@ -177,221 +292,256 @@ public class CraftingTreeWindow : Window
         foreach (var node in nodes)
         {
             if (!node.IsCraft && node.MaterialSource is { } src && Array.IndexOf(sources, src) >= 0)
+            {
                 total++;
+            }
+
             total += SumLeaves(node.Children, sources);
         }
         return total;
     }
 
+    private static string BuildSummary(List<TreeNode> tree)
+    {
+        var crafts = SumCrafts(tree);
+        var gather = SumLeaves(tree, MaterialSource.Gatherable, MaterialSource.Fish);
+        var vendor = SumLeaves(tree, MaterialSource.GilVendor, MaterialSource.SpecialCurrency, MaterialSource.Scrip);
+        return $"{tree.Count} final · {crafts} {(crafts == 1 ? "sub-craft" : "sub-crafts")} · {gather} gather · {vendor} vendor/scrip";
+    }
+
     private void DrawTreeNode(TreeNode node, int depth, bool isLast)
     {
-        var drawList   = ImGui.GetWindowDrawList();
-        var lineHeight = ImGui.GetTextLineHeight();
-        var rowHeight  = ImGui.GetTextLineHeightWithSpacing();
-        var connectorColor = ImGui.ColorConvertFloat4ToU32(ColorConnector);
+        var s = M3.Scheme;
+        var scale = M3.Scale;
+        var indent = IndentPerLevel;
+        var drawList = ImGui.GetWindowDrawList();
+        var connector = M3.U32(s.OutlineVariant, 0.9f);
+        var thickness = MathF.Max(1f, 1.25f * scale);
+        var hasChildren = node.Children.Count > 0;
 
-        var rowOriginScreen = ImGui.GetCursorScreenPos();
-        var rowYTop    = rowOriginScreen.Y;
-        var rowYCenter = rowYTop + lineHeight * 0.5f;
-        var rowYBottom = rowYTop + rowHeight;
+        var rowTop = ImGui.GetCursorScreenPos().Y;
+        var rowBottom = rowTop + _rowHeight;
+        var rowCenter = rowTop + _rowHeight * 0.5f;
+        var x0 = _originX + depth * indent;
+        var slotCenterX = x0 + indent * 0.5f;
 
         for (var d = 0; d < depth; d++)
         {
             if (d < _ancestorHasMoreSiblings.Count && _ancestorHasMoreSiblings[d])
             {
-                var x = rowOriginScreen.X + d * IndentPerLevel + IndentPerLevel * 0.5f;
-                drawList.AddLine(new Vector2(x, rowYTop), new Vector2(x, rowYBottom), connectorColor, ConnectorThickness);
+                var x = _originX + d * indent + indent * 0.5f;
+                drawList.AddLine(new Vector2(x, rowTop), new Vector2(x, rowBottom), connector, thickness);
             }
         }
 
         if (depth > 0)
         {
-            var parentX  = rowOriginScreen.X + (depth - 1) * IndentPerLevel + IndentPerLevel * 0.5f;
-            var myStartX = rowOriginScreen.X + depth * IndentPerLevel;
-
-            drawList.AddLine(new Vector2(parentX, rowYTop), new Vector2(parentX, rowYCenter), connectorColor, ConnectorThickness);
-            drawList.AddLine(new Vector2(parentX, rowYCenter), new Vector2(myStartX, rowYCenter), connectorColor, ConnectorThickness);
+            var parentX = slotCenterX - indent;
+            var elbowEnd = slotCenterX - (hasChildren ? 6f : 4f) * scale;
+            drawList.AddLine(new Vector2(parentX, rowTop), new Vector2(parentX, rowCenter), connector, thickness);
+            drawList.AddLine(new Vector2(parentX, rowCenter), new Vector2(elbowEnd, rowCenter), connector, thickness);
             if (!isLast)
-                drawList.AddLine(new Vector2(parentX, rowYCenter), new Vector2(parentX, rowYBottom), connectorColor, ConnectorThickness);
-        }
-
-        if (depth > 0)
-        {
-            ImGui.Dummy(new Vector2(depth * IndentPerLevel, 0));
-            ImGui.SameLine(0, 0);
-        }
-
-        var hasChildren = node.Children.Count > 0;
-        if (hasChildren)
-        {
-            var arrowSize = lineHeight;
-            var arrowScreenPos = ImGui.GetCursorScreenPos();
-            if (ImGui.InvisibleButton($"##arrow_{node.NodeId}", new Vector2(arrowSize, arrowSize)))
-                node.Expanded = !node.Expanded;
-            DrawDisclosureTriangle(drawList, arrowScreenPos, arrowSize, node.Expanded);
-        }
-        else
-        {
-            DrawLeafBullet(drawList, ImGui.GetCursorScreenPos(), lineHeight);
-            ImGui.Dummy(new Vector2(lineHeight, lineHeight));
-        }
-        ImGui.SameLine(0, PostDisclosureSpacing);
-
-        DrawIcon(node.IconId, lineHeight);
-        ImGui.SameLine(0, PostIconSpacing);
-
-        var labelStart = ImGui.GetCursorScreenPos();
-        var (label, color) = BuildNodeLabel(node);
-        ImGui.TextColored(color, label);
-
-        var accessoryIcons = CraftingRowIcons.GetMaterialIcons(node.ItemId, node.IsCraft);
-        if (accessoryIcons.Count > 0)
-        {
-            ImGui.SameLine(0, 0);
-            var currentX = ImGui.GetCursorScreenPos().X;
-            var gap      = _iconColumnScreenX - currentX;
-            if (gap > 0)
             {
-                ImGui.Dummy(new Vector2(gap, 0));
-                ImGui.SameLine(0, 0);
+                drawList.AddLine(new Vector2(parentX, rowCenter), new Vector2(parentX, rowBottom), connector, thickness);
+            }
+        }
+
+        if (hasChildren && node.Expanded)
+        {
+            drawList.AddLine(new Vector2(slotCenterX, rowCenter + 6f * scale), new Vector2(slotCenterX, rowBottom), connector, thickness);
+        }
+
+        var labelWidth = LabelWidth(node);
+        var rowWidth = MathF.Max(_visibleWidth - depth * indent, LabelOffset + labelWidth + 8f * scale);
+        var (tag, tone) = NodeTag(node);
+        var accessoryIcons = CraftingRowIcons.GetMaterialIcons(node.ItemId, node.IsCraft);
+
+        using (ImRaii.PushId(node.NodeId))
+        {
+            ImGui.SetCursorScreenPos(new Vector2(x0, rowTop));
+            ImGui.BeginGroup();
+
+            var clicked = ImGui.InvisibleButton("##row", new Vector2(rowWidth, _rowHeight));
+            ImGui.SetItemAllowOverlap();
+            var hovered = ImGui.IsItemHovered();
+            var held = ImGui.IsItemActive();
+            if (clicked && hasChildren)
+            {
+                node.Expanded = !node.Expanded;
+            }
+
+            if (hovered || held)
+            {
+                drawList.AddRectFilled(new Vector2(x0, rowTop), new Vector2(x0 + rowWidth, rowBottom),
+                    M3.U32(s.OnSurface, held && hasChildren ? M3.StatePressed : M3.StateHover), M3.ShapeSmall);
+                if (hasChildren)
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                }
+            }
+
+            if (hasChildren)
+            {
+                M3Draw.Chevron(drawList, new Vector2(slotCenterX, rowCenter), node.Expanded ? 1f : 0f,
+                    M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.85f), indent * 0.8f * 0.22f);
             }
             else
             {
-                ImGui.Dummy(new Vector2(IconOverflowGap, 0));
-                ImGui.SameLine(0, 0);
+                drawList.AddCircleFilled(new Vector2(slotCenterX, rowCenter), MathF.Max(1.5f, 2.5f * scale), connector, 12);
             }
-            CraftingRowIcons.DrawIconsRightAligned(accessoryIcons);
+
+            var x = x0 + indent;
+            var icon = M3ActionIcon.GameIcon(node.IconId);
+            if (icon != null)
+            {
+                M3Draw.Texture(drawList, icon, new Vector2(x, rowTop + (_rowHeight - _iconSize) * 0.5f), _iconSize);
+            }
+
+            x += _iconSize + _gap;
+            M3Badge.Paint(drawList, new Vector2(x, rowTop + (_rowHeight - _tagSize.Y) * 0.5f), tag, tone);
+            x += _tagSize.X + _gap;
+
+            var textY = rowTop + (_rowHeight - ImGui.GetTextLineHeight()) * 0.5f;
+            drawList.AddText(new Vector2(x, textY), M3.U32(s.OnSurface), node.ItemName);
+            if (node.QuantityText.Length > 0)
+            {
+                drawList.AddText(new Vector2(x + ImGui.CalcTextSize(node.ItemName).X, textY), M3.U32(s.OnSurfaceVariant), node.QuantityText);
+            }
+
+            var labelEnd = x + labelWidth;
+            if (accessoryIcons.Count > 0)
+            {
+                var accessorySize = MathF.Min(_iconSize, VulcanUiScaling.Scaled(16f));
+                ImGui.SetCursorScreenPos(new Vector2(MathF.Max(_iconColumnScreenX, labelEnd + IconOverflowGap),
+                    rowTop + (_rowHeight - accessorySize) * 0.5f));
+                CraftingRowIcons.DrawIconsRightAligned(accessoryIcons, accessorySize);
+            }
+
+            ImGui.EndGroup();
+
+            var mouseX = ImGui.GetMousePos().X;
+            if (hovered && mouseX >= x0 + indent && mouseX <= labelEnd + _gap)
+            {
+                using var tooltipSpacing = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, _itemSpacing);
+                DrawNodeTooltip(node, tone);
+            }
         }
 
-        var labelMax = ImGui.GetItemRectMax();
-        var hoverMin = new Vector2(labelStart.X - VulcanUiScaling.Scaled(2f), rowYTop);
-        var hoverMax = new Vector2(Math.Max(labelMax.X + VulcanUiScaling.Scaled(4f), labelStart.X + VulcanUiScaling.Scaled(8f)), rowYTop + rowHeight);
-        if (ImGui.IsMouseHoveringRect(hoverMin, hoverMax) && ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows))
-            DrawNodeTooltip(node);
-
         if (!node.Expanded || !hasChildren)
+        {
             return;
+        }
 
         if (_ancestorHasMoreSiblings.Count <= depth)
+        {
             _ancestorHasMoreSiblings.Add(false);
+        }
+
         for (var i = 0; i < node.Children.Count; i++)
         {
             _ancestorHasMoreSiblings[depth] = i < node.Children.Count - 1;
             DrawTreeNode(node.Children[i], depth + 1, i == node.Children.Count - 1);
         }
         if (_ancestorHasMoreSiblings.Count > depth)
+        {
             _ancestorHasMoreSiblings.RemoveAt(_ancestorHasMoreSiblings.Count - 1);
-    }
-
-    private static void DrawDisclosureTriangle(ImDrawListPtr drawList, Vector2 origin, float size, bool expanded)
-    {
-        var color = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.88f, 0.95f));
-        var center = new Vector2(origin.X + size * 0.5f, origin.Y + size * 0.5f);
-        var arm    = size * 0.28f;
-        if (expanded)
-        {
-            var p1 = new Vector2(center.X - arm,        center.Y - arm * 0.55f);
-            var p2 = new Vector2(center.X + arm,        center.Y - arm * 0.55f);
-            var p3 = new Vector2(center.X,              center.Y + arm * 0.85f);
-            drawList.AddTriangleFilled(p1, p2, p3, color);
-        }
-        else
-        {
-            var p1 = new Vector2(center.X - arm * 0.55f, center.Y - arm);
-            var p2 = new Vector2(center.X + arm * 0.85f, center.Y);
-            var p3 = new Vector2(center.X - arm * 0.55f, center.Y + arm);
-            drawList.AddTriangleFilled(p1, p2, p3, color);
         }
     }
 
-    private static void DrawLeafBullet(ImDrawListPtr drawList, Vector2 origin, float size)
-    {
-        var color = ImGui.ColorConvertFloat4ToU32(ColorConnector);
-        var center = new Vector2(origin.X + size * 0.5f, origin.Y + size * 0.5f);
-        drawList.AddCircleFilled(center, Math.Max(VulcanUiScaling.Scaled(2f), size * 0.12f), color, 8);
-    }
+    private static Vector4 Tone(Vector4 hue)
+        => M3.CustomColor(hue).Color;
 
-    private static (string Text, Vector4 Color) BuildNodeLabel(TreeNode node)
+    private static (string Label, Vector4 Tone) NodeTag(TreeNode node)
     {
-        var qty = node.Quantity > 0 ? $" × {node.Quantity}" : string.Empty;
         if (node.IsRoot)
-            return ($"[Final] {node.ItemName}{qty}", ColorRoot);
-        if (node.IsCraft)
-            return ($"[Sub-craft] {node.ItemName}{qty}", ColorSubCraft);
+        {
+            return ("Final", Tone(HueRoot));
+        }
 
-        var color = node.MaterialSource switch
+        if (node.IsCraft)
         {
-            MaterialSource.Gatherable      => ColorGather,
-            MaterialSource.Fish            => ColorFish,
-            MaterialSource.GilVendor       => ColorVendor,
-            MaterialSource.SpecialCurrency => ColorScrip,
-            MaterialSource.Scrip           => ColorScrip,
-            MaterialSource.Drop            => ColorDrop,
-            _                               => ColorOther,
-        };
-        var prefix = node.MaterialSource switch
+            return ("Craft", Tone(HueSubCraft));
+        }
+
+        return node.MaterialSource switch
         {
-            MaterialSource.Gatherable      => "[Gather]",
-            MaterialSource.Fish            => "[Fish]",
-            MaterialSource.GilVendor       => "[Vendor]",
-            MaterialSource.SpecialCurrency => "[Currency]",
-            MaterialSource.Scrip           => "[Scrip]",
-            MaterialSource.Drop            => "[Drop]",
-            _                               => "[Other]",
+            MaterialSource.Gatherable => ("Gather", Tone(HueGather)),
+            MaterialSource.Fish => ("Fish", Tone(HueFish)),
+            MaterialSource.GilVendor => ("Vendor", Tone(HueVendor)),
+            MaterialSource.SpecialCurrency => ("Currency", Tone(HueScrip)),
+            MaterialSource.Scrip => ("Scrip", Tone(HueScrip)),
+            MaterialSource.Drop => ("Drop", Tone(HueDrop)),
+            _ => ("Other", M3.Scheme.OnSurfaceVariant),
         };
-        return ($"{prefix} {node.ItemName}{qty}", color);
     }
 
-    private static void DrawNodeTooltip(TreeNode node)
+    private static void DrawNodeTooltip(TreeNode node, Vector4 tone)
     {
         ImGui.BeginTooltip();
-        ImGui.TextUnformatted(node.ItemName);
-        ImGui.Separator();
-        ImGui.TextColored(ColorMuted, $"Need: {node.Quantity}");
-
-        if (node.IsCraft && node.RecipeYield > 1 && node.CraftCount > 0)
-            ImGui.TextColored(ColorMuted, $"Crafts: {node.CraftCount} (yields {node.RecipeYield} ea.)");
-
-        if (node.GatherTerritory is { Length: > 0 })
-            ImGui.TextColored(ColorGather, $"Best location: {node.GatherTerritory}");
-
-        if (node.VendorOptions is { Count: > 0 })
+        using (ImRaii.PushFont(M3.TitleMedium))
         {
-            ImGui.TextColored(ColorVendor, "Vendors:");
-            foreach (var opt in node.VendorOptions.Take(6))
-                ImGui.BulletText($"{opt.NpcName} — {opt.Cost} {opt.CurrencyName}");
-            if (node.VendorOptions.Count > 6)
-                ImGui.TextColored(ColorMuted, $"  + {node.VendorOptions.Count - 6} more");
+            ImGui.TextUnformatted(node.ItemName);
+        }
+
+        M3Text.Draw($"Need: {node.Quantity:N0}", M3TextStyle.Muted);
+        if (node.IsCraft && node.RecipeYield > 1 && node.CraftCount > 0)
+        {
+            M3Text.Draw($"Crafts: {node.CraftCount:N0} (yields {node.RecipeYield} each)", M3TextStyle.Muted);
         }
 
         if (node.IsCraft && node.CrafterClassName is { Length: > 0 })
-            ImGui.TextColored(ColorSubCraft, $"Crafter: {node.CrafterClassName}");
+        {
+            TextColored($"Crafter: {node.CrafterClassName}", tone);
+        }
+
+        if (node.GatherTerritory is { Length: > 0 })
+        {
+            TextColored($"Best location: {node.GatherTerritory}", tone);
+        }
+
+        if (node.VendorOptions is { Count: > 0 })
+        {
+            ImGui.Dummy(new Vector2(0f, 2f * M3.Scale));
+            TextColored("Vendors", tone);
+            var shown = Math.Min(node.VendorOptions.Count, MaxVendorsShown);
+            for (var i = 0; i < shown; ++i)
+            {
+                var option = node.VendorOptions[i];
+                M3Text.Bullet($"{option.NpcName}: {option.Cost:N0} {option.CurrencyName}", wrap: false, dot: tone);
+            }
+
+            if (node.VendorOptions.Count > MaxVendorsShown)
+            {
+                M3Text.Draw($"and {node.VendorOptions.Count - MaxVendorsShown} more", M3TextStyle.Faint);
+            }
+        }
 
         ImGui.EndTooltip();
     }
 
-    private static void DrawIcon(uint iconId, float size)
+    private static void TextColored(string text, Vector4 color)
     {
-        if (iconId == 0)
-        {
-            ImGui.Dummy(new Vector2(size, size));
-            return;
-        }
-        var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-        if (icon.TryGetWrap(out var wrap, out _))
-            ImGui.Image(wrap.Handle, new Vector2(size, size));
-        else
-            ImGui.Dummy(new Vector2(size, size));
+        using var textColor = ImRaii.PushColor(ImGuiCol.Text, color);
+        ImGui.TextUnformatted(text);
     }
 
     private bool ShouldRebuild()
     {
         if (_editor == null)
+        {
             return false;
+        }
+
         if (!ReferenceEquals(_cachedEditor, _editor))
+        {
             return true;
+        }
+
         if (_cachedVersion != _editor.MaterialCacheVersion)
+        {
             return true;
+        }
+
         return _cachedMobDropInfoInitialized != MobDropInfoCache.IsInitialized;
     }
 
@@ -401,13 +551,16 @@ public class CraftingTreeWindow : Window
         _cachedVersion = -1;
         _cachedEditor = null;
         _cachedMobDropInfoInitialized = false;
+        _cachedSummary = string.Empty;
     }
 
     private void RebuildTree()
     {
         _cachedTree = [];
         if (_editor == null)
+        {
             return;
+        }
 
         try
         {
@@ -416,36 +569,46 @@ public class CraftingTreeWindow : Window
 
             var itemSheet = Dalamud.GameData.GetExcelSheet<Item>();
             if (itemSheet == null)
+            {
                 return;
+            }
 
             var nextId = 0;
             foreach (var original in plan.OriginalRecipes)
             {
                 if (original.Quantity <= 0)
+                {
                     continue;
+                }
+
                 var recipe = RecipeManager.GetRecipe(original.RecipeId);
                 if (!recipe.HasValue)
+                {
                     continue;
+                }
 
                 var resultItemId = recipe.Value.ItemResult.RowId;
                 if (!itemSheet.TryGetRow(resultItemId, out var resultItem))
+                {
                     continue;
+                }
 
                 var craftCount = original.Quantity;
                 var totalItems = craftCount * (int)recipe.Value.AmountResult;
 
                 var rootNode = new TreeNode
                 {
-                    NodeId       = nextId++,
-                    ItemId       = resultItemId,
-                    IconId       = resultItem.Icon,
-                    ItemName     = resultItem.Name.ExtractText(),
-                    Quantity     = totalItems,
-                    CraftCount   = craftCount,
-                    RecipeYield  = (int)recipe.Value.AmountResult,
-                    IsCraft      = true,
-                    IsRoot       = true,
-                    Expanded     = true,
+                    NodeId = nextId++,
+                    ItemId = resultItemId,
+                    IconId = resultItem.Icon,
+                    ItemName = resultItem.Name.ExtractText(),
+                    Quantity = totalItems,
+                    QuantityText = FormatQuantity(totalItems),
+                    CraftCount = craftCount,
+                    RecipeYield = (int)recipe.Value.AmountResult,
+                    IsCraft = true,
+                    IsRoot = true,
+                    Expanded = true,
                     CrafterClassName = ResolveCrafterName(recipe.Value),
                 };
                 BuildChildren(rootNode, recipe.Value, craftCount, list, itemSheet, ref nextId, depth: 0);
@@ -458,27 +621,35 @@ public class CraftingTreeWindow : Window
             _cachedTree = [];
         }
 
-        _cachedEditor  = _editor;
+        _cachedEditor = _editor;
         _cachedVersion = _editor?.MaterialCacheVersion ?? -1;
         _cachedMobDropInfoInitialized = MobDropInfoCache.IsInitialized;
+        _cachedSummary = _cachedTree.Count > 0 ? BuildSummary(_cachedTree) : string.Empty;
     }
+
+    private static string FormatQuantity(int quantity)
+        => quantity > 0 ? $" × {quantity}" : string.Empty;
 
     private static void BuildChildren(
         TreeNode parent,
-        Recipe   recipe,
-        int      craftCount,
+        Recipe recipe,
+        int craftCount,
         CraftingListDefinition list,
         ExcelSheet<Item> itemSheet,
-        ref int  nextId,
-        int      depth)
+        ref int nextId,
+        int depth)
     {
         if (depth >= MaxRecursionDepth)
+        {
             return;
+        }
 
         foreach (var (ingredientItemId, ingredientPerCraft) in RecipeManager.GetIngredients(recipe))
         {
             if (!itemSheet.TryGetRow(ingredientItemId, out var ingItem))
+            {
                 continue;
+            }
 
             var totalNeeded = ingredientPerCraft * craftCount;
             var subRecipe = ResolveSubRecipe(list, ingredientItemId);
@@ -490,15 +661,16 @@ public class CraftingTreeWindow : Window
                     : totalNeeded;
                 var child = new TreeNode
                 {
-                    NodeId       = nextId++,
-                    ItemId       = ingredientItemId,
-                    IconId       = ingItem.Icon,
-                    ItemName     = ingItem.Name.ExtractText(),
-                    Quantity     = totalNeeded,
-                    CraftCount   = subCraftCount,
-                    RecipeYield  = subRecipeYield,
-                    IsCraft      = true,
-                    Expanded     = depth < 1,
+                    NodeId = nextId++,
+                    ItemId = ingredientItemId,
+                    IconId = ingItem.Icon,
+                    ItemName = ingItem.Name.ExtractText(),
+                    Quantity = totalNeeded,
+                    QuantityText = FormatQuantity(totalNeeded),
+                    CraftCount = subCraftCount,
+                    RecipeYield = subRecipeYield,
+                    IsCraft = true,
+                    Expanded = depth < 1,
                     CrafterClassName = ResolveCrafterName(subRecipe.Value),
                 };
                 BuildChildren(child, subRecipe.Value, subCraftCount, list, itemSheet, ref nextId, depth + 1);
@@ -509,16 +681,17 @@ public class CraftingTreeWindow : Window
                 var classification = MaterialSourceClassifier.Classify(ingredientItemId);
                 var leaf = new TreeNode
                 {
-                    NodeId         = nextId++,
-                    ItemId         = ingredientItemId,
-                    IconId         = ingItem.Icon,
-                    ItemName       = ingItem.Name.ExtractText(),
-                    Quantity       = totalNeeded,
-                    IsCraft        = false,
-                    Expanded       = false,
+                    NodeId = nextId++,
+                    ItemId = ingredientItemId,
+                    IconId = ingItem.Icon,
+                    ItemName = ingItem.Name.ExtractText(),
+                    Quantity = totalNeeded,
+                    QuantityText = FormatQuantity(totalNeeded),
+                    IsCraft = false,
+                    Expanded = false,
                     MaterialSource = classification,
                     GatherTerritory = ResolveGatherTerritory(ingredientItemId, classification),
-                    VendorOptions   = ResolveVendorOptions(ingredientItemId, classification),
+                    VendorOptions = ResolveVendorOptions(ingredientItemId, classification),
                 };
                 parent.Children.Add(leaf);
             }
@@ -531,7 +704,9 @@ public class CraftingTreeWindow : Window
         {
             var overrideRecipe = RecipeManager.GetRecipe(overrideId);
             if (overrideRecipe.HasValue)
+            {
                 return overrideRecipe;
+            }
         }
         return RecipeManager.GetRecipeForItem(itemId);
     }
@@ -540,7 +715,10 @@ public class CraftingTreeWindow : Window
     {
         var sheet = Dalamud.GameData.GetExcelSheet<ClassJob>();
         if (sheet == null)
+        {
             return string.Empty;
+        }
+
         var jobId = recipe.CraftType.RowId + 8;
         return sheet.TryGetRow(jobId, out var job) ? job.Name.ExtractText() : string.Empty;
     }
@@ -548,20 +726,25 @@ public class CraftingTreeWindow : Window
     private static string ResolveGatherTerritory(uint itemId, MaterialSource source)
     {
         if (source != MaterialSource.Gatherable && source != MaterialSource.Fish)
+        {
             return string.Empty;
+        }
+
         try
         {
             if (GatherBuddy.GameData.Gatherables.TryGetValue(itemId, out var gatherable))
             {
-                var node = gatherable.NodeList.FirstOrDefault();
-                if (node != null)
-                    return node.Territory.Name;
+                if (gatherable.NodeList.Count > 0)
+                {
+                    return gatherable.NodeList[0].Territory.Name;
+                }
             }
             if (GatherBuddy.GameData.Fishes.TryGetValue(itemId, out var fish))
             {
-                var spot = fish.FishingSpots.FirstOrDefault();
-                if (spot != null)
-                    return spot.Territory.Name;
+                if (fish.FishingSpots.Count > 0)
+                {
+                    return fish.FishingSpots[0].Territory.Name;
+                }
             }
         }
         catch (Exception ex)
@@ -576,7 +759,9 @@ public class CraftingTreeWindow : Window
         if (source != MaterialSource.GilVendor
          && source != MaterialSource.SpecialCurrency
          && source != MaterialSource.Scrip)
+        {
             return [];
+        }
 
         var options = new List<VendorOption>();
         try
@@ -584,19 +769,28 @@ public class CraftingTreeWindow : Window
             foreach (var entry in VendorShopResolver.GilShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
             foreach (var entry in VendorShopResolver.GcShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
             foreach (var entry in VendorShopResolver.SpecialShopEntries)
             {
                 if (entry.ItemId != itemId)
+                {
                     continue;
+                }
+
                 AddVendorEntry(options, entry);
             }
         }
@@ -615,7 +809,9 @@ public class CraftingTreeWindow : Window
             return;
         }
         foreach (var npc in entry.Npcs)
+        {
             options.Add(new VendorOption(npc.Name, entry.Cost, entry.CurrencyName));
+        }
     }
 
     private sealed class TreeNode
@@ -624,6 +820,7 @@ public class CraftingTreeWindow : Window
         public uint ItemId;
         public ushort IconId;
         public string ItemName = string.Empty;
+        public string QuantityText = string.Empty;
         public int Quantity;
         public int CraftCount;
         public int RecipeYield;
@@ -634,7 +831,7 @@ public class CraftingTreeWindow : Window
         public string? CrafterClassName;
         public string? GatherTerritory;
         public List<VendorOption>? VendorOptions;
-        public List<TreeNode> Children { get; } = new();
+        public List<TreeNode> Children { get; } = [];
     }
 
     private readonly record struct VendorOption(string NpcName, uint Cost, string CurrencyName);

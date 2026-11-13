@@ -1,8 +1,8 @@
+using Dalamud.Game.Text.SeStringHandling;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Dalamud.Game.Text.SeStringHandling;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace GatherBuddy.Automation;
@@ -30,7 +30,9 @@ public unsafe class AtkReader
     {
         var actualIndex = beginOffset + index;
         if (addon == null || actualIndex < 0 || actualIndex >= addon->AtkValuesCount)
+        {
             return null;
+        }
 
         var value = addon->AtkValues[actualIndex];
         return value.Type switch
@@ -45,7 +47,9 @@ public unsafe class AtkReader
     {
         var actualIndex = beginOffset + index;
         if (addon == null || actualIndex < 0 || actualIndex >= addon->AtkValuesCount)
+        {
             return null;
+        }
 
         var value = addon->AtkValues[actualIndex];
         return value.Type switch
@@ -61,7 +65,9 @@ public unsafe class AtkReader
     {
         var actualIndex = beginOffset + index;
         if (addon == null || actualIndex < 0 || actualIndex >= addon->AtkValuesCount)
+        {
             return SeString.Empty;
+        }
 
         var value = addon->AtkValues[actualIndex];
         if (value.Type == ValueType.String)

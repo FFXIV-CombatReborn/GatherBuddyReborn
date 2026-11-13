@@ -1,32 +1,24 @@
-using System;
-using System.Numerics;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Components;
 using GatherBuddy.Alarms;
-using GatherBuddy.Config;
 using GatherBuddy.GatherHelper;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
-using Dalamud.Bindings.ImGui;
-using ElliLib;
-using ImRaii = ElliLib.Raii.ImRaii;
+using GatherBuddy.RebornUI;
+using RebornMaterial;
+using System;
+using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public partial class Interface
 {
-    private class GatherWindowDragDropData
+    private class GatherWindowDragDropData(GatherWindowPreset preset, IGatherable item, int idx)
     {
-        public GatherWindowPreset Preset;
-        public IGatherable        Item;
-        public int                ItemIdx;
-
-        public GatherWindowDragDropData(GatherWindowPreset preset, IGatherable item, int idx)
-        {
-            Preset  = preset;
-            Item    = item;
-            ItemIdx = idx;
-        }
+        public GatherWindowPreset Preset = preset;
+        public IGatherable Item = item;
+        public int ItemIdx = idx;
     }
 
     private class GatherWindowCache
@@ -41,11 +33,10 @@ public partial class Interface
                 => Filter.Length != 0 && !Items[idx].Name.Contains(Filter, StringComparison.InvariantCultureIgnoreCase);
 
             protected override bool OnDraw(int idx)
-            {
-                using var id    = ImRaii.PushId(idx);
-                using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), !Items[idx].Enabled);
-                return ImGui.Selectable(CheckUnnamed(Items[idx].Name), idx == CurrentIdx);
-            }
+                => ListRow(CheckUnnamed(Items[idx].Name), idx == CurrentIdx, !Items[idx].Enabled);
+
+            protected override string NameOf(GatherWindowPreset item)
+                => item.Name;
 
             protected override bool OnDelete(int idx)
             {
@@ -65,7 +56,9 @@ public partial class Interface
             protected override bool OnClipboardImport(string name, string data)
             {
                 if (!GatherWindowPreset.Config.FromBase64(data, out var cfg))
+                {
                     return false;
+                }
 
                 GatherWindowPreset.FromConfig(cfg, out var preset);
                 preset.Name = name;
@@ -76,7 +69,9 @@ public partial class Interface
             protected override bool OnDuplicate(string name, int idx)
             {
                 if (Items.Count <= idx || idx < 0)
+                {
                     return false;
+                }
 
                 var preset = _plugin.GatherWindowManager.Presets[idx].Clone();
                 preset.Name = name;
@@ -86,16 +81,15 @@ public partial class Interface
 
             protected override void OnDrop(object? data, int idx)
             {
-                if (Items.Count <= idx || idx < 0)
+                if (Items.Count <= idx || idx < 0 || data is not GatherWindowDragDropData obj)
+                {
                     return;
-                if (data is not GatherWindowDragDropData obj)
-                    return;
+                }
 
                 var preset = _plugin.GatherWindowManager.Presets[idx];
                 _plugin.GatherWindowManager.RemoveItem(obj.Preset, obj.ItemIdx);
                 _plugin.GatherWindowManager.AddItem(preset, obj.Item);
             }
-
 
             protected override bool OnMove(int idx1, int idx2)
             {
@@ -106,77 +100,94 @@ public partial class Interface
 
         public readonly GatherWindowSelector Selector = new();
 
-        public int  NewGatherableIdx;
-        public bool EditName;
-        public bool EditDesc;
+        public int NewGatherableIdx;
     }
 
     private readonly GatherWindowCache _gatherWindowCache;
 
     private void DrawGatherWindowPresetHeaderLine()
     {
-        if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Copy.ToIconString(), IconButtonSize, "Copy current gather window preset to clipboard.",
-                _gatherWindowCache.Selector.Current == null, true))
+        var current = _gatherWindowCache.Selector.Current;
+        if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this gather window preset to your clipboard", enabled: current != null))
         {
-            var preset = _gatherWindowCache.Selector.Current!;
             try
             {
-                var s = new GatherWindowPreset.Config(preset).ToBase64();
+                var s = new GatherWindowPreset.Config(current!).ToBase64();
                 ImGui.SetClipboardText(s);
-                Communicator.PrintClipboardMessage("Gather window preset ", preset.Name);
+                Communicator.PrintClipboardMessage("Gather window preset ", current!.Name);
             }
             catch (Exception e)
             {
-                Communicator.PrintClipboardMessage("Gather window preset ", preset.Name, e);
+                Communicator.PrintClipboardMessage("Gather window preset ", current!.Name, e);
             }
         }
 
-        if (ImGuiUtil.DrawDisabledButton("Create Alarms", Vector2.Zero, "Create a new Alarm Group from this gather window preset.", _gatherWindowCache.Selector.Current == null))
+        ImGui.SameLine(0, M3.Space1);
+        if (M3Widgets.Button("##alarms", "Make alarms", M3ButtonStyle.Text, FontAwesomeIcon.Bell, enabled: current != null,
+                tooltip: "Create a new alarm group from this gather window preset."))
         {
-            var preset = new AlarmGroup(_gatherWindowCache.Selector.Current!);
-            _plugin.AlarmManager.AddGroup(preset);
+            _plugin.AlarmManager.AddGroup(new AlarmGroup(current!));
+            M3Snackbar.Show("Created an alarm group.");
         }
 
-        ImGuiComponents.HelpMarker(
-            "If not sorting the Gather Window by uptimes, items are uniquely added in order of enabled preset, then order of item in preset.\n"
-          + "You can drag and draw presets in the list to move them.\n"
-          + "You can drag and draw items in a specific preset to move them.\n"
-          + "You can drag and draw an item onto a different preset from the selector to add it to that preset and remove it from the current.\n"
-          + "In the Gather Window itself, you can hold Control and Right-Click an item to delete it from the preset it comes from. If this removes the last item in a preset, the preset will also be removed.");
+        ImGui.SameLine(0, M3.Space2);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        M3Widgets.HelpMarker(
+            "If the gather window is not sorted by uptimes, items are added once each, in the order of the enabled presets and then their items.\n"
+          + "Drag presets in the list to move them.\n"
+          + "Drag items in a preset to move them.\n"
+          + "Drag an item onto another preset in the list to move it there.\n"
+          + "In the gather window itself, hold Control and right-click an item to delete it from its preset. Removing the last item of a preset removes the preset too.");
     }
 
     private void DrawGatherWindowPreset(GatherWindowPreset preset)
     {
-        if (ImGuiUtil.DrawEditButtonText(0, _gatherWindowCache.EditName ? preset.Name : CheckUnnamed(preset.Name), out var newName,
-                ref _gatherWindowCache.EditName, IconButtonSize, SetInputWidth, 64))
+        if (Ui.CommitField("##presetName", "Name", preset.Name, out var newName, SetInputWidth, 64))
+        {
             _plugin.GatherWindowManager.ChangeName(preset, newName);
-        if (ImGuiUtil.DrawEditButtonText(1, _gatherWindowCache.EditDesc ? preset.Description : CheckUndescribed(preset.Description),
-                out var newDesc, ref _gatherWindowCache.EditDesc, IconButtonSize, 2 * SetInputWidth, 128))
+        }
+
+        ImGui.SameLine(0, M3.Space2);
+        if (Ui.CommitField("##presetDesc", "Description", preset.Description, out var newDesc, 2 * SetInputWidth, 128))
+        {
             _plugin.GatherWindowManager.ChangeDescription(preset, newDesc);
+        }
 
-        var tmp = preset.Enabled;
-        if (ImGui.Checkbox("Enabled##preset", ref tmp) && tmp != preset.Enabled)
+        ImGui.SameLine(0, M3.Space3);
+        var enabled = preset.Enabled;
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3TextField.Height - M3Widgets.SwitchSize().Y) * 0.5f);
+        if (M3Widgets.Switch("##presetEnabled", ref enabled) && enabled != preset.Enabled)
+        {
             _plugin.GatherWindowManager.TogglePreset(preset);
+        }
 
-        ImGui.NewLine();
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() - ImGui.GetStyle().ItemInnerSpacing.X);
-        using var box = ImRaii.ListBox("##gatherWindowList", new Vector2(-1.5f * ImGui.GetStyle().ItemSpacing.X, -1));
-        if (!box)
-            return;
+        M3Tooltip.Hovered("Show this preset's items in the gather window.");
+        ImGui.SameLine(0, M3.Space2);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
+        M3Text.Draw(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted);
 
+        ImGui.Dummy(new Vector2(0, M3.Space2));
+        M3Widgets.SectionLabel($"Items ({preset.Items.Count})");
+        var comboWidth = SetInputWidth * 1.4f;
         for (var i = 0; i < preset.Items.Count; ++i)
         {
-            using var id    = ImRaii.PushId(i);
-            using var group = ImRaii.Group();
-            var       item  = preset.Items[i];
-            if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Trash.ToIconString(), IconButtonSize, "Delete this item from the preset...", false,
-                    true))
-                _plugin.GatherWindowManager.RemoveItem(preset, i--);
+            using var id = ImRaii.PushId(i);
+            var item = preset.Items[i];
+            using (ImRaii.Group())
+            {
+                if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Remove this item from the preset", diameter: M3Widgets.ComboHeight))
+                {
+                    _plugin.GatherWindowManager.RemoveItem(preset, i--);
+                    continue;
+                }
 
-            ImGui.SameLine();
-            if (_gatherGroupCache.GatherableSelector.Draw(item.Name[GatherBuddy.Language], out var newIdx))
-                _plugin.GatherWindowManager.ChangeItem(preset, GatherGroupCache.AllGatherables[newIdx], i);
-            group.Dispose();
+                ImGui.SameLine(0, M3.Space1);
+                var index = Array.IndexOf(GatherGroupCache.AllGatherables, item);
+                if (DrawGatherableCombo("##item", ref index, comboWidth))
+                {
+                    _plugin.GatherWindowManager.ChangeItem(preset, GatherGroupCache.AllGatherables[index], i);
+                }
+            }
 
             _gatherWindowCache.Selector.CreateDropSource(new GatherWindowDragDropData(preset, item, i), item.Name[GatherBuddy.Language]);
 
@@ -185,35 +196,35 @@ public partial class Interface
                 => _plugin.GatherWindowManager.MoveItem(d.Preset, d.ItemIdx, localIdx));
         }
 
-        if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Plus.ToIconString(), IconButtonSize,
-                "Add this item at the end of the preset, if it is not already included...",
-                preset.Items.Contains(GatherGroupCache.AllGatherables[_gatherWindowCache.NewGatherableIdx]), true))
-            _plugin.GatherWindowManager.AddItem(preset, GatherGroupCache.AllGatherables[_gatherWindowCache.NewGatherableIdx]);
+        var newItem = GatherGroupCache.AllGatherables[_gatherWindowCache.NewGatherableIdx];
+        var contained = preset.Items.Contains(newItem);
+        if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus,
+                contained ? "This item is already in the preset." : "Add this item at the end of the preset", M3ButtonStyle.Tonal,
+                diameter: M3Widgets.ComboHeight, enabled: !contained))
+        {
+            _plugin.GatherWindowManager.AddItem(preset, newItem);
+        }
 
-        ImGui.SameLine();
-        if (_gatherGroupCache.GatherableSelector.Draw(_gatherWindowCache.NewGatherableIdx, out var idx))
-            _gatherWindowCache.NewGatherableIdx = idx;
+        ImGui.SameLine(0, M3.Space1);
+        DrawGatherableCombo("##newItem", ref _gatherWindowCache.NewGatherableIdx, comboWidth);
     }
 
-    private void DrawGatherWindowTab()
+    private void DrawGatherWindowPage()
     {
-        using var id  = ImRaii.PushId("GatherWindow");
-        using var tab = ImRaii.TabItem("Gather Window");
-
-        ImGuiUtil.HoverTooltip(
-            "Config window too big? Why can't you hold all this information?\n"
-          + "Prepare a small window with only those items that actually interest you!");
-
-        if (!tab)
-            return;
-
+        using var id = ImRaii.PushId("GatherWindow");
         _gatherWindowCache.Selector.Draw(SelectorWidth);
-        ImGui.SameLine();
+        ImGui.SameLine(0, M3.Space2);
 
         ItemDetailsWindow.Draw("Preset Details", DrawGatherWindowPresetHeaderLine, () =>
         {
             if (_gatherWindowCache.Selector.Current != null)
+            {
                 DrawGatherWindowPreset(_gatherWindowCache.Selector.Current);
+            }
+            else
+            {
+                M3Widgets.EmptyState("##noPreset", "No preset selected", "Add a preset with the plus button below the list.", FontAwesomeIcon.ListUl);
+            }
         });
     }
 }

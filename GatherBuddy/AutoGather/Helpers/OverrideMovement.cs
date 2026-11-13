@@ -1,13 +1,12 @@
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Config;
 using Dalamud.Hooking;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using GatherBuddy.Utilities;
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Dalamud.Game.ClientState.Conditions;
-using GatherBuddy.Utilities;
-using GatherBuddy.Plugin;
 
 //Credit: https://github.com/NightmareXIV/Lifestream/blob/main/Lifestream/Movement/OverrideMovement.cs#7ad417a
 namespace GatherBuddy.AutoGather.Movement;
@@ -65,11 +64,11 @@ public unsafe class OverrideMovement : IDisposable
 
     private delegate void RMIWalkDelegate(void* self, float* sumLeft, float* sumForward, float* sumTurnLeft, byte* haveBackwardOrStrafe, byte* a6, byte bAdditiveUnk);
     [Signature("E8 ?? ?? ?? ?? 80 7B 3E 00 48 8D 3D")]
-    private Hook<RMIWalkDelegate> _rmiWalkHook = null!;
+    private readonly Hook<RMIWalkDelegate> _rmiWalkHook = null!;
 
     private delegate void RMIFlyDelegate(void* self, PlayerMoveControllerFlyInput* result);
     [Signature("E8 ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? B8")]
-    private Hook<RMIFlyDelegate> _rmiFlyHook = null!;
+    private readonly Hook<RMIFlyDelegate> _rmiFlyHook = null!;
 
     public OverrideMovement()
     {
@@ -91,7 +90,7 @@ public unsafe class OverrideMovement : IDisposable
     {
         _rmiWalkHook.Original(self, sumLeft, sumForward, sumTurnLeft, haveBackwardOrStrafe, a6, bAdditiveUnk);
         // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
-        bool movementAllowed = bAdditiveUnk == 0 && !Dalamud.Conditions[ConditionFlag.BeingMoved];
+        var movementAllowed = bAdditiveUnk == 0 && !Dalamud.Conditions[ConditionFlag.BeingMoved];
         if (movementAllowed && (IgnoreUserInput || *sumLeft == 0 && *sumForward == 0) && DirectionToDestination(false) is var relDir && relDir != null)
         {
             var dir = relDir.Value.h.ToDirection();
@@ -117,11 +116,15 @@ public unsafe class OverrideMovement : IDisposable
     {
         var player = Dalamud.Objects.LocalPlayer;
         if (player == null)
+        {
             return null;
+        }
 
         var dist = DesiredPosition - player.Position;
         if (dist.LengthSquared() <= Precision * Precision)
+        {
             return null;
+        }
 
         var dirH = Angle.FromDirectionXZ(dist);
         var dirV = allowVertical ? Angle.FromDirection(new(dist.Y, new Vector2(dist.X, dist.Z).Length())) : default;

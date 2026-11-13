@@ -1,14 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
 using Dalamud.Plugin;
 using GatherBuddy.AutoGather.Lists;
-using GatherBuddy.Gui;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
 using GatherBuddy.Utility;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Threading.Tasks;
 
 namespace GatherBuddy.AutoGather.Helpers
 {
@@ -25,7 +23,7 @@ namespace GatherBuddy.AutoGather.Helpers
             }
             public IDalamudPlugin? ArtisanAssemblyInstance;
 
-            public bool ArtisanAssemblyEnabled
+            public static bool ArtisanAssemblyEnabled
                 => ReflectionHelpers.TryGetDalamudPlugin("Artisan", out _);
 
             public bool TouchArtisanAssembly
@@ -39,13 +37,15 @@ namespace GatherBuddy.AutoGather.Helpers
                     if (TouchArtisanAssembly)
                     {
 #pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
-                        System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
+                        var artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
                         foreach (var list in artisanCraftingLists)
                         {
                             var name = list.GetFoP("Name").ToString();
-                            var id   = (int)list.GetFoP("ID");
+                            var id = (int)list.GetFoP("ID");
                             if (name != null)
+                            {
                                 listNames.Add(id, name);
+                            }
                         }
 #pragma warning restore CS8600, CS8602, CS8604, CS8605
                     }
@@ -70,11 +70,26 @@ namespace GatherBuddy.AutoGather.Helpers
 #pragma warning disable CS8600, CS8602, CS8604, CS8605 // Null handled by catch block
                     if (TouchArtisanAssembly)
                     {
-                        System.Collections.IList artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
-                        var   artisanRootAssembly  = Assembly.GetAssembly(ArtisanAssemblyInstance!.GetType())!;
-                        var   craftingListFunctionsType = artisanRootAssembly.GetType("Artisan.CraftingLists.CraftingListFunctions")!;
+                        var artisanCraftingLists = (System.Collections.IList)ArtisanAssemblyInstance.GetFoP("Config").GetFoP("NewCraftingLists");
+                        var artisanRootAssembly = Assembly.GetAssembly(ArtisanAssemblyInstance!.GetType())!;
+                        var craftingListFunctionsType = artisanRootAssembly.GetType("Artisan.CraftingLists.CraftingListFunctions")!;
                         var listMaterialsMethodInfo = craftingListFunctionsType.GetMethod("ListMaterials", All);
-                        var targetList = artisanCraftingLists.Cast<object>().SingleOrDefault(l => (int)l.GetFoP("ID") == listKvp.Key);
+                        object? targetList = null;
+                        foreach (var artisanList in artisanCraftingLists)
+                        {
+                            if ((int)artisanList.GetFoP("ID") != listKvp.Key)
+                            {
+                                continue;
+                            }
+
+                            if (targetList != null)
+                            {
+                                throw new InvalidOperationException($"Artisan has more than one list with ID {listKvp.Key}.");
+                            }
+
+                            targetList = artisanList;
+                        }
+
                         if (targetList == null)
                         {
                             GatherBuddy.Log.Error($"Artisan list '{listKvp.Value}' ({listKvp.Key}) could not be found");
@@ -83,22 +98,32 @@ namespace GatherBuddy.AutoGather.Helpers
 
                         var matList = (Dictionary<uint, int>)listMaterialsMethodInfo!.Invoke(null, [targetList])!;
 
-                        AutoGatherList list = new AutoGatherList();
-                        list.Name        = listKvp.Value;
-                        list.Description = "Imported from Artisan";
+                        var list = new AutoGatherList
+                        {
+                            Name = listKvp.Value,
+                            Description = "Imported from Artisan"
+                        };
                         foreach (var (itemId, quantity) in matList)
                         {
                             if (!Diadem.ApprovedToRawItemIds.TryGetValue(itemId, out var mappedItemId))
+                            {
                                 mappedItemId = itemId;
+                            }
 
                             IGatherable? item = null;
                             if (GatherBuddy.GameData.Gatherables.TryGetValue(mappedItemId, out var gatherable))
+                            {
                                 item = gatherable;
+                            }
                             else if (GatherBuddy.GameData.Fishes.TryGetValue(mappedItemId, out var fish))
+                            {
                                 item = fish;
+                            }
 
-                            if (item == null || !item.Locations.Any())
+                            if (item == null || item.Locations.Count == 0)
+                            {
                                 continue;
+                            }
 
                             list.Add(item, (uint)quantity);
                         }

@@ -1,10 +1,10 @@
+using Dalamud.Game;
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Dalamud.Game;
-using GatherBuddy.Vulcan;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -31,7 +31,9 @@ public class MacroParser
         }
 
         if (TryParseArtisanExport(macroText, name, out var artisanMacro))
+        {
             return artisanMacro;
+        }
 
         var actions = new List<uint>();
         var lines = macroText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -40,7 +42,10 @@ public class MacroParser
         {
             var trimmedLine = line.Trim();
             if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("//") || trimmedLine.StartsWith("#"))
+            {
                 continue;
+            }
+
             var actionName = ExtractActionName(trimmedLine);
             if (!string.IsNullOrEmpty(actionName))
             {
@@ -79,7 +84,9 @@ public class MacroParser
     {
         macro = null;
         if (!macroText.TrimStart().StartsWith("{", StringComparison.Ordinal))
+        {
             return false;
+        }
 
         try
         {
@@ -180,7 +187,9 @@ public class MacroParser
     {
         convertedActionId = 0;
         if (actionId == 0)
+        {
             return false;
+        }
 
         if (Enum.IsDefined(typeof(VulcanSkill), (int)actionId))
         {
@@ -204,11 +213,15 @@ public class MacroParser
 
         var localized = _localizedLookup ??= BuildLookup(GatherBuddy.Language);
         if (localized.TryGetValue(normalized, out var skill))
+        {
             return (uint)skill;
+        }
 
         var english = _englishLookup ??= BuildLookup(ClientLanguage.English);
         if (english.TryGetValue(normalized, out skill))
+        {
             return (uint)skill;
+        }
 
         return 0;
     }
@@ -228,9 +241,15 @@ public class MacroParser
     private static int ReadIntProperty(JsonElement element, string parentPropertyName, string propertyName)
     {
         if (!element.TryGetProperty(parentPropertyName, out var parent) || parent.ValueKind != JsonValueKind.Object)
+        {
             return 0;
+        }
+
         if (!parent.TryGetProperty(propertyName, out var property) || !property.TryGetInt32(out var value))
+        {
             return 0;
+        }
+
         return value;
     }
 
@@ -238,11 +257,13 @@ public class MacroParser
     {
         var lookup = new Dictionary<string, VulcanSkill>();
 
-        foreach (VulcanSkill skill in Enum.GetValues<VulcanSkill>())
+        foreach (var skill in Enum.GetValues<VulcanSkill>())
         {
             var id = (uint)skill;
             if (id < 3 || id >= 200000)
+            {
                 continue;
+            }
 
             try
             {
@@ -250,17 +271,28 @@ public class MacroParser
                 if (id >= 100000)
                 {
                     var sheet = Dalamud.GameData.GetExcelSheet<CraftAction>(language);
-                    if (sheet == null || !sheet.TryGetRow(id, out var row)) continue;
+                    if (sheet == null || !sheet.TryGetRow(id, out var row))
+                    {
+                        continue;
+                    }
+
                     name = row.Name.ToString().Trim();
                 }
                 else
                 {
                     var sheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Action>(language);
-                    if (sheet == null || !sheet.TryGetRow(id, out var row)) continue;
+                    if (sheet == null || !sheet.TryGetRow(id, out var row))
+                    {
+                        continue;
+                    }
+
                     name = row.Name.ToString().Trim();
                 }
 
-                if (string.IsNullOrEmpty(name)) continue;
+                if (string.IsNullOrEmpty(name))
+                {
+                    continue;
+                }
 
                 var normalized = NormalizeName(name);
                 lookup.TryAdd(normalized, skill);

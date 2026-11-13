@@ -1,4 +1,3 @@
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Automation;
 using GatherBuddy.Classes;
 using System;
@@ -9,7 +8,7 @@ public class ItemSlot(int index, ItemSlotReader reader, uint itemSlotFlags, uint
 {
     public unsafe void Gather()
     {
-        if (GenericHelpers.TryGetAddonByName("Gathering", out AtkUnitBase* addon))
+        if (GenericHelpers.TryGetAddonByName("Gathering", out var addon))
         {
             Callback.Fire(addon, true, index, 0);
         }
@@ -36,10 +35,10 @@ public class ItemSlot(int index, ItemSlotReader reader, uint itemSlotFlags, uint
     {
         get
         {
-            uint mask = RareFlagMask << index;
+            var mask = RareFlagMask << index;
             return (itemSlotFlags & mask) != 0;
         }
     }
 
-    public bool IsHidden => (itemSlotFlags & (1u << (index))) != 0;
+    public bool IsHidden => (itemSlotFlags & (1u << index)) != 0;
 }

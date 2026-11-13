@@ -1,15 +1,14 @@
+using GatherBuddy.AutoHookIntegration.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
-using GatherBuddy.AutoHookIntegration.Models;
 
 namespace GatherBuddy.AutoHookIntegration;
 
 public class BiteTimerService
 {
-    private readonly Dictionary<uint, BiteTimerData> _biteTimers = new();
+    private readonly Dictionary<uint, BiteTimerData> _biteTimers = [];
     private bool _isLoaded;
 
     public BiteTimerService(string pluginConfigDirectory)
@@ -51,13 +50,13 @@ public class BiteTimerService
         }
     }
 
-    private string? FindAutoHookBiteTimersFile(string pluginConfigDirectory)
+    private static string? FindAutoHookBiteTimersFile(string pluginConfigDirectory)
     {
         try
         {
             var configDir = new DirectoryInfo(pluginConfigDirectory);
             var xivLauncherRoot = configDir.Parent?.Parent;
-            
+
             if (xivLauncherRoot == null || !xivLauncherRoot.Exists)
             {
                 GatherBuddy.Log.Debug("[BiteTimerService] Could not find XIVLauncher root directory");
@@ -65,21 +64,20 @@ public class BiteTimerService
             }
 
             var installedPluginsDir = Path.Combine(xivLauncherRoot.FullName, "installedPlugins", "AutoHook");
-            
+
             if (!Directory.Exists(installedPluginsDir))
             {
                 GatherBuddy.Log.Debug("[BiteTimerService] AutoHook plugin directory not found");
                 return null;
             }
 
-            var versionDirs = Directory.GetDirectories(installedPluginsDir)
-                .OrderByDescending(d => d)
-                .ToArray();
+            var versionDirs = Directory.GetDirectories(installedPluginsDir);
+            Array.Sort(versionDirs, static (lhs, rhs) => string.Compare(rhs, lhs, StringComparison.CurrentCulture));
 
             foreach (var versionDir in versionDirs)
             {
                 var biteTimersPath = Path.Combine(versionDir, "Data", "FishData", "bitetimers.json");
-                
+
                 if (File.Exists(biteTimersPath))
                 {
                     return biteTimersPath;
@@ -99,7 +97,9 @@ public class BiteTimerService
     public BiteTimerData? GetBiteTimers(uint fishItemId)
     {
         if (!_isLoaded)
+        {
             return null;
+        }
 
         return _biteTimers.GetValueOrDefault(fishItemId);
     }

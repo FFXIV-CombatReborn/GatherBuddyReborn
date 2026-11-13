@@ -1,9 +1,8 @@
+using GatherBuddy.Vulcan;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using GatherBuddy.Vulcan;
-using Lumina.Excel.Sheets;
 
 namespace GatherBuddy.Crafting;
 
@@ -11,7 +10,7 @@ public static class CraftingTimeEstimator
 {
     private const int ActionExecutionMs = 3000;
     private const int QuickSynthCraftMs = 3000;
-    private const int CraftOverheadMs   = 5000;
+    private const int CraftOverheadMs = 5000;
     private const int DefaultActionCount = 15;
 
     private static readonly ConcurrentDictionary<string, int> _actionCountCache = new();
@@ -19,12 +18,17 @@ public static class CraftingTimeEstimator
     public static long EstimateRemainingMs(IReadOnlyList<CraftingListItem> queue, int fromIndex, CraftingListConsumableSettings? listConsumables = null)
     {
         if (queue.Count == 0 || fromIndex >= queue.Count)
+        {
             return 0;
+        }
 
         var configuredActionDelayMs = GatherBuddy.Config.VulcanExecutionDelayMs;
         long total = 0;
         for (var i = fromIndex < 0 ? 0 : fromIndex; i < queue.Count; i++)
+        {
             total += EstimateItemMs(queue[i], configuredActionDelayMs, listConsumables);
+        }
+
         return total;
     }
 
@@ -36,7 +40,9 @@ public static class CraftingTimeEstimator
         {
             executionContext = CraftingContextResolver.ResolveExecutionContext(item, recipe.Value, listConsumables);
             if (executionContext.UseQuickSynthesis)
+            {
                 return QuickSynthCraftMs;
+            }
         }
 
         var actions = ResolveActionCount(item, recipe, executionContext, listConsumables);
@@ -51,15 +57,21 @@ public static class CraftingTimeEstimator
         CraftingListConsumableSettings? listConsumables)
     {
         if (!recipe.HasValue)
+        {
             return DefaultActionCount;
+        }
 
         var resolvedExecutionContext = executionContext ?? CraftingContextResolver.ResolveExecutionContext(item, recipe.Value, listConsumables);
         if (!CraftingContextResolver.TryBuildSimulationContext(recipe.Value, resolvedExecutionContext, CraftingStatsSource.PreferCurrentJobStats, out var simulationContext))
+        {
             return DefaultActionCount;
+        }
 
         if (!resolvedExecutionContext.ForceProgressOnlyUnlockCraft
             && TryResolveMacroActionCount(resolvedExecutionContext, simulationContext.SimulationState, resolvedExecutionContext.EffectiveSolverMode, out var macroActionCount))
+        {
             return macroActionCount;
+        }
 
         return ResolveNonMacroActionCount(simulationContext.SimulationState, resolvedExecutionContext.EffectiveSolverMode);
     }
@@ -72,23 +84,31 @@ public static class CraftingTimeEstimator
                 return ResolveRaphaelActionCount(craft);
             case VulcanSolverMode.StandardSolver:
                 if (SupportsStandardSolver(craft))
+                {
                     return ResolveSimulatedActionCount(
                         $"standard/{BuildCraftStateKey(craft)}/{BuildStandardSolverConfigKey()}",
                         craft,
                         () => new StandardSolver(GatherBuddy.Config.StandardSolverConfig));
+                }
 
                 if (SupportsProgressOnlySolver(craft))
+                {
                     return ResolveSimulatedActionCount(
                         $"progress/{BuildCraftStateKey(craft)}",
                         craft,
                         () => new ProgressOnlySolver());
+                }
+
                 return DefaultActionCount;
             case VulcanSolverMode.ProgressOnly:
                 if (SupportsProgressOnlySolver(craft))
+                {
                     return ResolveSimulatedActionCount(
                         $"progress/{BuildCraftStateKey(craft)}",
                         craft,
                         () => new ProgressOnlySolver());
+                }
+
                 return DefaultActionCount;
             default:
                 return DefaultActionCount;
@@ -98,11 +118,15 @@ public static class CraftingTimeEstimator
     private static int ResolveSimulatedActionCount(string key, CraftState craft, Func<Solver> solverFactory)
     {
         if (_actionCountCache.TryGetValue(key, out var cachedCount))
+        {
             return cachedCount;
+        }
 
         var solver = solverFactory();
         if (!SolverUtils.TryEstimateActionCount(solver, craft, craft.InitialQuality, out var actionCount))
+        {
             return DefaultActionCount;
+        }
 
         _actionCountCache[key] = actionCount;
         return actionCount;
@@ -112,17 +136,23 @@ public static class CraftingTimeEstimator
     {
         actionCount = 0;
         if (!TrySelectMacroForEstimate(executionContext.SelectedMacroId, craft, out var macro))
+        {
             return false;
+        }
 
         var fallback = CreateMacroFallbackSolver(craft, effectiveSolverMode, out var fallbackKey);
         var cacheKey =
             $"macro/{BuildCraftStateKey(craft)}/{BuildMacroFingerprint(macro)}/{(GatherBuddy.Config.SkipMacroStepIfUnable ? 1 : 0)}/{(GatherBuddy.Config.MacroFallbackEnabled ? 1 : 0)}/{fallbackKey}";
         if (_actionCountCache.TryGetValue(cacheKey, out actionCount))
+        {
             return true;
+        }
 
         var solver = new UserMacroSolver(macro, craft, fallback);
         if (!SolverUtils.TryEstimateActionCount(solver, craft, craft.InitialQuality, out actionCount))
+        {
             return false;
+        }
 
         _actionCountCache[cacheKey] = actionCount;
         return true;
@@ -148,7 +178,9 @@ public static class CraftingTimeEstimator
         foreach (var candidate in CraftingGameInterop.UserMacroLibrary.GetMacrosForRecipe(craft.RecipeId))
         {
             if (!MacroMeetsStats(candidate, craft))
+            {
                 continue;
+            }
 
             macro = candidate;
             return true;
@@ -211,7 +243,9 @@ public static class CraftingTimeEstimator
         var request = RaphaelSolveRequest.FromCraftState(craft, GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions);
         var cacheKey = $"raphael/{request.GetKey()}";
         if (_actionCountCache.TryGetValue(cacheKey, out var cachedCount))
+        {
             return cachedCount;
+        }
 
         var coord = GatherBuddy.RaphaelSolveCoordinator;
         if (coord.TryGetSolution(request, out var solved) && solved != null && solved.ActionIds.Count > 0)
@@ -221,7 +255,9 @@ public static class CraftingTimeEstimator
         }
 
         if (coord.HasFailedSolution(request, out _))
+        {
             return DefaultActionCount;
+        }
 
         return DefaultActionCount;
     }
@@ -232,7 +268,9 @@ public static class CraftingTimeEstimator
 
         var request = RaphaelSolveRequest.FromCraftState(craft, GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions);
         if (!GatherBuddy.RaphaelSolveCoordinator.TryGetSolution(request, out var resolved) || resolved == null || resolved.ActionIds.Count == 0)
+        {
             return false;
+        }
 
         solution = resolved;
         return true;
@@ -264,7 +302,10 @@ public static class CraftingTimeEstimator
         var hash = new HashCode();
         hash.Add(macro.Id);
         foreach (var action in macro.Actions)
+        {
             hash.Add(action);
+        }
+
         return hash.ToHashCode();
     }
 
@@ -272,15 +313,24 @@ public static class CraftingTimeEstimator
     public static string FormatDuration(long ms)
     {
         if (ms < 0)
+        {
             ms = 0;
+        }
+
         var totalSeconds = (int)((ms + 500) / 1000);
         var hours = totalSeconds / 3600;
-        var minutes = (totalSeconds % 3600) / 60;
+        var minutes = totalSeconds % 3600 / 60;
         var seconds = totalSeconds % 60;
         if (hours > 0)
+        {
             return $"{hours}h {minutes}m {seconds}s";
+        }
+
         if (minutes > 0)
+        {
             return $"{minutes}m {seconds}s";
+        }
+
         return $"{seconds}s";
     }
 }

@@ -16,7 +16,9 @@ public static unsafe class Teleporter
         }
 
         if (Control.Instance()->LocalPlayer == null)
+        {
             return true;
+        }
 
         teleport->UpdateAetheryteList();
 
@@ -24,7 +26,9 @@ public static unsafe class Teleporter
         for (var it = teleport->TeleportList.First; it != endPtr; ++it)
         {
             if (it->AetheryteId == aetheryte)
+            {
                 return true;
+            }
         }
 
         return false;

@@ -1,6 +1,6 @@
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.AutoHookIntegration.Models;
 
@@ -13,13 +13,13 @@ public class AHCustomPresetConfig
     public string PresetName { get; set; } = string.Empty;
 
     [JsonProperty("ListOfBaits")]
-    public List<AHHookConfig> ListOfBaits { get; set; } = new();
+    public List<AHHookConfig> ListOfBaits { get; set; } = [];
 
     [JsonProperty("ListOfMooch")]
-    public List<AHHookConfig> ListOfMooch { get; set; } = new();
+    public List<AHHookConfig> ListOfMooch { get; set; } = [];
 
     [JsonProperty("ListOfFish")]
-    public List<AHFishConfig> ListOfFish { get; set; } = new();
+    public List<AHFishConfig> ListOfFish { get; set; } = [];
 
     [JsonProperty("AutoCastsCfg")]
     public AHAutoCastsConfig? AutoCastsCfg { get; set; }

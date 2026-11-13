@@ -2,7 +2,7 @@ namespace GatherBuddy.Alarms;
 
 public enum Sounds : byte
 {
-    None    = 0x00,
+    None = 0x00,
     Unknown = 0x01,
     Sound01 = 0x25,
     Sound02 = 0x26,
@@ -28,7 +28,7 @@ public static class SoundsExtensions
     {
         return value switch
         {
-            Sounds.None    => 0,
+            Sounds.None => 0,
             Sounds.Sound01 => 1,
             Sounds.Sound02 => 2,
             Sounds.Sound03 => 3,
@@ -45,7 +45,7 @@ public static class SoundsExtensions
             Sounds.Sound14 => 14,
             Sounds.Sound15 => 15,
             Sounds.Sound16 => 16,
-            _              => -1,
+            _ => -1,
         };
     }
 
@@ -53,16 +53,16 @@ public static class SoundsExtensions
     {
         return idx switch
         {
-            0  => Sounds.None,
-            1  => Sounds.Sound01,
-            2  => Sounds.Sound02,
-            3  => Sounds.Sound03,
-            4  => Sounds.Sound04,
-            5  => Sounds.Sound05,
-            6  => Sounds.Sound06,
-            7  => Sounds.Sound07,
-            8  => Sounds.Sound08,
-            9  => Sounds.Sound09,
+            0 => Sounds.None,
+            1 => Sounds.Sound01,
+            2 => Sounds.Sound02,
+            3 => Sounds.Sound03,
+            4 => Sounds.Sound04,
+            5 => Sounds.Sound05,
+            6 => Sounds.Sound06,
+            7 => Sounds.Sound07,
+            8 => Sounds.Sound08,
+            9 => Sounds.Sound09,
             10 => Sounds.Sound10,
             11 => Sounds.Sound11,
             12 => Sounds.Sound12,
@@ -70,7 +70,7 @@ public static class SoundsExtensions
             14 => Sounds.Sound14,
             15 => Sounds.Sound15,
             16 => Sounds.Sound16,
-            _  => Sounds.Unknown,
+            _ => Sounds.Unknown,
         };
     }
 }

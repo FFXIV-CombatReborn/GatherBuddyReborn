@@ -1,5 +1,5 @@
-using GatherBuddy.Vulcan;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Vulcan;
 using System;
 using System.Threading.Tasks;
 
@@ -30,7 +30,10 @@ public class CraftingActionExecutor : IActionExecutor
             var playerJobId = (uint)(Dalamud.Objects.LocalPlayer?.ClassJob.RowId ?? 0);
             var actionId = action.ActionId(playerJobId);
             if (actionId == 0)
+            {
                 actionId = (uint)action;
+            }
+
             if (actionId == 0)
             {
                 GatherBuddy.Log.Warning($"[CraftingActionExecutor] Invalid action: {action}");

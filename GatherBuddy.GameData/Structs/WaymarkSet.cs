@@ -1,9 +1,9 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.Structs;
 
@@ -20,7 +20,9 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
     public WaymarkSet()
     {
         for (var i = 0; i < Count; ++i)
+        {
             this[i] = new Vector3(float.NaN);
+        }
     }
 
     private class Converter : JsonConverter<WaymarkSet>
@@ -29,8 +31,9 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
         {
             writer.WriteStartArray();
             foreach (var item in value)
+            {
                 serializer.Serialize(writer, item);
-
+            }
 
             writer.WriteEndArray();
         }
@@ -40,13 +43,21 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
         {
             var array = serializer.Deserialize<Vector3[]>(reader);
             if (array == null)
+            {
                 return existingValue;
+            }
 
             var min = Math.Min(Count, array.Length);
             for (var i = 0; i < min; ++i)
+            {
                 existingValue[i] = array[i];
+            }
+
             for (var i = min; i < Count; ++i)
+            {
                 existingValue[i] = new Vector3(float.NaN);
+            }
+
             return existingValue;
         }
     }
@@ -58,13 +69,17 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
             if (float.IsNaN(this[i].X))
             {
                 if (!float.IsNaN(other[i].X))
+                {
                     return false;
+                }
 
                 continue;
             }
 
             if (this[i] != other[i])
+            {
                 return false;
+            }
         }
 
         return true;
@@ -78,7 +93,9 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
             foreach (ref var item in this)
             {
                 if (!float.IsNaN(item.X))
+                {
                     ++count;
+                }
             }
 
             return count;
@@ -92,19 +109,23 @@ public partial struct WaymarkSet : IEnumerable<Vector3>
             foreach (ref var item in this)
             {
                 if (!float.IsNaN(item.X))
+                {
                     return true;
+                }
             }
 
             return false;
         }
     }
 
-    public IEnumerator<Vector3> GetEnumerator()
+    public readonly IEnumerator<Vector3> GetEnumerator()
     {
         for (var i = 0; i < Count; ++i)
+        {
             yield return this[i];
+        }
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
+    readonly IEnumerator IEnumerable.GetEnumerator()
         => GetEnumerator();
 }

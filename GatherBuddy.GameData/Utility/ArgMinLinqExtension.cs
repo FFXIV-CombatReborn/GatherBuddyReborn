@@ -14,18 +14,22 @@ public static class ArgMinLinqExtension
         using var sourceIterator = enumerable.GetEnumerator();
 
         if (!sourceIterator.MoveNext())
+        {
             return default;
+        }
 
-        var min    = sourceIterator.Current;
+        var min = sourceIterator.Current;
         var minKey = selector(min);
         while (sourceIterator.MoveNext())
         {
-            var candidate          = sourceIterator.Current;
+            var candidate = sourceIterator.Current;
             var candidateProjected = selector(candidate);
             if (comparer.Compare(candidateProjected, minKey) >= 0)
+            {
                 continue;
+            }
 
-            min    = candidate;
+            min = candidate;
             minKey = candidateProjected;
         }
 

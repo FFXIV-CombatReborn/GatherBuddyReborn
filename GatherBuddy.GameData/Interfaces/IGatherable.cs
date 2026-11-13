@@ -1,7 +1,6 @@
-using System.Collections.Generic;
-using GatherBuddy.Classes;
 using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
+using System.Collections.Generic;
 using Weather = GatherBuddy.Structs.Weather;
 
 namespace GatherBuddy.Interfaces;
@@ -15,13 +14,13 @@ public enum ObjectType : byte
 
 public interface IGatherable
 {
-    public MultiString              Name               { get; }
-    public IReadOnlyList<ILocation> Locations          { get; }
-    public int                      InternalLocationId { get; }
-    public uint                     ItemId             { get; }
-    public Item                     ItemData           { get; }
-    public ObjectType               Type               { get; }
-    public bool                     IsCrystal          { get; }
-    public bool                     IsTreasureMap      { get; }
-    public Weather                  UmbralWeather      { get; }
+    MultiString Name { get; }
+    IReadOnlyList<ILocation> Locations { get; }
+    int InternalLocationId { get; }
+    uint ItemId { get; }
+    Item ItemData { get; }
+    ObjectType Type { get; }
+    bool IsCrystal { get; }
+    bool IsTreasureMap { get; }
+    Weather UmbralWeather { get; }
 }

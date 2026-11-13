@@ -1,23 +1,23 @@
-using System.Collections.Generic;
-using System.Linq;
-using GatherBuddy.Helpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using Lumina.Excel.Sheets;
+using GatherBuddy.Helpers;
 using GatherBuddy.Utilities;
+using Lumina.Excel.Sheets;
+using System;
+using System.Collections.Generic;
 
 namespace GatherBuddy.AutoGather
 {
     public partial class AutoGather
     {
-        public static readonly Item[] PossibleCordials = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemCordial).ToArray() ?? [];
+        public static readonly Item[] PossibleCordials = FindItems(IsItemCordial);
 
-        public static readonly Item[] PossibleFoods = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLFood).ToArray() ?? [];
+        public static readonly Item[] PossibleFoods = FindItems(IsItemDoLFood);
 
-        public static readonly Item[] PossiblePotions = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLPotion).ToArray() ?? [];
+        public static readonly Item[] PossiblePotions = FindItems(IsItemDoLPotion);
 
-        public static readonly Item[] PossibleManuals = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLManual).ToArray() ?? [];
+        public static readonly Item[] PossibleManuals = FindItems(IsItemDoLManual);
 
-        private static readonly Dictionary<uint, uint> SquadronManualItemIdBuffId = new ()
+        private static readonly Dictionary<uint, uint> SquadronManualItemIdBuffId = new()
         {
             { 14949u, 1081u },
             { 14951u, 1083u },
@@ -25,13 +25,13 @@ namespace GatherBuddy.AutoGather
             { 14953u, 1085u },
             { 41707u, 1084u }
         };
-        public static readonly Item[] PossibleSquadronManuals = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLSquadronManual).ToArray() ?? [];
+        public static readonly Item[] PossibleSquadronManuals = FindItems(IsItemDoLSquadronManual);
 
-        private static readonly Dictionary<uint, uint> SquadronPassItemIdBuffId = new ()
+        private static readonly Dictionary<uint, uint> SquadronPassItemIdBuffId = new()
         {
             { 14954u, 1061u }
         };
-        public static readonly Item[] PossibleSquadronPasses = Dalamud.GameData.GetExcelSheet<Item>()?.Where(IsItemDoLSquadronPass).ToArray() ?? [];
+        public static readonly Item[] PossibleSquadronPasses = FindItems(IsItemDoLSquadronPass);
 
 
         public static unsafe int GetInventoryItemCount(uint itemRowId)
@@ -46,8 +46,39 @@ namespace GatherBuddy.AutoGather
                 || !item.ItemAction.IsValid
                 // Buff: 48 well fed, 49 medicated
                 || item.ItemAction.Value.Data[0] is not 48 and not 49)
+            {
                 return [];
-            return Dalamud.GameData.GetExcelSheet<ItemFood>().GetRow(item.ItemAction.Value.Data[1]).Params.Where(v => v.BaseParam.IsValid).Select(v => v.BaseParam.RowId).ToArray() ?? [];
+            }
+
+            var props = new List<uint>();
+            foreach (var param in Dalamud.GameData.GetExcelSheet<ItemFood>().GetRow(item.ItemAction.Value.Data[1]).Params)
+            {
+                if (param.BaseParam.IsValid)
+                {
+                    props.Add(param.BaseParam.RowId);
+                }
+            }
+
+            return [.. props];
+        }
+
+        private static Item[] FindItems(Predicate<Item> match)
+        {
+            if (Dalamud.GameData.GetExcelSheet<Item>() is not { } sheet)
+            {
+                return [];
+            }
+
+            var items = new List<Item>();
+            foreach (var item in sheet)
+            {
+                if (match(item))
+                {
+                    items.Add(item);
+                }
+            }
+
+            return [.. items];
         }
 
         private static bool IsItemCordial(Item item)
@@ -58,20 +89,26 @@ namespace GatherBuddy.AutoGather
         private static bool IsItemDoLFood(Item item)
         {
             if (item.RowId is 4751 or 4650 or 4728 or 4745)
+            {
                 return true;
-                
+            }
+
             if (item.ItemUICategory.RowId != 46)
+            {
                 return false;
+            }
             // 10 GP, 71 gathering, 73 perception
-            return GetItemFoodProps(item).Any(p => p is 10 or 72 or 73);
+            return Array.Exists(GetItemFoodProps(item), p => p is 10 or 72 or 73);
         }
 
         private static bool IsItemDoLPotion(Item item)
         {
             if (item.ItemUICategory.RowId != 44)
+            {
                 return false;
+            }
             // 10 GP, 68 spiritbond, 69 durability, 72 gathering, 73 perception
-            return GetItemFoodProps(item).Any(p => p is 10 or 68 or 69 or 72 or 73);
+            return Array.Exists(GetItemFoodProps(item), p => p is 10 or 68 or 69 or 72 or 73);
         }
 
         private static bool IsItemDoLManual(Item item)
@@ -98,16 +135,16 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public unsafe bool GetIsFoodBuffUp(uint itemId)
+        public static unsafe bool GetIsFoodBuffUp(uint itemId)
         {
-            var buff = Player.Status.FirstOrDefault(s => s.StatusId == 48);
+            var buff = Player.FindStatus(48);
             if (buff == null)
             {
                 return false;
             }
             else
             {
-                var configuredItem = PossibleFoods.FirstOrDefault(item => new[] { item.RowId, item.RowId + 1_000_000 }.Contains(itemId));
+                var configuredItem = Array.Find(PossibleFoods, item => item.RowId == itemId || item.RowId + 1_000_000 == itemId);
                 if (itemId > 1_000_000)
                 {
                     return buff.Param == configuredItem.ItemAction.ValueNullable?.DataHQ[1] + 10000;
@@ -119,16 +156,16 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public unsafe bool GetIsPotionBuffUp(uint itemId)
+        public static unsafe bool GetIsPotionBuffUp(uint itemId)
         {
-            var buff = Player.Status.FirstOrDefault(s => s.StatusId == 49);
+            var buff = Player.FindStatus(49);
             if (buff == null)
             {
                 return false;
             }
             else
             {
-                var configuredItem = PossiblePotions.FirstOrDefault(item => new[] { item.RowId, item.RowId + 1_000_000 }.Contains(itemId));
+                var configuredItem = Array.Find(PossiblePotions, item => item.RowId == itemId || item.RowId + 1_000_000 == itemId);
                 if (itemId > 1_000_000)
                 {
                     return buff.Param == configuredItem.ItemAction.ValueNullable?.DataHQ[1] + 10000;
@@ -140,13 +177,27 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public unsafe bool IsManualBuffUp => Player.Status.Any(s => s.StatusId == 46);
+        public static unsafe bool IsManualBuffUp
+        {
+            get
+            {
+                foreach (var status in Player.Status)
+                {
+                    if (status.StatusId == 46)
+                    {
+                        return true;
+                    }
+                }
 
-        public unsafe bool GetIsSquadronManualBuffUp(uint itemId)
+                return false;
+            }
+        }
+
+        public static unsafe bool GetIsSquadronManualBuffUp(uint itemId)
         {
             if (SquadronManualItemIdBuffId.TryGetValue(itemId, out var requiredBuffId))
             {
-                return Player.Status.Any(s => s.StatusId == requiredBuffId);
+                return Player.HasStatus(requiredBuffId);
             }
             else
             {
@@ -154,11 +205,11 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public unsafe bool GetIsSquadronPassBuffUp(uint itemId)
+        public static unsafe bool GetIsSquadronPassBuffUp(uint itemId)
         {
             if (SquadronPassItemIdBuffId.TryGetValue(itemId, out var requiredBuffId))
             {
-                return Player.Status.Any(s => s.StatusId == requiredBuffId);
+                return Player.HasStatus(requiredBuffId);
             }
             else
             {

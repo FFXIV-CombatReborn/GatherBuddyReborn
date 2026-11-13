@@ -1,9 +1,9 @@
-﻿using GatherBuddy.Time;
-using System;
+﻿using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Classes;
-using System.Linq;
 using GatherBuddy.Enums;
-using FFXIVClientStructs.FFXIV.Client.Game;
+using GatherBuddy.Time;
+using System;
+using System.Linq;
 
 namespace GatherBuddy.Plugin;
 
@@ -13,7 +13,7 @@ public static class OceanUptime
     public const ushort OceanFishingTerritoryId = 900;
 
     // The full loop of 144 timed routes at 2 hours each takes 12 days, beginning at this timestamp.
-    public const long LoopTimestampEpoch       = 748800000;
+    public const long LoopTimestampEpoch = 748800000;
     public const long TripDurationMilliseconds = 2 * RealTime.MillisecondsPerHour;
 
     public static readonly long LoopDurationMilliseconds = GatherBuddy.GameData.OceanTimeline.Count * TripDurationMilliseconds;
@@ -24,14 +24,14 @@ public static class OceanUptime
         // The offset in milliseconds from when the current loop started to the current time.
         var loopOffsetMilliseconds = (utcNow.Time - LoopTimestampEpoch) % LoopDurationMilliseconds;
         // The index into RouteLoop for the given timestamp.
-        var loopIdx = (loopOffsetMilliseconds + TripDurationMilliseconds - 1) 
+        var loopIdx = (loopOffsetMilliseconds + TripDurationMilliseconds - 1)
           / TripDurationMilliseconds;
 
         return GatherBuddy.GameData.OceanTimeline[area, (int)loopIdx % GatherBuddy.GameData.OceanTimeline.Count];
     }
 
     // Returns the current/next TimeInterval from a utc timestamp for this ocean fish.
-    public unsafe static TimeInterval GetOceanUptime(Fish fish, TimeStamp utcNow)
+    public static unsafe TimeInterval GetOceanUptime(Fish fish, TimeStamp utcNow)
     {
         // Only consider weather when on an ocean fishing boat.
         // The weather is random per zone, so you need to be there to see it.
@@ -47,7 +47,9 @@ public static class OceanUptime
         }
 
         if (fish.OceanTime == OceanTime.Always)
+        {
             return TimeInterval.Always;
+        }
 
         // The offset in milliseconds from when the current loop started to the current time.
         var loopOffsetMilliseconds = (utcNow.Time - LoopTimestampEpoch) % LoopDurationMilliseconds;
@@ -63,12 +65,16 @@ public static class OceanUptime
             {
                 var (normal, spectral) = route.GetSpots(time);
                 if (fish.FishingSpots.All(s => s != normal && s != spectral))
+                {
                     continue;
+                }
 
                 var start = loopStartTimestamp + loopIdx * TripDurationMilliseconds;
-                var end   = start + TripDurationMilliseconds;
+                var end = start + TripDurationMilliseconds;
                 if (end < utcNow)
+                {
                     continue;
+                }
 
                 return new TimeInterval(new TimeStamp(start), new TimeStamp(end));
             }

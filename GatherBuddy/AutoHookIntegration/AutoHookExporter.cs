@@ -1,9 +1,9 @@
+using GatherBuddy.AutoHookIntegration.Models;
+using Newtonsoft.Json;
 using System;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
-using GatherBuddy.AutoHookIntegration.Models;
-using Newtonsoft.Json;
 
 namespace GatherBuddy.AutoHookIntegration;
 
@@ -13,25 +13,25 @@ public static class AutoHookExporter
 
     public static string ExportPreset(AHCustomPresetConfig preset)
     {
-        var json = JsonConvert.SerializeObject(preset, 
-            new JsonSerializerSettings 
-            { 
+        var json = JsonConvert.SerializeObject(preset,
+            new JsonSerializerSettings
+            {
                 DefaultValueHandling = DefaultValueHandling.Include,
                 NullValueHandling = NullValueHandling.Ignore
             });
-        
+
         if (preset.AutoCastsCfg?.CastPatience != null)
         {
             GatherBuddy.Log.Debug($"[AutoHook Export] Before serialization - Patience: Enabled={preset.AutoCastsCfg.CastPatience.Enabled}, Id={preset.AutoCastsCfg.CastPatience.Id}, GP: {preset.AutoCastsCfg.CastPatience.GpThreshold} (Above={preset.AutoCastsCfg.CastPatience.GpThresholdAbove})");
         }
-        
+
         var autoCastsIndex = json.IndexOf("\"AutoCastsCfg\"");
         if (autoCastsIndex >= 0)
         {
             var snippet = json.Substring(autoCastsIndex, Math.Min(500, json.Length - autoCastsIndex));
             GatherBuddy.Log.Debug($"[AutoHook Export] AutoCastsCfg section:\n{snippet}");
         }
-        
+
         var compressed = CompressString(json);
         return ExportPrefix + compressed;
     }
