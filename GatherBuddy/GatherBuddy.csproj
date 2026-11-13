@@ -5,7 +5,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <RootNamespace>GatherBuddy</RootNamespace>
     <AssemblyName>GatherBuddyReborn</AssemblyName>
-    <Version>7.5.0.0</Version>
+    <Version>0.0.0.0</Version>
     <Company>SoftOtter</Company>
     <Product>GatherBuddy</Product>
     <Copyright>Copyright © 2026</Copyright>
@@ -50,19 +50,19 @@
   <ItemGroup>
     <PackageReference Include="CSCore" Version="1.2.1.2" NoWarn="NU1701" />
     <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" />
-    <PackageReference Include="LuminaSupplemental.Excel" Version="6.0.1" />
+    <PackageReference Include="LuminaSupplemental.Excel" Version="7.0.1" />
     <PackageReference Include="MessagePack" Version="3.1.12" />
+    <PackageReference Include="RebornMaterial" Version="7.5.8.1" />
   </ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\GatherBuddy.GameData\GatherBuddy.GameData.csproj" />
 	  <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />
-	  <ProjectReference Include="..\ElliLib\ElliLib.csproj" />
-	  <ProjectReference Include="..\ElliCon\ElliCon.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <Folder Include="AutoGather\Tasks\" />
+	  <Folder Include="RebornUI\" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -71,6 +71,12 @@
 
 	<ItemGroup>
 	  <EmbeddedResource Include="CustomInfo\fish_records.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="RebornUI\Images\*.png">
+	    <LogicalName>GatherBuddy.RebornUI.Images.%(Filename)%(Extension)</LogicalName>
+	  </EmbeddedResource>
 	</ItemGroup>
 
 	<ItemGroup>

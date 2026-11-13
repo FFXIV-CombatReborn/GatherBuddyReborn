@@ -1,4 +1,3 @@
-using ElliLib.Filesystem;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
@@ -7,7 +6,6 @@ using GatherBuddy.Plugin;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather.Lists;
 
@@ -79,6 +77,44 @@ public partial class AutoGatherListsManager
         }
     }
 
+    public void RenameFolder(FileSystem<AutoGatherList>.Folder folder, string newName)
+    {
+        if (folder.IsRoot)
+        {
+            return;
+        }
+
+        try
+        {
+            _fileSystem.Rename(folder, newName);
+            Save();
+        }
+        catch (Exception e)
+        {
+            GatherBuddy.Log.Warning($"Failed to rename folder: {e.Message}");
+        }
+    }
+
+    public bool MoveToFolder(FileSystem<AutoGatherList>.IPath path, FileSystem<AutoGatherList>.Folder folder)
+    {
+        try
+        {
+            _fileSystem.Move(path, folder);
+            Save();
+            if (path is FileSystem<AutoGatherList>.Folder)
+            {
+                ListOrderChanged?.Invoke();
+            }
+
+            return true;
+        }
+        catch (Exception e)
+        {
+            GatherBuddy.Log.Warning($"Failed to move {path.Name}: {e.Message}");
+            return false;
+        }
+    }
+
     public void ChangeName(AutoGatherList list, string newName)
     {
         if (newName == list.Name || !_fileSystem.TryGetValue(list, out var leaf))
@@ -138,7 +174,15 @@ public partial class AutoGatherListsManager
 
         try
         {
-            var fishInList = list.Items.OfType<Fish>().Where(f => !f.IsSpearFish && list.EnabledItems.TryGetValue(f, out var enabled) && enabled).ToList();
+            var fishInList = new List<Fish>();
+            foreach (var listItem in list.Items)
+            {
+                if (listItem is Fish { IsSpearFish: false } listFish && list.EnabledItems.TryGetValue(listFish, out var enabled) && enabled)
+                {
+                    fishInList.Add(listFish);
+                }
+            }
+
             if (fishInList.Count == 0)
             {
                 return true;
@@ -260,11 +304,19 @@ public partial class AutoGatherListsManager
         }
     }
 
-    private bool ValidateGatherablePerception(AutoGatherList list)
+    private static bool ValidateGatherablePerception(AutoGatherList list)
     {
         try
         {
-            var gatherablesInList = list.Items.OfType<Gatherable>().Where(g => list.EnabledItems.TryGetValue(g, out var enabled) && enabled).ToList();
+            var gatherablesInList = new List<Gatherable>();
+            foreach (var listItem in list.Items)
+            {
+                if (listItem is Gatherable listGatherable && list.EnabledItems.TryGetValue(listGatherable, out var enabled) && enabled)
+                {
+                    gatherablesInList.Add(listGatherable);
+                }
+            }
+
             if (gatherablesInList.Count == 0)
             {
                 return true;
@@ -307,7 +359,7 @@ public partial class AutoGatherListsManager
 
             if (insufficientPerception.Count > 0)
             {
-                var itemDetails = string.Join(", ", insufficientPerception.Select(x => $"{x.Name} (needs {x.Required})"));
+                var itemDetails = string.Join(", ", insufficientPerception.ConvertAll(x => $"{x.Name} (needs {x.Required})"));
                 Communicator.PrintError($"[Auto-Gather] Cannot enable list '{list.Name}': Insufficient perception (current: {playerPerception}): {itemDetails}");
                 GatherBuddy.Log.Error($"[Auto-Gather] List '{list.Name}' not enabled: Insufficient perception {playerPerception}");
                 return false;
@@ -322,7 +374,7 @@ public partial class AutoGatherListsManager
         }
     }
 
-    private bool ValidateSingleGatherablePerception(IGatherable item)
+    private static bool ValidateSingleGatherablePerception(IGatherable item)
     {
         if (item is not Gatherable gatherable)
         {
@@ -374,7 +426,7 @@ public partial class AutoGatherListsManager
         }
     }
 
-    private Dictionary<uint, uint>? GetCustomPresetBaitIds()
+    private static Dictionary<uint, uint>? GetCustomPresetBaitIds()
     {
         try
         {
@@ -470,7 +522,7 @@ public partial class AutoGatherListsManager
     public bool RemoveCompletedItemFromLists(IGatherable item)
     {
         var removedAny = false;
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (!list.Enabled || !list.RemoveCompletedItems || list.Fallback)
             {
@@ -525,7 +577,7 @@ public partial class AutoGatherListsManager
     private bool RemoveCompletedItemsFromEnabledLists()
     {
         var removedAny = false;
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (!list.Enabled || !list.RemoveCompletedItems || list.Fallback)
             {
@@ -786,7 +838,7 @@ public partial class AutoGatherListsManager
 
     public ILocation? GetPreferredLocation(IGatherable item)
     {
-        foreach (var list in _fileSystem.Select(kvp => kvp.Key))
+        foreach (var list in _fileSystem.Values)
         {
             if (list.Enabled && !list.Fallback && list.PreferredLocations.TryGetValue(item, out var loc))
             {

@@ -3,7 +3,6 @@ using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using System;
-using System.Collections.Generic;
 
 namespace GatherBuddy.Gui;
 
@@ -108,10 +107,7 @@ public partial class VulcanWindow
             {
                 GatherBuddy.Log.Debug($"[VulcanWindow] Consumables applied, waiting 3 seconds before starting craft");
                 var taskMgr = GatherBuddy.AutoGather?.TaskManager;
-                if (taskMgr != null)
-                {
-                    taskMgr.DelayNext(3000);
-                }
+                taskMgr?.DelayNext(3000);
             }
         }
         else

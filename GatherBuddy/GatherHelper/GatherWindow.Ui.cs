@@ -2,7 +2,6 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
-using ElliLib;
 using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Classes;
@@ -10,14 +9,15 @@ using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Gui;
 using GatherBuddy.Interfaces;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Time;
+using GatherBuddy.Utility;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Text;
 using Functions = GatherBuddy.Plugin.Functions;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.GatherHelper;
 
@@ -108,7 +108,7 @@ public class GatherWindow : Window
             return;
         }
 
-        var extendedFish = Interface.ExtendedFishList.FirstOrDefault(f => f.Data == fish);
+        var extendedFish = Interface.FindExtendedFish(fish);
         if (extendedFish == null)
         {
             ImGui.SetTooltip(TooltipText(loc, time));
@@ -165,12 +165,12 @@ public class GatherWindow : Window
                     return true;
                 }
 
-                if (predator.CurrentWeather.Length > 0 && target.CurrentWeather.Any(w => !predator.CurrentWeather.Contains(w)))
+                if (predator.CurrentWeather.Length > 0 && HasWeatherOutside(target.CurrentWeather, predator.CurrentWeather))
                 {
                     return true;
                 }
 
-                if (predator.PreviousWeather.Length > 0 && target.PreviousWeather.Any(w => !predator.PreviousWeather.Contains(w)))
+                if (predator.PreviousWeather.Length > 0 && HasWeatherOutside(target.PreviousWeather, predator.PreviousWeather))
                 {
                     return true;
                 }
@@ -178,6 +178,19 @@ public class GatherWindow : Window
 
             return false;
         }
+    }
+
+    private static bool HasWeatherOutside(Structs.Weather[] weathers, Structs.Weather[] allowed)
+    {
+        foreach (var weather in weathers)
+        {
+            if (Array.IndexOf(allowed, weather) < 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void DrawItem(IGatherable item, ILocation loc, TimeInterval time, uint quantity)
@@ -201,7 +214,7 @@ public class GatherWindow : Window
             using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing / 2);
             if (Icons.DefaultStorage.TryLoadIcon(item.ItemData.Icon, out var icon))
             {
-                ImGuiUtil.HoverIcon(icon.Handle, icon.Size, new Vector2(ImGui.GetTextLineHeight()));
+                Ui.HoverIcon(icon, new Vector2(ImGui.GetTextLineHeight()));
             }
             else
             {
@@ -367,20 +380,30 @@ public class GatherWindow : Window
     {
         _data.Clear();
 
-        var list = _plugin.AutoGatherListsManager.ActiveItems
-            .Select(x => (x.Item, x.Quantity))
-            .Concat(_plugin.GatherWindowManager.ActiveItems.Select(i => (Item: i, Quantity: 0u)))
-            .GroupBy(x => x.Item)
-            .Select(g => { var (loc, time) = GatherBuddy.UptimeManager.BestLocation(g.Key); return (g.Key, loc, time, (uint)g.Sum(x => x.Quantity)); });
+        var quantities = new Dictionary<IGatherable, long>();
+        foreach (var (item, quantity) in _plugin.AutoGatherListsManager.ActiveItems)
+        {
+            quantities.TryGetValue(item, out var total);
+            quantities[item] = total + quantity;
+        }
+
+        foreach (var item in _plugin.GatherWindowManager.ActiveItems)
+        {
+            quantities.TryAdd(item, 0);
+        }
+
+        foreach (var (item, quantity) in quantities)
+        {
+            var (loc, time) = GatherBuddy.UptimeManager.BestLocation(item);
+            _data.Add((item, loc, time, (uint)quantity));
+        }
 
         if (GatherBuddy.Config.SortGatherWindowByUptime)
         {
-            list = list.OrderBy(i => i.time, Comparer<TimeInterval>.Create((x, y) => x.Compare(y)));
+            _data.StableSort(static (x, y) => x.Uptime.Compare(y.Uptime));
         }
 
-        _data.AddRange(list);
-
-        return _data.Count == 0 || GatherBuddy.Config.ShowGatherWindowOnlyAvailable && _data.All(f => f.Uptime.Start > GatherBuddy.Time.ServerTime);
+        return _data.Count == 0 || GatherBuddy.Config.ShowGatherWindowOnlyAvailable && _data.TrueForAll(f => f.Uptime.Start > GatherBuddy.Time.ServerTime);
     }
 
     public override void PreOpenCheck()
@@ -458,7 +481,10 @@ public class GatherWindow : Window
             _plugin.Interface.Toggle();
         }
         color.Pop();
-        ImGuiUtil.HoverTooltip("Click to enable/disable auto-gather. Right click to toggle interface");
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Click to enable/disable auto-gather. Right click to toggle interface");
+        }
         if (GatherBuddy.AutoGather.CurrentRequestedTarget is { } target)
         {
             ImGui.Text($"Target: {target.Name[GatherBuddy.Language]}");

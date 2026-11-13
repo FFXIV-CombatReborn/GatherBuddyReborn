@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -104,9 +103,15 @@ public class RaphaelSolveCoordinator
                 return;
             }
 
-            var toSave = _cachedSolutions.Values
-                .Where(s => !s.IsFailed)
-                .ToList();
+            var toSave = new List<CachedRaphaelSolution>();
+            foreach (var solution in _cachedSolutions.Values)
+            {
+                if (!solution.IsFailed)
+                {
+                    toSave.Add(solution);
+                }
+            }
+
 
             File.WriteAllText(file.FullName, JsonConvert.SerializeObject(toSave, Formatting.Indented));
             GatherBuddy.Log.Debug($"[RaphaelSolveCoordinator] Saved {toSave.Count} solutions to cache");
@@ -182,7 +187,7 @@ public class RaphaelSolveCoordinator
             return;
         }
 
-        var requestList = requests.ToList();
+        var requestList = new List<RaphaelSolveRequest>(requests);
         if (requestList.Count == 0)
         {
             GatherBuddy.Log.Debug("[RaphaelSolveCoordinator] No requests provided for Raphael enqueue");
@@ -217,7 +222,7 @@ public class RaphaelSolveCoordinator
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Starting Raphael enqueue for {jobStatsMap.Count} unique jobs");
 
         var uniqueCrafts = new Dictionary<string, RaphaelSolveRequest>();
-        var queueList = queue.ToList();
+        var queueList = new List<CraftingListItem>(queue);
         var recipeSheet = Dalamud.GameData.GetExcelSheet<Recipe>();
         if (recipeSheet == null)
         {
@@ -276,7 +281,7 @@ public class RaphaelSolveCoordinator
         var uniqueCrafts = new Dictionary<string, RaphaelSolveRequest>();
         foreach (var item in queue)
         {
-            var stats = recipeStats.FirstOrDefault(s => s.RecipeId == item.RecipeId);
+            var stats = recipeStats.Find(s => s.RecipeId == item.RecipeId);
             if (stats.RecipeId == 0)
             {
                 continue;
@@ -305,7 +310,7 @@ public class RaphaelSolveCoordinator
             uniqueCrafts.TryAdd(key, request);
         }
 
-        GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Extracted {uniqueCrafts.Count} unique crafts from queue of {queue.Count()} items");
+        GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Extracted {uniqueCrafts.Count} unique crafts from queue of {CountItems(queue)} items");
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Enqueuing {uniqueCrafts.Count} unique crafts for Raphael solving at {priority} priority (max concurrent: {_config.MaxConcurrentRaphaelProcesses})");
         var (enqueued, promoted) = EnqueuePreparedRequests(uniqueCrafts.Values, priority);
         var (urgentQueued, backgroundQueued) = GetQueuedCounts();
@@ -324,7 +329,7 @@ public class RaphaelSolveCoordinator
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Starting Raphael enqueue: Craftsmanship={playerCraftsmanship}, Control={playerControl}, CP={playerCP}, Level={playerLevel}, Manipulation={manipulationUnlocked}, Specialist={isSpecialist}");
 
         var uniqueCrafts = ExtractUniqueCrafts(queue, playerCraftsmanship, playerControl, playerCP, playerLevel, manipulationUnlocked, isSpecialist);
-        GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Extracted {uniqueCrafts.Count} unique crafts from queue of {queue.Count()} items");
+        GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Extracted {uniqueCrafts.Count} unique crafts from queue of {CountItems(queue)} items");
 
         GatherBuddy.Log.Information($"[RaphaelSolveCoordinator] Enqueuing {uniqueCrafts.Count} unique crafts for Raphael solving at {priority} priority (max concurrent: {_config.MaxConcurrentRaphaelProcesses})");
         var (enqueued, promoted) = EnqueuePreparedRequests(uniqueCrafts, priority);
@@ -353,9 +358,18 @@ public class RaphaelSolveCoordinator
         return false;
     }
 
-    public IEnumerable<CachedRaphaelSolution> GetAllCachedSolutions()
+    public List<CachedRaphaelSolution> GetAllCachedSolutions()
     {
-        return _cachedSolutions.Values.Where(s => !s.IsFailed).ToList();
+        var solutions = new List<CachedRaphaelSolution>(_cachedSolutions.Count);
+        foreach (var (_, solution) in _cachedSolutions)
+        {
+            if (!solution.IsFailed)
+            {
+                solutions.Add(solution);
+            }
+        }
+
+        return solutions;
     }
 
     public bool HasFailedSolution(RaphaelSolveRequest request, out string? failureReason)
@@ -520,8 +534,36 @@ public class RaphaelSolveCoordinator
             : _backgroundQueue;
 
     private bool ContainsQueuedRequestLocked(string key)
-        => _urgentQueue.Any(request => request.GetKey() == key)
-            || _backgroundQueue.Any(request => request.GetKey() == key);
+        => ContainsRequest(_urgentQueue, key) || ContainsRequest(_backgroundQueue, key);
+
+    private static bool ContainsRequest(Queue<RaphaelSolveRequest> queue, string key)
+    {
+        foreach (var request in queue)
+        {
+            if (request.GetKey() == key)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int CountItems(IEnumerable<CraftingListItem> items)
+    {
+        if (items is ICollection<CraftingListItem> collection)
+        {
+            return collection.Count;
+        }
+
+        var count = 0;
+        foreach (var _ in items)
+        {
+            count++;
+        }
+
+        return count;
+    }
 
     private static bool TryRemoveQueuedRequestLocked(ref Queue<RaphaelSolveRequest> queue, string key)
     {
@@ -548,7 +590,7 @@ public class RaphaelSolveCoordinator
         return removed;
     }
 
-    private List<RaphaelSolveRequest> ExtractUniqueCrafts(
+    private static List<RaphaelSolveRequest> ExtractUniqueCrafts(
         IEnumerable<CraftingListItem> queue,
         int playerCraftsmanship,
         int playerControl,
@@ -819,7 +861,7 @@ public class RaphaelSolveCoordinator
         return args.ToString();
     }
 
-    private List<uint> ParseRaphaelOutput(string output)
+    private static List<uint> ParseRaphaelOutput(string output)
     {
         var actionIds = new List<uint>();
 
@@ -849,7 +891,7 @@ public class RaphaelSolveCoordinator
         return actionIds;
     }
 
-    private string GetRaphaelCliPath()
+    private static string GetRaphaelCliPath()
     {
         try
         {

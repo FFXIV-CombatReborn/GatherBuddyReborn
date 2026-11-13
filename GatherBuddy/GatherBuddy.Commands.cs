@@ -6,7 +6,6 @@ using GatherBuddy.Plugin;
 using GatherBuddy.Time;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy;
 
@@ -217,7 +216,7 @@ public partial class GatherBuddy
         }
         else
         {
-            if (node.Annotation.Any())
+            if (node.Annotation.Length > 0)
             {
                 Communicator.Print(node.Annotation);
             }
@@ -390,7 +389,7 @@ public partial class GatherBuddy
 
         GatherBuddy.Log.Information($"[Commands] /vulcan craft: {itemName} x{quantity} (recipe {recipe.Value.RowId})");
         Communicator.Print($"Starting: {itemName} x{quantity}");
-        _vulcanWindow?.StartCraftingList(tempList);
+        Gui.VulcanWindow.StartCraftingList(tempList);
     }
 
     private static void OnGatherDebug(string command, string arguments)
@@ -410,7 +409,7 @@ public partial class GatherBuddy
                     return;
                 }
 
-                var searchName = string.Join(" ", parts.Skip(1));
+                var searchName = string.Join(" ", parts, 1, parts.Length - 1);
                 var recipeSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Recipe>();
                 if (recipeSheet == null)
                 {
@@ -418,11 +417,20 @@ public partial class GatherBuddy
                     return;
                 }
 
-                var matches = recipeSheet
-                    .Where(r => r.ItemResult.Value.Name.ExtractText()
-                        .Contains(searchName, StringComparison.OrdinalIgnoreCase))
-                    .Take(10)
-                    .ToList();
+                var matches = new List<Lumina.Excel.Sheets.Recipe>(10);
+                foreach (var candidate in recipeSheet)
+                {
+                    if (!candidate.ItemResult.Value.Name.ExtractText().Contains(searchName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    matches.Add(candidate);
+                    if (matches.Count == 10)
+                    {
+                        break;
+                    }
+                }
 
                 if (matches.Count == 0)
                 {
@@ -462,7 +470,7 @@ public partial class GatherBuddy
                 }
 
                 var isHQ = parts.Length > 3 && parts[3].Equals("hq", StringComparison.OrdinalIgnoreCase);
-                var autoOpen = parts.Any(p => p.Equals("open", StringComparison.OrdinalIgnoreCase));
+                var autoOpen = Array.Exists(parts, p => p.Equals("open", StringComparison.OrdinalIgnoreCase));
 
                 uint recipeId = 0;
                 // Check if last arg is a recipe ID (number > 1000)
@@ -529,8 +537,9 @@ public partial class GatherBuddy
                 else
                 {
                     Communicator.Print($"[Debug] Found {repairNPCs.Count} repair NPCs:");
-                    foreach (var npc in repairNPCs.Take(10))
+                    for (var npcIndex = 0; npcIndex < repairNPCs.Count && npcIndex < 10; npcIndex++)
                     {
+                        var npc = repairNPCs[npcIndex];
                         var territorySheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>();
                         var territory = territorySheet?.GetRow(npc.TerritoryType);
                         var placeName = territory?.PlaceName.ValueNullable?.Name.ExtractText() ?? "Unknown";

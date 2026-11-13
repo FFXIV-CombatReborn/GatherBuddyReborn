@@ -1,17 +1,17 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
+using GatherBuddy.RebornUI.Tables;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -43,23 +43,31 @@ public partial class Interface
             if (ImGuiHelpers.GlobalScale != _globalScale)
             {
                 _globalScale = ImGuiHelpers.GlobalScale;
-                _nameColumnWidth = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _nameColumnWidth = (MaxTextWidth(Items, static i => i.Data.Name[GatherBuddy.Language]) + ItemSpacing.X + LineIconSize.X) / Scale;
                 _gatheredColumnWidth = TextWidth(_gatheredColumn.Label) / Scale + Table.ArrowWidth;
                 _levelingColumnWidth = TextWidth(_levelingColumn.Label) / Scale + Table.ArrowWidth;
                 _nextUptimeColumnWidth = Math.Max(TextWidth("99:99 Minutes") / Scale,
                     TextWidth(_nextUptimeColumn.Label) / Scale + Table.ArrowWidth);
-                _closestAetheryteColumnWidth = GatherBuddy.GameData.Aetherytes.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _closestAetheryteColumnWidth = MaxTextWidth(GatherBuddy.GameData.Aetherytes.Values, static a => a.Name) / Scale;
                 _levelColumnWidth = Math.Max(TextWidth("99*****") / Scale,
                     TextWidth(_levelColumn.Label) / Scale + Table.ArrowWidth);
-                _jobColumnWidth = Math.Max(TextWidth(_jobColumn.Label) / Scale + Table.ArrowWidth,
-                    Enum.GetNames<GatheringType>().Where(s => s != "Spearfishing").Max(TextWidth) / Scale);
+                var jobNameWidth = 0f;
+                foreach (var jobName in Enum.GetNames<GatheringType>())
+                {
+                    if (jobName != "Spearfishing")
+                    {
+                        jobNameWidth = Math.Max(jobNameWidth, TextWidth(jobName));
+                    }
+                }
+
+                _jobColumnWidth = Math.Max(TextWidth(_jobColumn.Label) / Scale + Table.ArrowWidth, jobNameWidth / Scale);
                 _typeColumnWidth = Math.Max(TextWidth(_typeColumn.Label) / Scale + Table.ArrowWidth,
-                    Enum.GetNames<NodeType>().Max(TextWidth) / Scale);
+                    MaxTextWidth(Enum.GetNames<NodeType>(), static name => name) / Scale);
                 _expansionColumnWidth = TextWidth(_expansionColumn.Label) / Scale + Table.ArrowWidth;
-                _folkloreColumnWidth = Items.Max(i => TextWidth(i.Folklore)) / Scale;
-                _uptimeColumnWidth = Items.Max(i => TextWidth(i.Uptimes)) / Scale;
-                _bestNodeColumnWidth = GatherBuddy.GameData.GatheringNodes.Values.Max(a => TextWidth(a.Name)) / Scale;
-                _bestZoneColumnWidth = GatherBuddy.GameData.Territories.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _folkloreColumnWidth = MaxTextWidth(Items, static i => i.Folklore) / Scale;
+                _uptimeColumnWidth = MaxTextWidth(Items, static i => i.Uptimes) / Scale;
+                _bestNodeColumnWidth = MaxTextWidth(GatherBuddy.GameData.GatheringNodes.Values, static a => a.Name) / Scale;
+                _bestZoneColumnWidth = MaxTextWidth(GatherBuddy.GameData.Territories.Values, static a => a.Name) / Scale;
                 _itemIdColumnWidth = Math.Max(TextWidth("999999") / Scale, TextWidth(_itemIdColumn.Label) / Scale + Table.ArrowWidth);
                 _gatheringIdColumnWidth = Math.Max(TextWidth("99999") / Scale, TextWidth(_gatheringIdColumn.Label) / Scale + Table.ArrowWidth);
             }
@@ -116,21 +124,18 @@ public partial class Interface
 
             public override void DrawColumn(ExtendedGatherable item, int _)
             {
-                using var font = ImRaii.PushFont(UiBuilder.IconFont);
                 if (item.Leveling)
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
-                    ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Check, M3.Scheme.Success, "Useful for leveling");
                 }
                 else
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
-                    ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Times, M3Text.ColorOf(M3TextStyle.Faint));
                 }
             }
         }
 
-        private static readonly NameColumn _nameColumn = new() { Label = "Item Name..." };
+        private static readonly NameColumn _nameColumn = new() { Label = "Filter items" };
         private static readonly GatheredColumn _gatheredColumn = new() { Label = "Log" };
         private static readonly LevelingColumn _levelingColumn = new() { Label = "Leveling" };
         private static readonly NextUptimeColumn _nextUptimeColumn = new() { Label = "Next Uptime" };
@@ -154,13 +159,19 @@ public partial class Interface
             protected void SetFlags(params ItemFilter[] flags)
             {
                 FlagValues = flags;
-                AllFlags = FlagValues.Aggregate((f, g) => f | g);
+                var allFlags = FlagValues[0];
+                for (var i = 1; i < FlagValues.Length; i++)
+                {
+                    allFlags |= FlagValues[i];
+                }
+
+                AllFlags = allFlags;
             }
 
             protected void SetFlagsAndNames(params ItemFilter[] flags)
             {
                 SetFlags(flags);
-                SetNames([.. flags.Select(f => f.ToString())]);
+                SetNames(Array.ConvertAll(flags, f => f.ToString()));
             }
 
             protected void SetNames(params string[] names)
@@ -198,39 +209,35 @@ public partial class Interface
             {
                 var changed = RemoveInvalidDisabledValues();
 
-                using var style = ImRaii.PushStyle(ImGuiStyleVar.FrameRounding, 0);
-                ImGui.SetNextItemWidth(-Table.ArrowWidth * ImGuiHelpers.GlobalScale);
+                using var id = ImRaii.PushId(FilterLabel);
                 var all = DisabledValues.Count == 0;
-                using var color = ImRaii.PushColor(ImGuiCol.FrameBg, 0x803030A0, !all);
-                var comboOpen = ImGui.BeginCombo(FilterLabel, Label, ImGuiComboFlags.NoArrowButton);
+                if (TableFilter.Button("##filter", Label, !all, TableFilter.CellWidth, out var cleared))
+                {
+                    ImGui.OpenPopup("##menu");
+                }
 
-                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                if (cleared)
                 {
                     return SetAllOptions(true) || changed;
                 }
 
-                if (!all && ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip("Right-click to clear filters.");
-                }
-
-                if (!comboOpen)
+                using var menu = M3Menu.Begin("##menu");
+                if (!menu.IsOpen)
                 {
                     return changed;
                 }
 
-                color.Pop();
-
                 var enableAll = all;
-                if (ImGui.Checkbox("Enable All", ref enableAll))
+                if (TableFilter.MenuCheckbox("Show all", ref enableAll))
                 {
                     changed = SetAllOptions(enableAll) || changed;
                 }
 
+                M3Menu.Divider();
                 foreach (var (key, label) in Options)
                 {
                     var enabled = !DisabledValues.Contains(key);
-                    if (!ImGui.Checkbox(label, ref enabled))
+                    if (!TableFilter.MenuCheckbox(label, ref enabled))
                     {
                         continue;
                     }
@@ -238,7 +245,6 @@ public partial class Interface
                     changed = SetOptionEnabled(key, enabled) || changed;
                 }
 
-                ImGui.EndCombo();
                 return changed;
             }
 
@@ -247,7 +253,12 @@ public partial class Interface
 
             private bool RemoveInvalidDisabledValues()
             {
-                var validOptions = Options.Select(option => option.Key).ToHashSet();
+                var validOptions = new HashSet<TValue>();
+                foreach (var (key, _) in Options)
+                {
+                    validOptions.Add(key);
+                }
+
                 var removed = DisabledValues.RemoveAll(value => !validOptions.Contains(value));
                 if (removed == 0)
                 {
@@ -331,7 +342,7 @@ public partial class Interface
             public override void DrawColumn(ExtendedGatherable item, int _)
             {
                 using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ItemSpacing / 2);
-                ImGuiUtil.HoverIcon(item.Icon, LineIconSize);
+                Ui.HoverIcon(item.Icon, LineIconSize);
                 ImGui.SameLine();
 
                 var selected = ImGui.Selectable(item.Data.Name[GatherBuddy.Language]);
@@ -396,33 +407,20 @@ public partial class Interface
             {
                 item.UpdateGatheredStatus();
 
-                using var font = ImRaii.PushFont(UiBuilder.IconFont);
                 switch (item.GatheredState)
                 {
                     case ExtendedGatherable.LogState.Gathered:
-                        {
-                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
-                            ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
-                            break;
-                        }
+                        Ui.CenteredIcon(FontAwesomeIcon.Check, M3.Scheme.Success, "Already gathered");
+                        break;
                     case ExtendedGatherable.LogState.Ungathered:
-                        {
-                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
-                            ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
-                            break;
-                        }
+                        Ui.CenteredIcon(FontAwesomeIcon.Times, M3.Scheme.Error, "Not gathered yet");
+                        break;
                     case ExtendedGatherable.LogState.NotTracked:
-                        {
-                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF808080);
-                            ImGuiUtil.Center(FontAwesomeIcon.Minus.ToIconString());
-                            break;
-                        }
+                        Ui.CenteredIcon(FontAwesomeIcon.Minus, M3Text.ColorOf(M3TextStyle.Faint), "Not tracked by the gathering log");
+                        break;
                     default:
-                        {
-                            using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFFA00000);
-                            ImGuiUtil.Center(FontAwesomeIcon.Question.ToIconString());
-                            break;
-                        }
+                        Ui.CenteredIcon(FontAwesomeIcon.Question, M3.Scheme.Info, "The gathering log state is not available");
+                        break;
                 }
             }
 
@@ -734,7 +732,7 @@ public partial class Interface
                 => lhs.Data.ItemId.CompareTo(rhs.Data.ItemId);
 
             public override void DrawColumn(ExtendedGatherable item, int _)
-                => ImGuiUtil.RightAlign($"{item.Data.ItemId}");
+                => Ui.RightAligned($"{item.Data.ItemId}");
         }
 
         private sealed class GatheringIdColumn : Column<ExtendedGatherable>
@@ -746,25 +744,72 @@ public partial class Interface
                 => lhs.Data.GatheringId.CompareTo(rhs.Data.GatheringId);
 
             public override void DrawColumn(ExtendedGatherable item, int _)
-                => ImGuiUtil.RightAlign($"{item.Data.GatheringId}");
+                => Ui.RightAligned($"{item.Data.GatheringId}");
         }
 
         private static IReadOnlyList<(int Key, string Label)> GetLevelFilterOptions()
-            => _levelFilterOptions ??= GatherBuddy.GameData.Gatherables.Values
-                .Where(gatherable => gatherable.GatheringType != GatheringType.Unknown)
-                .GroupBy(GetLevelFilterKey)
-                .OrderBy(group => group.Key)
-                .Select(group => (group.Key, GetLevelFilterLabel(group.First())))
-                .ToList();
+        {
+            if (_levelFilterOptions != null)
+            {
+                return _levelFilterOptions;
+            }
+
+            var options = new List<(int Key, string Label)>();
+            var seenKeys = new HashSet<int>();
+            foreach (var gatherable in GatherBuddy.GameData.Gatherables.Values)
+            {
+                if (gatherable.GatheringType == GatheringType.Unknown)
+                {
+                    continue;
+                }
+
+                var key = GetLevelFilterKey(gatherable);
+                if (seenKeys.Add(key))
+                {
+                    options.Add((key, GetLevelFilterLabel(gatherable)));
+                }
+            }
+
+            options.Sort(static (lhs, rhs) => lhs.Key.CompareTo(rhs.Key));
+            return _levelFilterOptions = options;
+        }
 
         private static IReadOnlyList<(uint Key, string Label)> GetFolkloreFilterOptions()
-            => _folkloreFilterOptions ??= GatherBuddy.GameData.Gatherables.Values
-                .Where(gatherable => gatherable.GatheringType != GatheringType.Unknown)
-                .GroupBy(GetFolkloreFilterKey)
-                .OrderBy(group => group.Key == 0 ? 0 : 1)
-                .ThenBy(group => GetFolkloreFilterLabel(group.First()), StringComparer.InvariantCulture)
-                .Select(group => (group.Key, GetFolkloreFilterLabel(group.First())))
-                .ToList();
+        {
+            if (_folkloreFilterOptions != null)
+            {
+                return _folkloreFilterOptions;
+            }
+
+            var options = new List<(uint Key, string Label, int Index)>();
+            var seenKeys = new HashSet<uint>();
+            foreach (var gatherable in GatherBuddy.GameData.Gatherables.Values)
+            {
+                if (gatherable.GatheringType == GatheringType.Unknown)
+                {
+                    continue;
+                }
+
+                var key = GetFolkloreFilterKey(gatherable);
+                if (seenKeys.Add(key))
+                {
+                    options.Add((key, GetFolkloreFilterLabel(gatherable), options.Count));
+                }
+            }
+
+            options.Sort(static (lhs, rhs) =>
+            {
+                var order = (lhs.Key == 0 ? 0 : 1).CompareTo(rhs.Key == 0 ? 0 : 1);
+                if (order != 0)
+                {
+                    return order;
+                }
+
+                order = StringComparer.InvariantCulture.Compare(lhs.Label, rhs.Label);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            return _folkloreFilterOptions = options.ConvertAll(static option => (option.Key, option.Label));
+        }
 
         private static int GetLevelFilterKey(Gatherable gatherable)
             => gatherable.Stars > 0
@@ -783,19 +828,31 @@ public partial class Interface
         }
 
         private static uint GetFolkloreFilterKey(Gatherable gatherable)
-            => gatherable.NodeList.Count == 0 || gatherable.NodeList.Any(node => node.FolkloreId == 0)
+            => gatherable.NodeList.Count == 0 || gatherable.NodeList.Exists(node => node.FolkloreId == 0)
                 ? 0u
                 : gatherable.NodeList[0].FolkloreId;
 
         private static string GetFolkloreFilterLabel(Gatherable gatherable)
             => GetFolkloreFilterKey(gatherable) == 0
                 ? "No Folklore"
-                : gatherable.NodeList.Select(node => node.Folklore).FirstOrDefault(folklore => folklore.Length > 0) ?? "No Folklore";
+                : gatherable.NodeList.Find(node => node.Folklore.Length > 0)?.Folklore ?? "No Folklore";
+
+        private static List<ExtendedGatherable> CreateRows()
+        {
+            var rows = new List<ExtendedGatherable>(GatherBuddy.GameData.Gatherables.Count);
+            foreach (var gatherable in GatherBuddy.GameData.Gatherables.Values)
+            {
+                if (gatherable.GatheringType != GatheringType.Unknown)
+                {
+                    rows.Add(new ExtendedGatherable(gatherable));
+                }
+            }
+
+            return rows;
+        }
 
         public ItemTable()
-            : base("ItemTable",
-                GatherBuddy.GameData.Gatherables.Values.Where(g => g.GatheringType != GatheringType.Unknown)
-                    .Select(g => new ExtendedGatherable(g)).ToList(), _nameColumn, _gatheredColumn, _levelingColumn, _nextUptimeColumn, _aetheryteColumn,
+            : base("ItemTable", CreateRows(), _nameColumn, _gatheredColumn, _levelingColumn, _nextUptimeColumn, _aetheryteColumn,
                 _levelColumn, _jobColumn, _typeColumn, _expansionColumn, _folkloreColumn, _uptimesColumn, _bestNodeColumn, _bestZoneColumn,
                 _itemIdColumn, _gatheringIdColumn)
         {
@@ -823,22 +880,12 @@ public partial class Interface
 
     private readonly ItemTable _itemTable = new();
 
-    private void DrawItemTab()
+    private void DrawItemPage()
     {
         using var id = ImRaii.PushId("Gatherables");
-        using var tab = ImRaii.TabItem("Gatherables");
-        ImGuiUtil.HoverTooltip("Breaking rocks with a pickaxe or felling trees counts as gathering, why do you ask?\n"
-          + "Find all information about botanist and miner items you could ever need.");
-        if (!tab)
-        {
-            return;
-        }
-
-        _itemTable.ExtraHeight = (GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0)
-          + ImGui.GetFrameHeightWithSpacing();
+        _itemTable.ExtraHeight = TableFooterHeight;
         _itemTable.Draw(ImGui.GetTextLineHeightWithSpacing());
-        DrawAddAllFilteredToAutoGather(_itemTable, g => g.Data, "Gatherables");
-        DrawStatusLine(_itemTable, "Items");
+        DrawTableFooter(_itemTable, g => g.Data, "Gatherables", "Items");
         DrawClippy();
     }
 }

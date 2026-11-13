@@ -72,7 +72,7 @@ namespace GatherBuddy.AutoGather
             return best;
         }
 
-        private bool IsValidDiademEnemy(IBattleNpc bnpc)
+        private static bool IsValidDiademEnemy(IBattleNpc bnpc)
         {
             if (bnpc.IsDead)
             {

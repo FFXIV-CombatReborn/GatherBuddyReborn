@@ -1,7 +1,6 @@
 using Dalamud.Game;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
-using ElliLib.Log;
 using GatherBuddy.Classes;
 using GatherBuddy.Data;
 using GatherBuddy.Enums;
@@ -12,7 +11,6 @@ using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Aetheryte = GatherBuddy.Classes.Aetheryte;
 using AetheryteRow = Lumina.Excel.Sheets.Aetheryte;
@@ -75,9 +73,24 @@ public class GameData
             return false;
         }
 
-        OverriddenFish = Fishes.Values.Count(f => f.HasOverridenData);
+        OverriddenFish = CountOverriddenFish();
         return true;
     }
+
+    private int CountOverriddenFish()
+    {
+        var count = 0;
+        foreach (var fish in Fishes.Values)
+        {
+            if (fish.HasOverridenData)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
     public GameData(IDataManager gameData, Logger log, Dictionary<uint, List<Vector3>> worldCoordsDict, string overrideFile)
     {
         Log = log;
@@ -95,19 +108,33 @@ public class GameData
             CumulativeWeatherRates = DataManager.GetExcelSheet<WeatherRate>()
                 .ToFrozenDictionary(w => (byte)w.RowId, w => new CumulativeWeatherRates(this, w));
 
-            WeatherTerritories = [.. DataManager.GetExcelSheet<TerritoryType>()
-                .Where(t => t.PCSearch && t.WeatherRate.RowId != 0)
-                .Select(t => FindOrAddTerritory(t))
-                .Where(t => t is { WeatherRates.Rates.Length: > 1 })
-                .OfType<Territory>()
-                .GroupBy(t => t.Name)
-                .Select(group => group.First())
-                .OrderBy(t => t.Name)];
+            var weatherTerritories = new List<Territory>();
+            var weatherTerritoryNames = new HashSet<string>();
+            foreach (var territoryRow in DataManager.GetExcelSheet<TerritoryType>())
+            {
+                if (territoryRow.PCSearch
+                 && territoryRow.WeatherRate.RowId != 0
+                 && FindOrAddTerritory(territoryRow) is { WeatherRates.Rates.Length: > 1 } weatherTerritory
+                 && weatherTerritoryNames.Add(weatherTerritory.Name))
+                {
+                    weatherTerritories.Add(weatherTerritory);
+                }
+            }
+
+            weatherTerritories.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));
+            WeatherTerritories = [.. weatherTerritories];
             Log.Verbose("Collected {NumWeatherTerritories} different territories with dynamic weather.", WeatherTerritories.Length);
 
-            Aetherytes = DataManager.GetExcelSheet<AetheryteRow>()
-                .Where(a => a is { IsAetheryte: true, RowId: > 1 } && a.PlaceName.RowId != 0)
-                .ToFrozenDictionary(a => a.RowId, a => new Aetheryte(this, a));
+            var aetherytes = new Dictionary<uint, Aetheryte>();
+            foreach (var aetheryteRow in DataManager.GetExcelSheet<AetheryteRow>())
+            {
+                if (aetheryteRow is { IsAetheryte: true, RowId: > 1 } && aetheryteRow.PlaceName.RowId != 0)
+                {
+                    aetherytes.Add(aetheryteRow.RowId, new Aetheryte(this, aetheryteRow));
+                }
+            }
+
+            Aetherytes = aetherytes.ToFrozenDictionary();
             Log.Verbose("Collected {NumAetherytes} different aetherytes.", Aetherytes.Count);
             ForcedAetherytes.ApplyMissingAetherytes(this);
             if (Aetherytes.Count is 0)
@@ -115,12 +142,29 @@ public class GameData
                 throw new Exception("Could not fetch any aetherytes, this is certainly an error, terminating.");
             }
 
-            Gatherables = DataManager.GetExcelSheet<GatheringItem>()
-                .Where(g => g.Item.RowId != 0 && g.Item.RowId < 1000000 && g.Item.TryGetValue<Item>(out var i) && !i.Name.IsEmpty)
-                .GroupBy(g => g.Item.RowId)
+            var newestGatheringItems = new Dictionary<uint, GatheringItem>();
+            foreach (var gatheringItem in DataManager.GetExcelSheet<GatheringItem>())
+            {
+                var itemId = gatheringItem.Item.RowId;
+                if (itemId == 0 || itemId >= 1000000 || !gatheringItem.Item.TryGetValue<Item>(out var item) || item.Name.IsEmpty)
+                {
+                    continue;
+                }
+
                 // The Diadem items have multiple matching GatheringItem rows; take the newest
-                .Select(group => group.MaxBy(g => g.RowId))
-                .ToFrozenDictionary(g => g.Item.RowId, g => new Gatherable(this, g));
+                if (!newestGatheringItems.TryGetValue(itemId, out var newest) || gatheringItem.RowId > newest.RowId)
+                {
+                    newestGatheringItems[itemId] = gatheringItem;
+                }
+            }
+
+            var gatherables = new Dictionary<uint, Gatherable>(newestGatheringItems.Count);
+            foreach (var (itemId, gatheringItem) in newestGatheringItems)
+            {
+                gatherables.Add(itemId, new Gatherable(this, gatheringItem));
+            }
+
+            Gatherables = gatherables.ToFrozenDictionary();
             GatherablesByGatherId = Gatherables.Values.ToFrozenDictionary(g => g.GatheringId, g => g);
             Log.Verbose("Collected {NumGatherables} different gatherable items.", Gatherables.Count);
             if (Gatherables.Count is 0)
@@ -129,44 +173,88 @@ public class GameData
             }
 
             // Create GatheringItemPoint dictionary.
-            var tmpGatheringItemPoint = DataManager.GetSubrowExcelSheet<GatheringItemPoint>().SelectMany(g => g)
-                .GroupBy(row => row.GatheringPoint.RowId)
-                .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
+            var gatheringItemPoints = new Dictionary<uint, List<uint>>();
+            foreach (var subrows in DataManager.GetSubrowExcelSheet<GatheringItemPoint>())
+            {
+                foreach (var itemPoint in subrows)
+                {
+                    AddDistinct(gatheringItemPoints, itemPoint.GatheringPoint.RowId, itemPoint.RowId);
+                }
+            }
+
+            var tmpGatheringItemPoint = gatheringItemPoints.ToFrozenDictionary();
 
             uint[] OddlyDelicateItemIds = [Gatherables[31767].GatheringId, Gatherables[31769].GatheringId];
 
-            var tmpGatheringPoints = DataManager.GetExcelSheet<GatheringPoint>()
-                // The Diadem Umbral nodes have PlaceName.RowId == 0, so we have to disable this filter
-                // and filter by TerritoryType.RowId instead.
-                //.Where(row => row.PlaceName.RowId > 0)
-                // Filter out invalid or deleted territories (0 or 1) and old instances of The Diadem (901 or 929),
-                // exept for the Oddly Delicate items which are mapped to the old insance of The Diadem (901).
-                .Where(row => row.TerritoryType.RowId is not (0 or 1 or 901 or 929)
-                    || row.TerritoryType.RowId == 901 && row.GatheringPointBase.Value.Item.Any(i => OddlyDelicateItemIds.Contains(i.RowId)))
-                .GroupBy(row => row.GatheringPointBase.RowId)
-                .ToFrozenDictionary(group => group.Key, group => group.Select(g => g.RowId).Distinct().ToList());
+            // The Diadem Umbral nodes have PlaceName.RowId == 0, so we have to disable this filter
+            // and filter by TerritoryType.RowId instead.
+            // Filter out invalid or deleted territories (0 or 1) and old instances of The Diadem (901 or 929),
+            // exept for the Oddly Delicate items which are mapped to the old insance of The Diadem (901).
+            var gatheringPoints = new Dictionary<uint, List<uint>>();
+            foreach (var gatheringPoint in DataManager.GetExcelSheet<GatheringPoint>())
+            {
+                if (gatheringPoint.TerritoryType.RowId is not (0 or 1 or 901 or 929)
+                 || gatheringPoint.TerritoryType.RowId == 901 && ContainsAnyItem(gatheringPoint.GatheringPointBase.Value, OddlyDelicateItemIds))
+                {
+                    AddDistinct(gatheringPoints, gatheringPoint.GatheringPointBase.RowId, gatheringPoint.RowId);
+                }
+            }
 
-            GatheringNodes = DataManager.GetExcelSheet<GatheringPointBase>()
-                .Where(b => b.GatheringType.RowId < (int)Enums.GatheringType.Spearfishing)
-                .Select(b => new GatheringNode(this, tmpGatheringPoints, tmpGatheringItemPoint, b))
-                .Where(n => n.Territory.Id > 1 && n.Items.Count > 0)
-                .ToFrozenDictionary(n => n.Id, n => n);
+            var tmpGatheringPoints = gatheringPoints.ToFrozenDictionary();
+
+            var gatheringNodes = new Dictionary<uint, GatheringNode>();
+            foreach (var pointBase in DataManager.GetExcelSheet<GatheringPointBase>())
+            {
+                if (pointBase.GatheringType.RowId >= (int)Enums.GatheringType.Spearfishing)
+                {
+                    continue;
+                }
+
+                var node = new GatheringNode(this, tmpGatheringPoints, tmpGatheringItemPoint, pointBase);
+                if (node.Territory.Id > 1 && node.Items.Count > 0)
+                {
+                    gatheringNodes.Add(node.Id, node);
+                }
+            }
+
+            GatheringNodes = gatheringNodes.ToFrozenDictionary();
             Log.Verbose("Collected {NumGatheringNodes} different gathering nodes", GatheringNodes.Count);
             if (GatheringNodes.Count is 0)
             {
                 throw new Exception("Could not fetch any gathering nodes, this is certainly an error, terminating.");
             }
 
-            CosmicFishingMissions = DataManager.GetExcelSheet<WKSMissionUnit>()
-                .Where(m => m.Name.ByteLength > 0 && (m.ClassJobCategory[0].RowId is 19 || m.ClassJobCategory[1].RowId is 19))
-                .ToFrozenDictionary(m => (ushort)m.RowId, m => new CosmicMission(m));
+            var cosmicMissions = new Dictionary<ushort, CosmicMission>();
+            foreach (var mission in DataManager.GetExcelSheet<WKSMissionUnit>())
+            {
+                if (mission.Name.ByteLength > 0 && (mission.ClassJobCategory[0].RowId is 19 || mission.ClassJobCategory[1].RowId is 19))
+                {
+                    cosmicMissions.Add((ushort)mission.RowId, new CosmicMission(mission));
+                }
+            }
+
+            CosmicFishingMissions = cosmicMissions.ToFrozenDictionary();
             Log.Verbose("Collected {NumCosmicMissions} different cosmic fishing missions.", CosmicFishingMissions.Count);
 
-            Bait = DataManager.GetExcelSheet<Item>()
-                .Where(i => i.ItemSearchCategory.RowId == Structs.Bait.FishingTackleRow)
-                .Concat(DataManager.GetExcelSheet<WKSItemInfo>().Where(i => i.WKSItemSubCategory.RowId is 5)
-                    .Select(i => i.Item.Value))
-                .ToFrozenDictionary(b => b.RowId, b => new Bait(b));
+            var bait = new Dictionary<uint, Bait>();
+            foreach (var baitItem in DataManager.GetExcelSheet<Item>())
+            {
+                if (baitItem.ItemSearchCategory.RowId == Structs.Bait.FishingTackleRow)
+                {
+                    bait.Add(baitItem.RowId, new Bait(baitItem));
+                }
+            }
+
+            foreach (var itemInfo in DataManager.GetExcelSheet<WKSItemInfo>())
+            {
+                if (itemInfo.WKSItemSubCategory.RowId is 5)
+                {
+                    var baitItem = itemInfo.Item.Value;
+                    bait.Add(baitItem.RowId, new Bait(baitItem));
+                }
+            }
+
+            Bait = bait.ToFrozenDictionary();
             Log.Verbose("Collected {NumBaits} different types of bait.", Bait.Count);
             if (Bait.Count is 0)
             {
@@ -174,15 +262,26 @@ public class GameData
             }
 
             var catchData = DataManager.GetExcelSheet<FishingNoteInfo>();
-            Fishes = DataManager.GetExcelSheet<FishParameter>()
-                .Where(f => f.Item.RowId != 0 && f.Item.RowId < 1000000)
-                .Select(f => new Fish(DataManager, f, catchData))
-                .Concat(DataManager.GetExcelSheet<SpearfishingItem>()
-                    .Where(sf => sf.Item.RowId != 0 && sf.Item.RowId < 1000000)
-                    .Select(sf => new Fish(DataManager, sf, catchData)))
-                .GroupBy(f => f.ItemId)
-                .Select(group => group.First())
-                .ToFrozenDictionary(f => f.ItemId, f => f);
+            var fishes = new Dictionary<uint, Fish>();
+            foreach (var fishParameter in DataManager.GetExcelSheet<FishParameter>())
+            {
+                if (fishParameter.Item.RowId != 0 && fishParameter.Item.RowId < 1000000)
+                {
+                    var fish = new Fish(DataManager, fishParameter, catchData);
+                    fishes.TryAdd(fish.ItemId, fish);
+                }
+            }
+
+            foreach (var spearfishingItem in DataManager.GetExcelSheet<SpearfishingItem>())
+            {
+                if (spearfishingItem.Item.RowId != 0 && spearfishingItem.Item.RowId < 1000000)
+                {
+                    var fish = new Fish(DataManager, spearfishingItem, catchData);
+                    fishes.TryAdd(fish.ItemId, fish);
+                }
+            }
+
+            Fishes = fishes.ToFrozenDictionary();
             Log.Verbose("Collected {NumFishes} different types of fish.", Fishes.Count);
             if (Fishes.Count is 0)
             {
@@ -190,17 +289,26 @@ public class GameData
             }
 
             Data.Fish.Apply(this);
-            OverriddenFish = Fishes.Values.Count(f => f.HasOverridenData);
+            OverriddenFish = CountOverriddenFish();
 
-            FishingSpots = DataManager.GetExcelSheet<FishingSpotRow>()
-                .Where(f => (f.PlaceName.RowId != 0 || f.RowId >= 10017) && (f.TerritoryType.RowId > 0 || f.RowId == 10000 || f.RowId >= 10017))
-                .Select(f => new FishingSpot(this, f))
-                .Concat(
-                    DataManager.GetExcelSheet<SpearfishingNotebook>()
-                        .Where(sf => sf.PlaceName.RowId != 0 && sf.TerritoryType.RowId > 0)
-                        .Select(sf => new FishingSpot(this, sf)))
-                .Where(f => f.Territory.Id != 0)
-                .ToFrozenDictionary(f => f.Id, f => f);
+            var fishingSpots = new Dictionary<uint, FishingSpot>();
+            foreach (var spotRow in DataManager.GetExcelSheet<FishingSpotRow>())
+            {
+                if ((spotRow.PlaceName.RowId != 0 || spotRow.RowId >= 10017) && (spotRow.TerritoryType.RowId > 0 || spotRow.RowId == 10000 || spotRow.RowId >= 10017))
+                {
+                    AddFishingSpot(fishingSpots, new FishingSpot(this, spotRow));
+                }
+            }
+
+            foreach (var notebookRow in DataManager.GetExcelSheet<SpearfishingNotebook>())
+            {
+                if (notebookRow.PlaceName.RowId != 0 && notebookRow.TerritoryType.RowId > 0)
+                {
+                    AddFishingSpot(fishingSpots, new FishingSpot(this, notebookRow));
+                }
+            }
+
+            FishingSpots = fishingSpots.ToFrozenDictionary();
             Log.Verbose("Collected {NumFishingSpots} different fishing spots.", FishingSpots.Count);
             if (FishingSpots.Count is 0)
             {
@@ -218,7 +326,7 @@ public class GameData
 
             foreach (var gatherable in Gatherables.Values)
             {
-                if (gatherable.NodeType != NodeType.Unknown && !gatherable.NodeList.Any(n => n.Times.AlwaysUp()))
+                if (gatherable.NodeType != NodeType.Unknown && !gatherable.NodeList.Exists(n => n.Times.AlwaysUp()))
                 {
                     gatherable.InternalLocationId = ++TimedGatherables;
                 }
@@ -249,6 +357,41 @@ public class GameData
         catch (Exception e)
         {
             Log.Error($"Error while setting up data:\n{e}");
+        }
+    }
+
+    private static void AddDistinct(Dictionary<uint, List<uint>> groups, uint key, uint value)
+    {
+        if (!groups.TryGetValue(key, out var values))
+        {
+            values = [];
+            groups.Add(key, values);
+        }
+
+        if (!values.Contains(value))
+        {
+            values.Add(value);
+        }
+    }
+
+    private static bool ContainsAnyItem(GatheringPointBase pointBase, uint[] itemIds)
+    {
+        foreach (var item in pointBase.Item)
+        {
+            if (Array.IndexOf(itemIds, item.RowId) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void AddFishingSpot(Dictionary<uint, FishingSpot> fishingSpots, FishingSpot spot)
+    {
+        if (spot.Territory.Id != 0)
+        {
+            fishingSpots.Add(spot.Id, spot);
         }
     }
 
@@ -306,11 +449,20 @@ public class GameData
         var spotSheet = manager.GetExcelSheet<IKDSpot>();
         var ret = new OceanRoute[routeSheet.Count - 1];
 
-        var spots = spotSheet.Skip(1).Select(r
-                => fishingSpots.TryGetValue(r.SpotMain.RowId, out var main) && fishingSpots.TryGetValue(r.SpotSub.RowId, out var sub)
-                    ? (main, Sub: sub)
-                    : throw new Exception("Invalid fishing spot!"))
-            .ToArray();
+        var spots = new List<(FishingSpot Normal, FishingSpot Spectral)>(spotSheet.Count);
+        var skippedFirst = false;
+        foreach (var r in spotSheet)
+        {
+            if (!skippedFirst)
+            {
+                skippedFirst = true;
+                continue;
+            }
+
+            spots.Add(fishingSpots.TryGetValue(r.SpotMain.RowId, out var main) && fishingSpots.TryGetValue(r.SpotSub.RowId, out var sub)
+                ? (main, sub)
+                : throw new Exception("Invalid fishing spot!"));
+        }
 
         for (var i = 1u; i < routeSheet.Count; ++i)
         {

@@ -4,9 +4,6 @@ using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
-using ElliCon.Core;
-using ElliLib.Classes;
-using ElliLib.Log;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.Config;
@@ -20,12 +17,11 @@ using GatherBuddy.Plugin;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Spearfishing;
 using GatherBuddy.Weather;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading.Tasks;
 using SigScannerWrapper = GatherBuddy.SeFunctions.SigScannerWrapper;
 
@@ -38,7 +34,7 @@ public partial class GatherBuddy : IDalamudPlugin
     public static string Name
         => InternalName;
 
-    public static string Version = string.Empty;
+    internal static readonly string Version = typeof(GatherBuddy).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
 
     public static Configuration Config { get; private set; } = null!;
     public static GameData GameData { get; private set; } = null!;
@@ -75,8 +71,11 @@ public partial class GatherBuddy : IDalamudPlugin
     public static Gui.CraftingTreeWindow? CraftingTreeWindow { get; private set; }
     public static Gui.VendorBuyListWindow? VendorBuyListWindow { get; private set; }
     public static Gui.CollectablesWindow? CollectablesWindow { get; private set; }
+    public static RebornUI.HostedPanelWindow? RecipeCraftSettingsWindow { get; private set; }
+    public static RebornUI.HostedPanelWindow? CraftingListDefaultsWindow { get; private set; }
+    public static RebornUI.HostedPanelWindow? TeamCraftImportWindow { get; private set; }
+    public static RebornUI.HostedPanelWindow? VendorTeamCraftImportWindow { get; private set; }
     internal static Gui.NativeItemTooltipBridge? NativeItemTooltipBridge { get; private set; }
-    public static ControllerSupportManager? ControllerSupport { get; private set; }
     public static MarketboardService? MarketboardService { get; private set; }
     public static Vulcan.Vendors.VendorNavigator VendorNavigator { get; private set; } = null!;
     public static Vulcan.Vendors.VendorPurchaseManager VendorPurchaseManager { get; private set; } = null!;
@@ -107,11 +106,11 @@ public partial class GatherBuddy : IDalamudPlugin
         try
         {
             Dalamud.Initialize(pluginInterface);
-            Icons.Init(Dalamud.GameData, Dalamud.Textures);
-            Log = new Logger();
-            Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
+            Icons.Init(Dalamud.Textures);
+            Log = new Logger(InternalName);
             Backup.CreateAutomaticBackup(Log, pluginInterface.ConfigDirectory, GatherBuddyBackupFiles());
             Config = Configuration.Load();
+            RebornUI.MaterialUI.Initialize(pluginInterface, Config);
             Language = Dalamud.ClientState.ClientLanguage;
             GameData = new GameData(Dalamud.GameData, Log, WorldData.WorldLocationsByNodeId, "fish_overrides.json");
             Time = new SeTime();
@@ -184,6 +183,10 @@ public partial class GatherBuddy : IDalamudPlugin
             VendorBuyListWindow = _vendorBuyListWindow;
             _collectablesWindow = new Gui.CollectablesWindow();
             CollectablesWindow = _collectablesWindow;
+            RecipeCraftSettingsWindow = Gui.RecipeCraftSettingsPopup.CreateWindow();
+            CraftingListDefaultsWindow = Gui.CraftingListConsumablesPopup.CreateWindow();
+            TeamCraftImportWindow = Gui.VulcanWindow.CreateTeamCraftImportWindow();
+            VendorTeamCraftImportWindow = Gui.VendorBuyListWindow.CreateTeamCraftImportWindow();
             NativeItemTooltipBridge = new Gui.NativeItemTooltipBridge();
             WindowSystem.AddWindow(Interface);
             WindowSystem.AddWindow(new GatherWindow(this));
@@ -195,34 +198,17 @@ public partial class GatherBuddy : IDalamudPlugin
             WindowSystem.AddWindow(_craftingTreeWindow);
             WindowSystem.AddWindow(_vendorBuyListWindow);
             WindowSystem.AddWindow(_collectablesWindow);
+            WindowSystem.AddWindow(RecipeCraftSettingsWindow);
+            WindowSystem.AddWindow(CraftingListDefaultsWindow);
+            WindowSystem.AddWindow(TeamCraftImportWindow);
+            WindowSystem.AddWindow(VendorTeamCraftImportWindow);
             Dalamud.PluginInterface.UiBuilder.Draw += DrawUi;
-            Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.Toggle;
+            Dalamud.PluginInterface.UiBuilder.OpenConfigUi += Interface.OpenSettings;
             Dalamud.PluginInterface.UiBuilder.OpenMainUi += Interface.Toggle;
             Dalamud.Framework.Update += Update;
 
-            try
-            {
-                ControllerSupport = new ControllerSupportManager(
-                    Dalamud.GamepadState,
-                    Dalamud.Interop,
-                    null,
-                    Dalamud.Log
-                );
-                ControllerSupport.EnableInputBlocking();
 
-                // Register both windows as managed by ElliCon
-                ControllerSupport.RegisterBlockingWindow("Vulcan - Crafting###VulcanWindow");
-                ControllerSupport.RegisterBlockingWindow("Crafting Status###GatherBuddyCraftingStatus");
-                ControllerSupport.RegisterBlockingWindow(Gui.VendorBuyListWindow.WindowId);
-                ControllerSupport.RegisterBlockingWindow(Gui.CollectablesWindow.WindowId);
-
-                // Start in normal mode (blocks everything when windows are focused)
-                ControllerSupport.SetBlockingMode(true, true, true);
-            }
-            catch (Exception e)
-            {
-                Log.Warning($"Failed to initialize ElliCon controller support: {e.Message}");
-            }
+            M3Gamepad.EnableInputBlocking();
 
             Ipc = new GatherBuddyIpc(this);
             CheckForOGGB();
@@ -237,6 +223,7 @@ public partial class GatherBuddy : IDalamudPlugin
 
     private void DrawUi()
     {
+        RebornUI.MaterialUI.BeginFrame();
         NativeItemTooltipBridge?.BeginImGuiFrame();
         try
         {
@@ -344,7 +331,7 @@ public partial class GatherBuddy : IDalamudPlugin
 
         if (Interface != null)
         {
-            Dalamud.PluginInterface.UiBuilder.OpenConfigUi -= Interface.Toggle;
+            Dalamud.PluginInterface.UiBuilder.OpenConfigUi -= Interface.OpenSettings;
             Dalamud.PluginInterface.UiBuilder.OpenMainUi -= Interface.Toggle;
         }
         CraftingGameInterop.Dispose();
@@ -355,13 +342,13 @@ public partial class GatherBuddy : IDalamudPlugin
         CollectableManager?.Dispose();
         VendorBuyListManager?.Dispose();
         VendorPurchaseManager?.Dispose();
-        ControllerSupport?.Dispose();
         Ipc?.Dispose();
         NativeItemTooltipBridge?.Dispose();
         NativeItemTooltipBridge = null;
         //Wotsit?.Dispose();
         Interface?.Dispose();
         WindowSystem?.RemoveAllWindows();
+        RebornUI.MaterialUI.Dispose();
         DisposeCommands();
         Time?.Dispose();
         HttpClient?.Dispose();
@@ -372,7 +359,7 @@ public partial class GatherBuddy : IDalamudPlugin
     private static IReadOnlyList<FileInfo> GatherBuddyBackupFiles()
     {
         var list = Directory.Exists(Dalamud.PluginInterface.GetPluginConfigDirectory())
-            ? Dalamud.PluginInterface.ConfigDirectory.EnumerateFiles("*.*").ToList()
+            ? new List<FileInfo>(Dalamud.PluginInterface.ConfigDirectory.EnumerateFiles("*.*"))
             : [];
         list.Add(Dalamud.PluginInterface.ConfigFile);
         return list;

@@ -1,16 +1,14 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
-using ElliLib;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.SeFunctions;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Spearfishing;
 
@@ -49,7 +47,14 @@ public partial class SpearfishingHelper : Window
             : (node->X * _uiScale + node->Width * node->ScaleX * _uiScale / 2f - size.X / 2f,
                 (node->Y + fishLines->Y + node->Height / 2f) * _uiScale - (size.Y + ImGui.GetStyle().FramePadding.Y) / 2f);
         ImGui.SetCursorPos(new Vector2(x, y));
-        ImGuiUtil.DrawTextButton(text, Vector2.Zero, ColorId.SpearfishHelperBackgroundFish.Value(), ColorId.SpearfishHelperTextFish.Value());
+        var background = ColorId.SpearfishHelperBackgroundFish.Value();
+        using (ImRaii.PushColor(ImGuiCol.Button, background)
+                   .Push(ImGuiCol.ButtonHovered, background)
+                   .Push(ImGuiCol.ButtonActive, background)
+                   .Push(ImGuiCol.Text, ColorId.SpearfishHelperTextFish.Value()))
+        {
+            ImGui.Button(text, Vector2.Zero);
+        }
 
         if (GatherBuddy.Config.ShowSpearfishSpeed)
         {
@@ -160,13 +165,30 @@ public partial class SpearfishingHelper : Window
         var padding = ImGui.GetStyle().WindowPadding / ImGuiHelpers.GlobalScale;
         var spacing = ImGui.GetStyle().ItemSpacing / ImGuiHelpers.GlobalScale;
         var y = padding.Y * 1.5f + (spacing.Y + _iconSize) * _currentSpot.Items.Length;
+        var maxNameWidth = 0f;
+        var maxDetailWidth = 0f;
+        foreach (var fish in _currentSpot.Items)
+        {
+            var nameWidth = ImGui.CalcTextSize(fish.Name[GatherBuddy.Language]).X;
+            if (nameWidth > maxNameWidth)
+            {
+                maxNameWidth = nameWidth;
+            }
+
+            var detailWidth = ImGui.CalcTextSize($"{fish.Name[GatherBuddy.Language]} ({fish.Size.ToName()} and {fish.Speed.ToName()})").X;
+            if (detailWidth > maxDetailWidth)
+            {
+                maxDetailWidth = detailWidth;
+            }
+        }
+
         var xIcons = padding.X * 2
           + (spacing.X + _iconSize) * 3
-          + _currentSpot.Items.Max(i => ImGui.CalcTextSize(i.Name[GatherBuddy.Language]).X) / ImGuiHelpers.GlobalScale;
+          + maxNameWidth / ImGuiHelpers.GlobalScale;
         var xText = padding.X * 2
           + spacing.X
           + _iconSize
-          + _currentSpot.Items.Max(i => ImGui.CalcTextSize($"{i.Name[GatherBuddy.Language]} ({i.Size.ToName()} and {i.Speed.ToName()})").X)
+          + maxDetailWidth
           / ImGuiHelpers.GlobalScale;
         _listSizeIcons = new Vector2(xIcons, y);
         _listSizeText = new Vector2(xText, y);

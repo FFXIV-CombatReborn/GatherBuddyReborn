@@ -1,20 +1,20 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
+using GatherBuddy.RebornUI.Tables;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Structs;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -44,18 +44,18 @@ public partial class Interface
             {
                 _globalScale = ImGuiHelpers.GlobalScale;
                 _caughtColumnWidth = TextWidth(_caughtColumn.Label) / Scale + Table.ArrowWidth;
-                _nameColumnWidth = (Items.Max(i => TextWidth(i.Data.Name[GatherBuddy.Language])) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _nameColumnWidth = (MaxTextWidth(Items, static i => i.Data.Name[GatherBuddy.Language]) + ItemSpacing.X + LineIconSize.X) / Scale;
                 _nextUptimeColumnWidth = Math.Max(TextWidth("99:99 Minutes") / Scale,
                     TextWidth(_nextUptimeColumn.Label) / Scale + Table.ArrowWidth);
                 _uptimeColumnWidth = TextWidth("999.9%") / Scale;
-                _baitColumnWidth = (Items.Max(f => TextWidth(f.Bait.First().Name)) + ItemSpacing.X + LineIconSize.X) / Scale;
-                _closestAetheryteColumnWidth = GatherBuddy.GameData.Aetherytes.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _baitColumnWidth = (MaxTextWidth(Items, static f => f.Bait[0].Name) + ItemSpacing.X + LineIconSize.X) / Scale;
+                _closestAetheryteColumnWidth = MaxTextWidth(GatherBuddy.GameData.Aetherytes.Values, static a => a.Name) / Scale;
                 _typeColumnWidth = TextWidth("Spearfishing") / Scale;
                 _collectibleColumnWidth = TextWidth(_collectibleColumn.Label) / Scale + Table.ArrowWidth;
                 _patchColumnWidth = TextWidth(_patchColumn.Label) / Scale + Table.ArrowWidth;
-                _folkloreColumnWidth = Items.Max(i => TextWidth(i.Data.Folklore)) / Scale;
-                _bestSpotColumnWidth = GatherBuddy.GameData.FishingSpots.Values.Max(a => TextWidth(a.Name)) / Scale;
-                _bestZoneColumnWidth = GatherBuddy.GameData.Territories.Values.Max(a => TextWidth(a.Name)) / Scale;
+                _folkloreColumnWidth = MaxTextWidth(Items, static i => i.Data.Folklore) / Scale;
+                _bestSpotColumnWidth = MaxTextWidth(GatherBuddy.GameData.FishingSpots.Values, static a => a.Name) / Scale;
+                _bestZoneColumnWidth = MaxTextWidth(GatherBuddy.GameData.Territories.Values, static a => a.Name) / Scale;
                 _itemIdColumnWidth = Math.Max(TextWidth("999999") / Scale, TextWidth(_itemIdColumn.Label) / Scale + Table.ArrowWidth);
                 _fishIdColumnWidth = Math.Max(TextWidth("99999") / Scale, TextWidth(_fishIdColumn.Label) / Scale + Table.ArrowWidth);
             }
@@ -76,18 +76,18 @@ public partial class Interface
             GatherBuddy.FishLog.Change += OnLogChange;
         }
 
-        private static readonly NameColumn _nameColumn = new() { Label = "Item Name..." };
+        private static readonly NameColumn _nameColumn = new() { Label = "Filter fish" };
         private static readonly CaughtColumn _caughtColumn = new() { Label = "Log" };
         private static readonly NextUptimeColumn _nextUptimeColumn = new() { Label = "Next Uptime" };
         private static readonly UptimesColumn _uptimeColumn = new() { Label = "Up%" };
-        private static readonly BaitColumn _baitColumn = new() { Label = "Bait..." };
-        private static readonly AetheryteColumn _aetheryteColumn = new() { Label = "Aetheryte..." };
+        private static readonly BaitColumn _baitColumn = new() { Label = "Bait" };
+        private static readonly AetheryteColumn _aetheryteColumn = new() { Label = "Aetheryte" };
         private static readonly TypeColumn _typeColumn = new() { Label = "Fish Type" };
         private static readonly CollectibleColumn _collectibleColumn = new() { Label = "Coll." };
         private static readonly PatchColumn _patchColumn = new() { Label = "Patch" };
-        private static readonly FolkloreColumn _folkloreColumn = new() { Label = "Folklore..." };
-        private static readonly BestSpotColumn _bestSpotColumn = new() { Label = "Best Spot..." };
-        private static readonly BestZoneColumn _bestZoneColumn = new() { Label = "Best Zone..." };
+        private static readonly FolkloreColumn _folkloreColumn = new() { Label = "Folklore" };
+        private static readonly BestSpotColumn _bestSpotColumn = new() { Label = "Best Spot" };
+        private static readonly BestZoneColumn _bestZoneColumn = new() { Label = "Best Zone" };
         private static readonly ItemIdColumn _itemIdColumn = new() { Label = "Item Id" };
         private static readonly FishIdColumn _fishIdColumn = new() { Label = "G. Id" };
 
@@ -99,7 +99,13 @@ public partial class Interface
             protected void SetFlags(params FishFilter[] flags)
             {
                 FlagValues = flags;
-                AllFlags = flags.Aggregate((f, g) => f | g);
+                var allFlags = flags[0];
+                for (var i = 1; i < flags.Length; i++)
+                {
+                    allFlags |= flags[i];
+                }
+
+                AllFlags = allFlags;
             }
 
             protected void SetNames(params string[] names)
@@ -108,7 +114,7 @@ public partial class Interface
             protected void SetFlagsAndNames(params FishFilter[] flags)
             {
                 SetFlags(flags);
-                SetNames([.. flags.Select(f => f.ToString())]);
+                SetNames(Array.ConvertAll(flags, f => f.ToString()));
             }
 
             protected sealed override IReadOnlyList<FishFilter> Values
@@ -147,7 +153,7 @@ public partial class Interface
             public override void DrawColumn(ExtendedFish item, int id)
             {
                 using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ItemSpacing / 2);
-                ImGuiUtil.HoverIcon(item.Icon, LineIconSize);
+                Ui.HoverIcon(item.Icon, LineIconSize);
                 ImGui.SameLine();
                 bool selected;
                 using (item.Data.HasOverridenData ? ImRaii.PushColor(ImGuiCol.Text, ColorId.CustomFishData.Value()) : null)
@@ -184,23 +190,19 @@ public partial class Interface
 
             public override void DrawColumn(ExtendedFish fish, int _)
             {
-                using var font = ImRaii.PushFont(UiBuilder.IconFont);
                 if (!fish.Data.InLog)
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFFA00000);
-                    ImGuiUtil.Center(FontAwesomeIcon.Question.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Question, M3.Scheme.Info, "Not in the fish log");
                     return;
                 }
 
                 if (fish.Unlocked)
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
-                    ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Check, M3.Scheme.Success, "Caught");
                 }
                 else
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
-                    ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Times, M3.Scheme.Error, "Not caught yet");
                 }
             }
 
@@ -312,7 +314,7 @@ public partial class Interface
             {
                 using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ItemSpacing / 2);
                 var bait = item.Bait[0].Fish as Bait ?? Bait.Unknown;
-                ImGuiUtil.HoverIcon(item.Bait[0].Icon, LineIconSize);
+                Ui.HoverIcon(item.Bait[0].Icon, LineIconSize);
                 ImGui.SameLine();
                 var (applyColor, color) = bait.Id != 0 && CurrentBait.HasItem(bait.Id) > 0
                     ? (true, bait.Id == GatherBuddy.CurrentBait.Current ? ColorId.HighlightText : ColorId.AvailableBait)
@@ -374,9 +376,17 @@ public partial class Interface
         private sealed class PatchColumn : ColumnFlags<PatchFlag, ExtendedFish>
         {
             public PatchColumn()
-                => AllFlags = Enum.GetValues<PatchFlag>().Aggregate((l, r) => l | r);
+            {
+                var allFlags = default(PatchFlag);
+                foreach (var flag in Enum.GetValues<PatchFlag>())
+                {
+                    allFlags |= flag;
+                }
 
-            private static readonly string[] FlagNames = [.. Enum.GetValues<PatchFlag>().Select(p => $"{p.ToPatch().ToVersionString()} - {p.ToPatch().ToPatchName()}")];
+                AllFlags = allFlags;
+            }
+
+            private static readonly string[] FlagNames = Array.ConvertAll(Enum.GetValues<PatchFlag>(), p => $"{p.ToPatch().ToVersionString()} - {p.ToPatch().ToPatchName()}");
 
             protected override string[] Names
                 => FlagNames;
@@ -405,7 +415,7 @@ public partial class Interface
             public override void DrawColumn(ExtendedFish item, int _)
             {
                 ImGui.Text(item.Data.Patch.ToVersionString());
-                ImGuiUtil.HoverTooltip(item.Data.Patch.ToPatchName());
+                M3Tooltip.Hovered(item.Data.Patch.ToPatchName());
             }
 
             public override int Compare(ExtendedFish lhs, ExtendedFish rhs)
@@ -466,17 +476,13 @@ public partial class Interface
 
             public override void DrawColumn(ExtendedFish fish, int _)
             {
-                using var font = ImRaii.PushFont(UiBuilder.IconFont);
-
                 if (fish.Collectible)
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF008000);
-                    ImGuiUtil.Center(FontAwesomeIcon.Check.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Check, M3.Scheme.Success, "Collectible");
                 }
                 else
                 {
-                    using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF000080);
-                    ImGuiUtil.Center(FontAwesomeIcon.Times.ToIconString());
+                    Ui.CenteredIcon(FontAwesomeIcon.Times, M3Text.ColorOf(M3TextStyle.Faint));
                 }
             }
 
@@ -510,7 +516,7 @@ public partial class Interface
                 => _uptimeColumnWidth * ImGuiHelpers.GlobalScale;
 
             public override void DrawColumn(ExtendedFish fish, int _)
-                => ImGuiUtil.RightAlign(fish.UptimeString);
+                => Ui.RightAligned(fish.UptimeString);
 
             public override int Compare(ExtendedFish lhs, ExtendedFish rhs)
                 => lhs.UptimePercent.CompareTo(rhs.UptimePercent);
@@ -604,7 +610,7 @@ public partial class Interface
                 => lhs.Data.ItemId.CompareTo(rhs.Data.ItemId);
 
             public override void DrawColumn(ExtendedFish item, int _)
-                => ImGuiUtil.RightAlign($"{item.Data.ItemId}");
+                => Ui.RightAligned($"{item.Data.ItemId}");
         }
 
         private sealed class FishIdColumn : Column<ExtendedFish>
@@ -616,7 +622,7 @@ public partial class Interface
                 => lhs.Data.FishId.CompareTo(rhs.Data.FishId);
 
             public override void DrawColumn(ExtendedFish item, int _)
-                => ImGuiUtil.RightAlign($"{item.Data.FishId}{(item.Data.IsSpearFish ? " (sf)" : string.Empty)}");
+                => Ui.RightAligned($"{item.Data.FishId}{(item.Data.IsSpearFish ? " (sf)" : string.Empty)}");
         }
 
 
@@ -656,23 +662,12 @@ public partial class Interface
 
     private readonly FishTable _fishTable = new();
 
-    private void DrawFishTab()
+    private void DrawFishPage()
     {
         using var id = ImRaii.PushId("Fish");
-        using var tab = ImRaii.TabItem("Fish");
-        ImGuiUtil.HoverTooltip("There are plenty of fish in the sea. And the air. And the sand. And the lava. And space, for some reason.\n"
-          + " Gotta catch'em all!\n"
-          + "Enough information about fish to get you started, and for everything else there's TeamCraft!");
-        if (!tab)
-        {
-            return;
-        }
-
-        _fishTable.ExtraHeight = (GatherBuddy.Config.ShowStatusLine ? ImGui.GetTextLineHeight() : 0)
-          + ImGui.GetFrameHeightWithSpacing();
+        _fishTable.ExtraHeight = TableFooterHeight;
         _fishTable.Draw(ImGui.GetTextLineHeightWithSpacing());
-        DrawAddAllFilteredToAutoGather(_fishTable, f => f.Data, "Fish");
-        DrawStatusLine(_fishTable, "Fish");
+        DrawTableFooter(_fishTable, f => f.Data, "Fish", "Fish");
         DrawClippy();
     }
 }

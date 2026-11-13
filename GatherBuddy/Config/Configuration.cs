@@ -1,7 +1,6 @@
 using Dalamud.Configuration;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.Text;
-using ElliLib.Classes;
 using GatherBuddy.Alarms;
 using GatherBuddy.AutoGather;
 using GatherBuddy.Crafting;
@@ -11,8 +10,6 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Numerics;
 using System.Threading.Tasks;
 
 namespace GatherBuddy.Config;
@@ -88,8 +85,6 @@ public partial class Configuration : IPluginConfiguration
     public string CraftingLists { get; set; } = string.Empty;
     public List<string> CraftingFolders { get; set; } = [];
     public int MaxRecentCraftingListsInContextMenu { get; set; } = 10;
-    public Vector2 TeamCraftImportWindowSize { get; set; } = new(520, 310);
-    public Vector2 VendorTeamCraftImportWindowSize { get; set; } = new(520, 310);
     public string RecipeBrowserSettings { get; set; } = string.Empty;
     public string UserMacros { get; set; } = string.Empty;
     public bool SkipMacroStepIfUnable { get; set; } = true;
@@ -114,7 +109,18 @@ public partial class Configuration : IPluginConfiguration
 
     // Colors
     public Dictionary<ColorId, uint> Colors { get; set; }
-        = Enum.GetValues<ColorId>().ToDictionary(c => c, c => c.Data().DefaultColor);
+        = CreateDefaultColors();
+
+    private static Dictionary<ColorId, uint> CreateDefaultColors()
+    {
+        var colors = new Dictionary<ColorId, uint>();
+        foreach (var color in Enum.GetValues<ColorId>())
+        {
+            colors.Add(color, color.Data().DefaultColor);
+        }
+
+        return colors;
+    }
 
     public int SeColorNames = DefaultSeColorNames;
     public int SeColorCommands = DefaultSeColorCommands;
@@ -202,7 +208,7 @@ public partial class Configuration : IPluginConfiguration
         }
     }
 
-    public bool ShouldSerializeLegacyVendorBuyListEntries()
+    public static bool ShouldSerializeLegacyVendorBuyListEntries()
         => false;
 
 
@@ -498,7 +504,7 @@ public partial class Configuration : IPluginConfiguration
             changed = true;
         }
 
-        if (VendorBuyLists.Count > 0 && (ActiveVendorBuyListId == Guid.Empty || VendorBuyLists.All(list => list.Id != ActiveVendorBuyListId)))
+        if (VendorBuyLists.Count > 0 && (ActiveVendorBuyListId == Guid.Empty || !VendorBuyLists.Exists(list => list.Id == ActiveVendorBuyListId)))
         {
             ActiveVendorBuyListId = VendorBuyLists[0].Id;
             changed = true;

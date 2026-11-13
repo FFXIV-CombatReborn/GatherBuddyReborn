@@ -1,10 +1,10 @@
 using GatherBuddy.AutoGather.Lists;
 using GatherBuddy.AutoHookIntegration;
+using GatherBuddy.Classes;
 using GatherBuddy.Plugin;
 using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather;
 
@@ -119,14 +119,14 @@ public partial class AutoGather
                 return;
             }
             // Check if the target fish is an intuition fish
-            var isIntuitionFish = target.Fish.Predators.Length > 0 && target.Fish.Predators.All(p => !p.Item1.IsSpearFish);
+            var isIntuitionFish = target.Fish.Predators.Length > 0 && Array.TrueForAll(target.Fish.Predators, p => !p.Item1.IsSpearFish);
 
             // For intuition fish, always use target fish (two-preset system handles predators)
             // For non-intuition fish with predators, check if we should use predator instead
             var presetFish = target.Fish;
-            if (!isIntuitionFish && target.Fish.Predators.Any())
+            if (!isIntuitionFish && target.Fish.Predators.Length > 0)
             {
-                var firstPredator = target.Fish.Predators.First().Item1;
+                var firstPredator = target.Fish.Predators[0].Item1;
                 if (target.FishingSpot?.IsShadowNode != true)
                 {
                     presetFish = firstPredator;
@@ -151,10 +151,7 @@ public partial class AutoGather
                     // For intuition fish, look for presets named after target fish ID
                     var targetFishId = target.Fish.ItemId;
                     userPresetName = FindAutoHookPreset($"{targetFishId}_Predators");
-                    if (userPresetName == null)
-                    {
-                        userPresetName = FindAutoHookPreset(targetFishId.ToString());
-                    }
+                    userPresetName ??= FindAutoHookPreset(targetFishId.ToString());
                 }
                 else
                 {
@@ -179,12 +176,18 @@ public partial class AutoGather
             {
                 // Build fish list: if at shadow node with multiple predators, include them all
                 var fishList = new[] { presetFish };
-                if (presetFish == target.Fish && target.Fish.Predators.Count() > 1 && target.FishingSpot?.IsShadowNode == true)
+                if (presetFish == target.Fish && target.Fish.Predators.Length > 1 && target.FishingSpot?.IsShadowNode == true)
                 {
                     // At shadow node targeting fish with multiple predators - include all predators (skip first) + target
-                    var predatorFish = target.Fish.Predators.Skip(1).Select(p => p.Item1).ToList();
-                    fishList = [.. predatorFish, target.Fish];
-                    GatherBuddy.Log.Debug($"[AutoGather] Building preset with {fishList.Length} fish for multi-predator chain: {string.Join(", ", fishList.Select(f => f.Name[GatherBuddy.Language]))}");
+                    var predators = target.Fish.Predators;
+                    fishList = new Fish[predators.Length];
+                    for (var i = 1; i < predators.Length; ++i)
+                    {
+                        fishList[i - 1] = predators[i].Item1;
+                    }
+
+                    fishList[^1] = target.Fish;
+                    GatherBuddy.Log.Debug($"[AutoGather] Building preset with {fishList.Length} fish for multi-predator chain: {string.Join(", ", Array.ConvertAll(fishList, f => f.Name[GatherBuddy.Language]))}");
                 }
 
                 presetName = $"GBR_{fishName.Replace(" ", "")}_{DateTime.Now:HHmmss}";
@@ -193,7 +196,7 @@ public partial class AutoGather
                 if (isIntuitionFish)
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Creating intuition presets for {fishName}");
-                    presetName = presetName + "_Predators";
+                    presetName += "_Predators";
                 }
                 else
                 {
@@ -346,7 +349,7 @@ public partial class AutoGather
         }
     }
 
-    private string? FindAutoHookPreset(string fishId)
+    private static string? FindAutoHookPreset(string fishId)
     {
         try
         {
@@ -367,8 +370,7 @@ public partial class AutoGather
             var json = File.ReadAllText(configPath);
             var config = JObject.Parse(json);
 
-            var customPresets = config["HookPresets"]?["CustomPresets"] as JArray;
-            if (customPresets == null)
+            if (config["HookPresets"]?["CustomPresets"] is not JArray customPresets)
             {
                 GatherBuddy.Log.Debug("[AutoGather] No CustomPresets found in AutoHook config");
                 return null;

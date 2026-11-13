@@ -1,6 +1,4 @@
 using GatherBuddy.Plugin;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.Alarms;
 
@@ -12,17 +10,23 @@ public partial class AlarmManager
         if (group.Enabled)
         {
             group.Enabled = false;
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
+            foreach (var alarm in group.Alarms)
             {
-                RemoveActiveAlarm(alarm);
+                if (alarm.Enabled)
+                {
+                    RemoveActiveAlarm(alarm);
+                }
             }
         }
         else
         {
             group.Enabled = true;
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
+            foreach (var alarm in group.Alarms)
             {
-                AddActiveAlarm(alarm);
+                if (alarm.Enabled)
+                {
+                    AddActiveAlarm(alarm);
+                }
             }
         }
 
@@ -43,9 +47,12 @@ public partial class AlarmManager
         Alarms.Add(group);
         if (group.Enabled)
         {
-            foreach (var alarm in group.Alarms.Where(a => a.Enabled))
+            foreach (var alarm in group.Alarms)
             {
-                AddActiveAlarm(alarm);
+                if (alarm.Enabled)
+                {
+                    AddActiveAlarm(alarm);
+                }
             }
         }
 
@@ -65,9 +72,12 @@ public partial class AlarmManager
         var group1 = Alarms[idx];
         if (group1.Enabled)
         {
-            foreach (var alarm in group1.Alarms.Where(a => a.Enabled))
+            foreach (var alarm in group1.Alarms)
             {
-                RemoveActiveAlarm(alarm);
+                if (alarm.Enabled)
+                {
+                    RemoveActiveAlarm(alarm);
+                }
             }
         }
 

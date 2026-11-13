@@ -12,7 +12,6 @@ using GatherBuddy.Plugin;
 using GatherBuddy.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather
 {
@@ -76,7 +75,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (Player.Status.Any(s => s.StatusId == Actions.BountifulII.EffectId))
+            if (Player.HasStatus(Actions.BountifulII.EffectId))
             {
                 return false;
             }
@@ -315,7 +314,7 @@ namespace GatherBuddy.AutoGather
 
             if (GatherBuddy.Config.AutoGatherConfig.UseAutoHook && AutoHook.Enabled)
             {
-                var hasSnagStatus = Player.Status.Any(s => s.StatusId == 761);
+                var hasSnagStatus = Player.HasStatus(761);
                 var needsSnagging = target.Fish?.Snagging == Snagging.Required;
 
                 if (needsSnagging && !hasSnagStatus)
@@ -368,7 +367,7 @@ namespace GatherBuddy.AutoGather
             }
 
             if (LastCaughtFish.FishId == target.Fish.FishId
-             && Player.Status.All(s => !Actions.IdenticalCast.StatusProvide.Contains(s.StatusId)))
+             && !Player.HasAnyStatus(Actions.IdenticalCast.StatusProvide))
             {
                 return true;
             }
@@ -394,7 +393,7 @@ namespace GatherBuddy.AutoGather
             }
 
             if (LastCaughtFish.FishId != target.Fish.FishId
-             && Player.Status.All(s => !Actions.SurfaceSlap.StatusProvide.Contains(s.StatusId)))
+             && !Player.HasAnyStatus(Actions.SurfaceSlap.StatusProvide))
             {
                 return true;
             }
@@ -411,11 +410,10 @@ namespace GatherBuddy.AutoGather
                 return true;
             }
 
-            var statuses = patienceAction.StatusProvide;
-            return Player.Status.Any(s => statuses.Contains(s.StatusId));
+            return Player.HasAnyStatus(patienceAction.StatusProvide);
         }
 
-        private Actions.FishingAction? GetCorrectPatienceAction()
+        private static Actions.FishingAction? GetCorrectPatienceAction()
         {
             if (Player.Level >= Actions.PatienceII.MinLevel)
             {
@@ -486,7 +484,7 @@ namespace GatherBuddy.AutoGather
 
                             if (task.Wait(1))
                             {
-                                ActionSequence = task.Result.AsEnumerable().GetEnumerator();
+                                ActionSequence = task.Result.GetEnumerator();
                             }
                             else
                             {
@@ -671,7 +669,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (!Player.Status.Any(s => s.StatusId == Actions.SolidAge.EffectId))
+            if (!Player.HasStatus(Actions.SolidAge.EffectId))
             {
                 return false;
             }
@@ -687,12 +685,12 @@ namespace GatherBuddy.AutoGather
             }
 
             var yield = slot.Yield;
-            if (Dalamud.Objects.LocalPlayer!.StatusList.Any(s => s.StatusId == Actions.Bountiful.EffectId))
+            if (Player.HasStatus(Actions.Bountiful.EffectId))
             {
                 yield -= 1;
             }
 
-            if (Dalamud.Objects.LocalPlayer!.StatusList.Any(s => s.StatusId == Actions.BountifulII.EffectId))
+            if (Player.HasStatus(Actions.BountifulII.EffectId))
             {
                 yield -= CalculateBountifulBonus(slot.Item);
             }
@@ -738,7 +736,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (action.EffectId != 0 && Player.Status.Any(s => s.StatusId == action.EffectId))
+            if (action.EffectId != 0 && Player.HasStatus(action.EffectId))
             {
                 return false;
             }
@@ -816,19 +814,19 @@ namespace GatherBuddy.AutoGather
 
         private bool ActivateGatheringBuffs(bool activateTruth)
         {
-            if (!Player.Status.Any(s => s.StatusId == Actions.Prospect.EffectId) && Player.Level >= Actions.Prospect.MinLevel)
+            if (!Player.HasStatus(Actions.Prospect.EffectId) && Player.Level >= Actions.Prospect.MinLevel)
             {
                 EnqueueActionWithDelay(() => UseAction(Actions.Prospect));
                 return true;
             }
 
-            if (!Player.Status.Any(s => s.StatusId == Actions.Sneak.EffectId) && Player.Level >= Actions.Sneak.MinLevel)
+            if (!Player.HasStatus(Actions.Sneak.EffectId) && Player.Level >= Actions.Sneak.MinLevel)
             {
                 EnqueueActionWithDelay(() => UseAction(Actions.Sneak));
                 return true;
             }
 
-            if (activateTruth && !Player.Status.Any(s => s.StatusId == Actions.Truth.EffectId))
+            if (activateTruth && !Player.HasStatus(Actions.Truth.EffectId))
             {
                 EnqueueActionWithDelay(() => UseAction(Actions.Truth));
                 return true;

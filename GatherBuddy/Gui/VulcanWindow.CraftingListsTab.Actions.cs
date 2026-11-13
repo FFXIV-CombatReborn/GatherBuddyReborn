@@ -2,13 +2,12 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
 using Lumina.Excel.Sheets;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
-    public void StartCraftingList(CraftingListDefinition list)
+    public static void StartCraftingList(CraftingListDefinition list)
     {
         if (list.Recipes.Count == 0)
         {
@@ -58,36 +57,35 @@ public partial class VulcanWindow
 
     private List<CraftingListItem> GetRecipesInDependencyOrder(List<CraftingListItem> recipes, List<CraftingListItem> originalRecipesList)
     {
-        var precrafts = recipes.Where(recipe => !recipe.IsOriginalRecipe).ToList();
+        var precrafts = recipes.FindAll(recipe => !recipe.IsOriginalRecipe);
         var finalProducts = new List<CraftingListItem>(originalRecipesList);
 
         var result = new List<CraftingListItem>();
         var processed = new HashSet<uint>();
 
-        var precraftsByJob = precrafts
-            .GroupBy(r => RecipeManager.GetRecipe(r.RecipeId)?.CraftType.RowId ?? uint.MaxValue)
-            .OrderBy(g => g.Key);
-
-        foreach (var jobGroup in precraftsByJob)
+        foreach (var recipeItem in SortByCraftType(precrafts))
         {
-            foreach (var recipeItem in jobGroup.ToList())
-            {
-                ProcessRecipeWithDependencies(recipeItem, precrafts, processed, result);
-            }
+            ProcessRecipeWithDependencies(recipeItem, precrafts, processed, result);
         }
 
-        var sortedFinalProducts = finalProducts
-            .GroupBy(r => RecipeManager.GetRecipe(r.RecipeId)?.CraftType.RowId ?? uint.MaxValue)
-            .OrderBy(g => g.Key)
-            .SelectMany(g => g)
-            .ToList();
-
-        foreach (var recipeItem in sortedFinalProducts)
-        {
-            result.Add(recipeItem);
-        }
-
+        result.AddRange(SortByCraftType(finalProducts));
         return result;
+    }
+
+    private static List<CraftingListItem> SortByCraftType(List<CraftingListItem> recipes)
+    {
+        var keyedRecipes = new List<(CraftingListItem Recipe, uint CraftType, int Index)>(recipes.Count);
+        for (var i = 0; i < recipes.Count; i++)
+        {
+            keyedRecipes.Add((recipes[i], RecipeManager.GetRecipe(recipes[i].RecipeId)?.CraftType.RowId ?? uint.MaxValue, i));
+        }
+
+        keyedRecipes.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.CraftType.CompareTo(rhs.CraftType);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return keyedRecipes.ConvertAll(static entry => entry.Recipe);
     }
 
     private static (string? MacroId, SolverOverrideMode SolverOverride) ResolveEffectiveMacroSelection(RecipeCraftSettings? settings, bool isPrecraft, CraftingListDefinition list)
@@ -106,7 +104,7 @@ public partial class VulcanWindow
             : (list.DefaultFinalMacroId, list.DefaultFinalSolverOverride);
     }
 
-    private void ProcessRecipeWithDependencies(
+    private static void ProcessRecipeWithDependencies(
         CraftingListItem recipeItem,
         List<CraftingListItem> allRecipes,
         HashSet<uint> processed,
@@ -129,7 +127,7 @@ public partial class VulcanWindow
             var depRecipe = RecipeManager.GetRecipeForItem(itemId);
             if (depRecipe.HasValue)
             {
-                var depItem = allRecipes.FirstOrDefault(r => r.RecipeId == depRecipe.Value.RowId && !r.IsOriginalRecipe);
+                var depItem = allRecipes.Find(r => r.RecipeId == depRecipe.Value.RowId && !r.IsOriginalRecipe);
                 if (depItem != null)
                 {
                     ProcessRecipeWithDependencies(depItem, allRecipes, processed, result);
@@ -141,7 +139,7 @@ public partial class VulcanWindow
         result.Add(recipeItem);
     }
 
-    private string GetCraftingJobName(uint craftTypeId)
+    private static string GetCraftingJobName(uint craftTypeId)
     {
         var classJobSheet = Dalamud.GameData.GetExcelSheet<ClassJob>();
         if (classJobSheet != null)

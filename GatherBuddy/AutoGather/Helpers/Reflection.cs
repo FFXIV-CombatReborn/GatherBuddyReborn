@@ -5,7 +5,6 @@ using GatherBuddy.Plugin;
 using GatherBuddy.Utility;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -24,7 +23,7 @@ namespace GatherBuddy.AutoGather.Helpers
             }
             public IDalamudPlugin? ArtisanAssemblyInstance;
 
-            public bool ArtisanAssemblyEnabled
+            public static bool ArtisanAssemblyEnabled
                 => ReflectionHelpers.TryGetDalamudPlugin("Artisan", out _);
 
             public bool TouchArtisanAssembly
@@ -75,7 +74,22 @@ namespace GatherBuddy.AutoGather.Helpers
                         var artisanRootAssembly = Assembly.GetAssembly(ArtisanAssemblyInstance!.GetType())!;
                         var craftingListFunctionsType = artisanRootAssembly.GetType("Artisan.CraftingLists.CraftingListFunctions")!;
                         var listMaterialsMethodInfo = craftingListFunctionsType.GetMethod("ListMaterials", All);
-                        var targetList = artisanCraftingLists.Cast<object>().SingleOrDefault(l => (int)l.GetFoP("ID") == listKvp.Key);
+                        object? targetList = null;
+                        foreach (var artisanList in artisanCraftingLists)
+                        {
+                            if ((int)artisanList.GetFoP("ID") != listKvp.Key)
+                            {
+                                continue;
+                            }
+
+                            if (targetList != null)
+                            {
+                                throw new InvalidOperationException($"Artisan has more than one list with ID {listKvp.Key}.");
+                            }
+
+                            targetList = artisanList;
+                        }
+
                         if (targetList == null)
                         {
                             GatherBuddy.Log.Error($"Artisan list '{listKvp.Value}' ({listKvp.Key}) could not be found");
@@ -106,7 +120,7 @@ namespace GatherBuddy.AutoGather.Helpers
                                 item = fish;
                             }
 
-                            if (item == null || !item.Locations.Any())
+                            if (item == null || item.Locations.Count == 0)
                             {
                                 continue;
                             }

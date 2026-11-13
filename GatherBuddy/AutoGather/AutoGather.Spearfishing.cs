@@ -4,7 +4,6 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GatherBuddy.Classes;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using DalamudObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 
@@ -23,10 +22,20 @@ namespace GatherBuddy.AutoGather
             => shadowSpot.IsShadowNode
             && (HasAvailableSpearfishingNode(shadowSpot) || TryGetSwimmingShadowsMarker(shadowSpot, out _));
 
-        private bool HasAvailableSpearfishingNode(FishingSpot spot)
-            => Dalamud.Objects.Any(gameObject => TryGetSpearfishingNodeState(gameObject, out var state)
-                && state.RemainingCount > 0
-                && MatchesSpearfishingSpot(spot, state));
+        private static bool HasAvailableSpearfishingNode(FishingSpot spot)
+        {
+            foreach (var gameObject in Dalamud.Objects)
+            {
+                if (TryGetSpearfishingNodeState(gameObject, out var state)
+                    && state.RemainingCount > 0
+                    && MatchesSpearfishingSpot(spot, state))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static unsafe bool TryGetSpearfishingNodeState(IGameObject gameObject, out SpearfishingNodeState state)
         {
@@ -116,14 +125,24 @@ namespace GatherBuddy.AutoGather
             }
 
             var markerPosition = markers[0];
-            var matches = GatherBuddy.GameData.FishingSpots.Values
-                .Where(spot => spot.IsShadowNode && spot.Territory.Id == territoryId)
-                .Where(spot => IsMarkerNearSpot(markerPosition, spot))
-                .Select(spot => spot.Id)
-                .Distinct()
-                .ToArray();
+            var matched = false;
+            foreach (var spot in GatherBuddy.GameData.FishingSpots.Values)
+            {
+                if (!spot.IsShadowNode || spot.Territory.Id != territoryId || !IsMarkerNearSpot(markerPosition, spot))
+                {
+                    continue;
+                }
 
-            if (matches.Length != 1 || matches[0] != shadowSpot.Id)
+                if (spot.Id != shadowSpot.Id)
+                {
+                    matched = false;
+                    break;
+                }
+
+                matched = true;
+            }
+
+            if (!matched)
             {
                 LogSwimmingShadowsMarkerAmbiguity(shadowSpot);
                 return false;
@@ -149,9 +168,18 @@ namespace GatherBuddy.AutoGather
         {
             var marker = new Vector2(markerPosition.X, markerPosition.Z);
             var maximumDistanceSquared = NodeVisibilityDistance * NodeVisibilityDistance;
-            return spot.WorldPositions.Values
-                .SelectMany(positions => positions)
-                .Any(position => Vector2.DistanceSquared(marker, new Vector2(position.X, position.Z)) <= maximumDistanceSquared);
+            foreach (var positions in spot.WorldPositions.Values)
+            {
+                foreach (var position in positions)
+                {
+                    if (Vector2.DistanceSquared(marker, new Vector2(position.X, position.Z)) <= maximumDistanceSquared)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

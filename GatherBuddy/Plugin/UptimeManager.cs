@@ -4,13 +4,11 @@ using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Time;
-using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
@@ -127,14 +125,20 @@ public class UptimeManager : IDisposable
         _upcomingCache = new UptimeCache(this);
         // Set an array of available timed gatherables.
         TimedGatherables = new IGatherable[gameData.TimedGatherables];
-        foreach (var gatherable in gameData.Gatherables.Values.Where(g => g.InternalLocationId > 0))
+        foreach (var gatherable in gameData.Gatherables.Values)
         {
-            TimedGatherables[gatherable.InternalLocationId - 1] = gatherable;
+            if (gatherable.InternalLocationId > 0)
+            {
+                TimedGatherables[gatherable.InternalLocationId - 1] = gatherable;
+            }
         }
 
-        foreach (var gatherable in gameData.Fishes.Values.Where(g => g.InternalLocationId > 0))
+        foreach (var gatherable in gameData.Fishes.Values)
         {
-            TimedGatherables[gatherable.InternalLocationId - 1] = gatherable;
+            if (gatherable.InternalLocationId > 0)
+            {
+                TimedGatherables[gatherable.InternalLocationId - 1] = gatherable;
+            }
         }
 
         // Ensures that any valid interval is better than this for the first update by setting them to Never.
@@ -163,8 +167,13 @@ public class UptimeManager : IDisposable
     {
         _upcomingCache.Dispose();
         _upcomingCache = new UptimeCache(this);
-        foreach (var fish in TimedGatherables.OfType<Fish>().Where(f => f.HasOverridenData))
+        foreach (var gatherable in TimedGatherables)
         {
+            if (gatherable is not Fish { HasOverridenData: true } fish)
+            {
+                continue;
+            }
+
             var stopwatch = Stopwatch.StartNew();
             switch (fish.InternalLocationId)
             {
@@ -192,26 +201,56 @@ public class UptimeManager : IDisposable
             return loc;
         }
 
-        var closest = item.Locations.FirstOrDefault(l =>
-                l is FishingSpot f && (!f.Spearfishing || !f.IsShadowNode)
-             || l is GatheringNode n && n.Times.AlwaysUp());
+        ILocation? closest = null;
+        foreach (var location in item.Locations)
+        {
+            if (location is FishingSpot f && (!f.Spearfishing || !f.IsShadowNode)
+             || location is GatheringNode n && n.Times.AlwaysUp())
+            {
+                closest = location;
+                break;
+            }
+        }
 
         if (closest == null && item is Fish fish && fish.IsSpearFish)
         {
-            var shadowSpot = fish.FishingSpots.FirstOrDefault(f => f.IsShadowNode);
+            var shadowSpot = fish.FishingSpots.Find(f => f.IsShadowNode);
             closest = shadowSpot?.ParentNode;
         }
 
-        closest ??= FindClosestAetheryte(item) ?? item.Locations.FirstOrDefault();
+        closest ??= FindClosestAetheryte(item) ?? FirstLocation(item);
 
         if (closest == null)
         {
             GatherBuddy.Log.Warning($"No valid location found for {item.Name[GatherBuddy.Language]}. Using fallback location.");
-            closest = (ILocation?)GatherBuddy.GameData.GatheringNodes.Values.FirstOrDefault() ?? GatherBuddy.GameData.FishingSpots.Values.FirstOrDefault()!;
+            var fallbackNodes = GatherBuddy.GameData.GatheringNodes.Values;
+            var fallbackSpots = GatherBuddy.GameData.FishingSpots.Values;
+            closest = fallbackNodes.Length > 0 ? fallbackNodes[0] : fallbackSpots.Length > 0 ? fallbackSpots[0] : null!;
         }
 
         _bestLocation[idx] = (closest, _lastReset);
         return closest;
+    }
+
+    private static ILocation? FirstLocation(IGatherable item)
+        => item.Locations.Count > 0 ? item.Locations[0] : null;
+
+    private static bool IsExcluded(IReadOnlyList<ILocation>? excludes, ILocation location)
+    {
+        if (excludes == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < excludes.Count; ++i)
+        {
+            if (Equals(excludes[i], location))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void OnTerritoryChange(uint id)
@@ -296,12 +335,18 @@ public class UptimeManager : IDisposable
 
     // Get the best uptime for a set of nodes and a specific time.
     // Can be used to only check Mining or Botanist nodes, too, by restricting the set.
-    private static (ILocation?, TimeInterval) GetBestUptime(IEnumerable<GatheringNode> nodes, TimeStamp now)
+    private static (ILocation?, TimeInterval) GetBestUptime(List<GatheringNode> nodes, TimeStamp now, IReadOnlyList<ILocation>? excludes = null,
+        GatheringType? type = null)
     {
         var uptime = TimeInterval.Never;
         GatheringNode? n = null;
         foreach (var node in nodes)
         {
+            if (type != null && node.GatheringType.ToGroup() != type || IsExcluded(excludes, node))
+            {
+                continue;
+            }
+
             Debug.Assert(!node.Times.AlwaysUp());
             var time = node.Times.NextUptime(now);
             if (!IntervalBetter(uptime, time, now))
@@ -316,12 +361,17 @@ public class UptimeManager : IDisposable
         return (n, uptime);
     }
 
-    private static (ILocation?, TimeInterval) GetBestUptime(Fish f, IEnumerable<FishingSpot> spots, TimeStamp now)
+    private static (ILocation?, TimeInterval) GetBestUptime(Fish f, List<FishingSpot> spots, TimeStamp now, IReadOnlyList<ILocation>? excludes = null)
     {
         var uptime = TimeInterval.Never;
         FishingSpot? s = null;
         foreach (var spot in spots)
         {
+            if (IsExcluded(excludes, spot))
+            {
+                continue;
+            }
+
             Debug.Assert(spot.Items.Contains(f));
             var time = GetUptime(f, spot.Territory, now);
             if (!IntervalBetter(uptime, time, now))
@@ -373,10 +423,10 @@ public class UptimeManager : IDisposable
         {
             > 0 => UpdateUptime(item),
             < 0 => (GetLocation(item), TimeInterval.Always),
-            _ => (item.Locations.FirstOrDefault() ?? GatherBuddy.GameData.GatheringNodes.First().Value, TimeInterval.Always),
+            _ => (FirstLocation(item) ?? GatherBuddy.GameData.GatheringNodes.Values[0], TimeInterval.Always),
         };
 
-    public TimeInterval NextUptime(Fish fish, Territory territory, TimeStamp now)
+    public static TimeInterval NextUptime(Fish fish, Territory territory, TimeStamp now)
     {
         // Always up
         if (fish.InternalLocationId <= 0)
@@ -410,7 +460,7 @@ public class UptimeManager : IDisposable
     {
         if (item.InternalLocationId == 0)
         {
-            return (item.Locations.FirstOrDefault(), TimeInterval.Always);
+            return (FirstLocation(item), TimeInterval.Always);
         }
 
         if (item.InternalLocationId < 0)
@@ -420,8 +470,8 @@ public class UptimeManager : IDisposable
 
         return item switch
         {
-            Gatherable g => GetBestUptime(g.NodeList.Except(excludes ?? []).Cast<GatheringNode>(), now),
-            Fish f => GetBestUptime(f, f.FishingSpots.Except(excludes ?? []).Cast<FishingSpot>(), now),
+            Gatherable g => GetBestUptime(g.NodeList, now, excludes),
+            Fish f => GetBestUptime(f, f.FishingSpots, now, excludes),
             _ => throw new ArgumentException(),
         };
     }
@@ -431,7 +481,7 @@ public class UptimeManager : IDisposable
     {
         if (item.InternalLocationId == 0)
         {
-            return (item.Locations.FirstOrDefault(), TimeInterval.Always);
+            return (FirstLocation(item), TimeInterval.Always);
         }
 
         if (item.InternalLocationId < 0)
@@ -439,9 +489,7 @@ public class UptimeManager : IDisposable
             return (FindClosestAetheryte(item, type), TimeInterval.Always);
         }
 
-        return GetBestUptime(
-            item.NodeList.Where(n => n.GatheringType.ToGroup() == type).Except(excludes ?? []).Cast<GatheringNode>(),
-            now);
+        return GetBestUptime(item.NodeList, now, excludes, type);
     }
 
 
@@ -453,24 +501,61 @@ public class UptimeManager : IDisposable
             return FindClosestAetheryteTravel(item, type, excludes);
         }
 
-        var enumerable = excludes != null ? item.Locations.Except(excludes) : item.Locations;
-        enumerable = type == null
-            ? enumerable.Where(l => l is FishingSpot || ((GatheringNode)l).Times.AlwaysUp())
-            : enumerable.Where(l => l is GatheringNode n && n.GatheringType.ToGroup() == type);
-        return enumerable
-            .Where(a => a.ClosestAetheryte != null && Teleporter.IsAttuned(a.ClosestAetheryte.Id))
-            .ArgMin(a => a.ClosestAetheryte!.AetherDistance(_aetherStreamX, _aetherStreamY, _aetherPlane));
+        ILocation? closest = null;
+        var closestDistance = 0;
+        foreach (var location in item.Locations)
+        {
+            if (IsExcluded(excludes, location))
+            {
+                continue;
+            }
+
+            var matchesType = type == null
+                ? location is FishingSpot || ((GatheringNode)location).Times.AlwaysUp()
+                : location is GatheringNode n && n.GatheringType.ToGroup() == type;
+            if (!matchesType
+             || location.ClosestAetheryte == null
+             || !Teleporter.IsAttuned(location.ClosestAetheryte.Id))
+            {
+                continue;
+            }
+
+            var distance = location.ClosestAetheryte.AetherDistance(_aetherStreamX, _aetherStreamY, _aetherPlane);
+            if (closest == null || distance < closestDistance)
+            {
+                closest = location;
+                closestDistance = distance;
+            }
+        }
+
+        return closest;
     }
 
     // Tries to find the node with the closest available aetheryte in world distance.
     private static ILocation? FindClosestAetheryteTravel(IGatherable item, GatheringType? type = null,
         IReadOnlyList<ILocation>? excludes = null)
     {
-        var enumerable = excludes == null ? item.Locations : item.Locations.Except(excludes);
-        enumerable = type == null ? enumerable : enumerable.Where(l => l is GatheringNode n && n.GatheringType.ToGroup() == type);
-        return enumerable
-            .Where(l => l.ClosestAetheryte != null && Teleporter.IsAttuned(l.ClosestAetheryte.Id))
-            .ArgMin(l => l.AetheryteDistance());
+        ILocation? closest = null;
+        var closestDistance = 0;
+        foreach (var location in item.Locations)
+        {
+            if (type != null && (location is not GatheringNode n || n.GatheringType.ToGroup() != type)
+             || IsExcluded(excludes, location)
+             || location.ClosestAetheryte == null
+             || !Teleporter.IsAttuned(location.ClosestAetheryte.Id))
+            {
+                continue;
+            }
+
+            var distance = location.AetheryteDistance();
+            if (closest == null || distance < closestDistance)
+            {
+                closest = location;
+                closestDistance = distance;
+            }
+        }
+
+        return closest;
     }
 
     private ILocation? FindClosestAetheryte(IGatherable item, GatheringType? type = null, IReadOnlyList<ILocation>? excludes = null)

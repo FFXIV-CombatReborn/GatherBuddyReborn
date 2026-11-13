@@ -249,7 +249,7 @@ public class RepairNPCNavigator
         }
     }
 
-    private uint FindNearestAetheryteForTerritory(uint territoryId)
+    private static uint FindNearestAetheryteForTerritory(uint territoryId)
     {
         var territorySheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>();
         if (territorySheet == null || !territorySheet.TryGetRow(territoryId, out var territory))

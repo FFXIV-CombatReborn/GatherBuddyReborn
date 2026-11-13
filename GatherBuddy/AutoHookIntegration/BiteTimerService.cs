@@ -2,7 +2,6 @@ using GatherBuddy.AutoHookIntegration.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 
 namespace GatherBuddy.AutoHookIntegration;
@@ -51,7 +50,7 @@ public class BiteTimerService
         }
     }
 
-    private string? FindAutoHookBiteTimersFile(string pluginConfigDirectory)
+    private static string? FindAutoHookBiteTimersFile(string pluginConfigDirectory)
     {
         try
         {
@@ -72,9 +71,8 @@ public class BiteTimerService
                 return null;
             }
 
-            var versionDirs = Directory.GetDirectories(installedPluginsDir)
-                .OrderByDescending(d => d)
-                .ToArray();
+            var versionDirs = Directory.GetDirectories(installedPluginsDir);
+            Array.Sort(versionDirs, static (lhs, rhs) => string.Compare(rhs, lhs, StringComparison.CurrentCulture));
 
             foreach (var versionDir in versionDirs)
             {

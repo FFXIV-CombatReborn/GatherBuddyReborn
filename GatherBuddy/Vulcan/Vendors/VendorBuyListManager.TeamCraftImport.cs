@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace GatherBuddy.Vulcan.Vendors;
 
@@ -83,13 +82,13 @@ public sealed partial class VendorBuyListManager
             GatherBuddy.Log.Debug($@"[VendorBuyListManager] TeamCraft vendor import created destination list '{list.Name}'.");
         }
         var importedEntryCount = 0;
-        foreach (var resolvedEntry in resolvedEntries)
+        foreach (var (Entry, Vendor, TargetQuantity) in resolvedEntries)
         {
-            if (!TrySetResolvedTarget(list, resolvedEntry.Entry, resolvedEntry.Vendor, resolvedEntry.TargetQuantity))
+            if (!TrySetResolvedTarget(list, Entry, Vendor, TargetQuantity))
             {
-                unresolvedItems.Add(resolvedEntry.Entry.ItemName);
+                unresolvedItems.Add(Entry.ItemName);
                 GatherBuddy.Log.Debug(
-                    $"[VendorBuyListManager] TeamCraft vendor import failed to add {resolvedEntry.Entry.ItemName} to '{list.Name}' after it was resolved.");
+                    $"[VendorBuyListManager] TeamCraft vendor import failed to add {Entry.ItemName} to '{list.Name}' after it was resolved.");
                 continue;
             }
 
@@ -166,9 +165,14 @@ public sealed partial class VendorBuyListManager
             }
         }
 
-        return [.. parsedLines
-            .Select(kvp => new TeamCraftVendorImportLine(kvp.Key, kvp.Value))
-            .OrderBy(line => line.ItemName, StringComparer.OrdinalIgnoreCase)];
+        var importLines = new List<TeamCraftVendorImportLine>(parsedLines.Count);
+        foreach (var (name, total) in parsedLines)
+        {
+            importLines.Add(new TeamCraftVendorImportLine(name, total));
+        }
+
+        importLines.Sort(static (lhs, rhs) => StringComparer.OrdinalIgnoreCase.Compare(lhs.ItemName, rhs.ItemName));
+        return importLines;
     }
 
     private static bool TryGetTeamCraftSectionHeader(string line, out string header)
@@ -209,9 +213,7 @@ public sealed partial class VendorBuyListManager
         foreach (var candidate in GetTeamCraftImportCandidates(itemName))
         {
             var supportedVendors = VendorDevExclusions.GetSelectableNpcs(
-                candidate.Npcs
-                    .Where(npc => VendorPurchaseManager.IsPurchaseSupported(candidate, npc))
-                    .ToList(),
+                GetPurchasableNpcs(candidate),
                 "resolving a TeamCraft vendor import item",
                 itemName);
             if (supportedVendors.Count == 0)
@@ -235,18 +237,36 @@ public sealed partial class VendorBuyListManager
         return false;
     }
 
-    private static IEnumerable<VendorShopEntry> GetTeamCraftImportCandidates(string itemName)
-        => VendorShopResolver.GilShopEntries
-            .Where(entry => entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase))
-            .Concat(VendorShopResolver.GcShopEntries
-                .Where(VendorShopResolver.MatchesCurrentGrandCompany)
-                .Where(entry => entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase)))
-            .Concat(VendorShopResolver.SpecialShopEntries
-                .Where(entry => entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(GetTeamCraftImportPriority)
-            .ThenBy(entry => entry.Cost)
-            .ThenBy(entry => entry.CurrencyItemId)
-            .ThenBy(entry => entry.ItemId);
+    private static List<VendorShopEntry> GetTeamCraftImportCandidates(string itemName)
+    {
+        var candidates = new List<VendorShopEntry>();
+        foreach (var entry in VendorShopResolver.GilShopEntries)
+        {
+            if (entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        foreach (var entry in VendorShopResolver.GcShopEntries)
+        {
+            if (entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase) && VendorShopResolver.MatchesCurrentGrandCompany(entry))
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        foreach (var entry in VendorShopResolver.SpecialShopEntries)
+        {
+            if (entry.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        SortShopEntries(candidates, GetTeamCraftImportPriority);
+        return candidates;
+    }
 
     private static int GetTeamCraftImportPriority(VendorShopEntry entry)
         => entry.ShopType switch
@@ -264,14 +284,17 @@ public sealed partial class VendorBuyListManager
             return null;
         }
 
-        var displayedItems = unresolvedItems
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(3)
-            .ToList();
-        var remainingCount = unresolvedItems
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Skip(displayedItems.Count)
-            .Count();
+        var seenItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var displayedItems = new List<string>(3);
+        foreach (var unresolvedItem in unresolvedItems)
+        {
+            if (seenItems.Add(unresolvedItem) && displayedItems.Count < 3)
+            {
+                displayedItems.Add(unresolvedItem);
+            }
+        }
+
+        var remainingCount = seenItems.Count - displayedItems.Count;
         var itemPreview = string.Join(", ", displayedItems);
         return remainingCount > 0
             ? $"Skipped {unresolvedItems.Count:N0} item(s): {itemPreview}, and {remainingCount:N0} more."

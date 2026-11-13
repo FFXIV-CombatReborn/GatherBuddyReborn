@@ -1,7 +1,7 @@
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Keys;
-using ElliLib.Classes;
 using GatherBuddy.AutoGather.Helpers;
+using GatherBuddy.Config;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using System.Runtime.InteropServices;
 
 namespace GatherBuddy.Plugin;
 
-public static class Functions
+public static partial class Functions
 {
     // Clamps invalid indices to valid indices.
     public static bool Swap<T>(IList<T> list, int idx1, int idx2)
@@ -74,11 +74,11 @@ public static class Functions
         return true;
     }
 
-    [DllImport("msvcrt.dll")]
-    private static extern unsafe int memcmp(byte* b1, byte* b2, int count);
+    [LibraryImport("msvcrt.dll", EntryPoint = "memcmp")]
+    private static unsafe partial int Memcmp(byte* b1, byte* b2, int count);
 
     public static unsafe bool MemCmpUnchecked(byte* ptr1, byte* ptr2, int count)
-        => memcmp(ptr1, ptr2, count) == 0;
+        => Memcmp(ptr1, ptr2, count) == 0;
 
     public static unsafe bool MemCmp(byte* ptr1, byte* ptr2, int length1, int length2)
     {
@@ -97,7 +97,7 @@ public static class Functions
             return false;
         }
 
-        return memcmp(ptr1, ptr2, length1) == 0;
+        return Memcmp(ptr1, ptr2, length1) == 0;
     }
 
     public static string CompressedBase64(byte[] data)
@@ -176,6 +176,9 @@ public static class Functions
         list[idx2] = tmp;
         return true;
     }
+
+    public static uint ReorderColor(uint seColor)
+        => System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(seColor);
 
     public static bool CheckModifier(ModifierHotkey key, bool noKey)
         => key.Modifier switch

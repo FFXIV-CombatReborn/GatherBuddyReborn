@@ -15,7 +15,7 @@ public class SoundHelper
     public void StartHonkSoundTask(int repeatCount)
         => Task.Run(() => PlayHonkSound(repeatCount));
 
-    private void PlayHonkSound(int repeatCount)
+    private static void PlayHonkSound(int repeatCount)
     {
         try
         {
@@ -53,6 +53,6 @@ public class SoundHelper
         }
     }
 
-    private void PlaySound(Stream stream)
+    private static void PlaySound(Stream stream)
     { }
 }

@@ -48,7 +48,7 @@ public unsafe partial class AutoGather
         return false;
     }
 
-    private bool HasDarkMatter(Item itemToRepair)
+    private static bool HasDarkMatter(Item itemToRepair)
     {
         var darkMatters = Dalamud.GameData.Excel.GetSheet<ItemRepairResource>();
         foreach (var darkMatter in darkMatters)

@@ -1,19 +1,16 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Components;
-using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Widgets;
 using GatherBuddy.Alarms;
 using GatherBuddy.Config;
 using GatherBuddy.GatherHelper;
-using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Time;
+using RebornMaterial;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -25,47 +22,27 @@ public partial class Interface
     private static string CheckUndescribed(string desc)
         => desc.Length > 0 ? desc : "<No Description>";
 
-
-    private class AlarmWindowDragDropData
+    private class AlarmWindowDragDropData(AlarmGroup group, Alarm alarm, int idx)
     {
-        public AlarmGroup Group;
-        public Alarm Alarm;
-        public int AlarmIdx;
-
-        public AlarmWindowDragDropData(AlarmGroup group, Alarm alarm, int idx)
-        {
-            Group = group;
-            Alarm = alarm;
-            AlarmIdx = idx;
-        }
+        public AlarmGroup Group = group;
+        public Alarm Alarm = alarm;
+        public int AlarmIdx = idx;
     }
 
-    private class AlarmCache
+    private class AlarmCache(AlarmManager manager)
     {
-        public sealed class TimedItemCombo : ClippedSelectableCombo<IGatherable>
+        public sealed class AlarmSelector(AlarmManager manager) : ItemSelector<AlarmGroup>(manager.Alarms, Flags.All)
         {
-            public TimedItemCombo(string label)
-                : base("##TimedItem", label, 200, GatherBuddy.UptimeManager.TimedGatherables, i => i.Name[GatherBuddy.Language])
-            { }
-        }
-
-        public sealed class AlarmSelector : ItemSelector<AlarmGroup>
-        {
-            private readonly AlarmManager _manager;
-
-            public AlarmSelector(AlarmManager manager)
-                : base(manager.Alarms, Flags.All)
-                => _manager = manager;
+            private readonly AlarmManager _manager = manager;
 
             protected override bool Filtered(int idx)
                 => Filter.Length != 0 && !Items[idx].Name.Contains(Filter, StringComparison.InvariantCultureIgnoreCase);
 
             protected override bool OnDraw(int idx)
-            {
-                using var id = ImRaii.PushId(idx);
-                using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), !Items[idx].Enabled);
-                return ImGui.Selectable(CheckUnnamed(Items[idx].Name), idx == CurrentIdx);
-            }
+                => ListRow(CheckUnnamed(Items[idx].Name), idx == CurrentIdx, !Items[idx].Enabled);
+
+            protected override string NameOf(AlarmGroup item)
+                => item.Name;
 
             protected override bool OnDelete(int idx)
             {
@@ -86,17 +63,26 @@ public partial class Interface
                     return false;
                 }
 
+                var alarms = new List<Alarm>();
+                var configAlarmCount = 0;
+                foreach (var alarmConfig in configGroup.Alarms)
+                {
+                    configAlarmCount++;
+                    if (Alarm.FromConfig(alarmConfig, out var alarm) && alarm != null)
+                    {
+                        alarms.Add(alarm);
+                    }
+                }
+
                 var group = new AlarmGroup()
                 {
                     Name = name,
                     Description = configGroup.Description,
                     Enabled = false,
-                    Alarms = [.. configGroup.Alarms.Select(a => Alarm.FromConfig(a, out var alarm) ? alarm : null)
-                        .Where(a => a != null)
-                        .Cast<Alarm>()],
+                    Alarms = alarms,
                 };
 
-                if (group.Alarms.Count < configGroup.Alarms.Count())
+                if (group.Alarms.Count < configAlarmCount)
                 {
                     GatherBuddy.Log.Warning("Invalid alarms skipped");
                 }
@@ -132,18 +118,11 @@ public partial class Interface
             }
         }
 
-        public AlarmCache(AlarmManager manager)
-            => Selector = new AlarmSelector(manager);
+        public static readonly Sounds[] SoundIds = Array.FindAll(Enum.GetValues<Sounds>(), s => s != Sounds.Unknown);
 
-        public static readonly Sounds[] SoundIds = [.. Enum.GetValues<Sounds>().Where(s => s != Sounds.Unknown)];
+        public static readonly string[] SoundIdNames = Array.ConvertAll(SoundIds, s => s == Sounds.None ? "No Sound" : $"Sound {s.ToIdx()}");
 
-        public static readonly string[] SoundIdNames = [.. SoundIds.Select(s => s == Sounds.None ? "No Sound" : $"Sound {s.ToIdx()}")];
-
-        public readonly AlarmSelector Selector;
-        public readonly TimedItemCombo ItemCombo = new(string.Empty);
-
-        public bool EditGroupName;
-        public bool EditGroupDesc;
+        public readonly AlarmSelector Selector = new(manager);
 
         public string NewName = string.Empty;
         public int NewItemIdx;
@@ -151,9 +130,6 @@ public partial class Interface
         public bool NewPrintMessage;
         public int NewSoundIdx;
         public int NewSecondOffset;
-
-        public int ChangedSecondOffset;
-        public int ChangedAlarmIdx = -1;
 
         public Alarm CreateAlarm()
             => new(GatherBuddy.UptimeManager.TimedGatherables[NewItemIdx])
@@ -168,40 +144,56 @@ public partial class Interface
 
     private readonly AlarmCache _alarmCache;
 
+    private static readonly string[] AlarmColumns = ["##delete", "Name", "On", "Item", "Seconds early", "Chat", "Sound", "Location", "Next"];
+
+    private static float AlarmItemWidth
+        => SetInputWidth * 1.15f;
+
+    private static float AlarmSoundWidth
+        => 120 * M3.Scale;
+
+    private static bool DrawTimedItemCombo(string id, ref int index)
+    {
+        var items = GatherBuddy.UptimeManager.TimedGatherables;
+        return M3Widgets.Combo(id, ref index, items.Length, i => items[i].Name[GatherBuddy.Language], AlarmItemWidth, "Choose an item", true);
+    }
+
     private void DrawAlarmInfo(ref int alarmIdx, AlarmGroup group)
     {
         var alarm = group.Alarms[alarmIdx];
         using var id = ImRaii.PushId(alarmIdx);
-        var enabled = alarm.Enabled;
 
+        ImGui.TableNextRow();
         ImGui.TableNextColumn();
-        if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Trash.ToIconString(), IconButtonSize, "Delete this Alarm...", false, true))
+        if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Delete this alarm", diameter: ImGui.GetFrameHeight()))
         {
             _plugin.AlarmManager.DeleteAlarm(group, alarmIdx--);
+            return;
         }
 
         ImGui.TableNextColumn();
-        ImGui.SetNextItemWidth(SetInputWidth);
         var name = alarm.Name;
-        if (ImGui.InputTextWithHint("##name", CheckUnnamed(string.Empty), ref name, 64))
+        if (M3TextField.Draw("##name", CheckUnnamed(string.Empty), ref name, SetInputWidth, 64))
         {
             _plugin.AlarmManager.ChangeAlarmName(group, alarmIdx, name);
         }
 
-        ImGuiUtil.HoverTooltip("Names are optional and can be used in the alarm message that is printed to chat.");
+        M3Tooltip.Hovered("Names are optional and can be used in the alarm message that is printed to chat.");
 
         ImGui.TableNextColumn();
-        if (ImGui.Checkbox("##Enabled", ref enabled) && enabled != alarm.Enabled)
+        var enabled = alarm.Enabled;
+        if (M3Widgets.Checkbox("##enabled", ref enabled) && enabled != alarm.Enabled)
         {
             _plugin.AlarmManager.ToggleAlarm(group, alarmIdx);
         }
 
-        ImGuiUtil.HoverTooltip("Enable this Alarm.");
+        M3Tooltip.Hovered("Enable this alarm.");
 
         ImGui.TableNextColumn();
-        if (_alarmCache.ItemCombo.Draw(alarm.Item.InternalLocationId - 1, out var newIdx))
+        var itemIdx = alarm.Item.InternalLocationId - 1;
+        if (DrawTimedItemCombo("##item", ref itemIdx))
         {
-            _plugin.AlarmManager.ChangeAlarmItem(group, alarmIdx, GatherBuddy.UptimeManager.TimedGatherables[newIdx]);
+            _plugin.AlarmManager.ChangeAlarmItem(group, alarmIdx, GatherBuddy.UptimeManager.TimedGatherables[itemIdx]);
         }
 
         _alarmCache.Selector.CreateDropSource(new AlarmWindowDragDropData(group, alarm, alarmIdx), alarm.Item.Name[GatherBuddy.Language]);
@@ -209,41 +201,30 @@ public partial class Interface
         _alarmCache.Selector.CreateDropTarget<AlarmWindowDragDropData>(d => _plugin.AlarmManager.MoveAlarm(group, d.AlarmIdx, localIdx));
 
         ImGui.TableNextColumn();
-        var secondOffset = _alarmCache.ChangedAlarmIdx == alarmIdx ? _alarmCache.ChangedSecondOffset : alarm.SecondOffset;
-        ImGui.SetNextItemWidth(SetInputWidth / 2);
-        if (ImGui.DragInt("##Offset", ref secondOffset, 0.1f, 0, RealTime.SecondsPerDay))
+        var secondOffset = alarm.SecondOffset;
+        if (M3Widgets.NumberField("##offset", ref secondOffset, SetInputWidth * 0.6f, 10, 0, RealTime.SecondsPerDay, "s"))
         {
-            _alarmCache.ChangedAlarmIdx = alarmIdx;
-            _alarmCache.ChangedSecondOffset = secondOffset;
+            _plugin.AlarmManager.ChangeAlarmOffset(group, alarmIdx, Math.Clamp(secondOffset, 0, RealTime.SecondsPerDay));
         }
 
-        if (ImGui.IsItemDeactivated())
-        {
-            _plugin.AlarmManager.ChangeAlarmOffset(group, alarmIdx, Math.Clamp(_alarmCache.ChangedSecondOffset, 0, RealTime.SecondsPerDay));
-            _alarmCache.ChangedAlarmIdx = -1;
-            _alarmCache.ChangedSecondOffset = 0;
-        }
-
-        ImGuiUtil.HoverTooltip("Trigger this alarm this many seconds before the item in question is next available.");
+        M3Tooltip.Hovered("Trigger this alarm this many seconds before the item is next available.");
 
         ImGui.TableNextColumn();
         var printMessage = alarm.PrintMessage;
-        if (ImGui.Checkbox("##PrintMessage", ref printMessage))
+        if (M3Widgets.Checkbox("##print", ref printMessage))
         {
             _plugin.AlarmManager.ChangeAlarmMessage(group, alarmIdx, printMessage);
         }
 
-        ImGuiUtil.HoverTooltip("Print a chat message when this alarm is triggered.");
+        M3Tooltip.Hovered("Print a chat message when this alarm is triggered.");
 
         ImGui.TableNextColumn();
-        var idx = alarm.SoundId.ToIdx();
-        ImGui.SetNextItemWidth(85 * ImGuiHelpers.GlobalScale);
-        if (ImGui.Combo("##Sound", ref idx, AlarmCache.SoundIdNames))
+        var soundIdx = Array.IndexOf(AlarmCache.SoundIds, alarm.SoundId);
+        if (M3Widgets.Combo("##sound", ref soundIdx, AlarmCache.SoundIdNames, AlarmSoundWidth, tooltip: "The sound played when this alarm is triggered."))
         {
-            _plugin.AlarmManager.ChangeAlarmSound(group, alarmIdx, AlarmCache.SoundIds[idx]);
-            AlarmManager.PreviewAlarm(AlarmCache.SoundIds[idx]);
+            _plugin.AlarmManager.ChangeAlarmSound(group, alarmIdx, AlarmCache.SoundIds[soundIdx]);
+            AlarmManager.PreviewAlarm(AlarmCache.SoundIds[soundIdx]);
         }
-        ImGuiUtil.HoverTooltip("Play this sound effect when this alarm is triggered.");
 
         ImGui.TableNextColumn();
         if (DrawLocationInput(alarm.Item, alarm.PreferLocation, out var newLocation))
@@ -254,177 +235,185 @@ public partial class Interface
         ImGui.TableNextColumn();
         var (_, time) = AlarmManager.GetUptime(alarm);
         var now = GatherBuddy.Time.ServerTime.AddSeconds(alarm.SecondOffset);
-        var size = Vector2.UnitX * 150 * ImGuiHelpers.GlobalScale;
+        var size = new Vector2(150 * M3.Scale, ImGui.GetFrameHeight());
         if (time.Start > now)
         {
-            ImGuiUtil.DrawTextButton(TimeInterval.DurationString(time.Start, now, false), size, ColorId.WarningBg.Value());
+            Ui.Framed(TimeInterval.DurationString(time.Start, now, false), ColorId.WarningBg.Value(), size);
         }
         else
         {
-            ImGuiUtil.DrawTextButton("Currently Triggered", size, ColorId.ChangedLocationBg.Value());
+            Ui.Framed("Triggered now", ColorId.ChangedLocationBg.Value(), size);
         }
     }
 
-    private void DrawGroupData(AlarmGroup group, int idx)
+    private static void DrawGroupData(AlarmGroup group, int idx)
     {
-        if (ImGuiUtil.DrawEditButtonText(0, _alarmCache.EditGroupName ? group.Name : CheckUnnamed(group.Name), out var newName,
-                ref _alarmCache.EditGroupName, IconButtonSize, SetInputWidth, 64))
+        if (Ui.CommitField("##groupName", "Name", group.Name, out var newName, SetInputWidth, 64))
         {
             _plugin.AlarmManager.ChangeGroupName(idx, newName);
         }
 
-        if (ImGuiUtil.DrawEditButtonText(1, _alarmCache.EditGroupDesc ? group.Description : CheckUndescribed(group.Description),
-                out var newDesc, ref _alarmCache.EditGroupDesc, IconButtonSize, 2 * SetInputWidth, 128))
+        ImGui.SameLine(0, M3.Space2);
+        if (Ui.CommitField("##groupDesc", "Description", group.Description, out var newDesc, 2 * SetInputWidth, 128))
         {
             _plugin.AlarmManager.ChangeGroupDescription(idx, newDesc);
         }
 
+        ImGui.SameLine(0, M3.Space3);
         var enabled = group.Enabled;
-        if (ImGui.Checkbox("Enabled", ref enabled) && enabled != group.Enabled)
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3TextField.Height - M3Widgets.SwitchSize().Y) * 0.5f);
+        if (M3Widgets.Switch("##groupEnabled", ref enabled) && enabled != group.Enabled)
         {
             _plugin.AlarmManager.ToggleGroup(idx);
         }
 
-        ImGuiUtil.HoverTooltip(
-            "Enable this alarm group. Only those alarms in the group that are enabled themselves will be counted as active.");
+        M3Tooltip.Hovered("Enable this alarm group. Only the alarms in it that are enabled themselves count as active.");
+        ImGui.SameLine(0, M3.Space2);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
+        M3Text.Draw(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted);
     }
 
-    private void DrawToggleAll(AlarmGroup group)
+    private static void DrawAlarmTableHeader(AlarmGroup group)
     {
-        ImGui.TableNextColumn();
-        ImGui.TableNextColumn();
-        ImGui.TableNextColumn();
-        var allEnabled = group.Alarms.All(a => a.Enabled);
-        var ret = ImGui.Checkbox("##allEnabled", ref allEnabled);
-        ImGuiUtil.HoverTooltip("Enable all disabled alarms, or disable all alarms.");
-
-        if (!ret)
+        ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
+        for (var i = 0; i < AlarmColumns.Length; ++i)
         {
-            return;
-        }
-
-        for (var i = 0; i < group.Alarms.Count; ++i)
-        {
-            if (group.Alarms[i].Enabled != allEnabled)
+            ImGui.TableNextColumn();
+            if (i == 2 && group.Alarms.Count > 0)
             {
-                _plugin.AlarmManager.ToggleAlarm(@group, i);
+                var allEnabled = true;
+                var anyEnabled = false;
+                foreach (var alarm in group.Alarms)
+                {
+                    if (alarm.Enabled)
+                    {
+                        anyEnabled = true;
+                    }
+                    else
+                    {
+                        allEnabled = false;
+                    }
+                }
+
+                if (M3Widgets.Checkbox("##allEnabled", ref allEnabled, mixed: !allEnabled && anyEnabled))
+                {
+                    for (var j = 0; j < group.Alarms.Count; ++j)
+                    {
+                        if (group.Alarms[j].Enabled != allEnabled)
+                        {
+                            _plugin.AlarmManager.ToggleAlarm(group, j);
+                        }
+                    }
+                }
+
+                M3Tooltip.Hovered("Enable all alarms, or disable all alarms.");
+                continue;
+            }
+
+            if (!AlarmColumns[i].StartsWith("##"))
+            {
+                M3Table.Header(AlarmColumns[i], center: false);
             }
         }
     }
 
-    private void DrawAlarmTable(AlarmGroup group, int _)
+    private void DrawAlarmTable(AlarmGroup group)
     {
-        var width = SetInputWidth * 3.35f + ImGui.GetFrameHeight() * 3 + (85 + 150) * ImGuiHelpers.GlobalScale + ItemSpacing.X * 8;
-        using var table = ImRaii.Table("##alarms", 9, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.NoKeepColumnsVisible,
-            Vector2.UnitX * width);
+        using var style = M3Table.PushStyle();
+        using var table = ImRaii.Table("##alarms", AlarmColumns.Length, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.NoKeepColumnsVisible
+          | ImGuiTableFlags.RowBg | ImGuiTableFlags.PadOuterX);
         if (!table)
         {
             return;
         }
 
-        DrawToggleAll(group);
-        ImGui.TableNextRow();
+        foreach (var column in AlarmColumns)
+        {
+            ImGui.TableSetupColumn(column);
+        }
+
+        DrawAlarmTableHeader(group);
         for (var i = 0; i < group.Alarms.Count; ++i)
         {
             DrawAlarmInfo(ref i, group);
         }
 
         using var id = ImRaii.PushId(-1);
+        ImGui.TableNextRow();
         ImGui.TableNextColumn();
-        if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Plus.ToIconString(), IconButtonSize, "Add new Alarm...", false, true))
+        if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add this alarm", M3ButtonStyle.Tonal, diameter: ImGui.GetFrameHeight()))
         {
             _plugin.AlarmManager.AddAlarm(group, _alarmCache.CreateAlarm());
         }
 
         ImGui.TableNextColumn();
-        ImGui.SetNextItemWidth(SetInputWidth);
-        ImGui.InputTextWithHint("##name", CheckUnnamed(string.Empty), ref _alarmCache.NewName, 64);
+        M3TextField.Draw("##name", "Name of the new alarm", ref _alarmCache.NewName, SetInputWidth, 64);
         ImGui.TableNextColumn();
-        ImGui.Checkbox("##enabled", ref _alarmCache.NewEnabled);
+        M3Widgets.Checkbox("##enabled", ref _alarmCache.NewEnabled);
         ImGui.TableNextColumn();
-        if (_alarmCache.ItemCombo.Draw(_alarmCache.NewItemIdx, out var tmp))
-        {
-            _alarmCache.NewItemIdx = tmp;
-        }
-
+        DrawTimedItemCombo("##item", ref _alarmCache.NewItemIdx);
         ImGui.TableNextColumn();
-        ImGui.SetNextItemWidth(SetInputWidth / 2);
-        if (ImGui.DragInt("##Offset", ref _alarmCache.NewSecondOffset, 0.1f, 0, RealTime.SecondsPerDay))
-        {
-            _alarmCache.NewSecondOffset = Math.Clamp(_alarmCache.NewSecondOffset, 0, RealTime.SecondsPerDay);
-        }
-
+        M3Widgets.NumberField("##offset", ref _alarmCache.NewSecondOffset, SetInputWidth * 0.6f, 10, 0, RealTime.SecondsPerDay, "s");
         ImGui.TableNextColumn();
-        ImGui.Checkbox("##print", ref _alarmCache.NewPrintMessage);
+        M3Widgets.Checkbox("##print", ref _alarmCache.NewPrintMessage);
         ImGui.TableNextColumn();
-        ImGui.SetNextItemWidth(85 * ImGuiHelpers.GlobalScale);
-        ImGui.Combo("##Sound", ref _alarmCache.NewSoundIdx, AlarmCache.SoundIdNames);
+        M3Widgets.Combo("##sound", ref _alarmCache.NewSoundIdx, AlarmCache.SoundIdNames, AlarmSoundWidth);
     }
 
     private void DrawAlarmInfo(AlarmGroup group, int idx)
     {
-        using var child = ImRaii.Child("##alarmInfo", -Vector2.One, false, ImGuiWindowFlags.HorizontalScrollbar);
-        if (!child)
-        {
-            return;
-        }
-
         DrawGroupData(group, idx);
-        ImGui.NewLine();
-        DrawAlarmTable(group, idx);
+        ImGui.Dummy(new Vector2(0, M3.Space2));
+        DrawAlarmTable(group);
     }
 
     private void DrawAlarmGroupHeaderLine()
     {
-        if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Copy.ToIconString(), IconButtonSize, "Copy current Alarm Group to clipboard.",
-                _alarmCache.Selector.Current == null, true))
+        var current = _alarmCache.Selector.Current;
+        if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this alarm group to your clipboard", enabled: current != null))
         {
-            var group = _alarmCache.Selector.Current!;
             try
             {
-                var s = new AlarmGroup.Config(group).ToBase64();
+                var s = new AlarmGroup.Config(current!).ToBase64();
                 ImGui.SetClipboardText(s);
-                Communicator.PrintClipboardMessage("Alarm Group ", group.Name);
+                Communicator.PrintClipboardMessage("Alarm Group ", current!.Name);
             }
             catch (Exception e)
             {
-                GatherBuddy.Log.Error($"Could not write Alarm Group {group.Name} to Clipboard:\n{e}");
-                Communicator.PrintClipboardMessage("Alarm Group ", group.Name, e);
+                GatherBuddy.Log.Error($"Could not write Alarm Group {current!.Name} to Clipboard:\n{e}");
+                Communicator.PrintClipboardMessage("Alarm Group ", current!.Name, e);
             }
         }
 
-        if (ImGuiUtil.DrawDisabledButton("Create Preset", Vector2.Zero, "Create a new Gather Window Preset from this alarm group.",
-                _alarmCache.Selector.Current == null))
+        ImGui.SameLine(0, M3.Space1);
+        if (M3Widgets.Button("##preset", "Make gather window preset", M3ButtonStyle.Text, FontAwesomeIcon.ListUl, enabled: current != null,
+                tooltip: "Create a new gather window preset from this alarm group."))
         {
-            var preset = new GatherWindowPreset(_alarmCache.Selector.Current!);
-            _plugin.GatherWindowManager.AddPreset(preset);
+            _plugin.GatherWindowManager.AddPreset(new GatherWindowPreset(current!));
+            M3Snackbar.Show("Created a gather window preset.");
         }
 
-        ImGui.SameLine();
-
-        ImGuiComponents.HelpMarker("Use /gather alarm to gather the last item alarm triggered.\n"
+        ImGui.SameLine(0, M3.Space2);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        M3Widgets.HelpMarker("Use /gather alarm to gather the last item alarm triggered.\n"
           + "Use /gatherfish alarm to gather the last fish alarm triggered.");
     }
 
-    private void DrawAlarmTab()
+    private void DrawAlarmPage()
     {
         using var id = ImRaii.PushId("Alarms");
-        using var tab = ImRaii.TabItem("Alarms");
-        ImGuiUtil.HoverTooltip("Do you often find yourself late for a very important date with no time to say hello or goodbye?\n"
-          + "Set up your very own alarm clock. Viera might even be able to wear it around their neck.");
-        if (!tab)
-        {
-            return;
-        }
-
         _alarmCache.Selector.Draw(SelectorWidth);
-        ImGui.SameLine();
+        ImGui.SameLine(0, M3.Space2);
 
         ItemDetailsWindow.Draw("Alarm Group Details", DrawAlarmGroupHeaderLine, () =>
         {
             if (_alarmCache.Selector.Current != null)
             {
                 DrawAlarmInfo(_alarmCache.Selector.Current, _alarmCache.Selector.CurrentIdx);
+            }
+            else
+            {
+                M3Widgets.EmptyState("##noAlarms", "No alarm group selected", "Add a group with the plus button below the list.", FontAwesomeIcon.Bell);
             }
         });
     }

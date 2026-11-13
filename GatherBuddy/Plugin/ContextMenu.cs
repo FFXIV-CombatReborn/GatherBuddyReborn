@@ -6,7 +6,6 @@ using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.Plugin;
 
@@ -92,7 +91,7 @@ public class ContextMenu : IDisposable
         }
     }
 
-    private void OpenCreateVendorBuyListPopup(uint itemId)
+    private static void OpenCreateVendorBuyListPopup(uint itemId)
     {
         var vendorBuyListWindow = GatherBuddy.VendorBuyListWindow;
         if (vendorBuyListWindow == null)
@@ -108,7 +107,7 @@ public class ContextMenu : IDisposable
         }
     }
 
-    private void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
+    private static void AddItemToVendorBuyList(uint itemId, Guid listId, string listName)
     {
         if (!GatherBuddy.VendorBuyListManager.TryIncrementTarget(listId, itemId, 1, selectList: true, openWindow: true, announce: true))
         {
@@ -198,10 +197,22 @@ public class ContextMenu : IDisposable
             var maxLists = Math.Max(1, GatherBuddy.Config.MaxRecentCraftingListsInContextMenu);
             GatherBuddy.Log.Debug($"[ContextMenu] Total lists: {allLists.Count}, Max to show: {maxLists}");
 
-            var recentLists = allLists
-                .OrderByDescending(l => l.CreatedAt)
-                .Take(maxLists)
-                .ToList();
+            var orderedLists = new List<(Crafting.CraftingListDefinition List, int Index)>(allLists.Count);
+            for (var listIndex = 0; listIndex < allLists.Count; listIndex++)
+            {
+                orderedLists.Add((allLists[listIndex], listIndex));
+            }
+
+            orderedLists.Sort(static (lhs, rhs) =>
+            {
+                var order = rhs.List.CreatedAt.CompareTo(lhs.List.CreatedAt);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            var recentLists = new List<Crafting.CraftingListDefinition>(Math.Min(maxLists, orderedLists.Count));
+            for (var listIndex = 0; listIndex < orderedLists.Count && listIndex < maxLists; listIndex++)
+            {
+                recentLists.Add(orderedLists[listIndex].List);
+            }
 
             GatherBuddy.Log.Debug($"[ContextMenu] Recent lists filtered: {recentLists.Count}");
 
@@ -253,7 +264,7 @@ public class ContextMenu : IDisposable
             },
         };
 
-        foreach (var list in GatherBuddy.VendorBuyListManager.Lists.OrderByDescending(list => list.CreatedAt))
+        foreach (var list in Vulcan.Vendors.VendorBuyListManager.GetListsByCreation(true))
         {
             var listId = list.Id;
             var listName = list.Name;
@@ -269,7 +280,7 @@ public class ContextMenu : IDisposable
         args.OpenSubmenu(menuItems);
     }
 
-    private void OpenCreateCraftingListPopup(uint recipeId)
+    private static void OpenCreateCraftingListPopup(uint recipeId)
     {
         var vulcanWindow = GatherBuddy.VulcanWindow;
         if (vulcanWindow == null)
@@ -282,9 +293,9 @@ public class ContextMenu : IDisposable
         vulcanWindow.OpenCreateListPopup(recipeId);
     }
 
-    private void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
+    private static void AddRecipeToList(Lumina.Excel.Sheets.Recipe recipe, Crafting.CraftingListDefinition list)
     {
-        var existingItem = list.Recipes.FirstOrDefault(x => x.RecipeId == recipe.RowId);
+        var existingItem = list.Recipes.Find(x => x.RecipeId == recipe.RowId);
         if (existingItem != null)
         {
             existingItem.Quantity += 1;
@@ -322,7 +333,7 @@ public class ContextMenu : IDisposable
             _lastRecipeId = GetRecipeIdFromContext(args);
         }
 
-        if (contextItemId.HasValue && GatherBuddy.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
+        if (contextItemId.HasValue && Vulcan.Vendors.VendorBuyListManager.CanAddSupportedItem(contextItemId.Value))
         {
             _lastVendorBuyListItemId = contextItemId.Value;
         }

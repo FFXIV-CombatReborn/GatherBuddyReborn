@@ -1,24 +1,24 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
-using ElliLib;
-using ElliLib.Table;
-using ElliLib.Text;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
+using GatherBuddy.RebornUI.Tables;
 using GatherBuddy.Time;
 using GatherBuddy.Weather;
 using Newtonsoft.Json;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using System.Text;
 using Effects = GatherBuddy.Models.Effects;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -39,7 +39,7 @@ public partial class Interface
 
         protected override void PreDraw()
         {
-            ExtraHeight = ImGui.GetFrameHeightWithSpacing() / ImGuiHelpers.GlobalScale;
+            ExtraHeight = (M3Widgets.ButtonHeight + ImGui.GetStyle().ItemSpacing.Y + M3.Space1) / ImGuiHelpers.GlobalScale;
             if (_deleteIdx > -1)
             {
                 _plugin.FishRecorder.Remove(_deleteIdx);
@@ -79,7 +79,7 @@ public partial class Interface
                 => lhs.Gathering.CompareTo(rhs.Gathering);
 
             public override void DrawColumn(FishRecord record, int _)
-                => ImGuiUtil.RightAlign(ToName(record));
+                => Ui.RightAligned(ToName(record));
         }
 
         private sealed class PerceptionHeader : ColumnString<FishRecord>
@@ -94,7 +94,7 @@ public partial class Interface
                 => lhs.Perception.CompareTo(rhs.Perception);
 
             public override void DrawColumn(FishRecord record, int _)
-                => ImGuiUtil.RightAlign(ToName(record));
+                => Ui.RightAligned(ToName(record));
         }
 
         private sealed class AmountHeader : ColumnString<FishRecord>
@@ -110,7 +110,7 @@ public partial class Interface
 
             public override void DrawColumn(FishRecord record, int _)
             {
-                ImGuiUtil.RightAlign(ToName(record));
+                Ui.RightAligned(ToName(record));
             }
         }
 
@@ -139,8 +139,8 @@ public partial class Interface
                 }
 
                 using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), tt.Length == 0);
-                ImGuiUtil.RightAlign(ToName(record));
-                ImGuiUtil.HoverTooltip(tt);
+                Ui.RightAligned(ToName(record));
+                M3Tooltip.Hovered(tt);
             }
         }
 
@@ -197,7 +197,7 @@ public partial class Interface
                     _deleteIdx = idx;
                 }
 
-                ImGuiUtil.HoverTooltip("Hold Control and right-click to delete...");
+                M3Tooltip.Hovered("Hold Control and right-click to delete...");
             }
         }
 
@@ -225,10 +225,10 @@ public partial class Interface
                 base.DrawColumn(record, _);
                 if (ImGui.IsItemHovered())
                 {
-                    using var tt = ImUtf8.Tooltip();
-                    ImUtf8.Text($"{record.TimeStamp}");
+                    using var tt = ImRaii.Tooltip();
+                    ImGui.TextUnformatted($"{record.TimeStamp}");
                     var et = record.TimeStamp.ConvertToEorzea().RoundToSecond();
-                    ImUtf8.Text($"{et.CurrentHour:D2}:{et.CurrentMinute:D2}:{et.CurrentSecond:D2} ET");
+                    ImGui.TextUnformatted($"{et.CurrentHour:D2}:{et.CurrentMinute:D2}:{et.CurrentSecond:D2} ET");
                 }
             }
         }
@@ -365,7 +365,7 @@ public partial class Interface
                 => 50 * ImGuiHelpers.GlobalScale;
 
             public override void DrawColumn(FishRecord record, int _)
-                => ImGuiUtil.RightAlign(ToName(record));
+                => Ui.RightAligned(ToName(record));
 
             public override int Compare(FishRecord lhs, FishRecord rhs)
                 => lhs.Bite.CompareTo(rhs.Bite);
@@ -409,7 +409,18 @@ public partial class Interface
                 ModestLureOff = (ulong)(Effects.ModestLure1 | Effects.ModestLure2) << 32,
             }
 
-            private static readonly ColumnEffects Mask = Enum.GetValues<ColumnEffects>().Aggregate((a, b) => a | b);
+            private static readonly ColumnEffects Mask = CombineColumnEffects();
+
+            private static ColumnEffects CombineColumnEffects()
+            {
+                var mask = default(ColumnEffects);
+                foreach (var effect in Enum.GetValues<ColumnEffects>())
+                {
+                    mask |= effect;
+                }
+
+                return mask;
+            }
 
             private static readonly (ColumnEffects On, ColumnEffects Off)[] _values =
             [
@@ -560,7 +571,7 @@ public partial class Interface
 
                 using var tt = ImRaii.Tooltip();
                 ImGui.Image(wrap.Handle, new Vector2(wrap.Width, wrap.Height));
-                ImUtf8.Text(tooltip);
+                ImGui.TextUnformatted(tooltip);
             }
 
             public override void DrawColumn(FishRecord item, int idx)
@@ -615,7 +626,18 @@ public partial class Interface
             var sb = new StringBuilder(Items.Count * 128);
             sb.Append(
                 "Fish\tFishId\tBite\tBait\tBaitId\tSpot\tSpotId\tTug\tHookset\tTimestamp\tEorzea Time\tTransition\tWeather\tAmount\tIlm\tGathering\tPerception\tPatience\tPatience2\tIntuition\tSnagging\tFish Eyes\tChum\tPrize Catch\tIdentical Cast\tSurface Slap\tCollectible\tBig Game Fishing\tAmbitious Lure\tModest Lure\n");
-            foreach (var record in Items.OrderBy(r => r.TimeStamp))
+            var sortedRecords = new List<(FishRecord Record, int Index)>(Items.Count);
+            foreach (var item in Items)
+            {
+                sortedRecords.Add((item, sortedRecords.Count));
+            }
+
+            sortedRecords.Sort(static (lhs, rhs) =>
+            {
+                var order = lhs.Record.TimeStamp.CompareTo(rhs.Record.TimeStamp);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            foreach (var (record, _) in sortedRecords)
             {
                 var (hour, minute) = record.TimeStamp.CurrentEorzeaTimeOfDay();
                 var spot = record.FishingSpot;
@@ -669,155 +691,167 @@ public partial class Interface
     private bool WriteJson = false;
 
 
-    private void DrawRecordTab()
-    {
-        using var id = ImUtf8.PushId("Fish Records"u8);
-        using var tab = ImUtf8.TabItem("Fish Records"u8);
-        ImUtf8.HoverTooltip("The records of my fishing prowess have been greatly exaggerated.\n"u8
-          + "Find, cleanup and share all data you have collected while fishing."u8);
-        if (!tab)
-        {
-            return;
-        }
+    private const string RecordExportDialogId = "##recordExportDialog";
+    private string _recordExportPath = string.Empty;
 
+    private void DrawRecordPage()
+    {
+        using var id = ImRaii.PushId("Fish Records");
         _recordTable.Draw(ImGui.GetTextLineHeightWithSpacing());
 
-        var textSize = ImUtf8.CalcTextSize("00000000"u8) with { Y = 0 };
-        if (_recordTable.CurrentItems != _recordTable.TotalItems)
+        ImGui.Dummy(new Vector2(0, M3.Space1));
+        var shown = _recordTable.CurrentItems;
+        var total = _recordTable.TotalItems;
+        M3Badge.Draw(shown == total ? $"{total} records" : $"{shown} of {total} records", shown == total ? M3.Scheme.Secondary : M3.Scheme.Primary,
+            shown == total ? null : "Some records are hidden by the column filters.");
+        var buttonY = ImGui.GetItemRectMin().Y + (ImGui.GetItemRectSize().Y - M3Widgets.ButtonHeight) * 0.5f;
+
+        void NextButton()
         {
-            ImGuiUtil.DrawTextButton($"{_recordTable.CurrentItems}", textSize, ImGui.GetColorU32(ImGuiCol.Button),
-                ColorId.AvailableItem.Value());
-        }
-        else
-        {
-            ImGuiUtil.DrawTextButton($"{_recordTable.CurrentItems}", textSize, ImGui.GetColorU32(ImGuiCol.Button));
+            ImGui.SameLine(0, M3.Space2);
+            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, buttonY));
         }
 
-        ImGui.SameLine();
-        if (ImUtf8.Button("Cleanup"u8))
+        NextButton();
+        if (M3Widgets.Button("##cleanup", "Clean up", M3ButtonStyle.Tonal, FontAwesomeIcon.Broom,
+                tooltip: "Delete all entries that were marked as invalid for some reason, as well as all entries that have a duplicate "
+                  + "(with the same content id and timestamp).\nUsually there are none.\nUse at your own risk, no backup is made."))
         {
             _plugin.FishRecorder.RemoveDuplicates();
             _plugin.FishRecorder.RemoveInvalid();
         }
 
-        ImUtf8.HoverTooltip("Delete all entries that were marked as invalid for some reason,\n"u8
-          + "as well as all entries that have a duplicate (with the same content id and timestamp).\n"u8
-          + "Usually, there should be none such entries.\n"u8
-          + "Use at your own risk, no backup will be created automatically."u8);
-
-        ImGui.SameLine();
-        try
+        NextButton();
+        if (M3Widgets.Button("##copy", "Copy", M3ButtonStyle.Tonal, FontAwesomeIcon.Copy,
+                tooltip: "Copy all fish records to your clipboard, to share them with other people. This may be a lot."))
         {
-            if (ImUtf8.Button("Copy to Clipboard"u8))
+            try
             {
                 ImGui.SetClipboardText(_plugin.FishRecorder.ExportBase64());
+                M3Snackbar.Show($"Copied {total} fish records.");
             }
-
-            ImUtf8.HoverTooltip("Export all fish records to your clipboard, to share them with other people. This may be a lot"u8);
-        }
-        catch
-        {
-            // ignored
+            catch (Exception e)
+            {
+                GatherBuddy.Log.Warning($"Could not copy fish records:\n{e}");
+            }
         }
 
-        ImGui.SameLine();
-        try
+        NextButton();
+        if (M3Widgets.Button("##import", "Import", M3ButtonStyle.Tonal, FontAwesomeIcon.Paste,
+                tooltip: "Import fish records shared with you from your clipboard. Duplicates are skipped."))
         {
-            if (ImUtf8.Button("Import from Clipboard"u8))
+            try
             {
                 _plugin.FishRecorder.ImportBase64(ImGui.GetClipboardText());
             }
-
-            ImUtf8.HoverTooltip("Import a set of fish records shared with you from your clipboard. Should automatically skip duplicates."u8);
-        }
-        catch
-        {
-            // ignored
-        }
-
-        ImGui.SameLine();
-        try
-        {
-            if (ImUtf8.Button("Export JSON"u8))
+            catch (Exception e)
             {
-                ImGui.OpenPopup(RecordTable.FileNamePopup);
-                WriteJson = true;
+                GatherBuddy.Log.Warning($"Could not import fish records:\n{e}");
             }
-
-            ImUtf8.HoverTooltip("Given a path, export all records as a single JSON file."u8);
-        }
-        catch
-        {
-            // ignored
         }
 
-        ImGui.SameLine();
-        try
+        NextButton();
+        if (M3Widgets.Button("##json", "Export JSON", M3ButtonStyle.Text, FontAwesomeIcon.FileExport,
+                tooltip: "Export all records to a single JSON file."))
         {
-            if (ImUtf8.Button("Export TSV"u8))
+            WriteJson = true;
+            WriteTsv = false;
+            M3Dialog.Open(RecordExportDialogId);
+        }
+
+        NextButton();
+        if (M3Widgets.Button("##tsv", "Export TSV", M3ButtonStyle.Text, FontAwesomeIcon.FileCsv,
+                tooltip: "Export all records to a single tab-separated file."))
+        {
+            WriteTsv = true;
+            WriteJson = false;
+            M3Dialog.Open(RecordExportDialogId);
+        }
+
+        NextButton();
+        if (M3Widgets.Button("##caught", "Copy caught fish", M3ButtonStyle.Text, FontAwesomeIcon.ClipboardList,
+                tooltip: "Copy the item IDs of every fish in your fish log that you have caught, as JSON."))
+        {
+            try
             {
-                ImGui.OpenPopup(RecordTable.FileNamePopup);
-                WriteTsv = true;
-            }
+                var logFishCount = 0;
+                var ids = new List<uint>();
+                foreach (var fish in GatherBuddy.GameData.Fishes.Values)
+                {
+                    if (!fish.InLog || fish.FishingSpots.Count == 0)
+                    {
+                        continue;
+                    }
 
-            ImUtf8.HoverTooltip("Given a path, export all records as a single TSV file."u8);
-        }
-        catch
-        {
-            // ignored
-        }
+                    logFishCount++;
+                    if (GatherBuddy.FishLog.IsUnlocked(fish))
+                    {
+                        ids.Add(fish.ItemId);
+                    }
+                }
 
-        ImGui.SameLine();
-        try
-        {
-            if (ImUtf8.Button("Copy Caught Fish JSON"u8))
-            {
-                var logFish = GatherBuddy.GameData.Fishes.Values.Where(f => f.InLog && f.FishingSpots.Count > 0).ToArray();
-                var ids = logFish.Where(f => GatherBuddy.FishLog.IsUnlocked(f)).Select(f => f.ItemId).ToArray();
-                Communicator.PrintClipboardMessage("List of ", $"{ids.Length}/{logFish.Length} caught fish ");
+                Communicator.PrintClipboardMessage("List of ", $"{ids.Count}/{logFishCount} caught fish ");
                 ImGui.SetClipboardText(JsonConvert.SerializeObject(ids, Formatting.Indented));
             }
-        }
-        catch
-        {
-            // ignored
+            catch (Exception e)
+            {
+                GatherBuddy.Log.Warning($"Could not copy the caught fish:\n{e}");
+            }
         }
 
-        var name = string.Empty;
-        if (!ImGuiUtil.OpenNameField(RecordTable.FileNamePopup, ref name) || name.Length <= 0)
+        DrawRecordExportDialog();
+    }
+
+    private void DrawRecordExportDialog()
+    {
+        using var dialog = M3Dialog.Begin(RecordExportDialogId, WriteTsv ? "Export fish records as TSV" : "Export fish records as JSON",
+            "The full path of the file to write. An existing file is overwritten.", FontAwesomeIcon.FileExport, 420f);
+        if (!dialog.IsOpen)
         {
             return;
         }
 
+        M3Widgets.TextField("##path", "File path", ref _recordExportPath, ImGui.GetContentRegionAvail().X, 512);
+        var pressed = M3Dialog.Actions(
+        [
+            new M3DialogAction("Cancel"),
+            new M3DialogAction("Export", M3ButtonStyle.Filled, FontAwesomeIcon.Save, _recordExportPath.Trim().Length > 0),
+        ]);
+        if (pressed != 1)
+        {
+            return;
+        }
+
+        var name = _recordExportPath.Trim();
         if (WriteJson)
         {
             try
             {
-                var file = new FileInfo(name);
-                _plugin.FishRecorder.ExportJson(file);
+                _plugin.FishRecorder.ExportJson(new FileInfo(name));
+                M3Snackbar.Show($"Exported {_recordTable.TotalItems} fish records.");
             }
-            catch
+            catch (Exception e)
             {
-                // ignored
+                GatherBuddy.Log.Warning($"Could not export the json file to {name}:\n{e}");
+                M3Snackbar.Show("Could not export the fish records.", severity: M3Severity.Error);
             }
-
-            WriteJson = false;
         }
-
-        if (WriteTsv)
+        else if (WriteTsv)
         {
             try
             {
-                var data = _recordTable.CreateTsv();
-                File.WriteAllText(name, data);
+                File.WriteAllText(name, _recordTable.CreateTsv());
                 GatherBuddy.Log.Information($"Exported {_recordTable.TotalItems} fish records to {name}.");
+                M3Snackbar.Show($"Exported {_recordTable.TotalItems} fish records.");
             }
             catch (Exception e)
             {
                 GatherBuddy.Log.Warning($"Could not export tsv file to {name}:\n{e}");
+                M3Snackbar.Show("Could not export the fish records.", severity: M3Severity.Error);
             }
-
-            WriteTsv = false;
         }
+
+        WriteJson = false;
+        WriteTsv = false;
     }
 }

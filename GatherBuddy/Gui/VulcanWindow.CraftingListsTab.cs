@@ -1,133 +1,52 @@
 ﻿using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Textures;
-using ElliLib;
+using Dalamud.Interface;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
     private const string CraftingListDragDropPayload = "GatherBuddyCraftingListDragDrop";
+    private const string DeleteListDialogId = "Delete crafting list###gbr_delete_crafting_list";
+    private const string ArtisanLoadedTooltip = "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.";
+    private const float CraftingListHoldSeconds = 0.6f;
     private int? _draggedCraftingListId = null;
-    private void DrawCraftingListsTab()
-    {
-        IDisposable tabItem;
-        bool tabOpen;
+    private int? _pendingDeleteListId;
+    private bool _openDeleteListDialog;
 
-        if (GatherBuddy.ControllerSupport != null && !_craftingListsRequestFocus)
-        {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Crafting Lists##craftingListsTab", 0, 9);
-            tabItem = handle;
-            tabOpen = handle;
-        }
-        else
-        {
-            ImRaii.IEndObject handle;
-            if (_craftingListsRequestFocus)
-            {
-                var dummy = true;
-                handle = ImRaii.TabItem("Crafting Lists##craftingListsTab", ref dummy, ImGuiTabItemFlags.SetSelected);
-            }
-            else
-            {
-                handle = ImRaii.TabItem("Crafting Lists##craftingListsTab");
-            }
-            tabItem = handle;
-            tabOpen = handle.Success;
-            if (tabOpen)
-            {
-                _craftingListsRequestFocus = false;
-            }
-        }
-
-        using (tabItem)
-        {
-            if (!tabOpen)
-            {
-                return;
-            }
-
-            DrawCraftingListsTabContent();
-        }
-    }
+    private void DrawCraftingListsPage()
+        => DrawCraftingListsTabContent();
 
     private void DrawCraftingListsTabContent()
     {
         if (_openCreateListPopup)
         {
-            ImGui.OpenPopup("CreateListPopup");
+            M3Dialog.Open(CreateListDialogId);
             _openCreateListPopup = false;
         }
+
         if (_openCreateFolderPopup)
         {
-            ImGui.OpenPopup("CreateFolderPopup");
+            M3Dialog.Open(CreateFolderDialogId);
             _openCreateFolderPopup = false;
+        }
+
+        if (_openDeleteListDialog)
+        {
+            M3Dialog.Open(DeleteListDialogId);
+            _openDeleteListDialog = false;
         }
 
         if (_editingList != null && _listEditor != null)
         {
-            if (_deferEditorDraw)
-            {
-                _deferEditorDraw = false;
-                ImGui.Text("Loading...");
-            }
-            else
-            {
-                var refreshedList = GatherBuddy.CraftingListManager.GetListByID(_editingList.ID);
-                if (refreshedList == null)
-                {
-                    _editingList = null;
-                    DisposeListEditor();
-                    DrawListManager();
-                }
-                else
-                {
-                    _editingList = refreshedList;
-
-                    if (ImGui.SmallButton("\u2190 Lists##backToLists"))
-                    {
-                        _editingList = null;
-                        DisposeListEditor();
-                        DrawListManager();
-                    }
-                    else
-                    {
-                        ImGui.Spacing();
-                        ImGui.TextColored(ImGuiColors.ParsedGold, _editingList.Name);
-                        if (_editingList.Ephemeral)
-                        {
-                            var ephemeral = _editingList.Ephemeral;
-                            if (ImGui.Checkbox("Ephemeral##listHeaderEphemeral", ref ephemeral))
-                            {
-                                _editingList.Ephemeral = ephemeral;
-                                GatherBuddy.CraftingListManager.SaveList(_editingList);
-                            }
-                            if (ImGui.IsItemHovered())
-                            {
-                                ImGui.SetTooltip("Automatically delete this list after crafting completes. Has no effect if stopped manually.");
-                            }
-                        }
-                        else
-                        {
-                            ImGui.TextColored(ImGuiColors.DalamudGrey3, "Crafting List");
-                        }
-                        ImGui.Separator();
-                        ImGui.Spacing();
-
-                        if (_listEditor != null)
-                        {
-                            _listEditor.Draw();
-                        }
-                    }
-                }
-            }
+            DrawOpenCraftingList();
         }
         else
         {
@@ -137,75 +56,170 @@ public partial class VulcanWindow
         DrawCreateListPopup();
         DrawCreateFolderPopup();
         DrawImportListPopup();
-        DrawTeamCraftImportWindow();
+        DrawDeleteListDialog();
+    }
+
+    private void DrawOpenCraftingList()
+    {
+        if (_deferEditorDraw)
+        {
+            _deferEditorDraw = false;
+            M3Text.Draw("Loading...", M3TextStyle.Muted);
+            return;
+        }
+
+        var refreshedList = GatherBuddy.CraftingListManager.GetListByID(_editingList!.ID);
+        if (refreshedList == null)
+        {
+            CloseCraftingList();
+            DrawListManager();
+            return;
+        }
+
+        _editingList = refreshedList;
+        if (DrawOpenListHeader(refreshedList))
+        {
+            CloseCraftingList();
+            DrawListManager();
+            return;
+        }
+
+        _listEditor?.Draw();
+    }
+
+    private void CloseCraftingList()
+    {
+        _editingList = null;
+        DisposeListEditor();
+    }
+
+    private static bool DrawOpenListHeader(CraftingListDefinition list)
+    {
+        var buttonSize = M3Widgets.IconButtonSize;
+        var top = ImGui.GetCursorPosY();
+        var back = M3Widgets.IconButton("##crafting_list_back", FontAwesomeIcon.ArrowLeft, "Back to your lists");
+
+        float titleHeight;
+        using (ImRaii.PushFont(M3.TitleLarge))
+        {
+            titleHeight = ImGui.CalcTextSize(list.Name).Y;
+        }
+
+        var recipeCount = list.Recipes.Count;
+        var location = string.IsNullOrEmpty(list.FolderPath) ? "Crafting list" : CraftingListManager.FormatFolderPath(list.FolderPath);
+        var subtitle = $"{location} · {recipeCount} {(recipeCount == 1 ? "recipe" : "recipes")}";
+        var blockHeight = titleHeight + ImGui.GetTextLineHeight();
+
+        ImGui.SameLine(0, M3.Space2);
+        ImGui.SetCursorPosY(top + MathF.Max(0f, (buttonSize - blockHeight) * 0.5f));
+        ImGui.BeginGroup();
+        using (ImRaii.PushFont(M3.TitleLarge))
+        {
+            ImGui.TextUnformatted(list.Name);
+        }
+
+        M3Text.Draw(subtitle, M3TextStyle.Muted);
+        ImGui.EndGroup();
+
+        if (list.Ephemeral)
+        {
+            ImGui.SameLine(0, M3.Space3);
+            ImGui.SetCursorPosY(top + MathF.Max(0f, (buttonSize - M3Widgets.ChipHeight) * 0.5f));
+            if (M3Widgets.Chip("##crafting_list_ephemeral", "Ephemeral", true, FontAwesomeIcon.HourglassHalf,
+                    "Automatically deleted after crafting completes. Has no effect if stopped manually.\nClick to keep this list."))
+            {
+                list.Ephemeral = false;
+                GatherBuddy.CraftingListManager.SaveList(list);
+                M3Snackbar.Show($"{list.Name} will be kept after crafting.");
+            }
+        }
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        return back;
     }
 
     private void DrawListManager()
     {
-        ImGui.TextColored(ImGuiColors.DalamudYellow, "Crafting Lists");
-        ImGui.Separator();
-        ImGui.Spacing();
+        DrawListManagerToolbar();
 
-        if (ImGui.Button("Create New List", VulcanUiScaling.Scaled(115f, 0f)))
+        var avail = ImGui.GetContentRegionAvail();
+        var leftWidth = Math.Clamp(avail.X * 0.3f, VulcanUiScaling.Scaled(220f), VulcanUiScaling.Scaled(340f));
+        leftWidth = MathF.Min(leftWidth, MathF.Max(1f, avail.X * 0.6f));
+
+        using (var left = M3Panel.Begin("##listSelectorPanel", new Vector2(leftWidth, avail.Y), fill: VulcanUiStyle.PanelBackground))
+        {
+            if (left)
+            {
+                DrawListSelectorPanel();
+            }
+        }
+
+        ImGui.SameLine();
+        using var right = ImRaii.Child("##listPreviewPanel", new Vector2(0f, avail.Y), false);
+        if (right)
+        {
+            DrawListPreviewPanel();
+        }
+    }
+
+    private void DrawListManagerToolbar()
+    {
+        const string newListLabel = "New list";
+        const string newFolderLabel = "New folder";
+        const string importLabel = "Import";
+        const string teamCraftLabel = "TeamCraft import";
+
+        var flow = new M3Flow();
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Plus, newListLabel));
+        if (M3Widgets.Button("##crafting_new_list", newListLabel, M3ButtonStyle.Filled, FontAwesomeIcon.Plus))
         {
             PrepareCreateListPopup();
-            ImGui.OpenPopup("CreateListPopup");
+            M3Dialog.Open(CreateListDialogId);
         }
-        ImGui.SameLine();
-        if (ImGui.Button("New Folder", VulcanUiScaling.Scaled(95f, 0f)))
+
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.FolderPlus, newFolderLabel));
+        if (M3Widgets.Button("##crafting_new_folder", newFolderLabel, M3ButtonStyle.Tonal, FontAwesomeIcon.FolderPlus))
         {
             QueueCreateFolderPopup();
         }
 
-        ImGui.SameLine();
-        if (ImGui.Button("TeamCraft Import", VulcanUiScaling.Scaled(115f, 0f)))
-        {
-            _showTeamCraftImport = true;
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("Import List", VulcanUiScaling.Scaled(95f, 0f)))
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.FileImport, importLabel));
+        if (M3Widgets.Button("##crafting_import", importLabel, M3ButtonStyle.Text, FontAwesomeIcon.FileImport,
+                tooltip: "Import a list someone exported from Vulcan"))
         {
             _importListText = string.Empty;
             _importListError = null;
-            ImGui.OpenPopup("ImportListPopup");
+            M3Dialog.Open(ImportListDialogId);
         }
 
-        ImGui.Spacing();
-
-        var avail = ImGui.GetContentRegionAvail();
-        var leftW = VulcanUiScaling.Scaled(220f);
-        var rightW = avail.X - leftW - ImGui.GetStyle().ItemSpacing.X;
-
-        using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.FileDownload, teamCraftLabel));
+        if (M3Widgets.Button("##crafting_teamcraft_import", teamCraftLabel, M3ButtonStyle.Text, FontAwesomeIcon.FileDownload,
+                tooltip: "Make a list from the 'Final Items' of a TeamCraft list"))
         {
-            ImGui.BeginChild("##listSelectorPanel", new Vector2(leftW, avail.Y), true);
-            DrawListSelectorPanel();
-            ImGui.EndChild();
+            OpenTeamCraftImport();
         }
 
-        ImGui.SameLine();
-
-        using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
-        {
-            ImGui.BeginChild("##listPreviewPanel", new Vector2(rightW, avail.Y), true);
-            DrawListPreviewPanel();
-            ImGui.EndChild();
-        }
-
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
     }
 
     private void DrawListSelectorPanel()
     {
-        var rootFolders = GatherBuddy.CraftingListManager.GetDirectSubfolderPaths();
-        var rootLists = GatherBuddy.CraftingListManager.GetListsInFolder();
+        var manager = GatherBuddy.CraftingListManager;
+        var rootFolders = manager.GetDirectSubfolderPaths();
+        var rootLists = manager.GetListsInFolder();
+        M3Widgets.SectionLabel($"Lists · {manager.Lists.Count}");
         if (rootFolders.Count == 0 && rootLists.Count == 0)
         {
-            ImGui.Spacing();
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "No lists yet.");
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "Click 'Create New List' to get started.");
+            M3Widgets.EmptyState("##crafting_lists_none", "No lists yet", "Use New list to make one, or import one.", FontAwesomeIcon.ClipboardList);
             return;
         }
+
+        using var scroll = ImRaii.Child("##listSelectorScroll", new Vector2(-1f, 0f), false);
+        if (!scroll)
+        {
+            return;
+        }
+
         foreach (var folderPath in rootFolders)
         {
             DrawListFolderNode(folderPath);
@@ -219,59 +233,24 @@ public partial class VulcanWindow
 
     private void DrawListFolderNode(string folderPath)
     {
-        var childFolders = GatherBuddy.CraftingListManager.GetDirectSubfolderPaths(folderPath);
-        var childLists = GatherBuddy.CraftingListManager.GetListsInFolder(folderPath);
+        var manager = GatherBuddy.CraftingListManager;
+        var childFolders = manager.GetDirectSubfolderPaths(folderPath);
+        var childLists = manager.GetListsInFolder(folderPath);
         var hasChildren = childFolders.Count > 0 || childLists.Count > 0;
+        var highlighted = _previewFolderPath != null && _previewFolderPath.Equals(folderPath, StringComparison.OrdinalIgnoreCase);
 
-        var flags = ImGuiTreeNodeFlags.SpanAvailWidth;
-        if (!hasChildren)
-        {
-            flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
-        }
-
-        var label = $"{CraftingListManager.GetFolderDisplayName(folderPath)}##folder_{folderPath}";
-        var open = ImGui.TreeNodeEx(label, flags);
+        using var node = M3Tree.Node($"##folder_{folderPath}", CraftingListManager.GetFolderDisplayName(folderPath), highlighted, !hasChildren,
+            FontAwesomeIcon.Folder, trailing: manager.CountListsInFolderTree(folderPath).ToString());
         if (ImGui.IsItemHovered())
         {
             _previewFolderPath = folderPath;
             _previewList = null;
         }
+
         DrawCraftingListFolderDropTarget(folderPath);
+        DrawFolderContextMenu(folderPath);
 
-        var isPopupOpen = GatherBuddy.ControllerSupport != null
-            ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"FolderContextMenu_{folderPath}", Dalamud.GamepadState)
-            : ImGui.BeginPopupContextItem($"FolderContextMenu_{folderPath}");
-        if (isPopupOpen)
-        {
-            if (ImGui.Selectable("Create New List Here"))
-            {
-                PrepareCreateListPopup(folderPath);
-                _openCreateListPopup = true;
-                GatherBuddy.Log.Debug($"[VulcanWindow] Queued Create List popup for folder '{folderPath}'");
-            }
-
-            if (ImGui.Selectable("Create Subfolder"))
-            {
-                QueueCreateFolderPopup(folderPath);
-            }
-
-            var canDelete = GatherBuddy.CraftingListManager.CanDeleteFolder(folderPath);
-            using (ImRaii.Disabled(!canDelete))
-            {
-                if (ImGui.Selectable("Delete Folder"))
-                {
-                    GatherBuddy.CraftingListManager.DeleteFolder(folderPath);
-                }
-            }
-            if (!canDelete && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            {
-                ImGui.SetTooltip("Move or delete the lists in this folder before removing it.");
-            }
-
-            ImGui.EndPopup();
-        }
-
-        if (!hasChildren || !open)
+        if (!node.Open)
         {
             return;
         }
@@ -285,19 +264,45 @@ public partial class VulcanWindow
         {
             DrawCraftingListSelectorEntry(list);
         }
+    }
 
-        ImGui.TreePop();
+    private void DrawFolderContextMenu(string folderPath)
+    {
+        using var menu = M3Menu.BeginContext($"FolderContextMenu_{folderPath}");
+        if (!menu.IsOpen)
+        {
+            return;
+        }
+
+        if (M3Menu.Item("##folder_new_list", "New list here", FontAwesomeIcon.Plus))
+        {
+            PrepareCreateListPopup(folderPath);
+            _openCreateListPopup = true;
+            GatherBuddy.Log.Debug($"[VulcanWindow] Queued Create List popup for folder '{folderPath}'");
+        }
+
+        if (M3Menu.Item("##folder_new_subfolder", "New subfolder", FontAwesomeIcon.FolderPlus))
+        {
+            QueueCreateFolderPopup(folderPath);
+        }
+
+        M3Menu.Divider();
+        var canDelete = GatherBuddy.CraftingListManager.CanDeleteFolder(folderPath);
+        if (M3Menu.Item("##folder_delete", "Delete folder", FontAwesomeIcon.Trash, canDelete,
+                tooltip: canDelete ? null : "Move or delete the lists in this folder before removing it."))
+        {
+            GatherBuddy.CraftingListManager.DeleteFolder(folderPath);
+        }
     }
 
     private void DrawCraftingListSelectorEntry(CraftingListDefinition list)
     {
         var isHighlighted = _previewList?.ID == list.ID;
-        if (isHighlighted)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Text, ImGuiColors.ParsedGold);
-        }
-
-        if (ImGui.Selectable($"{list.Name}##list_{list.ID}", isHighlighted))
+        using var node = M3Tree.Node($"##list_{list.ID}", list.Name, isHighlighted, true,
+            list.Ephemeral ? FontAwesomeIcon.HourglassHalf : FontAwesomeIcon.ClipboardList,
+            tooltip: list.Ephemeral ? $"{list.Name}\nEphemeral: deleted after crafting completes." : null,
+            trailing: list.Recipes.Count.ToString());
+        if (node.Clicked)
         {
             OpenCraftingList(list);
         }
@@ -305,99 +310,159 @@ public partial class VulcanWindow
         DrawCraftingListDragDropSource(list);
         DrawCraftingListEntryDropTarget(list);
 
-        if (isHighlighted)
-        {
-            ImGui.PopStyleColor();
-        }
-
         if (ImGui.IsItemHovered())
         {
             _previewList = list;
             _previewFolderPath = null;
         }
 
-        var isPopupOpen = GatherBuddy.ControllerSupport != null
-            ? GatherBuddy.ControllerSupport.ContextMenu.BeginPopupContextItemWithGamepad($"ListContextMenu_{list.ID}", Dalamud.GamepadState)
-            : ImGui.BeginPopupContextItem($"ListContextMenu_{list.ID}");
+        DrawListContextMenu(list);
+    }
 
-        if (!isPopupOpen)
+    private void DrawListContextMenu(CraftingListDefinition list)
+    {
+        using var menu = M3Menu.BeginContext($"ListContextMenu_{list.ID}");
+        if (!menu.IsOpen)
         {
             return;
         }
 
-        if (ImGui.Selectable("Edit"))
+        if (M3Menu.Item("##list_edit", "Open", FontAwesomeIcon.Pen))
         {
             OpenCraftingList(list);
         }
 
         var artisanLoaded = IPCSubscriber.IsReady("Artisan");
-        using (ImRaii.Disabled(artisanLoaded))
+        if (M3Menu.Item("##list_start", "Start crafting", FontAwesomeIcon.Play, !artisanLoaded, tooltip: artisanLoaded ? ArtisanLoadedTooltip : null))
         {
-            if (ImGui.Selectable("Start"))
-            {
-                StartCraftingList(list);
-            }
-        }
-        if (artisanLoaded && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.");
+            StartCraftingList(list);
         }
 
-        if (ImGui.BeginMenu("Move to Folder"))
+        var picked = false;
+        using (var move = M3Menu.BeginSub("##list_move", "Move to folder", FontAwesomeIcon.FolderOpen))
         {
-            var isRoot = string.IsNullOrEmpty(list.FolderPath);
-            if (ImGui.MenuItem("Root", string.Empty, isRoot) && !isRoot)
+            if (move.IsOpen)
             {
-                GatherBuddy.CraftingListManager.MoveListToFolder(list, null);
-            }
-
-            foreach (var folderPath in GatherBuddy.CraftingListManager.GetAllFolderPaths())
-            {
-                var isCurrentFolder = list.FolderPath.Equals(folderPath, StringComparison.OrdinalIgnoreCase);
-                if (ImGui.MenuItem(CraftingListManager.FormatFolderPath(folderPath), string.Empty, isCurrentFolder) && !isCurrentFolder)
+                var isRoot = string.IsNullOrEmpty(list.FolderPath);
+                if (M3Menu.Item("##move_root", "No folder", selected: isRoot))
                 {
-                    GatherBuddy.CraftingListManager.MoveListToFolder(list, folderPath);
+                    picked = true;
+                    if (!isRoot)
+                    {
+                        GatherBuddy.CraftingListManager.MoveListToFolder(list, null);
+                    }
+                }
+
+                foreach (var folderPath in GatherBuddy.CraftingListManager.GetAllFolderPaths())
+                {
+                    var isCurrentFolder = list.FolderPath.Equals(folderPath, StringComparison.OrdinalIgnoreCase);
+                    if (M3Menu.Item($"##move_{folderPath}", CraftingListManager.FormatFolderPath(folderPath), selected: isCurrentFolder))
+                    {
+                        picked = true;
+                        if (!isCurrentFolder)
+                        {
+                            GatherBuddy.CraftingListManager.MoveListToFolder(list, folderPath);
+                        }
+                    }
                 }
             }
-            ImGui.EndMenu();
         }
 
-        if (ImGui.Selectable("Export to Clipboard"))
+        if (picked)
         {
-            var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
-            if (exported != null)
-            {
-                ImGui.SetClipboardText(exported);
-                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
-            }
+            M3Menu.Close();
         }
 
-        if (ImGui.Selectable("Export to TeamCraft"))
+        if (M3Menu.Item("##list_export", "Copy export string", FontAwesomeIcon.Copy))
         {
-            var (exported, error) = GatherBuddy.CraftingListManager.ExportListToTeamCraft(list.ID);
-            if (exported != null)
-            {
-                ImGui.SetClipboardText(exported);
-                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to TeamCraft and copied the link to the clipboard");
-            }
-            else if (!string.IsNullOrEmpty(error))
-            {
-                GatherBuddy.Log.Warning($"[VulcanWindow] Failed to export '{list.Name}' to TeamCraft: {error}");
-            }
+            CopyListExport(list);
         }
 
-        ImGui.Separator();
-        if (ImGui.Selectable("Delete"))
+        if (M3Menu.Item("##list_export_teamcraft", "Copy TeamCraft link", FontAwesomeIcon.Link))
         {
-            if (_previewList?.ID == list.ID)
-            {
-                _previewList = null;
-            }
-
-            GatherBuddy.CraftingListManager.DeleteList(list.ID);
+            CopyTeamCraftLink(list);
         }
 
-        ImGui.EndPopup();
+        M3Menu.Divider();
+        if (M3Menu.Item("##list_delete", "Delete...", FontAwesomeIcon.Trash))
+        {
+            _pendingDeleteListId = list.ID;
+            _openDeleteListDialog = true;
+        }
+    }
+
+    internal static void CopyListExport(CraftingListDefinition list)
+    {
+        var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
+        if (exported == null)
+        {
+            M3Snackbar.Show($"Couldn't export {list.Name}.", severity: M3Severity.Error);
+            return;
+        }
+
+        ImGui.SetClipboardText(exported);
+        GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+        M3Snackbar.Show($"Copied the export string for {list.Name}.", severity: M3Severity.Success);
+    }
+
+    internal static void CopyTeamCraftLink(CraftingListDefinition list)
+    {
+        var (exported, error) = GatherBuddy.CraftingListManager.ExportListToTeamCraft(list.ID);
+        if (exported != null)
+        {
+            ImGui.SetClipboardText(exported);
+            GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to TeamCraft and copied the link to the clipboard");
+            M3Snackbar.Show($"Copied a TeamCraft link for {list.Name}.", severity: M3Severity.Success);
+        }
+        else if (!string.IsNullOrEmpty(error))
+        {
+            GatherBuddy.Log.Warning($"[VulcanWindow] Failed to export '{list.Name}' to TeamCraft: {error}");
+            M3Snackbar.Show($"Couldn't make a TeamCraft link: {error}", severity: M3Severity.Error);
+        }
+    }
+
+    private void DeleteCraftingList(CraftingListDefinition list)
+    {
+        if (_previewList?.ID == list.ID)
+        {
+            _previewList = null;
+        }
+
+        GatherBuddy.CraftingListManager.DeleteList(list.ID);
+        M3Snackbar.Show($"Deleted {list.Name}.");
+    }
+
+    private void DrawDeleteListDialog()
+    {
+        if (!ImGui.IsPopupOpen(DeleteListDialogId))
+        {
+            return;
+        }
+
+        var list = _pendingDeleteListId is int listId ? GatherBuddy.CraftingListManager.GetListByID(listId) : null;
+        var supporting = list == null
+            ? "This list no longer exists."
+            : $"{list.Name} and its {list.Recipes.Count} {(list.Recipes.Count == 1 ? "recipe" : "recipes")} will be removed. This can't be undone.";
+        using var dialog = M3Dialog.Begin(DeleteListDialogId, "Delete this list?", supporting, FontAwesomeIcon.Trash);
+        if (!dialog.IsOpen)
+        {
+            return;
+        }
+
+        var pressed = M3Dialog.Actions(
+        [
+            new M3DialogAction("Cancel"),
+            new M3DialogAction("Delete", M3ButtonStyle.Danger, FontAwesomeIcon.Trash, list != null),
+        ]);
+        if (pressed == 1 && list != null)
+        {
+            DeleteCraftingList(list);
+        }
+
+        if (pressed >= 0)
+        {
+            _pendingDeleteListId = null;
+        }
     }
 
     private void DrawListPreviewPanel()
@@ -407,12 +472,12 @@ public partial class VulcanWindow
             DrawFolderPreviewPanel(_previewFolderPath);
             return;
         }
+
         if (_previewList == null)
         {
-            var h = ImGui.GetContentRegionAvail().Y;
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + h / 2f - ImGui.GetTextLineHeight());
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "Hover over a list or folder to preview it.");
+            ImGui.Dummy(new Vector2(0f, M3.Space3 * 2f));
+            M3Widgets.EmptyState("##crafting_list_preview_none", "Nothing to preview",
+                "Hover a list or folder to preview it. Click a list to open it.", FontAwesomeIcon.MousePointer);
             return;
         }
 
@@ -422,174 +487,219 @@ public partial class VulcanWindow
             _previewList = null;
             return;
         }
+
         _previewList = list;
+        DrawListPreviewHeader(list);
+        DrawListPreviewActions(list);
+        M3Widgets.SectionLabel("Recipes");
 
-        ImGui.Spacing();
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-        ImGui.TextColored(ImGuiColors.ParsedGold, list.Name);
+        using var recipes = ImRaii.Child("##previewRecipeList", new Vector2(-1f, 0f), false);
+        if (recipes)
+        {
+            DrawPreviewRecipes(list);
+        }
+    }
 
+    private static void DrawListPreviewHeader(CraftingListDefinition list)
+    {
+        using (ImRaii.PushFont(M3.TitleLarge))
+        {
+            ImGui.TextWrapped(list.Name);
+        }
+
+        var recipeCount = list.Recipes.Count;
+        var details = $"{recipeCount} {(recipeCount == 1 ? "recipe" : "recipes")} · Created {list.CreatedAt.ToLocalTime():yyyy-MM-dd}";
         if (!string.IsNullOrEmpty(list.FolderPath))
         {
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-            ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Folder: {CraftingListManager.FormatFolderPath(list.FolderPath)}");
+            details = $"{CraftingListManager.FormatFolderPath(list.FolderPath)} · {details}";
+        }
+
+        M3Text.Draw(details, M3TextStyle.Muted, true);
+        if (list.Ephemeral)
+        {
+            M3Widgets.Pill("##preview_ephemeral", "Ephemeral", M3.Scheme.Tertiary, FontAwesomeIcon.HourglassHalf,
+                "Deleted automatically after crafting completes.");
         }
 
         if (!string.IsNullOrWhiteSpace(list.Description))
         {
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-            using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudGrey3))
-            {
-                ImGui.TextWrapped(list.Description);
-            }
+            ImGui.Dummy(new Vector2(0f, M3.Space1));
+            M3Text.Draw(list.Description, M3TextStyle.Muted, true);
         }
 
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-        var recipeWord = list.Recipes.Count == 1 ? "recipe" : "recipes";
-        ImGui.TextColored(ImGuiColors.DalamudGrey3,
-            $"{list.Recipes.Count} {recipeWord}  \u00b7  Created {list.CreatedAt.ToLocalTime():yyyy-MM-dd}");
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+    }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+    private void DrawListPreviewActions(CraftingListDefinition list)
+    {
+        const string openLabel = "Open";
+        const string startLabel = "Start crafting";
+        const string exportLabel = "Copy export";
+        const string deleteLabel = "Delete";
 
-        var style = ImGui.GetStyle();
-        var buttonH = VulcanUiScaling.Scaled(22f) * 2 + style.ItemSpacing.Y * 3 + VulcanUiScaling.Scaled(4f);
-        var listH = Math.Max(ImGui.GetContentRegionAvail().Y - buttonH, VulcanUiScaling.Scaled(40f));
-
-        ImGui.BeginChild("##previewRecipeList", new Vector2(-1, listH), false);
-
-        if (list.Recipes.Count == 0)
-        {
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "No recipes in this list.");
-        }
-        else
-        {
-            var iconSz = VulcanUiScaling.Scaled(22f, 22f);
-            var rowHeight = iconSz.Y + ImGui.GetStyle().ItemSpacing.Y;
-            var clipper = ImGui.ImGuiListClipper();
-            clipper.Begin(list.Recipes.Count, rowHeight);
-            while (clipper.Step())
-            {
-                for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                {
-                    var item = list.Recipes[i];
-                    var recipe = RecipeManager.GetRecipe(item.RecipeId);
-                    if (recipe == null)
-                    {
-                        ImGui.Dummy(new Vector2(0, rowHeight));
-                        continue;
-                    }
-
-                    var resultItem = recipe.Value.ItemResult.Value;
-                    var textY = ImGui.GetCursorPosY() + (iconSz.Y - ImGui.GetTextLineHeight()) / 2f;
-                    var icon = Icons.DefaultStorage.TextureProvider
-                        .GetFromGameIcon(new GameIconLookup(resultItem.Icon));
-                    if (icon.TryGetWrap(out var wrap, out _))
-                    {
-                        ImGui.Image(wrap.Handle, iconSz);
-                    }
-                    else
-                    {
-                        ImGui.Dummy(iconSz);
-                    }
-
-                    ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
-                    ImGui.SetCursorPosY(textY);
-                    ImGui.Text(resultItem.Name.ExtractText());
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosY(textY);
-                    ImGui.TextColored(ImGuiColors.DalamudGrey3,
-                        $"x{item.Quantity}  ({JobNames[recipe.Value.CraftType.RowId]})");
-                }
-            }
-            clipper.End();
-            clipper.Destroy();
-        }
-
-        ImGui.EndChild();
-
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        var halfW = (ImGui.GetContentRegionAvail().X - style.ItemSpacing.X) / 2f;
-        if (ImGui.Button("Edit List##previewEdit", new Vector2(halfW, VulcanUiScaling.Scaled(22f))))
+        var artisanLoaded = IPCSubscriber.IsReady("Artisan");
+        var flow = new M3Flow();
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Pen, openLabel));
+        if (M3Widgets.Button("##preview_edit", openLabel, M3ButtonStyle.Filled, FontAwesomeIcon.Pen))
         {
             OpenCraftingList(list);
         }
 
-        ImGui.SameLine();
-        if (IPCSubscriber.IsReady("Artisan"))
-        {
-            ImGuiUtil.DrawDisabledButton("Artisan Detected##previewStart", VulcanUiScaling.Scaled(-1f, 22f),
-                "Artisan plugin is loaded. Please unload Artisan to use Vulcan's crafting system.", true);
-        }
-        else if (ImGui.Button("Start Crafting##previewStart", VulcanUiScaling.Scaled(-1f, 22f)))
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Play, startLabel));
+        if (M3Widgets.Button("##preview_start", startLabel, M3ButtonStyle.Tonal, FontAwesomeIcon.Play, enabled: !artisanLoaded,
+                tooltip: artisanLoaded ? ArtisanLoadedTooltip : null))
         {
             StartCraftingList(list);
             MinimizeWindow();
         }
 
-        if (ImGui.Button("Export##previewExport", new Vector2(halfW, VulcanUiScaling.Scaled(22f))))
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Copy, exportLabel));
+        if (M3Widgets.Button("##preview_export", exportLabel, M3ButtonStyle.Text, FontAwesomeIcon.Copy,
+                tooltip: "Copy this list's export string to the clipboard"))
         {
-            var exported = GatherBuddy.CraftingListManager.ExportList(list.ID);
-            if (exported != null)
+            CopyListExport(list);
+        }
+
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Trash, deleteLabel));
+        if (M3Widgets.HoldButton("##preview_delete", deleteLabel, CraftingListHoldSeconds, M3ButtonStyle.Danger, FontAwesomeIcon.Trash,
+                tooltip: "Hold to delete this list"))
+        {
+            DeleteCraftingList(list);
+        }
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+    }
+
+    private static void DrawPreviewRecipes(CraftingListDefinition list)
+    {
+        if (list.Recipes.Count == 0)
+        {
+            M3Text.Draw("No recipes in this list yet.", M3TextStyle.Muted);
+            return;
+        }
+
+        var s = M3.Scheme;
+        var scale = M3.Scale;
+        var iconSize = VulcanUiScaling.Scaled(22f);
+        var rowHeight = iconSize + 6f * scale;
+        var lineHeight = ImGui.GetTextLineHeight();
+        var clipper = ImGui.ImGuiListClipper();
+        clipper.Begin(list.Recipes.Count);
+        while (clipper.Step())
+        {
+            for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
             {
-                ImGui.SetClipboardText(exported);
-                GatherBuddy.Log.Information($"[VulcanWindow] Exported list '{list.Name}' to clipboard");
+                var item = list.Recipes[i];
+                ImGui.Dummy(new Vector2(MathF.Max(1f, ImGui.GetContentRegionAvail().X), rowHeight));
+                var recipe = RecipeManager.GetRecipe(item.RecipeId);
+                if (recipe == null)
+                {
+                    continue;
+                }
+
+                var min = ImGui.GetItemRectMin();
+                var max = ImGui.GetItemRectMax();
+                var drawList = ImGui.GetWindowDrawList();
+                var resultItem = recipe.Value.ItemResult.Value;
+                var icon = M3ActionIcon.GameIcon(resultItem.Icon);
+                if (icon != null)
+                {
+                    M3Draw.Texture(drawList, icon, new Vector2(min.X, min.Y + (rowHeight - iconSize) * 0.5f), iconSize);
+                }
+
+                var job = JobNames[recipe.Value.CraftType.RowId];
+                var tagSize = M3Badge.Size(job);
+                var tagMin = new Vector2(max.X - tagSize.X - 4f * scale, min.Y + (rowHeight - tagSize.Y) * 0.5f);
+                M3Badge.Paint(drawList, tagMin, job, s.Secondary);
+
+                var textX = min.X + iconSize + 8f * scale;
+                var textY = min.Y + (rowHeight - lineHeight) * 0.5f;
+                var quantity = $" ×{item.Quantity}";
+                var room = MathF.Max(8f * scale, tagMin.X - 8f * scale - textX - ImGui.CalcTextSize(quantity).X);
+                var name = M3Navigation.Truncate(resultItem.Name.ExtractText(), room);
+                drawList.AddText(new Vector2(textX, textY), M3.U32(s.OnSurface), name);
+                drawList.AddText(new Vector2(textX + ImGui.CalcTextSize(name).X, textY), M3.U32(s.OnSurfaceVariant), quantity);
             }
         }
-        ImGui.SameLine();
-        using (ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.45f, 0.12f, 0.12f, 1f)))
+
+        clipper.End();
+        clipper.Destroy();
+    }
+
+    private static bool ContainsFolderPath(IReadOnlyList<string> folderPaths, string folderPath)
+    {
+        for (var i = 0; i < folderPaths.Count; i++)
         {
-            if (ImGui.Button("Delete##previewDelete", VulcanUiScaling.Scaled(-1f, 22f)))
+            if (folderPaths[i].Equals(folderPath, StringComparison.OrdinalIgnoreCase))
             {
-                GatherBuddy.CraftingListManager.DeleteList(list.ID);
-                _previewList = null;
+                return true;
             }
         }
+
+        return false;
     }
 
     private void DrawFolderPreviewPanel(string folderPath)
     {
-        if (!GatherBuddy.CraftingListManager.GetAllFolderPaths().Any(path => path.Equals(folderPath, StringComparison.OrdinalIgnoreCase)))
+        if (!ContainsFolderPath(GatherBuddy.CraftingListManager.GetAllFolderPaths(), folderPath))
         {
             _previewFolderPath = null;
             return;
         }
 
         var entries = GetFolderPreviewEntries(folderPath);
+        using (ImRaii.PushFont(M3.TitleLarge))
+        {
+            ImGui.TextWrapped(CraftingListManager.GetFolderDisplayName(folderPath));
+        }
 
-        ImGui.Spacing();
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-        ImGui.TextColored(ImGuiColors.ParsedGold, CraftingListManager.GetFolderDisplayName(folderPath));
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Folder: {CraftingListManager.FormatFolderPath(folderPath)}");
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + VulcanUiScaling.Scaled(8f));
-        var listWord = entries.Count == 1 ? "list" : "lists";
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, $"{entries.Count} {listWord} in this folder tree");
+        M3Text.Draw($"{CraftingListManager.FormatFolderPath(folderPath)} · {entries.Count} {(entries.Count == 1 ? "list" : "lists")} in this folder tree",
+            M3TextStyle.Muted, true);
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        const string newListLabel = "New list here";
+        const string newFolderLabel = "New subfolder";
+        var flow = new M3Flow();
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Plus, newListLabel));
+        if (M3Widgets.Button("##folder_preview_new_list", newListLabel, M3ButtonStyle.Tonal, FontAwesomeIcon.Plus))
+        {
+            PrepareCreateListPopup(folderPath);
+            _openCreateListPopup = true;
+        }
 
-        ImGui.BeginChild("##previewFolderList", new Vector2(-1, 0), false);
+        flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.FolderPlus, newFolderLabel));
+        if (M3Widgets.Button("##folder_preview_new_folder", newFolderLabel, M3ButtonStyle.Text, FontAwesomeIcon.FolderPlus))
+        {
+            QueueCreateFolderPopup(folderPath);
+        }
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        M3Widgets.SectionLabel("Lists");
+        using var child = ImRaii.Child("##previewFolderList", new Vector2(-1f, 0f), false);
+        if (!child)
+        {
+            return;
+        }
+
         if (entries.Count == 0)
         {
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "No lists in this folder.");
+            M3Text.Draw("No lists in this folder.", M3TextStyle.Muted);
+            return;
         }
-        else
+
+        foreach (var (label, list) in entries)
         {
-            foreach (var (label, list) in entries)
+            var recipes = list.Recipes.Count;
+            using var node = M3Tree.Node($"##folder_preview_{list.ID}", label, leaf: true, icon: FontAwesomeIcon.ClipboardList,
+                tooltip: "Click to open this list", trailing: $"{recipes} {(recipes == 1 ? "recipe" : "recipes")}");
+            if (node.Clicked)
             {
-                ImGui.TextColored(ImGuiColors.DalamudGrey3, label);
-                ImGui.SameLine();
-                ImGui.TextColored(ImGuiColors.DalamudGrey, $"· {list.Recipes.Count} {(list.Recipes.Count == 1 ? "recipe" : "recipes")}");
+                OpenCraftingList(list);
             }
         }
-        ImGui.EndChild();
     }
 
-    private List<(string Label, CraftingListDefinition List)> GetFolderPreviewEntries(string folderPath, string? labelPrefix = null)
+    private static List<(string Label, CraftingListDefinition List)> GetFolderPreviewEntries(string folderPath, string? labelPrefix = null)
     {
         var entries = new List<(string Label, CraftingListDefinition List)>();
         foreach (var list in GatherBuddy.CraftingListManager.GetListsInFolder(folderPath))
@@ -627,7 +737,7 @@ public partial class VulcanWindow
     private void DrawCraftingListEntryDropTarget(CraftingListDefinition targetList)
     {
         using var target = ImRaii.DragDropTarget();
-        if (!target.Success || !ImGuiUtil.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
+        if (!target.Success || !Ui.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
         {
             return;
         }
@@ -652,7 +762,7 @@ public partial class VulcanWindow
     private void DrawCraftingListFolderDropTarget(string folderPath)
     {
         using var target = ImRaii.DragDropTarget();
-        if (!target.Success || !ImGuiUtil.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
+        if (!target.Success || !Ui.IsDropping(CraftingListDragDropPayload) || _draggedCraftingListId is not int draggedListId)
         {
             return;
         }

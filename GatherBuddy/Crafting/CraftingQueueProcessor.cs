@@ -7,7 +7,6 @@ using GatherBuddy.Plugin;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.Crafting;
 
@@ -401,7 +400,7 @@ public class CraftingQueueProcessor
         var currentRequest = BuildRaphaelRequestForItem(recipeItem);
         if (currentRequest != null && !_enqueuedRaphaelRequests.ContainsKey(currentRequest.GetKey()))
         {
-            if (_enqueuedRaphaelRequests.Values.Any(r => r.RecipeId == currentRequest.RecipeId))
+            if (HasEnqueuedRaphaelRecipe(currentRequest.RecipeId))
             {
                 GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Enqueuing additional Raphael variant for recipe {currentRequest.RecipeId} (key: {currentRequest.GetKey()})");
             }
@@ -510,7 +509,7 @@ public class CraftingQueueProcessor
 
         if (!_enqueuedRaphaelRequests.ContainsKey(currentRequest.GetKey()))
         {
-            if (_enqueuedRaphaelRequests.Values.Any(r => r.RecipeId == currentRequest.RecipeId))
+            if (HasEnqueuedRaphaelRecipe(currentRequest.RecipeId))
             {
                 GatherBuddy.Log.Debug($@"[CraftingQueueProcessor] Raphael request changed before craft start for recipe {currentRequest.RecipeId}, enqueueing key {currentRequest.GetKey()}");
             }
@@ -966,7 +965,7 @@ public class CraftingQueueProcessor
         QueueCompleted?.Invoke();
     }
 
-    private string GetJobName(uint jobId)
+    private static string GetJobName(uint jobId)
     {
         return jobId switch
         {
@@ -1072,7 +1071,7 @@ public class CraftingQueueProcessor
     }
 
 
-    private bool NeedsRepair()
+    private static bool NeedsRepair()
     {
         if (!GatherBuddy.Config.VulcanRepairConfig.Enabled)
         {
@@ -1301,14 +1300,40 @@ public class CraftingQueueProcessor
         }
     }
 
+    private bool HasEnqueuedRaphaelRecipe(uint recipeId)
+    {
+        foreach (var request in _enqueuedRaphaelRequests.Values)
+        {
+            if (request.RecipeId == recipeId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void LogRetainerPlanDifferences(string label, Dictionary<uint, int> previousPlan, Dictionary<uint, int> refreshedPlan)
     {
-        var changes = previousPlan.Keys
-            .Union(refreshedPlan.Keys)
-            .Select(itemId => (ItemId: itemId, PreviousAmount: previousPlan.GetValueOrDefault(itemId), RefreshedAmount: refreshedPlan.GetValueOrDefault(itemId)))
-            .Where(change => change.PreviousAmount != change.RefreshedAmount)
-            .OrderBy(change => change.ItemId)
-            .ToList();
+        var changes = new List<(uint ItemId, int PreviousAmount, int RefreshedAmount)>();
+        foreach (var (itemId, previousAmount) in previousPlan)
+        {
+            var refreshedAmount = refreshedPlan.GetValueOrDefault(itemId);
+            if (previousAmount != refreshedAmount)
+            {
+                changes.Add((itemId, previousAmount, refreshedAmount));
+            }
+        }
+
+        foreach (var (itemId, refreshedAmount) in refreshedPlan)
+        {
+            if (refreshedAmount != 0 && !previousPlan.ContainsKey(itemId))
+            {
+                changes.Add((itemId, 0, refreshedAmount));
+            }
+        }
+
+        changes.Sort(static (lhs, rhs) => lhs.ItemId.CompareTo(rhs.ItemId));
 
         if (changes.Count == 0)
         {
@@ -1407,7 +1432,7 @@ public class CraftingQueueProcessor
         StateChanged?.Invoke(_currentState);
     }
 
-    private bool NeedsMateria()
+    private static bool NeedsMateria()
     {
         if (!GatherBuddy.Config.VulcanMateriaConfig.Enabled)
         {
@@ -1475,7 +1500,7 @@ public class CraftingQueueProcessor
         }
     }
 
-    private unsafe void CloseQuickSynthWindow()
+    private static unsafe void CloseQuickSynthWindow()
     {
         try
         {
@@ -1499,7 +1524,7 @@ public class CraftingQueueProcessor
         }
     }
 
-    private RepairNPCData? FindNearestRepairNPCInCurrentZone()
+    private static RepairNPCData? FindNearestRepairNPCInCurrentZone()
     {
         var currentTerritory = Dalamud.ClientState.TerritoryType;
         var playerPos = Dalamud.Objects.LocalPlayer?.Position;
@@ -1509,9 +1534,7 @@ public class CraftingQueueProcessor
             return null;
         }
 
-        var npcsInZone = RepairNPCHelper.RepairNPCs
-            .Where(npc => npc.TerritoryType == currentTerritory)
-            .ToList();
+        var npcsInZone = RepairNPCHelper.RepairNPCs.FindAll(npc => npc.TerritoryType == currentTerritory);
 
         if (npcsInZone.Count == 0)
         {
@@ -1519,9 +1542,17 @@ public class CraftingQueueProcessor
             return null;
         }
 
-        var nearest = npcsInZone
-            .OrderBy(npc => System.Numerics.Vector3.Distance(playerPos.Value, npc.Position))
-            .First();
+        var nearest = npcsInZone[0];
+        var nearestDistance = System.Numerics.Vector3.Distance(playerPos.Value, nearest.Position);
+        for (var i = 1; i < npcsInZone.Count; i++)
+        {
+            var distance = System.Numerics.Vector3.Distance(playerPos.Value, npcsInZone[i].Position);
+            if (distance < nearestDistance)
+            {
+                nearest = npcsInZone[i];
+                nearestDistance = distance;
+            }
+        }
 
         GatherBuddy.Log.Debug($"[CraftingQueueProcessor] Found nearest repair NPC in zone: {nearest.Name}");
         return nearest;

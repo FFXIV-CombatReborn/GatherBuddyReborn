@@ -25,4 +25,38 @@ public static unsafe class Player
 
     public static float AnimationLock => *(float*)((nint)ActionManager.Instance() + 8);
     public static bool IsAnimationLocked => AnimationLock > 0;
+
+    public static IStatus? FindStatus(uint statusId)
+    {
+        foreach (var status in Status)
+        {
+            if (status.StatusId == statusId)
+            {
+                return status;
+            }
+        }
+
+        return null;
+    }
+
+    public static bool HasStatus(uint statusId)
+        => FindStatus(statusId) != null;
+
+    public static bool HasAnyStatus(uint[]? statusIds)
+    {
+        if (statusIds == null)
+        {
+            return false;
+        }
+
+        foreach (var status in Status)
+        {
+            if (System.Array.IndexOf(statusIds, status.StatusId) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

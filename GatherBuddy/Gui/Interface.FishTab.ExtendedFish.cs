@@ -1,18 +1,20 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
-using ElliLib.Extensions;
-using ElliLib.Text;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Time;
+using GatherBuddy.Utility;
+using RebornMaterial;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -124,8 +126,8 @@ public partial class Interface
                 return [];
             }
 
-            return [.. fish.CurrentWeather.Select(w
-                => Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup((uint)w.Icon)))];
+            return Array.ConvertAll(fish.CurrentWeather, w
+                => Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup((uint)w.Icon)));
         }
 
         private static ISharedImmediateTexture[] SetTransition(Fish fish)
@@ -135,8 +137,8 @@ public partial class Interface
                 return [];
             }
 
-            return [.. fish.PreviousWeather.Select(w
-                => Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup((uint)w.Icon)))];
+            return Array.ConvertAll(fish.PreviousWeather, w
+                => Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup((uint)w.Icon)));
         }
 
         private static Predator[] SetPredators(Fish fish)
@@ -146,13 +148,13 @@ public partial class Interface
                 return [];
             }
 
-            return [.. fish.Predators.Select(p => new Predator
+            return Array.ConvertAll(fish.Predators, p => new Predator
             {
                 Fish = p.Item1,
                 Amount = p.Item2.ToString(),
                 Name = p.Item1.Name[GatherBuddy.Language],
                 Icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(p.Item1.ItemData.Icon)),
-            })];
+            });
         }
 
         private static BaitOrder[] SetBait(Fish fish)
@@ -205,9 +207,15 @@ public partial class Interface
                 return Icons.Snagging;
             }
 
-            return baitOrder.Any(bait => bait.Fish is Fish { Snagging: Enums.Snagging.Required })
-                ? Icons.Snagging
-                : null;
+            foreach (var bait in baitOrder)
+            {
+                if (bait.Fish is Fish { Snagging: Enums.Snagging.Required })
+                {
+                    return Icons.Snagging;
+                }
+            }
+
+            return null;
         }
 
         private static ISharedImmediateTexture? SetLure(Fish fish, IEnumerable<BaitOrder> baitOrder)
@@ -215,7 +223,14 @@ public partial class Interface
             var lure = fish.Lure;
             if (lure is Enums.Lure.None)
             {
-                lure = baitOrder.Select(b => b.Fish).OfType<Fish>().FirstOrDefault(f => f.Lure is not Enums.Lure.None)?.Lure ?? Enums.Lure.None;
+                foreach (var bait in baitOrder)
+                {
+                    if (bait.Fish is Fish { Lure: not Enums.Lure.None } lureFish)
+                    {
+                        lure = lureFish.Lure;
+                        break;
+                    }
+                }
             }
 
             return lure switch
@@ -241,7 +256,15 @@ public partial class Interface
                 }
             }
 
-            return fish.Predators.Any(p => CheckRestrictions(p.Item1));
+            foreach (var (predator, _) in fish.Predators)
+            {
+                if (CheckRestrictions(predator))
+                {
+                    return true;
+                }
+            }
+
+            return false;
 
             bool CheckRestrictions(Fish f)
             {
@@ -265,12 +288,12 @@ public partial class Interface
                         return true;
                     }
 
-                    if (f.CurrentWeather.Length > 0 && fish.CurrentWeather.Any(w => !f.CurrentWeather.Contains(w)))
+                    if (f.CurrentWeather.Length > 0 && HasWeatherOutside(fish.CurrentWeather, f.CurrentWeather))
                     {
                         return true;
                     }
 
-                    if (f.PreviousWeather.Length > 0 && fish.PreviousWeather.Any(w => !f.PreviousWeather.Contains(w)))
+                    if (f.PreviousWeather.Length > 0 && HasWeatherOutside(fish.PreviousWeather, f.PreviousWeather))
                     {
                         return true;
                     }
@@ -278,6 +301,34 @@ public partial class Interface
 
                 return false;
             }
+        }
+
+        private static bool HasWeatherOutside(Structs.Weather[] weathers, Structs.Weather[] allowed)
+        {
+            foreach (var weather in weathers)
+            {
+                if (Array.IndexOf(allowed, weather) < 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string JoinDistinctNames(List<FishingSpot> spots, Func<FishingSpot, string?> getName)
+        {
+            var names = new List<string>(spots.Count);
+            foreach (var spot in spots)
+            {
+                var name = getName(spot);
+                if (name != null && !names.Contains(name))
+                {
+                    names.Add(name);
+                }
+            }
+
+            return string.Join('\n', names);
         }
 
         private static string SetIntuition(Fish data)
@@ -307,20 +358,19 @@ public partial class Interface
         public void Update()
         {
             Icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(Data.ItemData.Icon));
-            Territories = string.Join('\n', Data.FishingSpots.Select(f => f.Territory.Name).Distinct());
+            Territories = JoinDistinctNames(Data.FishingSpots, static f => f.Territory.Name);
             if (!Territories.Contains('\n'))
             {
                 Territories = '\0' + Territories;
             }
 
-            SpotNames = string.Join('\n', Data.FishingSpots.Select(f => f.Name).Distinct());
+            SpotNames = JoinDistinctNames(Data.FishingSpots, static f => f.Name);
             if (!SpotNames.Contains('\n'))
             {
                 SpotNames = '\0' + SpotNames;
             }
 
-            Aetherytes = string.Join('\n',
-                Data.FishingSpots.Where(f => f.ClosestAetheryte != null).Select(f => f.ClosestAetheryte!.Name).Distinct());
+            Aetherytes = JoinDistinctNames(Data.FishingSpots, static f => f.ClosestAetheryte?.Name);
             if (!Aetherytes.Contains('\n'))
             {
                 Aetherytes = '\0' + Aetherytes;
@@ -372,22 +422,25 @@ public partial class Interface
         }
 
         private static void PrintName(ExtendedFish fish)
-            => ImUtf8.TextFramed(fish.Data.Name[GatherBuddy.Language], 0, default, 0, ImGui.GetColorU32(ImGuiCol.Text));
+        {
+            using var font = ImRaii.PushFont(M3.TitleMedium);
+            ImGui.TextUnformatted(fish.Data.Name[GatherBuddy.Language]);
+        }
 
         private static void PrintTime(ExtendedFish fish)
-            => ImUtf8.TextFramed(fish.Time, ColorId.HeaderEorzeaTime.Value());
+            => Ui.Framed(fish.Time, ColorId.HeaderEorzeaTime.Value());
 
         private static void PrintWeather(ExtendedFish fish, Vector2 weatherIconSize)
         {
             if (!fish.Data.FishRestrictions.HasFlag(FishRestrictions.Weather))
             {
-                ImUtf8.TextFramed("No Weather Restrictions"u8, ColorId.HeaderWeather.Value());
+                Ui.Framed("No weather restrictions", ColorId.HeaderWeather.Value());
                 return;
             }
 
             if (fish.WeatherIcons.Length == 0 && fish.TransitionIcons.Length == 0)
             {
-                ImUtf8.TextFramed("Unknown Weather Restrictions"u8, ColorId.HeaderWeather.Value());
+                Ui.Framed("Unknown weather restrictions", ColorId.HeaderWeather.Value());
                 return;
             }
 
@@ -458,7 +511,7 @@ public partial class Interface
         {
             if (fish.Bait.Length == 0)
             {
-                ImUtf8.TextFramed("Unknown Catch Method"u8, 0xFF0000A0);
+                Ui.Framed("Unknown catch method", M3.Scheme.ErrorContainer);
                 return;
             }
 
@@ -523,7 +576,7 @@ public partial class Interface
                         ImGui.Dummy(smallIconSize);
                     }
 
-                    ImUtf8.TextFramed(bait.Bite.Item1, bait.Bite.Item2, smallIconSize);
+                    Ui.Framed(bait.Bite.Item1, bait.Bite.Item2, smallIconSize);
                     style.Pop(2);
                 }
 
@@ -534,12 +587,12 @@ public partial class Interface
                 var printed = false;
                 if (bait.Fish is Fish f)
                 {
-                    var uptime = GatherBuddy.UptimeManager.NextUptime(f, territory, GatherBuddy.Time.ServerTime);
+                    var uptime = Plugin.UptimeManager.NextUptime(f, territory, GatherBuddy.Time.ServerTime);
                     if (uptime != TimeInterval.Always)
                     {
                         using var group = ImRaii.Group();
                         ImGui.SetCursorPosY(pos + offsetSmall);
-                        ImUtf8.Text(bait.Name);
+                        ImGui.TextUnformatted(bait.Name);
                         ImGui.SetCursorPosY(pos + smallIconSize.Y + offsetSmall);
                         DrawTimeInterval(uptime, false, false);
                         printed = true;
@@ -549,7 +602,7 @@ public partial class Interface
                 ImGui.SetCursorPosY(pos + offsetBig);
                 if (!printed)
                 {
-                    ImUtf8.Text(bait.Name);
+                    ImGui.TextUnformatted(bait.Name);
                 }
 
                 if (idx == fish.Bait.Length - 1)
@@ -559,7 +612,10 @@ public partial class Interface
 
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(pos + offsetBig);
-                ImUtf8.Text(" ? ");
+                var arrowSize = M3Draw.MeasureIcon(FontAwesomeIcon.ArrowRight);
+                var arrowAt = ImGui.GetCursorScreenPos() + new Vector2(0, (ImGui.GetTextLineHeight() - arrowSize.Y) * 0.5f);
+                ImGui.Dummy(new Vector2(arrowSize.X, ImGui.GetTextLineHeight()));
+                M3Draw.Icon(ImGui.GetWindowDrawList(), FontAwesomeIcon.ArrowRight, arrowAt, M3Text.ColorOf(M3TextStyle.Muted));
                 ImGui.SameLine();
             }
 
@@ -579,8 +635,8 @@ public partial class Interface
             foreach (var predator in fish.Predators)
             {
                 var pos = ImGui.GetCursorPosY();
-                using var group = ImUtf8.Group();
-                ImUtf8.TextFramed(predator.Amount, 0xFF0040C0, size);
+                using var group = ImRaii.Group();
+                Ui.Framed(predator.Amount, M3.Scheme.WarningContainer, size);
                 ImGui.SameLine();
                 if (predator.Icon.TryGetWrap(out var wrap, out _))
                 {
@@ -594,8 +650,8 @@ public partial class Interface
                 style.Push(ImGuiStyleVar.ItemSpacing, new Vector2(3 * ImGuiHelpers.GlobalScale, 0));
                 ImGui.SameLine();
                 ImGui.SetCursorPosY(pos + offset);
-                ImUtf8.Text(predator.Name);
-                var uptime = GatherBuddy.UptimeManager.NextUptime(predator.Fish, territory, GatherBuddy.Time.ServerTime);
+                ImGui.TextUnformatted(predator.Name);
+                var uptime = Plugin.UptimeManager.NextUptime(predator.Fish, territory, GatherBuddy.Time.ServerTime);
                 if (uptime != TimeInterval.Always)
                 {
                     style.Push(ImGuiStyleVar.ItemSpacing, new Vector2(10 * ImGuiHelpers.GlobalScale, 0));
@@ -614,39 +670,45 @@ public partial class Interface
                 return;
             }
 
-            ImUtf8.TextFramed(fish.Intuition, 0xFF802000);
+            Ui.Framed(fish.Intuition, M3.Scheme.InfoContainer);
         }
 
         private static void PrintFolklore(ExtendedFish fish)
         {
             if (fish.Data.Folklore.Length != 0)
             {
-                ImUtf8.TextFramed(fish.Data.Folklore, 0xFF802080);
+                Ui.Framed(fish.Data.Folklore, M3.Scheme.TertiaryContainer);
                 ImGui.SameLine();
             }
 
-            ImUtf8.TextFramed(fish.Patch, 0xFFC0C0C0, default, 0xFF000000);
+            Ui.Framed(fish.Patch, M3.Scheme.SurfaceContainerHighest);
         }
 
         private static void PrintPoints(ExtendedFish fish)
         {
             if (fish.Data.Points > 0)
             {
-                ImUtf8.TextFramed($"Worth {fish.Data.Points} Points", 0xFF006400);
+                Ui.Framed($"Worth {fish.Data.Points} points", M3.Scheme.SuccessContainer);
             }
         }
 
         public void SetTooltip(Territory territory, Vector2 iconSize, Vector2 smallIconSize, Vector2 weatherIconSize, bool printName,
             bool standAlone = true)
         {
-            using var tooltip = standAlone ? ImRaii.Tooltip() : ImRaii.IEndObject.Empty;
+            if (standAlone)
+            {
+                using var tooltip = ImRaii.Tooltip();
+                SetTooltip(territory, iconSize, smallIconSize, weatherIconSize, printName, false);
+                return;
+            }
+
             using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing * new Vector2(1f, 1.5f));
             if (printName)
             {
                 PrintName(this);
             }
 
-            ImUtf8.TextFramed($"Item ID: {Data.ItemId}", 0xFF808080);
+            Ui.Framed($"Item ID: {Data.ItemId}", M3.Scheme.SurfaceContainerHigh);
             PrintTime(this);
             PrintWeather(this, weatherIconSize);
             PrintBait(this, territory, iconSize, smallIconSize);

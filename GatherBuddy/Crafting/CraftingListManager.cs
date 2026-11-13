@@ -1,7 +1,6 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 namespace GatherBuddy.Crafting;
@@ -21,7 +20,7 @@ public class CraftingListManager
 
     public bool IsNameUnique(string name, int? excludeId = null)
     {
-        return !_lists.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (!excludeId.HasValue || x.ID != excludeId.Value));
+        return !_lists.Exists(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (!excludeId.HasValue || x.ID != excludeId.Value));
     }
     public CraftingListDefinition CreateNewList(string name, bool ephemeral = false, string? folderPath = null)
     {
@@ -44,7 +43,7 @@ public class CraftingListManager
 
         var rng = new Random();
         var proposedId = rng.Next(100, 50000);
-        while (_lists.Any(x => x.ID == proposedId))
+        while (_lists.Exists(x => x.ID == proposedId))
         {
             proposedId = rng.Next(100, 50000);
         }
@@ -65,12 +64,12 @@ public class CraftingListManager
 
     public CraftingListDefinition? GetListByID(int id)
     {
-        return _lists.FirstOrDefault(x => x.ID == id);
+        return _lists.Find(x => x.ID == id);
     }
 
     public CraftingListDefinition? GetListByName(string name)
     {
-        return _lists.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return _lists.Find(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
     }
 
     public bool DeleteList(int id)
@@ -107,15 +106,69 @@ public class CraftingListManager
         return false;
     }
 
-    public IReadOnlyList<CraftingListDefinition> GetListsInFolder(string? folderPath = null)
+    public List<CraftingListDefinition> GetListsInFolder(string? folderPath = null)
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
-        return _lists
-            .Where(list => list.FolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(list => list.Order < 0 ? int.MaxValue : list.Order)
-            .ThenBy(list => list.CreatedAt)
-            .ThenBy(list => list.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var lists = new List<CraftingListDefinition>();
+        foreach (var list in _lists)
+        {
+            if (list.FolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase))
+            {
+                lists.Add(list);
+            }
+        }
+
+        lists.Sort(CompareListOrder);
+        return lists;
+    }
+
+    private static int CompareListOrder(CraftingListDefinition lhs, CraftingListDefinition rhs)
+    {
+        var order = (lhs.Order < 0 ? int.MaxValue : lhs.Order).CompareTo(rhs.Order < 0 ? int.MaxValue : rhs.Order);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = lhs.CreatedAt.CompareTo(rhs.CreatedAt);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = StringComparer.OrdinalIgnoreCase.Compare(lhs.Name, rhs.Name);
+        return order != 0 ? order : lhs.ID.CompareTo(rhs.ID);
+    }
+
+    public int CountListsInFolderTree(string folderPath)
+    {
+        var normalizedFolderPath = NormalizeFolderPath(folderPath);
+        var count = 0;
+        foreach (var list in _lists)
+        {
+            var path = list.FolderPath;
+            if (path.StartsWith(normalizedFolderPath, StringComparison.OrdinalIgnoreCase)
+             && (path.Length == normalizedFolderPath.Length || path[normalizedFolderPath.Length] == '/'))
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    private static string[] SortedFolderPaths(ICollection<string> folders, Func<string, string> sortKey)
+    {
+        var paths = new string[folders.Count];
+        folders.CopyTo(paths, 0);
+        var keys = new string[paths.Length];
+        for (var i = 0; i < paths.Length; ++i)
+        {
+            keys[i] = sortKey(paths[i]);
+        }
+
+        Array.Sort(keys, paths, StringComparer.OrdinalIgnoreCase);
+        return paths;
     }
 
     public IReadOnlyList<string> GetDirectSubfolderPaths(string? parentFolderPath = null)
@@ -145,15 +198,11 @@ public class CraftingListManager
                 : folderPath);
         }
 
-        return folders
-            .OrderBy(GetFolderDisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return SortedFolderPaths(folders, GetFolderDisplayName);
     }
 
     public IReadOnlyList<string> GetAllFolderPaths()
-        => GetKnownFolderPaths()
-            .OrderBy(FormatFolderPath, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        => SortedFolderPaths(GetKnownFolderPaths(), FormatFolderPath);
 
     public bool IsFolderNameAvailable(string name, string? parentFolderPath = null)
     {
@@ -173,8 +222,15 @@ public class CraftingListManager
             ? trimmedName
             : $"{normalizedParent}/{trimmedName}";
 
-        return !GetDirectSubfolderPaths(normalizedParent).Any(folderPath => folderPath.Equals(newFolderPath, StringComparison.OrdinalIgnoreCase))
-            && !GetListsInFolder(normalizedParent).Any(list => list.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
+        foreach (var subfolderPath in GetDirectSubfolderPaths(normalizedParent))
+        {
+            if (subfolderPath.Equals(newFolderPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return !GetListsInFolder(normalizedParent).Exists(list => list.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
     }
 
     public bool CreateFolder(string name, string? parentFolderPath = null)
@@ -201,7 +257,7 @@ public class CraftingListManager
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
         return !string.IsNullOrEmpty(normalizedFolderPath)
-            && !_lists.Any(list => IsInFolderTree(list.FolderPath, normalizedFolderPath));
+            && !_lists.Exists(list => IsInFolderTree(list.FolderPath, normalizedFolderPath));
     }
 
     public bool DeleteFolder(string folderPath)
@@ -269,9 +325,7 @@ public class CraftingListManager
             EnsureFolderPath(normalizedFolderPath);
         }
 
-        var reorderedLists = GetListsInFolder(normalizedFolderPath)
-            .Where(entry => entry.ID != existing.ID)
-            .ToList();
+        var reorderedLists = GetListsInFolder(normalizedFolderPath).FindAll(entry => entry.ID != existing.ID);
         reorderedLists.Add(existing);
         existing.FolderPath = normalizedFolderPath;
         NormalizeFolderOrders(normalizedFolderPath, reorderedLists);
@@ -308,9 +362,7 @@ public class CraftingListManager
 
         var sourceFolderPath = NormalizeFolderPath(existing.FolderPath);
         var destinationFolderPath = NormalizeFolderPath(target.FolderPath);
-        var reorderedLists = GetListsInFolder(destinationFolderPath)
-            .Where(list => list.ID != existing.ID)
-            .ToList();
+        var reorderedLists = GetListsInFolder(destinationFolderPath).FindAll(list => list.ID != existing.ID);
         var targetIndex = reorderedLists.FindIndex(list => list.ID == target.ID);
         if (targetIndex < 0)
         {
@@ -335,11 +387,7 @@ public class CraftingListManager
     public static string NormalizeFolderPath(string? folderPath)
         => string.IsNullOrWhiteSpace(folderPath)
             ? string.Empty
-            : string.Join("/",
-                folderPath
-                    .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
-                    .Select(part => part.Trim())
-                    .Where(part => part.Length > 0));
+            : string.Join("/", folderPath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     public static string GetFolderDisplayName(string folderPath)
     {
@@ -433,9 +481,22 @@ public class CraftingListManager
                     needsSave = true;
                 }
             }
-            foreach (var folderLists in _lists.GroupBy(list => NormalizeFolderPath(list.FolderPath), StringComparer.OrdinalIgnoreCase))
+            var folderGroups = new Dictionary<string, List<CraftingListDefinition>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var craftingList in _lists)
             {
-                if (!folderLists.Any(list => list.Order < 0))
+                var listFolderPath = NormalizeFolderPath(craftingList.FolderPath);
+                if (!folderGroups.TryGetValue(listFolderPath, out var groupLists))
+                {
+                    groupLists = [];
+                    folderGroups.Add(listFolderPath, groupLists);
+                }
+
+                groupLists.Add(craftingList);
+            }
+
+            foreach (var folderLists in folderGroups.Values)
+            {
+                if (!folderLists.Exists(list => list.Order < 0))
                 {
                     continue;
                 }
@@ -511,18 +572,24 @@ public class CraftingListManager
     private int GetNextOrderForFolder(string? folderPath, int? excludeId = null)
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
-        return _lists
-            .Where(list => list.FolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase)
-                && (!excludeId.HasValue || list.ID != excludeId.Value))
-            .Select(list => list.Order)
-            .DefaultIfEmpty(-1)
-            .Max() + 1;
+        int? maxOrder = null;
+        foreach (var list in _lists)
+        {
+            if (list.FolderPath.Equals(normalizedFolderPath, StringComparison.OrdinalIgnoreCase)
+                && (!excludeId.HasValue || list.ID != excludeId.Value)
+                && (maxOrder == null || list.Order > maxOrder.Value))
+            {
+                maxOrder = list.Order;
+            }
+        }
+
+        return (maxOrder ?? -1) + 1;
     }
 
     private void NormalizeFolderOrders(string? folderPath, IReadOnlyList<CraftingListDefinition>? orderedLists = null)
     {
         var normalizedFolderPath = NormalizeFolderPath(folderPath);
-        var lists = orderedLists?.ToList() ?? [.. GetListsInFolder(normalizedFolderPath)];
+        var lists = orderedLists ?? GetListsInFolder(normalizedFolderPath);
         for (var i = 0; i < lists.Count; i++)
         {
             lists[i].Order = i;
@@ -620,7 +687,7 @@ public class CraftingListManager
             return (null, "The selected list has no TeamCraft-exportable recipes.");
         }
 
-        var payload = string.Join(";", orderedItemIds.Select(itemId => $"{itemId},null,{exportedItemQuantities[itemId]}"));
+        var payload = string.Join(";", orderedItemIds.ConvertAll(itemId => $"{itemId},null,{exportedItemQuantities[itemId]}"));
         var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
         GatherBuddy.Log.Information($"[CraftingListManager] Exported list '{list.Name}' to TeamCraft with {orderedItemIds.Count} item(s)");
         return ($"{baseUrl}{base64}", null);

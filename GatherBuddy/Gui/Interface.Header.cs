@@ -1,14 +1,14 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Textures;
-using ElliLib;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Plugin;
 using GatherBuddy.Time;
+using RebornMaterial;
 using System;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -25,7 +25,6 @@ public partial class Interface
         public ISharedImmediateTexture? LastWeatherIcon;
         public ISharedImmediateTexture? CurrentWeatherIcon;
         public ISharedImmediateTexture? NextWeatherIcon;
-        public Vector2 AlarmButtonSize = Vector2.Zero;
 
         private void NullWeather()
         {
@@ -79,124 +78,103 @@ public partial class Interface
 
     private readonly HeaderCache _headerCache = new();
 
-    private void DrawLastAlarm(bool which, string failureText)
+    protected override void DrawPageHeader()
     {
-        var alarmData = which ? _plugin.AlarmManager.LastItemAlarm : _plugin.AlarmManager.LastFishAlarm;
-        if (alarmData == null)
-        {
-            ImGuiUtil.DrawDisabledButton(failureText, _headerCache.AlarmButtonSize, "Click to /gather this alarm.", true);
-            return;
-        }
-
-        var (alarm, loc, time) = alarmData.Value;
-
-        var text = $"{(alarm.Name.Any() ? alarm.Name : alarm.Item.Name[GatherBuddy.Language])}###{(which ? "itemAlarm" : "fishAlarm")}";
-        var desc =
-            $"Click to /gather this alarm.\n{loc.Name} - {loc.ClosestAetheryte?.Name ?? "None"}\n{time.Start.LocalTime}\n{time.End.LocalTime}";
-
-        if (!ImGuiUtil.DrawDisabledButton(text, _headerCache.AlarmButtonSize, desc, false))
+        var page = CurrentPage;
+        if (Searching || page == null || page.Section is SectionSettings or SectionTools)
         {
             return;
         }
 
-        if (which)
-        {
-            _plugin.Executor.GatherItemByName("alarm");
-        }
-        else
-        {
-            _plugin.Executor.GatherFishByName("alarm");
-        }
+        _headerCache.UpdateCurrentTerritory();
+
+        var flow = new M3Flow(M3.Space2);
+        DrawEorzeaTime(ref flow);
+        DrawWeather(ref flow);
+        DrawAlarmControls(ref flow);
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
     }
 
-    private void DrawLastItemAlarm()
-        => DrawLastAlarm(true, "No Item Alarm Triggered");
-
-    private void DrawLastFishAlarm()
-        => DrawLastAlarm(false, "No Fish Alarm Triggered");
-
-
-    private void DrawAlarmRow()
+    private static Vector4 HeaderColor(ColorId color, Vector4 schemeColor)
     {
-        using var _ = ImRaii.Group();
-        ImGui.SameLine();
-        ConfigFunctions.DrawAlarmToggle();
-        ImGui.SameLine();
-        var vulcanButtonWidth = Math.Max(95f * Scale, ImGui.CalcTextSize("Vulcan").X + FramePadding.X * 5f);
-        var collectablesButtonWidth = Math.Max(125f * Scale, ImGui.CalcTextSize("Collectables").X + FramePadding.X * 5f);
-        {
-            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
-            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.30f, 0.25f, 0.46f, 1f));
-            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.36f, 0.30f, 0.55f, 1f));
-            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.24f, 0.20f, 0.38f, 1f));
-            if (ImGui.Button("Vulcan", new Vector2(vulcanButtonWidth, 0f)))
-            {
-                if (GatherBuddy.VulcanWindow == null)
-                {
-                    GatherBuddy.Log.Debug("[Interface] Vulcan header button clicked, but the Vulcan window was unavailable.");
-                }
-                else
-                {
-                    GatherBuddy.Log.Debug("[Interface] Restoring Vulcan from the main header button.");
-                    GatherBuddy.VulcanWindow.RestoreWindow();
-                }
-            }
-        }
-        ImGuiUtil.HoverTooltip("Open the Vulcan crafting window.");
-        ImGui.SameLine();
-        {
-            using var buttonAlign = ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0.5f, 0.5f));
-            using var buttonColor = ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.23f, 0.37f, 0.52f, 1f));
-            using var buttonHoveredColor = ImRaii.PushColor(ImGuiCol.ButtonHovered, new Vector4(0.28f, 0.45f, 0.63f, 1f));
-            using var buttonActiveColor = ImRaii.PushColor(ImGuiCol.ButtonActive, new Vector4(0.19f, 0.31f, 0.43f, 1f));
-            if (ImGui.Button("Collectables", new Vector2(collectablesButtonWidth, 0f)))
-            {
-                if (GatherBuddy.CollectablesWindow == null)
-                {
-                    GatherBuddy.Log.Debug("[Interface] Collectables header button clicked, but the collectables window was unavailable.");
-                }
-                else
-                {
-                    GatherBuddy.Log.Debug("[Interface] Opening collectables from the main header button.");
-                    GatherBuddy.CollectablesWindow.Open();
-                }
-            }
-        }
-        ImGuiUtil.HoverTooltip("Open the collectables window.");
-        ImGui.SameLine();
-        _headerCache.AlarmButtonSize = (ImGui.GetContentRegionAvail().X - ItemSpacing.X) / 2 * Vector2.UnitX;
-        DrawLastItemAlarm();
-        ImGui.SameLine();
-        DrawLastFishAlarm();
+        var value = color.Value();
+        return value == color.Data().DefaultColor ? schemeColor : ImGui.ColorConvertU32ToFloat4(value) with { W = 1f };
     }
 
-    private static void DrawEorzeaTime(string time)
+    private static void DrawEorzeaTime(ref M3Flow flow)
     {
-        ImGuiUtil.DrawTextButton(time, Vector2.UnitY * WeatherIconSize.Y, ColorId.HeaderEorzeaTime.Value());
-        if (ImGui.IsItemHovered())
+        var now = GatherBuddy.Time.ServerTime;
+        var nextHourS = (now.SyncToEorzeaHour().AddEorzeaHours(1) - now) / RealTime.MillisecondsPerSecond;
+        var nextHourM = nextHourS / RealTime.SecondsPerMinute;
+        nextHourS -= nextHourM * RealTime.SecondsPerMinute;
+
+        var time = $"ET {GatherBuddy.Time.EorzeaHourOfDay:D2}:{GatherBuddy.Time.EorzeaMinuteOfHour:D2}";
+        flow.Next(M3Widgets.PillSize(time, FontAwesomeIcon.Clock).X);
+        M3Widgets.Pill("##gbr_eorzea_time", time, HeaderColor(ColorId.HeaderEorzeaTime, M3.Scheme.Primary), FontAwesomeIcon.Clock);
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
         {
-            using var tt = ImRaii.Tooltip();
-            ImGui.TextUnformatted("If this does not correspond to your in-game Eorzea Time, verify that your windows system time is accurate.");
-            ImGui.TextUnformatted($"Next Aldenard Ocean Routes:");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow)}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow.AddHours(2))}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Aldenard, TimeStamp.UtcNow.AddHours(4))}");
-            ImGui.TextUnformatted($"Next Othard Ocean Routes:");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow)}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow.AddHours(2))}");
-            ImGui.BulletText($"{OceanUptime.NextOceanRoute(OceanArea.Othard, TimeStamp.UtcNow.AddHours(4))}");
+            M3Tooltip.Show(OceanRoutesTooltip());
+        }
+
+        var nextHour = $"{nextHourM:D2}:{nextHourS:D2} to next hour";
+        flow.Next(M3Widgets.PillSize(nextHour, FontAwesomeIcon.HourglassHalf).X);
+        M3Widgets.Pill("##gbr_next_hour", nextHour, HeaderColor(ColorId.HeaderNextHour, M3.Scheme.Secondary), FontAwesomeIcon.HourglassHalf,
+            "Real time until the next Eorzea hour.");
+    }
+
+    private static string OceanRoutesTooltip()
+    {
+        var now = TimeStamp.UtcNow;
+        return "If this doesn't match your in-game Eorzea time, check that your Windows clock is accurate.\n \n"
+          + "Next Aldenard ocean routes:\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Aldenard, now)}\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Aldenard, now.AddHours(2))}\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Aldenard, now.AddHours(4))}\n"
+          + "Next Othard ocean routes:\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Othard, now)}\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Othard, now.AddHours(2))}\n"
+          + $"• {OceanUptime.NextOceanRoute(OceanArea.Othard, now.AddHours(4))}";
+    }
+
+    private void DrawWeather(ref M3Flow flow)
+    {
+        var now = GatherBuddy.Time.ServerTime;
+        var nextWeatherS = (now.SyncToEorzeaWeather().AddEorzeaHours(8) - now) / RealTime.MillisecondsPerSecond;
+        var nextWeatherM = nextWeatherS / RealTime.SecondsPerMinute;
+        nextWeatherS -= nextWeatherM * RealTime.SecondsPerMinute;
+
+        var label = $"{nextWeatherM:D2}:{nextWeatherS:D2} to next weather";
+        var pill = M3Widgets.PillSize(label, FontAwesomeIcon.CloudSun);
+        var icon = new Vector2(pill.Y);
+        var gap = 2f * M3.Scale;
+        var hasIcons = _headerCache.CurrentWeather.Id != 0;
+        var width = pill.X + (hasIcons ? (icon.X + gap) * 3f : 0f);
+
+        flow.Next(width);
+        using var group = ImRaii.Group();
+        if (hasIcons)
+        {
+            DrawWeatherIcon(_headerCache.LastWeather, _headerCache.LastWeatherIcon, icon, _headerCache.LastWeatherTint, "Last weather");
+            ImGui.SameLine(0f, gap);
+            DrawWeatherIcon(_headerCache.CurrentWeather, _headerCache.CurrentWeatherIcon, icon, Vector4.One, "Current weather");
+            ImGui.SameLine(0f, gap);
+        }
+
+        M3Widgets.Pill("##gbr_next_weather", label, HeaderColor(ColorId.HeaderWeather, M3.Scheme.Tertiary), FontAwesomeIcon.CloudSun,
+            "Real time until the weather changes.");
+        if (hasIcons)
+        {
+            ImGui.SameLine(0f, gap);
+            DrawWeatherIcon(_headerCache.NextWeather, _headerCache.NextWeatherIcon, icon, Vector4.One, "Next weather");
         }
     }
 
-    private static void DrawNextEorzeaHour(string hour, Vector2 size)
-        => ImGuiUtil.DrawTextButton(hour, size, ColorId.HeaderNextHour.Value());
-
-    private static void DrawIconTint(Structs.Weather weather, ISharedImmediateTexture? icon, Vector2 size, Vector4 tint)
+    private static void DrawWeatherIcon(Structs.Weather weather, ISharedImmediateTexture? icon, Vector2 size, Vector4 tint, string when)
     {
         if (icon != null && icon.TryGetWrap(out var wrap, out _))
         {
             ImGui.Image(wrap.Handle, size, Vector2.Zero, Vector2.One, tint);
-            ImGuiUtil.HoverTooltip($"{weather.Name} ({weather.Id})");
+            M3Tooltip.Hovered($"{when}: {weather.Name} ({weather.Id})");
         }
         else
         {
@@ -204,52 +182,65 @@ public partial class Interface
         }
     }
 
-    private static void DrawIcon(Structs.Weather weather, ISharedImmediateTexture? wrap, Vector2 size)
-        => DrawIconTint(weather, wrap, size, Vector4.One);
-
-    private void DrawNextWeather(string nextWeather)
+    private void DrawAlarmControls(ref M3Flow flow)
     {
-        using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
-        DrawIconTint(_headerCache.LastWeather, _headerCache.LastWeatherIcon, WeatherIconSize, _headerCache.LastWeatherTint);
-        ImGui.SameLine();
-        DrawIcon(_headerCache.CurrentWeather, _headerCache.CurrentWeatherIcon, WeatherIconSize);
-        style.Pop();
-        ImGui.SameLine();
-        ImGuiUtil.DrawTextButton(nextWeather, Vector2.UnitY * WeatherIconSize.Y, ColorId.HeaderWeather.Value());
-        ImGui.SameLine();
-        DrawIcon(_headerCache.NextWeather, _headerCache.NextWeatherIcon, WeatherIconSize);
+        var s = M3.Scheme;
+        var enabled = GatherBuddy.Config.AlarmsEnabled;
+        var alarmsLabel = enabled ? "Alarms on" : "Alarms off";
+        var alarmsIcon = enabled ? FontAwesomeIcon.Bell : FontAwesomeIcon.BellSlash;
+        flow.Next(M3Widgets.PillSize(alarmsLabel, alarmsIcon).X);
+        if (M3Widgets.Pill("##gbr_alarms_toggle", alarmsLabel, enabled ? s.Primary : s.Outline, alarmsIcon,
+                enabled ? "Alarms are on. Click to turn them all off." : "Alarms are off. Click to turn them all on.", true))
+        {
+            if (enabled)
+            {
+                _plugin.AlarmManager.Disable();
+            }
+            else
+            {
+                _plugin.AlarmManager.Enable();
+            }
+        }
+
+        DrawLastAlarm(ref flow, true);
+        DrawLastAlarm(ref flow, false);
     }
 
-    private void DrawTimeRow()
+    private static void DrawLastAlarm(ref M3Flow flow, bool item)
     {
-        var now = GatherBuddy.Time.ServerTime;
-        var nextHourS = (now.SyncToEorzeaHour().AddEorzeaHours(1) - GatherBuddy.Time.ServerTime) / RealTime.MillisecondsPerSecond;
-        var nextHourM = nextHourS / RealTime.SecondsPerMinute;
+        var s = M3.Scheme;
+        var alarmData = item ? _plugin.AlarmManager.LastItemAlarm : _plugin.AlarmManager.LastFishAlarm;
+        var icon = item ? FontAwesomeIcon.Seedling : FontAwesomeIcon.Fish;
+        var id = item ? "##gbr_last_item_alarm" : "##gbr_last_fish_alarm";
 
-        var nextWeatherS = (now.SyncToEorzeaWeather().AddEorzeaHours(8) - GatherBuddy.Time.ServerTime) / RealTime.MillisecondsPerSecond;
-        var nextWeatherM = nextWeatherS / RealTime.SecondsPerMinute;
+        if (alarmData == null)
+        {
+            var empty = item ? "No item alarm yet" : "No fish alarm yet";
+            flow.Next(M3Widgets.PillSize(empty, icon).X);
+            M3Widgets.Pill(id, empty, s.Outline, icon,
+                item ? "The last item alarm that went off shows here. Click it to /gather that item."
+                     : "The last fish alarm that went off shows here. Click it to /gather that fish.");
+            return;
+        }
 
-        nextHourS -= nextHourM * RealTime.SecondsPerMinute;
-        nextWeatherS -= nextWeatherM * RealTime.SecondsPerMinute;
+        var (alarm, loc, time) = alarmData.Value;
+        var name = alarm.Name.Length != 0 ? alarm.Name : alarm.Item.Name[GatherBuddy.Language];
+        var label = M3Navigation.Truncate(name, 200f * M3.Scale);
+        var tooltip = $"Click to /gather this alarm.\n{name}\n{loc.Name} - {loc.ClosestAetheryte?.Name ?? "None"}\n{time.Start.LocalTime}\n{time.End.LocalTime}";
 
-        var nextWeatherString = $"  {nextWeatherM:D2}:{nextWeatherS:D2} Min.  ";
-        var width = -(ImGui.CalcTextSize(nextWeatherString).X
-          + (WeatherIconSize.X + ItemSpacing.X + FramePadding.X) * 3);
+        flow.Next(M3Widgets.PillSize(label, icon).X);
+        if (!M3Widgets.Pill(id, label, item ? s.Secondary : s.Tertiary, icon, tooltip, true))
+        {
+            return;
+        }
 
-        _headerCache.UpdateCurrentTerritory();
-        using var _ = ImRaii.Group();
-        DrawEorzeaTime($"ET {GatherBuddy.Time.EorzeaHourOfDay:D2}:{GatherBuddy.Time.EorzeaMinuteOfHour:D2}");
-        ImGui.SameLine();
-        DrawNextEorzeaHour($"{nextHourM:D2}:{nextHourS:D2} Min to next hour.", new Vector2(width, WeatherIconSize.Y));
-        ImGui.SameLine();
-        DrawNextWeather(nextWeatherString);
-    }
-
-    private void DrawHeader()
-    {
-        DrawAlarmRow();
-        ImGui.Dummy(HorizontalSpace);
-        DrawTimeRow();
-        ImGui.Dummy(HorizontalSpace);
+        if (item)
+        {
+            _plugin.Executor.GatherItemByName("alarm");
+        }
+        else
+        {
+            _plugin.Executor.GatherFishByName("alarm");
+        }
     }
 }

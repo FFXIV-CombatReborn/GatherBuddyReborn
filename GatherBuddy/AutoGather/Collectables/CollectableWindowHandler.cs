@@ -7,7 +7,7 @@ namespace GatherBuddy.AutoGather.Collectables;
 
 public unsafe class CollectableWindowHandler
 {
-    public unsafe bool IsReady => Automation.GenericHelpers.TryGetAddonByName<AtkUnitBase>("CollectablesShop", out var addon) &&
+    public static unsafe bool IsReady => Automation.GenericHelpers.TryGetAddonByName<AtkUnitBase>("CollectablesShop", out var addon) &&
                                   Automation.GenericHelpers.IsAddonReady(addon);
 
     public unsafe void SelectJob(uint id)

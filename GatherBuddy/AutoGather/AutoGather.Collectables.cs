@@ -5,7 +5,6 @@ using GatherBuddy.AutoGather.Extensions;
 using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
 using System;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace GatherBuddy.AutoGather
@@ -14,7 +13,7 @@ namespace GatherBuddy.AutoGather
     {
         private CollectableRotation? CurrentCollectableRotation;
 
-        private unsafe bool HasCollectables()
+        private static unsafe bool HasCollectables()
         {
             if (!GatherBuddy.Config.CollectableConfig.AutoTurnInCollectables
              || !CollectableTurnInRequirements.IsAvailable)
@@ -45,22 +44,13 @@ namespace GatherBuddy.AutoGather
             return true;
         }
 
-        private unsafe partial class CollectableRotation
+        private partial class CollectableRotation(ConfigPreset config, Gatherable item, uint quantity, bool useRetainerInventory)
         {
-            public CollectableRotation(ConfigPreset config, Gatherable item, uint quantity, bool useRetainerInventory)
-            {
-                this.config = config;
-                shouldUseFullRotation = Player.Object?.CurrentGp >= config.CollectableActionsMinGP;
-                this.item = item;
-                this.quantity = quantity;
-                this.useRetainerInventory = useRetainerInventory;
-            }
-
-            private readonly bool shouldUseFullRotation = false;
-            private readonly ConfigPreset config;
-            private readonly Gatherable item;
-            private readonly uint quantity;
-            private readonly bool useRetainerInventory;
+            private readonly bool shouldUseFullRotation = Player.Object?.CurrentGp >= config.CollectableActionsMinGP;
+            private readonly ConfigPreset config = config;
+            private readonly Gatherable item = item;
+            private readonly uint quantity = quantity;
+            private readonly bool useRetainerInventory = useRetainerInventory;
 
             [GeneratedRegex(@"\d+")]
             private static partial Regex NumberRegex();
@@ -75,7 +65,7 @@ namespace GatherBuddy.AutoGather
                     throw new NoGatherableItemsInNodeException();
                 }
 
-                var regex = NumberRegex();
+                _ = NumberRegex();
                 var collectability = masterpieceReader.CollectabilityCurrent;
                 var currentIntegrity = masterpieceReader.IntegrityCurrent;
                 var maxIntegrity = masterpieceReader.IntegrityMax;
@@ -120,7 +110,7 @@ namespace GatherBuddy.AutoGather
                     return Actions.Meticulous;
                 }
 
-                if (Player.Status.Any(s => s.StatusId == 3911 /*Collector's High Standard*/) && ShouldUseBrazen(player))
+                if (Player.HasStatus(3911 /*Collector's High Standard*/) && ShouldUseBrazen(player))
                 {
                     return Actions.Brazen;
                 }
@@ -137,7 +127,7 @@ namespace GatherBuddy.AutoGather
                 }
 
                 //Fallback path if some actions are disabled.
-                if (Player.Status.Any(s => s.StatusId == 2418 /*Collector's Standard*/) && ShouldUseBrazen(player))
+                if (Player.HasStatus(2418 /*Collector's Standard*/) && ShouldUseBrazen(player))
                 {
                     return Actions.Brazen;
                 }
@@ -179,8 +169,20 @@ namespace GatherBuddy.AutoGather
                 }
 
                 // For minScore, pick the lowest non-zero threshold
-                int[] thresholds = { masterpieceReader.LowThreshold, masterpieceReader.MidThreshold, masterpieceReader.HighThreshold };
-                minScore = thresholds.Where(t => t > 0).DefaultIfEmpty(1).Min();
+                int[] thresholds = [masterpieceReader.LowThreshold, masterpieceReader.MidThreshold, masterpieceReader.HighThreshold];
+                minScore = 0;
+                foreach (var threshold in thresholds)
+                {
+                    if (threshold > 0 && (minScore == 0 || threshold < minScore))
+                    {
+                        minScore = threshold;
+                    }
+                }
+
+                if (minScore == 0)
+                {
+                    minScore = 1;
+                }
 
                 // For custom deliveries and quest items, we always want max collectability
                 if (item.GatheringData.Unknown3 is 3 or 4 or 6)
@@ -301,7 +303,7 @@ namespace GatherBuddy.AutoGather
                     return false;
                 }
 
-                if (Player.Status.Any(s => s.StatusId == Actions.Scrutiny.EffectId))
+                if (Player.HasStatus(Actions.Scrutiny.EffectId))
                 {
                     return false;
                 }
@@ -342,7 +344,7 @@ namespace GatherBuddy.AutoGather
                     return false;
                 }
 
-                if (Player.Status.Any(s => s.StatusId == Actions.SolidAge.EffectId))
+                if (Player.HasStatus(Actions.SolidAge.EffectId))
                 {
                     return false;
                 }

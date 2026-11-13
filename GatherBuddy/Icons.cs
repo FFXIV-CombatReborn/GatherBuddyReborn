@@ -1,9 +1,18 @@
 using Dalamud.Interface.Textures;
+using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Plugin.Services;
-using ElliLib.Classes;
 using GatherBuddy.Enums;
+using System.Diagnostics.CodeAnalysis;
 
 namespace GatherBuddy;
+
+public sealed class TextureCache(ITextureProvider textureProvider)
+{
+    public readonly ITextureProvider TextureProvider = textureProvider;
+
+    public bool TryLoadIcon(uint iconId, [NotNullWhen(true)] out IDalamudTextureWrap? wrap)
+        => TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).TryGetWrap(out wrap, out _);
+}
 
 public static class Icons
 {
@@ -34,9 +43,9 @@ public static class Icons
     public static ISharedImmediateTexture UnknownSpeed = null!;
 
 
-    public static void Init(IDataManager dataManager, ITextureProvider textures)
+    public static void Init(ITextureProvider textures)
     {
-        DefaultStorage = new TextureCache(dataManager, textures);
+        DefaultStorage = new TextureCache(textures);
         HookSet = textures.GetFromGameIcon(1103);
         PrecisionHookSet = textures.GetFromGameIcon(1116);
         PowerfulHookSet = textures.GetFromGameIcon(1115);

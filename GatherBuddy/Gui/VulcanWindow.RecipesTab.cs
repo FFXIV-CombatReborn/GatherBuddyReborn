@@ -1,11 +1,10 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -53,12 +52,10 @@ public partial class VulcanWindow
     private static int _contextMenuAddQuantity = 1;
     private static string _contextMenuNewListName = string.Empty;
     private static bool _contextMenuNewListEphemeral = false;
-    private static string? _contextMenuLastAddedList = null;
-    private static DateTime _contextMenuLastAddedAt;
     private static string _bulkAddFilteredListSearch = string.Empty;
     private static int _filteredUncraftedRecipeCount = 0;
-    private static readonly uint[] CraftTypeToClassJobId = { 8, 9, 10, 11, 12, 13, 14, 15 };
-    private static readonly string[] JobNames = { "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL" };
+    private static readonly uint[] CraftTypeToClassJobId = [8, 9, 10, 11, 12, 13, 14, 15];
+    private static readonly string[] JobNames = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
     private static Vector2 _recipesTooltipWindowMin;
     private static Vector2 _recipesTooltipWindowMax;
     private static DateTime _lastTooltipAnchorFailureLog = DateTime.MinValue;
@@ -95,29 +92,57 @@ public partial class VulcanWindow
             return;
         }
 
-        var filtered = _extendedRecipeList.Where(PassesFilters).ToList();
-
-        filtered = _sortColumn switch
+        var filtered = _extendedRecipeList.FindAll(PassesFilters);
+        var descending = _sortDirection != SortDirection.Ascending;
+        switch (_sortColumn)
         {
-            SortColumn.Name => _sortDirection == SortDirection.Ascending
-                ? [.. filtered.OrderBy(r => r.Name)]
-                : [.. filtered.OrderByDescending(r => r.Name)],
-            SortColumn.Job => _sortDirection == SortDirection.Ascending
-                ? [.. filtered.OrderBy(r => r.JobId)]
-                : [.. filtered.OrderByDescending(r => r.JobId)],
-            SortColumn.Level => _sortDirection == SortDirection.Ascending
-                ? [.. filtered.OrderBy(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level)]
-                : [.. filtered.OrderByDescending(r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level)],
-            SortColumn.Crafted => _sortDirection == SortDirection.Ascending
-                ? [.. filtered.OrderBy(r => r.IsCrafted)]
-                : [.. filtered.OrderByDescending(r => r.IsCrafted)],
-            _ => filtered
-        };
+            case SortColumn.Name:
+                StableSortRecipes(filtered, static r => r.Name, descending);
+                break;
+            case SortColumn.Job:
+                StableSortRecipes(filtered, static r => r.JobId, descending);
+                break;
+            case SortColumn.Level:
+                StableSortRecipes(filtered, static r => _filterByEquipLevel ? r.ItemEquipLevel : r.Level, descending);
+                break;
+            case SortColumn.Crafted:
+                StableSortRecipes(filtered, static r => r.IsCrafted, descending);
+                break;
+        }
+
+        var uncraftedCount = 0;
+        foreach (var recipe in filtered)
+        {
+            if (!recipe.IsCrafted)
+            {
+                uncraftedCount++;
+            }
+        }
 
         _filteredRecipes = filtered;
-        _filteredUncraftedRecipeCount = _filteredRecipes.Count(r => !r.IsCrafted);
+        _filteredUncraftedRecipeCount = uncraftedCount;
         _filtersDirty = false;
         GatherBuddy.Log.Debug($"[VulcanWindow] Filtered to {_filteredRecipes.Count} recipes");
+    }
+
+    private static void StableSortRecipes<TKey>(List<ExtendedRecipe> recipes, Func<ExtendedRecipe, TKey> keySelector, bool descending)
+    {
+        var keyedRecipes = new List<(ExtendedRecipe Recipe, TKey Key, int Index)>(recipes.Count);
+        for (var i = 0; i < recipes.Count; i++)
+        {
+            keyedRecipes.Add((recipes[i], keySelector(recipes[i]), i));
+        }
+
+        var comparer = Comparer<TKey>.Default;
+        keyedRecipes.Sort((lhs, rhs) =>
+        {
+            var order = descending ? comparer.Compare(rhs.Key, lhs.Key) : comparer.Compare(lhs.Key, rhs.Key);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        for (var i = 0; i < keyedRecipes.Count; i++)
+        {
+            recipes[i] = keyedRecipes[i].Recipe;
+        }
     }
 
     private static bool EnsureRecipeVisibleInBrowser(ExtendedRecipe recipe)
@@ -392,50 +417,9 @@ public partial class VulcanWindow
         return true;
     }
 
-    private void DrawRecipesTab()
+    private void DrawRecipesPage()
     {
-        IDisposable tabItem;
-        bool tabOpen;
-
-        if (GatherBuddy.ControllerSupport != null && !_recipesTabRequestFocus)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Recipes##recipesTab", 1, 9);
-            tabItem = handle;
-            tabOpen = handle;
-        }
-        else
-        {
-            ImRaii.IEndObject handle;
-            if (_recipesTabRequestFocus)
-            {
-                unsafe
-                {
-                    var labelBytes = System.Text.Encoding.UTF8.GetBytes("Recipes##recipesTab\0");
-                    fixed (byte* ptr = labelBytes)
-                    {
-                        handle = ImRaii.TabItem(ptr, ImGuiTabItemFlags.SetSelected);
-                    }
-                }
-            }
-            else
-            {
-                handle = ImRaii.TabItem("Recipes##recipesTab");
-            }
-            tabItem = handle;
-            tabOpen = handle.Success;
-            if (tabOpen)
-            {
-                _recipesTabRequestFocus = false;
-            }
-        }
-
-        using (tabItem)
-        {
-            if (!tabOpen)
-            {
-                return;
-            }
-
             if (GatherBuddy.Config.ShowRecipeBrowserTooltips)
             {
                 CaptureRecipesTooltipWindowBounds();
@@ -450,7 +434,7 @@ public partial class VulcanWindow
             {
                 var targetRecipeId = _pendingRecipeId.Value;
                 _pendingRecipeId = null;
-                var target = _extendedRecipeList.FirstOrDefault(r => r.Recipe.RowId == targetRecipeId);
+                var target = _extendedRecipeList.Find(r => r.Recipe.RowId == targetRecipeId);
                 if (target != null)
                 {
                     var revealed = EnsureRecipeVisibleInBrowser(target);
@@ -477,32 +461,31 @@ public partial class VulcanWindow
 
             UpdateFilteredList();
 
-            ImGui.Spacing();
             var avail = ImGui.GetContentRegionAvail();
-
-            using (var color = ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+            using (var panel = M3Panel.Begin("##FilterPanel", new Vector2(VulcanUiScaling.Scaled(230f), avail.Y), true, VulcanUiStyle.PanelBackground))
             {
-                ImGui.BeginChild("##FilterPanel", new Vector2(VulcanUiScaling.Scaled(180f), avail.Y), true);
-                DrawFilterPanel();
-                ImGui.EndChild();
+                if (panel)
+                {
+                    DrawFilterPanel();
+                }
             }
 
-            ImGui.SameLine();
-
-            using (var color = ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+            ImGui.SameLine(0, M3.Space2);
+            using (var panel = M3Panel.Begin("##ResultsList", new Vector2(avail.X * 0.38f, avail.Y), false, VulcanUiStyle.PanelBackground))
             {
-                ImGui.BeginChild("##ResultsList", new Vector2(avail.X * 0.40f, avail.Y), true);
-                DrawResultsList();
-                ImGui.EndChild();
+                if (panel)
+                {
+                    DrawResultsList();
+                }
             }
 
-            ImGui.SameLine();
-
-            using (var color = ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
+            ImGui.SameLine(0, M3.Space2);
+            using (var panel = M3Panel.Begin("##DetailsPanel", new Vector2(0, avail.Y), false))
             {
-                ImGui.BeginChild("##DetailsPanel", new Vector2(0, avail.Y), true);
-                DrawDetailsPanel();
-                ImGui.EndChild();
+                if (panel)
+                {
+                    DrawDetailsPanel();
+                }
             }
         }
     }

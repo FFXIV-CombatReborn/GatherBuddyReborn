@@ -3,7 +3,6 @@ using GatherBuddy.Helpers;
 using GatherBuddy.Plugin;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 
 namespace GatherBuddy.Vulcan.Vendors;
@@ -75,13 +74,13 @@ public sealed partial class VendorBuyListManager : IDisposable
         GatherBuddy.VendorPurchaseManager.PurchaseFinished += OnPurchaseFinished;
     }
 
-    public IReadOnlyList<VendorBuyListDefinition> Lists
+    public static IReadOnlyList<VendorBuyListDefinition> Lists
         => GatherBuddy.Config.VendorBuyLists;
 
-    public VendorBuyListDefinition? ActiveList
+    public static VendorBuyListDefinition? ActiveList
         => GetActiveList();
 
-    public IReadOnlyList<VendorBuyListEntry> Entries
+    public static IReadOnlyList<VendorBuyListEntry> Entries
         => ActiveList?.Entries ?? (IReadOnlyList<VendorBuyListEntry>)[];
 
     public bool IsRunning
@@ -96,7 +95,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     public Guid? RunningListId
         => _runningListId;
 
-    public string ActiveListName
+    public static string ActiveListName
         => ActiveList?.Name ?? DefaultVendorBuyListName;
 
     public string StatusText
@@ -157,10 +156,10 @@ public sealed partial class VendorBuyListManager : IDisposable
         Communicator.PrintError("[GatherBuddyReborn] Timed out leaving the previous vendor interaction.");
     }
 
-    public void OpenWindow()
+    public static void OpenWindow()
         => GatherBuddy.VendorBuyListWindow?.Open();
 
-    public bool CanAddSupportedItem(uint itemId)
+    public static bool CanAddSupportedItem(uint itemId)
     {
         EnsureVendorCachesAvailable();
         return VendorShopResolver.IsInitialized
@@ -200,7 +199,7 @@ public sealed partial class VendorBuyListManager : IDisposable
             return false;
         }
 
-        if (!GatherBuddy.Config.VendorBuyLists.Any(list => list.Id == listId))
+        if (GetList(listId) == null)
         {
             return false;
         }
@@ -302,7 +301,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     }
 
     public bool TrySetTarget(Guid listId, uint itemId, uint targetQuantity, bool selectList = false, bool openWindow = true, bool announce = false)
-        => TrySetTargets(listId, new[] { new VendorTargetRequest(itemId, targetQuantity) }, selectList, openWindow, announce) > 0;
+        => TrySetTargets(listId, [new VendorTargetRequest(itemId, targetQuantity)], selectList, openWindow, announce) > 0;
 
     public int TrySetTargets(Guid listId, IReadOnlyList<VendorTargetRequest> requests, bool selectList = false, bool openWindow = true,
         bool announce = false)
@@ -382,7 +381,7 @@ public sealed partial class VendorBuyListManager : IDisposable
             return false;
         }
 
-        var selectedVendor = liveEntry.Npcs.FirstOrDefault(npc => VendorPreferenceHelper.MatchesVendor(npc, vendor));
+        var selectedVendor = liveEntry.Npcs.Find(npc => VendorPreferenceHelper.MatchesVendor(npc, vendor));
         if (selectedVendor == null)
         {
             GatherBuddy.Log.Debug($"[VendorBuyListManager] Could not find vendor {vendor.NpcId}/{vendor.MenuShopType}/{vendor.ShopId}/{vendor.SourceShopId}:{vendor.ShopItemIndex} for {entry.ItemName} while updating the vendor.");
@@ -556,10 +555,10 @@ public sealed partial class VendorBuyListManager : IDisposable
         }
     }
 
-    public int GetPendingEntryCount()
+    public static int GetPendingEntryCount()
         => GetPendingEntryCount(ActiveList);
 
-    public uint GetRemainingQuantity(VendorBuyListEntry entry)
+    public static uint GetRemainingQuantity(VendorBuyListEntry entry)
     {
         if (!entry.Enabled)
         {
@@ -572,7 +571,7 @@ public sealed partial class VendorBuyListManager : IDisposable
             : 0;
     }
 
-    public bool TryResolveLiveEntry(VendorBuyListEntry entry, out VendorShopEntry? liveEntry, out VendorNpc? vendor, out VendorNpcLocation? location)
+    public static bool TryResolveLiveEntry(VendorBuyListEntry entry, out VendorShopEntry? liveEntry, out VendorNpc? vendor, out VendorNpcLocation? location)
     {
         liveEntry = null;
         vendor = null;
@@ -583,31 +582,28 @@ public sealed partial class VendorBuyListManager : IDisposable
             return false;
         }
 
-        liveEntry = candidates.FirstOrDefault(candidate => candidate.Npcs.Any(npc =>
+        liveEntry = candidates.Find(candidate => candidate.Npcs.Exists(npc =>
                 MatchesVendor(entry, npc)))
-            ?? candidates.FirstOrDefault(candidate => candidate.Npcs.Any(npc =>
+            ?? candidates.Find(candidate => candidate.Npcs.Exists(npc =>
                 MatchesVendor(entry, npc, false)))
-            ?? candidates.FirstOrDefault(candidate => candidate.Npcs.Any(npc => VendorPurchaseManager.IsPurchaseSupported(candidate, npc)))
+            ?? candidates.Find(candidate => candidate.Npcs.Exists(npc => VendorPurchaseManager.IsPurchaseSupported(candidate, npc)))
             ?? candidates[0];
 
         var resolvedLiveEntry = liveEntry;
         var supportedVendors = VendorDevExclusions.GetSelectableNpcs(
-                resolvedLiveEntry.Npcs
-                    .Where(npc => VendorPurchaseManager.IsPurchaseSupported(resolvedLiveEntry, npc))
-                    .ToList(),
+                GetPurchasableNpcs(resolvedLiveEntry),
                 "resolving a vendor buy list entry",
-                entry.ItemName)
-            .ToList();
+                entry.ItemName);
         if (supportedVendors.Count == 0)
         {
             return false;
         }
 
-        vendor = supportedVendors.FirstOrDefault(npc => MatchesVendor(entry, npc))
-            ?? supportedVendors.FirstOrDefault(npc => MatchesVendor(entry, npc, false))
+        vendor = FindMatchingVendor(supportedVendors, entry, true)
+            ?? FindMatchingVendor(supportedVendors, entry, false)
             ?? VendorPreferenceHelper.ResolvePreferredNpc(resolvedLiveEntry, supportedVendors)
             ?? VendorPreferenceHelper.ResolvePreferredNpc(entry, supportedVendors)
-            ?? supportedVendors.FirstOrDefault();
+            ?? supportedVendors[0];
         if (vendor == null)
         {
             return false;
@@ -618,7 +614,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         {
             var fallbackVendor = VendorPreferenceHelper.ResolvePreferredNpc(resolvedLiveEntry, supportedVendors)
                 ?? VendorPreferenceHelper.ResolvePreferredNpc(entry, supportedVendors)
-                ?? supportedVendors.FirstOrDefault();
+                ?? supportedVendors[0];
             if (fallbackVendor != null)
             {
                 vendor = fallbackVendor;
@@ -632,8 +628,56 @@ public sealed partial class VendorBuyListManager : IDisposable
     public static int GetCurrentInventoryAndArmoryCount(uint itemId)
         => ItemHelper.GetInventoryAndArmoryItemCount(itemId);
 
-    private int GetPendingEntryCount(VendorBuyListDefinition? list)
-        => list?.Entries.Count(entry => GetRemainingQuantity(entry) > 0) ?? 0;
+    public static int GetPendingEntryCount(VendorBuyListDefinition? list)
+    {
+        if (list == null)
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var entry in list.Entries)
+        {
+            if (GetRemainingQuantity(entry) > 0)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    public static List<VendorBuyListDefinition> GetListsByCreation(bool newestFirst)
+    {
+        var lists = GatherBuddy.Config.VendorBuyLists;
+        var sorted = new List<VendorBuyListDefinition>(lists.Count);
+        foreach (var list in lists)
+        {
+            var index = sorted.Count;
+            while (index > 0 && (newestFirst ? sorted[index - 1].CreatedAt < list.CreatedAt : sorted[index - 1].CreatedAt > list.CreatedAt))
+            {
+                --index;
+            }
+
+            sorted.Insert(index, list);
+        }
+
+        return sorted;
+    }
+
+    internal static List<VendorNpc> GetPurchasableNpcs(VendorShopEntry entry)
+    {
+        var npcs = new List<VendorNpc>(entry.Npcs.Count);
+        foreach (var npc in entry.Npcs)
+        {
+            if (VendorPurchaseManager.IsPurchaseSupported(entry, npc))
+            {
+                npcs.Add(npc);
+            }
+        }
+
+        return npcs;
+    }
 
     private void ResetExecutionState()
     {
@@ -711,7 +755,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         Communicator.PrintError($"[GatherBuddyReborn] Vendor list '{list.Name}' completed with {detail}.");
     }
 
-    private void EnsureListState()
+    private static void EnsureListState()
     {
         if (GatherBuddy.Config.EnsureVendorBuyListState())
         {
@@ -725,46 +769,59 @@ public sealed partial class VendorBuyListManager : IDisposable
         return ActiveList ?? CreateList(DefaultVendorBuyListName);
     }
 
-    private VendorBuyListDefinition? GetActiveList()
+    private static VendorBuyListDefinition? GetActiveList()
     {
         EnsureListState();
         return GetList(GatherBuddy.Config.ActiveVendorBuyListId)
-            ?? GatherBuddy.Config.VendorBuyLists.FirstOrDefault();
+            ?? (GatherBuddy.Config.VendorBuyLists.Count > 0 ? GatherBuddy.Config.VendorBuyLists[0] : null);
     }
 
-    private VendorBuyListDefinition? GetList(Guid listId)
-        => GatherBuddy.Config.VendorBuyLists.FirstOrDefault(list => list.Id == listId);
+    public static VendorBuyListDefinition? GetList(Guid listId)
+    {
+        foreach (var list in GatherBuddy.Config.VendorBuyLists)
+        {
+            if (list.Id == listId)
+            {
+                return list;
+            }
+        }
+
+        return null;
+    }
 
     private static List<VendorShopEntry> GetMatchingCandidates(VendorBuyListEntry entry)
     {
-        var candidates = GetCandidateEntries(entry)
-            .Where(candidate => candidate.ItemId == entry.ItemId
-                && candidate.Cost == entry.Cost)
-            .ToList();
+        var candidates = new List<VendorShopEntry>();
+        foreach (var candidate in GetCandidateEntries(entry))
+        {
+            if (candidate.ItemId == entry.ItemId && candidate.Cost == entry.Cost)
+            {
+                candidates.Add(candidate);
+            }
+        }
+
         if (entry.ShopType != VendorShopType.GrandCompanySeals)
         {
-            return [.. candidates.Where(candidate => candidate.CurrencyItemId == entry.CurrencyItemId)];
+            return candidates.FindAll(candidate => candidate.CurrencyItemId == entry.CurrencyItemId);
         }
 
         if (entry.GcRankIndex >= 0)
         {
-            candidates = [.. candidates.Where(candidate => candidate.Npcs.Any(npc => npc.GcRankIndex == entry.GcRankIndex))];
+            candidates = candidates.FindAll(candidate => candidate.Npcs.Exists(npc => npc.GcRankIndex == entry.GcRankIndex));
         }
 
         if (entry.GcCategoryIndex >= 0)
         {
-            candidates = [.. candidates.Where(candidate => candidate.Npcs.Any(npc => npc.GcCategoryIndex == entry.GcCategoryIndex))];
+            candidates = candidates.FindAll(candidate => candidate.Npcs.Exists(npc => npc.GcCategoryIndex == entry.GcCategoryIndex));
         }
 
         var currentCurrencyItemId = VendorShopResolver.GetCurrentGrandCompanySealCurrencyItemId();
         if (currentCurrencyItemId != 0)
         {
-            return [.. candidates.Where(candidate => candidate.CurrencyItemId == currentCurrencyItemId)];
+            return candidates.FindAll(candidate => candidate.CurrencyItemId == currentCurrencyItemId);
         }
 
-        var savedCurrencyCandidates = candidates
-            .Where(candidate => candidate.CurrencyItemId == entry.CurrencyItemId)
-            .ToList();
+        var savedCurrencyCandidates = candidates.FindAll(candidate => candidate.CurrencyItemId == entry.CurrencyItemId);
         return savedCurrencyCandidates.Count > 0
             ? savedCurrencyCandidates
             : candidates;
@@ -803,7 +860,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         return true;
     }
 
-    private bool TrySetResolvedTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
+    private static bool TrySetResolvedTarget(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, uint targetQuantity)
     {
         if (!VendorPurchaseManager.IsPurchaseSupported(entry, vendor))
         {
@@ -828,9 +885,7 @@ public sealed partial class VendorBuyListManager : IDisposable
     {
         amount = Math.Max(1u, amount);
 
-        var existingEntries = list.Entries
-            .Where(entry => entry.ItemId == itemId)
-            .ToList();
+        var existingEntries = list.Entries.FindAll(entry => entry.ItemId == itemId);
         if (existingEntries.Count == 1)
         {
             var existing = existingEntries[0];
@@ -873,11 +928,26 @@ public sealed partial class VendorBuyListManager : IDisposable
     private int TrySetTargets(VendorBuyListDefinition list, IReadOnlyList<VendorTargetRequest> requests, bool selectList, bool openWindow,
         bool announce)
     {
-        var normalizedRequests = requests
-            .Where(request => request.ItemId != 0 && request.TargetQuantity > 0)
-            .GroupBy(request => request.ItemId)
-            .Select(group => new VendorTargetRequest(group.Key, group.Max(request => request.TargetQuantity)))
-            .ToList();
+        var normalizedRequests = new List<VendorTargetRequest>(requests.Count);
+        var requestIndexes = new Dictionary<uint, int>(requests.Count);
+        foreach (var request in requests)
+        {
+            if (request.ItemId == 0 || request.TargetQuantity == 0)
+            {
+                continue;
+            }
+
+            if (!requestIndexes.TryGetValue(request.ItemId, out var requestIndex))
+            {
+                requestIndexes.Add(request.ItemId, normalizedRequests.Count);
+                normalizedRequests.Add(request);
+            }
+            else if (request.TargetQuantity > normalizedRequests[requestIndex].TargetQuantity)
+            {
+                normalizedRequests[requestIndex] = request;
+            }
+        }
+
         if (normalizedRequests.Count == 0)
         {
             return 0;
@@ -945,11 +1015,11 @@ public sealed partial class VendorBuyListManager : IDisposable
             ? GetList(_runningListId.Value)
             : ActiveList;
 
-    private bool TryFindEntry(Guid entryId, out VendorBuyListDefinition? list, out VendorBuyListEntry? entry)
+    private static bool TryFindEntry(Guid entryId, out VendorBuyListDefinition? list, out VendorBuyListEntry? entry)
     {
         foreach (var currentList in GatherBuddy.Config.VendorBuyLists)
         {
-            var currentEntry = currentList.Entries.FirstOrDefault(item => item.Id == entryId);
+            var currentEntry = currentList.Entries.Find(item => item.Id == entryId);
             if (currentEntry == null)
             {
                 continue;
@@ -965,12 +1035,12 @@ public sealed partial class VendorBuyListManager : IDisposable
         return false;
     }
 
-    private string MakeUniqueListName(string name, Guid? excludeListId = null)
+    private static string MakeUniqueListName(string name, Guid? excludeListId = null)
     {
         var baseName = string.IsNullOrWhiteSpace(name) ? DefaultVendorBuyListName : name.Trim();
         var uniqueName = baseName;
         var suffix = 1;
-        while (GatherBuddy.Config.VendorBuyLists.Any(list =>
+        while (GatherBuddy.Config.VendorBuyLists.Exists(list =>
                    list.Name.Equals(uniqueName, StringComparison.OrdinalIgnoreCase)
                 && (!excludeListId.HasValue || list.Id != excludeListId.Value)))
         {
@@ -998,8 +1068,21 @@ public sealed partial class VendorBuyListManager : IDisposable
              _ => true,
          });
 
+    private static VendorNpc? FindMatchingVendor(IReadOnlyList<VendorNpc> vendors, VendorBuyListEntry entry, bool includeRoute)
+    {
+        for (var i = 0; i < vendors.Count; ++i)
+        {
+            if (MatchesVendor(entry, vendors[i], includeRoute))
+            {
+                return vendors[i];
+            }
+        }
+
+        return null;
+    }
+
     private static VendorBuyListEntry? FindMatchingEntry(VendorBuyListDefinition list, VendorShopEntry entry, VendorNpc vendor, Guid? excludeEntryId = null)
-        => list.Entries.FirstOrDefault(existing =>
+        => list.Entries.Find(existing =>
             (!excludeEntryId.HasValue || existing.Id != excludeEntryId.Value)
          && existing.ShopType == entry.ShopType
          && existing.ItemId == entry.ItemId
@@ -1039,16 +1122,16 @@ public sealed partial class VendorBuyListManager : IDisposable
         target.TargetQuantity = Math.Max(1u, targetQuantity);
     }
 
-    private static IEnumerable<VendorShopEntry> GetCandidateEntries(VendorBuyListEntry entry)
+    private static IReadOnlyList<VendorShopEntry> GetCandidateEntries(VendorBuyListEntry entry)
         => entry.ShopType switch
         {
             VendorShopType.GilShop => VendorShopResolver.GilShopEntries,
             VendorShopType.SpecialCurrency => VendorShopResolver.SpecialShopEntries,
             VendorShopType.GrandCompanySeals => VendorShopResolver.GcShopEntries,
-            _ => Enumerable.Empty<VendorShopEntry>(),
+            _ => [],
         };
 
-    private bool TryResolveDefaultEntry(uint itemId, out VendorShopEntry entry, out VendorNpc vendor)
+    private static bool TryResolveDefaultEntry(uint itemId, out VendorShopEntry entry, out VendorNpc vendor)
     {
         entry = null!;
         vendor = null!;
@@ -1058,13 +1141,11 @@ public sealed partial class VendorBuyListManager : IDisposable
             return false;
         }
 
-        var candidates = GetDefaultEntryCandidates(itemId).ToList();
+        var candidates = GetDefaultEntryCandidates(itemId);
         foreach (var candidate in candidates)
         {
             var supportedVendors = VendorDevExclusions.GetSelectableNpcs(
-                candidate.Npcs
-                    .Where(npc => VendorPurchaseManager.IsPurchaseSupported(candidate, npc))
-                    .ToList(),
+                GetPurchasableNpcs(candidate),
                 "resolving a default vendor buy list entry",
                 candidate.ItemName);
             if (supportedVendors.Count == 0)
@@ -1073,7 +1154,7 @@ public sealed partial class VendorBuyListManager : IDisposable
             }
 
             var preferredVendor = VendorPreferenceHelper.ResolvePreferredNpc(candidate, supportedVendors)
-                ?? supportedVendors.FirstOrDefault();
+                ?? supportedVendors[0];
             if (preferredVendor == null)
             {
                 continue;
@@ -1092,18 +1173,73 @@ public sealed partial class VendorBuyListManager : IDisposable
         return false;
     }
 
-    private static IEnumerable<VendorShopEntry> GetDefaultEntryCandidates(uint itemId)
-        => VendorShopResolver.GilShopEntries
-            .Where(entry => entry.ItemId == itemId)
-            .Concat(VendorShopResolver.GcShopEntries
-                .Where(VendorShopResolver.MatchesCurrentGrandCompany)
-                .Where(entry => entry.ItemId == itemId))
-            .Concat(VendorShopResolver.SpecialShopEntries
-                .Where(entry => entry.ItemId == itemId))
-            .OrderBy(GetDefaultEntryPriority)
-            .ThenBy(entry => entry.Cost)
-            .ThenBy(entry => entry.CurrencyItemId)
-            .ThenBy(entry => entry.ItemId);
+    private static List<VendorShopEntry> GetDefaultEntryCandidates(uint itemId)
+    {
+        var candidates = new List<VendorShopEntry>();
+        foreach (var entry in VendorShopResolver.GilShopEntries)
+        {
+            if (entry.ItemId == itemId)
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        foreach (var entry in VendorShopResolver.GcShopEntries)
+        {
+            if (entry.ItemId == itemId && VendorShopResolver.MatchesCurrentGrandCompany(entry))
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        foreach (var entry in VendorShopResolver.SpecialShopEntries)
+        {
+            if (entry.ItemId == itemId)
+            {
+                candidates.Add(entry);
+            }
+        }
+
+        SortShopEntries(candidates, GetDefaultEntryPriority);
+        return candidates;
+    }
+
+    private static void SortShopEntries(List<VendorShopEntry> entries, Func<VendorShopEntry, int> getPriority)
+    {
+        var keyedEntries = new List<(VendorShopEntry Entry, int Priority, int Index)>(entries.Count);
+        for (var i = 0; i < entries.Count; ++i)
+        {
+            keyedEntries.Add((entries[i], getPriority(entries[i]), i));
+        }
+
+        keyedEntries.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.Priority.CompareTo(rhs.Priority);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = lhs.Entry.Cost.CompareTo(rhs.Entry.Cost);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = lhs.Entry.CurrencyItemId.CompareTo(rhs.Entry.CurrencyItemId);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = lhs.Entry.ItemId.CompareTo(rhs.Entry.ItemId);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        for (var i = 0; i < keyedEntries.Count; ++i)
+        {
+            entries[i] = keyedEntries[i].Entry;
+        }
+    }
 
     private static int GetDefaultEntryPriority(VendorShopEntry entry)
         => entry.ShopType switch
@@ -1391,7 +1527,7 @@ public sealed partial class VendorBuyListManager : IDisposable
         }
     }
 
-    private PurchaseContextResolutionResult TryResolvePurchaseContext(VendorBuyListEntry entry, out VendorShopEntry liveEntry, out VendorNpc vendor, out VendorNpcLocation location, out string errorMessage)
+    private static PurchaseContextResolutionResult TryResolvePurchaseContext(VendorBuyListEntry entry, out VendorShopEntry liveEntry, out VendorNpc vendor, out VendorNpcLocation location, out string errorMessage)
     {
         errorMessage = string.Empty;
         if (!VendorNpcLocationCache.IsInitialized)

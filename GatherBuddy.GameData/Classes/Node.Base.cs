@@ -7,8 +7,6 @@ using GatherBuddy.Utility;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using GatheringType = GatherBuddy.Enums.GatheringType;
 using Weather = GatherBuddy.Structs.Weather;
 
@@ -107,13 +105,18 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
 
         if (NodeType == NodeType.Clouded)
         {
-            UmbralWeather = data.Weathers[(uint)UmbralNodes.UmbralNodeData.First(data => data.BaseNodeId == node.RowId).Weather];
+            UmbralWeather = data.Weathers[(uint)GetUmbralWeather(node.RowId)];
         }
 
         // Obtain the items and add the node to their individual lists.
-        Items = [.. node.Item
-            .Select(i => data.GatherablesByGatherId.GetValueOrDefault(i.RowId))
-            .OfType<Gatherable>()];
+        Items = [];
+        foreach (var itemRef in node.Item)
+        {
+            if (data.GatherablesByGatherId.GetValueOrDefault(itemRef.RowId) is { } itemGatherable)
+            {
+                Items.Add(itemGatherable);
+            }
+        }
 
         foreach (var n in nodeList)
         {
@@ -146,6 +149,19 @@ public partial class GatheringNode : IComparable<GatheringNode>, ILocation
         {
             AddNodeToItem(item);
         }
+    }
+
+    private static UmbralNodes.UmbralWeatherType GetUmbralWeather(uint baseNodeId)
+    {
+        foreach (var (nodeId, weather) in UmbralNodes.UmbralNodeData)
+        {
+            if (nodeId == baseNodeId)
+            {
+                return weather;
+            }
+        }
+
+        throw new InvalidOperationException($"No umbral weather is known for clouded node {baseNodeId}.");
     }
 
     public int CompareTo(GatheringNode? obj)

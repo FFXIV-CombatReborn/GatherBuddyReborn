@@ -47,7 +47,7 @@ public class RaphaelSolverDefinition : ISolverDefinition
         return null!;
     }
 
-    private RaphaelSolveRequest BuildSolveRequest(CraftState craft)
+    private static RaphaelSolveRequest BuildSolveRequest(CraftState craft)
         => RaphaelSolveRequest.FromCraftState(craft, GatherBuddy.Config.RaphaelSolverConfig.RaphaelAllowSpecialistActions);
 }
 
@@ -80,7 +80,7 @@ public class RaphaelMacroSolver : Solver
         return new(vulcanSkill, $"Raphael step {_currentActionIndex}/{_solution.ActionIds.Count} ({progress}%)");
     }
 
-    private VulcanSkill ConvertActionIdToSkill(uint actionId)
+    private static VulcanSkill ConvertActionIdToSkill(uint actionId)
     {
         return (VulcanSkill)actionId;
     }

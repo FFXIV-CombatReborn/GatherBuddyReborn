@@ -1,15 +1,14 @@
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
-using ElliLib.Extensions;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using GatherBuddy.Classes;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Time;
+using GatherBuddy.Utility;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.Alarms;
@@ -38,7 +37,7 @@ public partial class AlarmManager : IDisposable
         Dirty = false;
     }
 
-    public void SetWeatherAlarm(Sounds sound)
+    public static void SetWeatherAlarm(Sounds sound)
     {
         if (GatherBuddy.Config.WeatherAlarm == sound)
         {
@@ -58,7 +57,7 @@ public partial class AlarmManager : IDisposable
         GatherBuddy.Config.Save();
     }
 
-    public void SetHourAlarm(Sounds sound)
+    public static void SetHourAlarm(Sounds sound)
     {
         if (GatherBuddy.Config.HourAlarm == sound)
         {
@@ -196,11 +195,20 @@ public partial class AlarmManager : IDisposable
             return;
         }
 
-        foreach (var alarm in Alarms.Where(g => g.Enabled)
-                     .SelectMany(g => g.Alarms)
-                     .Where(a => a.Enabled))
+        foreach (var group in Alarms)
         {
-            AddActiveAlarm(alarm);
+            if (!group.Enabled)
+            {
+                continue;
+            }
+
+            foreach (var alarm in group.Alarms)
+            {
+                if (alarm.Enabled)
+                {
+                    AddActiveAlarm(alarm);
+                }
+            }
         }
 
         ActiveAlarmsChanged?.Invoke();
@@ -220,7 +228,7 @@ public partial class AlarmManager : IDisposable
         {
             GatheringNode node => (node, node.Times.NextUptime(GatherBuddy.Time.ServerTime)),
             FishingSpot spot when alarm.Item is Fish fish => (spot,
-                GatherBuddy.UptimeManager.NextUptime(fish, spot.Territory, GatherBuddy.Time.ServerTime)),
+                Plugin.UptimeManager.NextUptime(fish, spot.Territory, GatherBuddy.Time.ServerTime)),
             _ => (alarm.PreferLocation, TimeInterval.Never),
         };
     }
@@ -235,7 +243,7 @@ public partial class AlarmManager : IDisposable
         return alarm.PreferLocation switch
         {
             GatheringNode node => (node, node.Times.NextUptime(now)),
-            FishingSpot spot when alarm.Item is Fish fish => (spot, GatherBuddy.UptimeManager.NextUptime(fish, spot.Territory, now)),
+            FishingSpot spot when alarm.Item is Fish fish => (spot, Plugin.UptimeManager.NextUptime(fish, spot.Territory, now)),
             _ => (alarm.PreferLocation, TimeInterval.Never),
         };
     }
@@ -323,7 +331,7 @@ public partial class AlarmManager : IDisposable
 
         try
         {
-            var text = JsonConvert.SerializeObject(Alarms.Select(a => new AlarmGroup.Config(a)), Formatting.Indented);
+            var text = JsonConvert.SerializeObject(Alarms.ConvertAll(a => new AlarmGroup.Config(a)), Formatting.Indented);
             File.WriteAllText(file.FullName, text);
         }
         catch (Exception e)

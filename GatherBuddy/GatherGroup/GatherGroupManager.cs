@@ -8,7 +8,6 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace GatherBuddy.GatherGroup;
 
@@ -66,7 +65,7 @@ public class GatherGroupManager
         return true;
     }
 
-    public bool ChangeDescription(TimedGroup group, string description)
+    public static bool ChangeDescription(TimedGroup group, string description)
     {
         if (group.Description == description)
         {
@@ -99,10 +98,23 @@ public class GatherGroupManager
     public bool RemoveGroup(TimedGroup group)
         => Groups.Remove(group.Name.ToLowerInvariant().Trim());
 
-    public bool ChangeGroupNodeLocation(TimedGroup group, int idx, ILocation? location)
+    private static bool ContainsGatherable(ILocation location, IGatherable item)
+    {
+        foreach (var gatherable in location.Gatherables)
+        {
+            if (Equals(gatherable, item))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool ChangeGroupNodeLocation(TimedGroup group, int idx, ILocation? location)
     {
         if (ReferenceEquals(group.Nodes[idx].PreferLocation, location)
-         || location != null && !location.Gatherables.Contains(@group.Nodes[idx].Item))
+         || location != null && !ContainsGatherable(location, @group.Nodes[idx].Item))
         {
             return false;
         }
@@ -111,7 +123,7 @@ public class GatherGroupManager
         return true;
     }
 
-    public bool ChangeGroupNode(TimedGroup group, int idx, IGatherable? item, int? start, int? end, string? annotation, bool delete)
+    public static bool ChangeGroupNode(TimedGroup group, int idx, IGatherable? item, int? start, int? end, string? annotation, bool delete)
     {
         if (idx < 0 || group.Nodes.Count < idx)
         {
@@ -151,7 +163,7 @@ public class GatherGroupManager
             }
 
             node.Item = item;
-            if (node.PreferLocation != null && !node.PreferLocation.Gatherables.Contains(item))
+            if (node.PreferLocation != null && !ContainsGatherable(node.PreferLocation, item))
             {
                 node.PreferLocation = null;
             }
@@ -210,7 +222,13 @@ public class GatherGroupManager
 
         try
         {
-            var text = JsonConvert.SerializeObject(Groups.Values.Select(g => g.ToConfig()), Formatting.Indented);
+            var configs = new List<TimedGroup.Config>(Groups.Count);
+            foreach (var group in Groups.Values)
+            {
+                configs.Add(group.ToConfig());
+            }
+
+            var text = JsonConvert.SerializeObject(configs, Formatting.Indented);
             File.WriteAllText(file.FullName, text);
         }
         catch (Exception e)

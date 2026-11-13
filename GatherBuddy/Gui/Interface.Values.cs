@@ -1,25 +1,26 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace GatherBuddy.Gui;
 
 public partial class Interface
 {
-    public static Vector2 IconSize;
-    public static Vector2 WeatherIconSize;
-    public static Vector2 SmallIconSize;
-    public static Vector2 LineIconSize;
-    public static Vector2 ItemSpacing;
-    public static Vector2 FramePadding;
-    public static Vector2 IconButtonSize;
-    public static float SelectorWidth;
-    public static float SetInputWidth;
-    public static Vector2 HorizontalSpace = Vector2.Zero;
-    public static float TextHeight;
-    public static float TextHeightSpacing;
-    public static float Scale;
+    private static Vector2 IconSize;
+    private static Vector2 WeatherIconSize;
+    private static Vector2 SmallIconSize;
+    private static Vector2 LineIconSize;
+    private static Vector2 ItemSpacing;
+    private static Vector2 FramePadding;
+    private static Vector2 IconButtonSize;
+    private static float SelectorWidth;
+    private static float SetInputWidth;
+    private static Vector2 HorizontalSpace = Vector2.Zero;
+    private static float TextHeight;
+    private static float TextHeightSpacing;
+    private static float Scale;
 
     private static void SetupValues()
     {
@@ -39,4 +40,19 @@ public partial class Interface
 
     private static float TextWidth(string text)
         => ImGui.CalcTextSize(text).X + ItemSpacing.X;
+
+    private static float MaxTextWidth<T>(IEnumerable<T> source, Func<T, string> getText)
+    {
+        var maxWidth = 0f;
+        foreach (var value in source)
+        {
+            var width = TextWidth(getText(value));
+            if (width > maxWidth)
+            {
+                maxWidth = width;
+            }
+        }
+
+        return maxWidth;
+    }
 }

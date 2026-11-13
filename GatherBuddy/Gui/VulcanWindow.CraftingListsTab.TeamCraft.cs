@@ -1,80 +1,43 @@
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
+using Dalamud.Interface;
 using GatherBuddy.Crafting;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
-    private void DrawTeamCraftImportWindow()
+    internal static RebornUI.HostedPanelWindow CreateTeamCraftImportWindow()
+        => new("GatherBuddyTeamCraftImport", "TeamCraft Import", new Vector2(540f, 500f), new Vector2(420f, 400f), bodyScrolls: false);
+
+    private void OpenTeamCraftImport()
     {
-        if (!_showTeamCraftImport)
-        {
-            return;
-        }
+        _teamCraftImportError = null;
+        GatherBuddy.TeamCraftImportWindow?.Show(this, DrawTeamCraftImport);
+    }
 
-        ImGui.SetNextWindowSize(_teamCraftImportWindowSize, ImGuiCond.Appearing);
-        var isOpen = _showTeamCraftImport;
-        var drawWindow = ImGui.Begin("TeamCraft Import###TCImport", ref isOpen, ImGuiWindowFlags.NoCollapse);
-        _showTeamCraftImport = isOpen;
-
-        var currentWindowSize = NormalizeTeamCraftImportWindowSize(ImGui.GetWindowSize());
-        if (HasTeamCraftImportWindowSizeChanged(currentWindowSize, _teamCraftImportWindowSize))
+    private void DrawTeamCraftImport()
+    {
+        M3Text.Draw("Open your list on TeamCraft, copy the 'Final Items' section with 'Copy as Text', and paste it below. Precrafts are added automatically.",
+            M3TextStyle.Muted, true);
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        var footerHeight = M3Widgets.ButtonHeight + M3.Space3 + ImGui.GetStyle().ItemSpacing.Y;
+        using (var content = ImRaii.Child("##teamCraftImportContent", new Vector2(0, -footerHeight), false))
         {
-            _teamCraftImportWindowSize = currentWindowSize;
-            _teamCraftImportWindowSizeDirty = true;
-        }
-
-        if (_teamCraftImportWindowSizeDirty && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            SaveTeamCraftImportWindowSize();
-        }
-
-        if (!drawWindow)
-        {
-            if (!_showTeamCraftImport)
+            if (content)
             {
-                SaveTeamCraftImportWindowSize(true);
+                DrawTeamCraftImportForm();
             }
-
-            ImGui.End();
-            return;
         }
 
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Open your list on TeamCraft, copy the 'Final Items' section using");
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "'Copy as Text', then paste below. Precrafts are generated automatically.");
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-        var footerHeight = ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y * 3f + VulcanUiScaling.Scaled(2f);
-        ImGui.BeginChild("##teamCraftImportContent", new Vector2(0, -footerHeight), false);
-        ImGui.Text("List Name:");
-        ImGui.SetNextItemWidth(-1);
-        ImGui.InputText("##ImportListName", ref _teamCraftListName, 256);
-
-        ImGui.Spacing();
-        ImGui.Checkbox("Ephemeral##teamCraftEphemeral", ref _teamCraftEphemeral);
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Delete this list automatically after crafting completes.\nCan be disabled later in the list editor.");
-        }
-
-        ImGui.Spacing();
-        ImGui.Text("Final Items:");
-        var finalItemsHeight = Math.Max(VulcanUiScaling.Scaled(150f), ImGui.GetContentRegionAvail().Y);
-        ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, finalItemsHeight));
-        ImGui.EndChild();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.Button("Import", VulcanUiScaling.Scaled(100f, 0f)))
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        if (M3Widgets.Button("##teamCraftImport", "Import", M3ButtonStyle.Filled, FontAwesomeIcon.FileImport,
+                enabled: !string.IsNullOrWhiteSpace(_teamCraftFinalItems)))
         {
             var importedList = ParseTeamCraftImport(_teamCraftEphemeral);
             if (importedList != null)
@@ -90,57 +53,54 @@ public partial class VulcanWindow
                 GatherBuddy.CraftingTreeWindow?.SetEditor(_listEditor);
                 _deferEditorDraw = true;
 
-                _teamCraftListName = string.Empty;
-                _teamCraftFinalItems = string.Empty;
-                _teamCraftEphemeral = false;
-                _showTeamCraftImport = false;
-
+                ResetTeamCraftImportState();
+                OpenToCraftingLists();
+                M3Snackbar.Show($"Imported {importedList.Name} from TeamCraft.", severity: M3Severity.Success);
                 GatherBuddy.Log.Information($"[VulcanWindow] Successfully imported TeamCraft list: {importedList.Name}");
+            }
+            else
+            {
+                _teamCraftImportError = "None of those items have a recipe. Check that you copied the 'Final Items' section.";
             }
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Cancel", VulcanUiScaling.Scaled(100f, 0f)))
+        if (M3Widgets.Button("##teamCraftCancel", "Cancel", M3ButtonStyle.Text))
         {
-            _teamCraftListName = string.Empty;
-            _teamCraftFinalItems = string.Empty;
-            _teamCraftEphemeral = false;
-            _showTeamCraftImport = false;
+            ResetTeamCraftImportState();
         }
-        if (!_showTeamCraftImport)
-        {
-            SaveTeamCraftImportWindowSize(true);
-        }
-
-        ImGui.End();
     }
 
-    private static Vector2 NormalizeTeamCraftImportWindowSize(Vector2 size)
-        => size.X <= 0f || size.Y <= 0f
-            ? DefaultTeamCraftImportWindowSize
-            : HasTeamCraftImportWindowSizeChanged(size, LegacyTeamCraftImportWindowSize)
-                ? size
-                : DefaultTeamCraftImportWindowSize;
-
-    private static bool HasTeamCraftImportWindowSizeChanged(Vector2 lhs, Vector2 rhs)
-        => MathF.Abs(lhs.X - rhs.X) > 0.5f || MathF.Abs(lhs.Y - rhs.Y) > 0.5f;
-
-    private void SaveTeamCraftImportWindowSize(bool force = false)
+    private void DrawTeamCraftImportForm()
     {
-        if (!force && !_teamCraftImportWindowSizeDirty)
+        var width = ImGui.GetContentRegionAvail().X;
+        M3Text.Draw("List name", M3TextStyle.Label);
+        M3TextField.Draw("##ImportListName", "Imported from TeamCraft", ref _teamCraftListName, width, 256);
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        M3Widgets.RowSwitch("Ephemeral##teamCraftEphemeral", ref _teamCraftEphemeral, EphemeralSupporting);
+
+        M3Text.Draw("Final items", M3TextStyle.Label);
+        var errorHeight = _teamCraftImportError != null ? ImGui.GetTextLineHeight() * 2f + 32f * M3.Scale : 0f;
+        var finalItemsHeight = Math.Max(VulcanUiScaling.Scaled(150f), ImGui.GetContentRegionAvail().Y - errorHeight);
+        if (ImGui.InputTextMultiline("##FinalItems", ref _teamCraftFinalItems, 500000, new Vector2(-1, finalItemsHeight)))
         {
-            return;
+            _teamCraftImportError = null;
         }
 
-        var normalizedSize = NormalizeTeamCraftImportWindowSize(_teamCraftImportWindowSize);
-        if (HasTeamCraftImportWindowSizeChanged(GatherBuddy.Config.TeamCraftImportWindowSize, normalizedSize))
+        if (_teamCraftImportError != null)
         {
-            GatherBuddy.Config.TeamCraftImportWindowSize = normalizedSize;
-            GatherBuddy.Config.Save();
-            GatherBuddy.Log.Debug($"[VulcanWindow] Saved TeamCraft import window size: {normalizedSize.X}x{normalizedSize.Y}");
+            ImGui.Dummy(new Vector2(0f, M3.Space1));
+            M3Widgets.Banner("##teamCraftImportError", _teamCraftImportError, M3Severity.Error, FontAwesomeIcon.ExclamationCircle);
         }
+    }
 
-        _teamCraftImportWindowSizeDirty = false;
+    private void ResetTeamCraftImportState()
+    {
+        _teamCraftListName = string.Empty;
+        _teamCraftFinalItems = string.Empty;
+        _teamCraftEphemeral = false;
+        _teamCraftImportError = null;
+        GatherBuddy.TeamCraftImportWindow?.Hide(this);
     }
 
     private CraftingListDefinition? ParseTeamCraftImport(bool ephemeral = false)
@@ -168,7 +128,7 @@ public partial class VulcanWindow
 
         foreach (var (recipeId, quantity) in recipesToAdd)
         {
-            var existingItem = newList.Recipes.FirstOrDefault(r => r.RecipeId == recipeId);
+            var existingItem = newList.Recipes.Find(r => r.RecipeId == recipeId);
             if (existingItem != null)
             {
                 existingItem.Quantity += quantity;
@@ -184,7 +144,7 @@ public partial class VulcanWindow
         return newList;
     }
 
-    private void ParseTeamCraftSection(string text, List<(uint recipeId, int quantity)> output)
+    private static void ParseTeamCraftSection(string text, List<(uint recipeId, int quantity)> output)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -206,12 +166,12 @@ public partial class VulcanWindow
                 continue;
             }
 
-            if (!int.TryParse(parts[0].Substring(0, parts[0].Length - 1), out var numberOfItems))
+            if (!int.TryParse(parts[0].AsSpan(0, parts[0].Length - 1), out var numberOfItems))
             {
                 continue;
             }
 
-            var itemName = string.Join(" ", parts.Skip(1)).Trim();
+            var itemName = string.Join(" ", parts, 1, parts.Length - 1).Trim();
             GatherBuddy.Log.Debug($"[VulcanWindow] TeamCraft import: Parsing {numberOfItems}x {itemName}");
 
             var recipeSheet = Dalamud.GameData.GetExcelSheet<Recipe>();

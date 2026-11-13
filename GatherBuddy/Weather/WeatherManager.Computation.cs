@@ -1,8 +1,6 @@
 using GatherBuddy.Classes;
 using GatherBuddy.Time;
-using System;
 using System.Diagnostics;
-using System.Linq;
 
 namespace GatherBuddy.Weather;
 
@@ -41,7 +39,7 @@ public partial class WeatherManager
         // ignore this and notify for other zones only.
         if (territory.Id is not 979)
         {
-            GatherBuddy.Log.Warning($"Should never be reached, weather rates for {territory.Name} ({territory.Id}) not adding up to 100. {territory.WeatherRates.Rates.Last().CumulativeRate}");
+            GatherBuddy.Log.Warning($"Should never be reached, weather rates for {territory.Name} ({territory.Id}) not adding up to 100. {territory.WeatherRates.Rates[^1].CumulativeRate}");
         }
 #endif
         return territory.WeatherRates.Rates[^1].Weather;

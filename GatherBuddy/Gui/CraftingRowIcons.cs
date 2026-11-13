@@ -36,10 +36,10 @@ internal static class CraftingRowIcons
         };
         if (preferredJobId == 0)
         {
-            return new List<RowIcon>(0);
+            return [];
         }
 
-        return new List<RowIcon>(1) { new(GetClassJobIconId(preferredJobId), GetClassJobName(preferredJobId)) };
+        return [new(GetClassJobIconId(preferredJobId), GetClassJobName(preferredJobId))];
     }
 
     public static IReadOnlyList<RowIcon> GetMaterialIcons(uint itemId, bool isPrecraft)

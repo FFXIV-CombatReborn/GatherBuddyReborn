@@ -1,28 +1,24 @@
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
+using Dalamud.Interface;
 using GatherBuddy.Vulcan.Vendors;
+using RebornMaterial;
 using System;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public sealed partial class VendorBuyListWindow
 {
-    private static readonly Vector2 LegacyTeamCraftImportWindowSize = new(520f, 310f);
-    private static readonly Vector2 DefaultTeamCraftImportWindowSize = VulcanUiScaling.Scaled(520f, 310f);
-    private const string TeamCraftImportWindowId = "Vendor TeamCraft Import###VendorTeamCraftImport";
-
-    private bool _showTeamCraftImport;
-
     private string _teamCraftImportListName = string.Empty;
     private string _teamCraftImportText = string.Empty;
     private string? _teamCraftImportError;
     private bool _teamCraftImportIntoExistingList;
     private Guid? _teamCraftImportTargetListId;
     private bool _focusTeamCraftImportListName;
-    private Vector2 _teamCraftImportWindowSize;
-    private bool _teamCraftImportWindowSizeDirty;
+
+    internal static RebornUI.HostedPanelWindow CreateTeamCraftImportWindow()
+        => new("GatherBuddyVendorTeamCraftImport", "Vendor TeamCraft Import", new Vector2(540f, 480f), new Vector2(420f, 380f), bodyScrolls: false);
 
     private void OpenTeamCraftImportWindow(VendorBuyListManager manager)
     {
@@ -32,7 +28,7 @@ public sealed partial class VendorBuyListWindow
         _teamCraftImportIntoExistingList = false;
         _teamCraftImportTargetListId = GetDefaultTeamCraftImportTargetListId(manager);
         _focusTeamCraftImportListName = true;
-        _showTeamCraftImport = true;
+        GatherBuddy.VendorTeamCraftImportWindow?.Show(this, DrawTeamCraftImport);
     }
 
     private void ResetTeamCraftImportWindowState()
@@ -43,177 +39,145 @@ public sealed partial class VendorBuyListWindow
         _teamCraftImportIntoExistingList = false;
         _teamCraftImportTargetListId = null;
         _focusTeamCraftImportListName = false;
-        _showTeamCraftImport = false;
+        GatherBuddy.VendorTeamCraftImportWindow?.Hide(this);
     }
 
-    private void DrawTeamCraftImportWindow(VendorBuyListManager manager)
+    private void DrawTeamCraftImport()
     {
-        if (!_showTeamCraftImport)
+        var manager = GatherBuddy.VendorBuyListManager;
+        if (manager == null)
         {
             return;
         }
 
-        ImGui.SetNextWindowSize(_teamCraftImportWindowSize, ImGuiCond.Appearing);
-        var isOpen = _showTeamCraftImport;
-        var drawWindow = ImGui.Begin(TeamCraftImportWindowId, ref isOpen, ImGuiWindowFlags.NoCollapse);
-        _showTeamCraftImport = isOpen;
-
-        var currentWindowSize = NormalizeTeamCraftImportWindowSize(ImGui.GetWindowSize());
-        if (HasTeamCraftImportWindowSizeChanged(currentWindowSize, _teamCraftImportWindowSize))
-        {
-            _teamCraftImportWindowSize = currentWindowSize;
-            _teamCraftImportWindowSizeDirty = true;
-        }
-
-        if (_teamCraftImportWindowSizeDirty && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
-        {
-            SaveTeamCraftImportWindowSize();
-        }
-
-        if (!drawWindow)
-        {
-            if (!_showTeamCraftImport)
-            {
-                SaveTeamCraftImportWindowSize(true);
-            }
-
-            ImGui.End();
-            return;
-        }
-
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, "Paste the TeamCraft 'Vendors' text section below.");
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        M3Text.Draw("Paste the 'Vendors' section of a TeamCraft list below.", M3TextStyle.Muted, true);
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
         NormalizeTeamCraftImportTargetListId(manager);
-        var footerHeight = ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y * 3f + VulcanUiScaling.Scaled(2f);
-        ImGui.BeginChild("##vendorTeamCraftImportContent", new Vector2(0, -footerHeight), false);
-        if (manager.Lists.Count > 0)
+        var footerHeight = M3Widgets.ButtonHeight + M3.Space3 + ImGui.GetStyle().ItemSpacing.Y;
+        using (var content = ImRaii.Child("##vendorTeamCraftImportContent", new Vector2(0, -footerHeight), false))
         {
-            ImGui.Text("Destination");
-            if (ImGui.RadioButton("New List##vendorTeamCraftNewList", !_teamCraftImportIntoExistingList))
+            if (content)
             {
-                _teamCraftImportIntoExistingList = false;
-                _teamCraftImportError = null;
-                _focusTeamCraftImportListName = true;
+                DrawTeamCraftImportForm(manager);
             }
-            ImGui.SameLine();
-            if (ImGui.RadioButton("Existing List##vendorTeamCraftExistingList", _teamCraftImportIntoExistingList))
+        }
+
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        var selectedTargetList = _teamCraftImportIntoExistingList
+            ? GetTeamCraftImportTargetList(manager)
+            : null;
+        var canImport = !string.IsNullOrWhiteSpace(_teamCraftImportText) && !(_teamCraftImportIntoExistingList && selectedTargetList == null);
+        if (M3Widgets.Button("##vendorTeamCraftImport", "Import", M3ButtonStyle.Filled, FontAwesomeIcon.FileImport, enabled: canImport))
+        {
+            var result = manager.ImportTeamCraftList(
+                _teamCraftImportText,
+                _teamCraftImportIntoExistingList ? _teamCraftImportTargetListId : null,
+                _teamCraftImportListName);
+            if (result.List != null)
             {
-                _teamCraftImportIntoExistingList = true;
-                _teamCraftImportError = null;
+                ResetTeamCraftImportWindowState();
             }
-            ImGui.Spacing();
+            else
+            {
+                _teamCraftImportError = result.Error;
+            }
+        }
+
+        ImGui.SameLine();
+        if (M3Widgets.Button("##vendorTeamCraftCancel", "Cancel", M3ButtonStyle.Text))
+        {
+            ResetTeamCraftImportWindowState();
+        }
+    }
+
+    private static readonly M3Segment[] TeamCraftDestinationSegments =
+    [
+        new("New list", FontAwesomeIcon.Plus),
+        new("Existing list", FontAwesomeIcon.ListUl),
+    ];
+
+    private void DrawTeamCraftImportForm(VendorBuyListManager manager)
+    {
+        var width = ImGui.GetContentRegionAvail().X;
+        if (VendorBuyListManager.Lists.Count > 0)
+        {
+            M3Text.Draw("Destination", M3TextStyle.Label);
+            var destination = _teamCraftImportIntoExistingList ? 1 : 0;
+            var clicked = M3Widgets.SegmentedButtons("##vendorTeamCraftDestination", TeamCraftDestinationSegments, destination);
+            if (clicked >= 0 && clicked != destination)
+            {
+                _teamCraftImportIntoExistingList = clicked == 1;
+                _teamCraftImportError = null;
+                _focusTeamCraftImportListName = clicked == 0;
+            }
+
+            ImGui.Dummy(new Vector2(0f, M3.Space1));
         }
 
         if (_teamCraftImportIntoExistingList)
         {
             var selectedList = GetTeamCraftImportTargetList(manager);
-            ImGui.Text("Target List");
-            ImGui.SetNextItemWidth(-1);
-            if (ImGui.BeginCombo("##vendorTeamCraftImportTargetList", selectedList?.Name ?? "Select a list"))
+            var lists = VendorBuyListManager.Lists;
+            var index = -1;
+            for (var i = 0; selectedList != null && i < lists.Count; ++i)
             {
-                foreach (var list in manager.Lists)
+                if (lists[i].Id == selectedList.Id)
                 {
-                    var isSelected = selectedList != null && list.Id == selectedList.Id;
-                    if (ImGui.Selectable(list.Name, isSelected))
-                    {
-                        _teamCraftImportTargetListId = list.Id;
-                        _teamCraftImportError = null;
-                    }
-                    if (isSelected)
-                    {
-                        ImGui.SetItemDefaultFocus();
-                    }
+                    index = i;
+                    break;
                 }
-                ImGui.EndCombo();
+            }
+
+            M3Text.Draw("Target list", M3TextStyle.Label);
+            if (M3Widgets.Combo("##vendorTeamCraftImportTargetList", ref index, lists.Count, i => lists[i].Name, width, "Select a list",
+                    lists.Count > 8)
+             && index >= 0 && index < lists.Count)
+            {
+                _teamCraftImportTargetListId = lists[index].Id;
+                _teamCraftImportError = null;
             }
         }
         else
         {
-            ImGui.Text("List Name");
+            M3Text.Draw("List name", M3TextStyle.Label);
             if (_focusTeamCraftImportListName)
             {
                 ImGui.SetKeyboardFocusHere();
                 _focusTeamCraftImportListName = false;
             }
 
-            ImGui.SetNextItemWidth(-1);
-            ImGui.InputText("##vendorTeamCraftImportListName", ref _teamCraftImportListName, 128);
+            M3TextField.Draw("##vendorTeamCraftImportListName", "Imported from TeamCraft", ref _teamCraftImportListName, width, 128);
         }
 
-        ImGui.Spacing();
-        ImGui.Text("Vendor Items");
-        ImGui.SetNextItemWidth(-1);
-        var errorHeight = _teamCraftImportError != null
-            ? ImGui.GetTextLineHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y
-            : 0f;
+        ImGui.Dummy(new Vector2(0f, M3.Space1));
+        M3Text.Draw("Vendor items", M3TextStyle.Label);
+        var errorHeight = _teamCraftImportError != null ? ImGui.GetTextLineHeight() * 2f + 32f * M3.Scale : 0f;
         var vendorItemsHeight = Math.Max(VulcanUiScaling.Scaled(150f), ImGui.GetContentRegionAvail().Y - errorHeight);
         ImGui.InputTextMultiline("##vendorTeamCraftImportText", ref _teamCraftImportText, 500000, new Vector2(-1, vendorItemsHeight));
 
         if (_teamCraftImportError != null)
         {
-            ImGui.Spacing();
-            ImGui.TextColored(ImGuiColors.DalamudRed, _teamCraftImportError);
+            ImGui.Dummy(new Vector2(0f, M3.Space1));
+            M3Widgets.Banner("##vendorTeamCraftImportError", _teamCraftImportError, M3Severity.Error, FontAwesomeIcon.ExclamationCircle);
         }
-        ImGui.EndChild();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-        var selectedTargetList = _teamCraftImportIntoExistingList
-            ? GetTeamCraftImportTargetList(manager)
-            : null;
-        using (ImRaii.Disabled(string.IsNullOrWhiteSpace(_teamCraftImportText)
-            || _teamCraftImportIntoExistingList && selectedTargetList == null))
-        {
-            if (ImGui.Button("Import", VulcanUiScaling.Scaled(120f, 0f)))
-            {
-                var result = manager.ImportTeamCraftList(
-                    _teamCraftImportText,
-                    _teamCraftImportIntoExistingList ? _teamCraftImportTargetListId : null,
-                    _teamCraftImportListName);
-                if (result.List != null)
-                {
-                    ResetTeamCraftImportWindowState();
-                }
-                else
-                {
-                    _teamCraftImportError = result.Error;
-                }
-            }
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("Cancel", VulcanUiScaling.Scaled(100f, 0f)))
-        {
-            ResetTeamCraftImportWindowState();
-        }
-
-        if (!_showTeamCraftImport)
-        {
-            SaveTeamCraftImportWindowSize(true);
-        }
-
-        ImGui.End();
     }
 
     private static Guid? GetDefaultTeamCraftImportTargetListId(VendorBuyListManager manager)
     {
-        var activeListId = manager.ActiveList?.Id;
+        var activeListId = VendorBuyListManager.ActiveList?.Id;
         if (activeListId.HasValue)
         {
             return activeListId.Value;
         }
 
-        return manager.Lists.Count > 0
-            ? manager.Lists[0].Id
+        return VendorBuyListManager.Lists.Count > 0
+            ? global::GatherBuddy.Vulcan.Vendors.VendorBuyListManager.Lists[0].Id
             : null;
     }
 
     private void NormalizeTeamCraftImportTargetListId(VendorBuyListManager manager)
     {
-        if (manager.Lists.Count == 0)
+        if (VendorBuyListManager.Lists.Count == 0)
         {
             _teamCraftImportIntoExistingList = false;
             _teamCraftImportTargetListId = null;
@@ -222,7 +186,7 @@ public sealed partial class VendorBuyListWindow
 
         if (_teamCraftImportTargetListId.HasValue)
         {
-            foreach (var list in manager.Lists)
+            foreach (var list in VendorBuyListManager.Lists)
             {
                 if (list.Id == _teamCraftImportTargetListId.Value)
                 {
@@ -242,7 +206,7 @@ public sealed partial class VendorBuyListWindow
             return null;
         }
 
-        foreach (var list in manager.Lists)
+        foreach (var list in VendorBuyListManager.Lists)
         {
             if (list.Id == _teamCraftImportTargetListId.Value)
             {
@@ -251,33 +215,5 @@ public sealed partial class VendorBuyListWindow
         }
 
         return null;
-    }
-
-    private static Vector2 NormalizeTeamCraftImportWindowSize(Vector2 size)
-        => size.X <= 0f || size.Y <= 0f
-            ? DefaultTeamCraftImportWindowSize
-            : HasTeamCraftImportWindowSizeChanged(size, LegacyTeamCraftImportWindowSize)
-                ? size
-                : DefaultTeamCraftImportWindowSize;
-
-    private static bool HasTeamCraftImportWindowSizeChanged(Vector2 lhs, Vector2 rhs)
-        => MathF.Abs(lhs.X - rhs.X) > 0.5f || MathF.Abs(lhs.Y - rhs.Y) > 0.5f;
-
-    private void SaveTeamCraftImportWindowSize(bool force = false)
-    {
-        if (!force && !_teamCraftImportWindowSizeDirty)
-        {
-            return;
-        }
-
-        var normalizedSize = NormalizeTeamCraftImportWindowSize(_teamCraftImportWindowSize);
-        if (HasTeamCraftImportWindowSizeChanged(GatherBuddy.Config.VendorTeamCraftImportWindowSize, normalizedSize))
-        {
-            GatherBuddy.Config.VendorTeamCraftImportWindowSize = normalizedSize;
-            GatherBuddy.Config.Save();
-            GatherBuddy.Log.Debug($"[VendorBuyListWindow] Saved vendor TeamCraft import window size: {normalizedSize.X}x{normalizedSize.Y}");
-        }
-
-        _teamCraftImportWindowSizeDirty = false;
     }
 }

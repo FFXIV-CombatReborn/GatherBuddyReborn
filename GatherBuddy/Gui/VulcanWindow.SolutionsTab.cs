@@ -1,14 +1,14 @@
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Colors;
-using Dalamud.Interface.Textures;
+using Dalamud.Interface;
 using GatherBuddy.Crafting;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
@@ -20,180 +20,128 @@ public partial class VulcanWindow
     private DateTime _solutionsLastRefresh = DateTime.MinValue;
     private readonly Dictionary<uint, (string Name, uint IconId)> _solutionItemCache = [];
 
-    private void DrawSolutionsTab()
+    private void DrawSolutionsPage()
     {
-        IDisposable tabItem;
-        bool tabOpen;
-
-        if (GatherBuddy.ControllerSupport != null)
+        if ((DateTime.UtcNow - _solutionsLastRefresh).TotalSeconds > 0.5)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Solutions##solutionsTab", 5, 9);
-            tabItem = handle;
-            tabOpen = handle;
-        }
-        else
-        {
-            var handle = ImRaii.TabItem("Solutions##solutionsTab");
-            tabItem = handle;
-            tabOpen = handle.Success;
+            _solutionsList = GatherBuddy.RaphaelSolveCoordinator.GetAllCachedSolutions();
+            _solutionsList.Sort(static (a, b) =>
+            {
+                var order = b.GeneratedAt.CompareTo(a.GeneratedAt);
+                return order != 0 ? order : string.CompareOrdinal(a.Key, b.Key);
+            });
+            _solutionsLastRefresh = DateTime.UtcNow;
         }
 
-        using (tabItem)
+        var coordinator = GatherBuddy.RaphaelSolveCoordinator;
+        var raphaelConfig = GatherBuddy.Config.RaphaelSolverConfig;
+
+        M3Widgets.SearchField("##solutionsSearch", "Search items", ref _solutionsSearch, VulcanUiScaling.Scaled(240f));
+        var rowTop = ImGui.GetItemRectMin().Y;
+        var rowHeight = ImGui.GetItemRectSize().Y;
+
+        void SameRow(float height)
         {
-            if (!tabOpen)
-            {
-                return;
-            }
+            ImGui.SameLine(0, M3.Space2);
+            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowTop + (rowHeight - height) * 0.5f));
+        }
 
-            if ((DateTime.UtcNow - _solutionsLastRefresh).TotalSeconds > 0.5)
-            {
-                _solutionsList = [.. GatherBuddy.RaphaelSolveCoordinator
-                    .GetAllCachedSolutions()
-                    .OrderByDescending(s => s.GeneratedAt)];
-                _solutionsLastRefresh = DateTime.UtcNow;
-            }
+        SameRow(M3Widgets.ButtonHeight);
+        if (M3Widgets.Button("##stopQueue", "Stop queue", M3ButtonStyle.Tonal, FontAwesomeIcon.Stop, enabled: coordinator.PendingSolves > 0,
+                tooltip: "Cancel queued and active Raphael solves while keeping completed cached solutions."))
+        {
+            coordinator.CancelAllPendingSolves();
+        }
 
-            var coordinator = GatherBuddy.RaphaelSolveCoordinator;
-            var raphaelConfig = GatherBuddy.Config.RaphaelSolverConfig;
+        SameRow(M3Widgets.ButtonHeight);
+        if (M3Widgets.Button("##clearAll", "Clear all", M3ButtonStyle.Text, FontAwesomeIcon.Trash, enabled: _solutionsList.Count > 0,
+                tooltip: "Forget every cached solution."))
+        {
+            coordinator.Clear();
+            _selectedSolutionKey = null;
+            _solutionsList.Clear();
+        }
 
-            ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(220f));
-            ImGui.InputTextWithHint("##solutionsSearch", "Search items...", ref _solutionsSearch, 128);
-            ImGui.SameLine();
-            using (ImRaii.Disabled(coordinator.PendingSolves <= 0))
+        SameRow(M3Widgets.CheckboxHitSize().Y);
+        var autoClear = raphaelConfig.AutoClearSolutionCache;
+        if (M3Widgets.LabeledCheckbox("Clear when a queue starts", ref autoClear,
+                tooltip: "Clears cached solutions each time a new crafting queue starts.\nTurn this off to reuse solutions across queue runs when your stats haven't changed."))
+        {
+            raphaelConfig.AutoClearSolutionCache = autoClear;
+            GatherBuddy.Config.Save();
+        }
+
+        SameRow(M3Badge.Size("Active 0").Y);
+        M3Badge.Draw($"Active {coordinator.ActiveSolves}", coordinator.ActiveSolves > 0 ? M3.Scheme.Success : M3.Scheme.Outline, "Solves running now");
+        ImGui.SameLine(0, M3.Space1);
+        M3Badge.Draw($"Pending {coordinator.PendingSolves}", coordinator.PendingSolves > 0 ? M3.Scheme.Warning : M3.Scheme.Outline, "Solves waiting in the queue");
+
+        ImGui.Dummy(new Vector2(0, M3.Space2));
+
+        var filtered = _solutionsList;
+        if (!string.IsNullOrWhiteSpace(_solutionsSearch))
+        {
+            filtered = [];
+            foreach (var solution in _solutionsList)
             {
-                if (ImGui.Button("Stop Queue", VulcanUiScaling.Scaled(90f, 0f)))
+                if (GetSolutionItemName(solution.Request.RecipeId).Contains(_solutionsSearch, StringComparison.OrdinalIgnoreCase))
                 {
-                    coordinator.CancelAllPendingSolves();
+                    filtered.Add(solution);
                 }
             }
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        }
+
+        if (filtered.Count == 0)
+        {
+            M3Widgets.EmptyState("##noSolutions", _solutionsList.Count == 0 ? "No cached solutions" : "No matches",
+                _solutionsList.Count == 0
+                    ? "Start a queue with the Raphael solver to generate solutions."
+                    : "No solutions match your search.", FontAwesomeIcon.Lightbulb);
+            return;
+        }
+
+        var avail = ImGui.GetContentRegionAvail();
+        var leftWidth = VulcanUiScaling.Scaled(300f);
+        using (var left = M3Panel.Begin("##solLeftPanel", new Vector2(leftWidth, avail.Y), fill: VulcanUiStyle.PanelBackground))
+        {
+            if (left)
             {
-                ImGui.SetTooltip("Cancel queued and active Raphael solves while keeping completed cached solutions.");
-            }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Clear All", VulcanUiScaling.Scaled(90f, 0f)))
-            {
-                coordinator.Clear();
-                _selectedSolutionKey = null;
-                _solutionsList.Clear();
-            }
-            ImGui.SameLine();
-            var autoClear = raphaelConfig.AutoClearSolutionCache;
-            if (ImGui.Checkbox("Auto-clear on queue start", ref autoClear))
-            {
-                raphaelConfig.AutoClearSolutionCache = autoClear;
-                GatherBuddy.Config.Save();
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Clears cached solutions each time a new crafting queue starts.\nDisable to reuse solutions across queue runs when your stats haven't changed.");
-            }
-
-            var activeColor = coordinator.ActiveSolves > 0 ? ImGuiColors.HealerGreen : ImGuiColors.DalamudGrey;
-            var pendingColor = coordinator.PendingSolves > 0 ? ImGuiColors.DalamudOrange : ImGuiColors.DalamudGrey;
-            ImGui.SameLine();
-            ImGui.TextColored(activeColor, $"Active: {coordinator.ActiveSolves}");
-            ImGui.SameLine();
-            ImGui.TextColored(pendingColor, $"Pending: {coordinator.PendingSolves}");
-
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            var filtered = string.IsNullOrWhiteSpace(_solutionsSearch)
-                ? _solutionsList
-                : [.. _solutionsList
-                    .Where(s => GetSolutionItemName(s.Request.RecipeId)
-                        .Contains(_solutionsSearch, StringComparison.OrdinalIgnoreCase))];
-
-            if (filtered.Count == 0)
-            {
-                ImGui.TextColored(ImGuiColors.DalamudGrey, _solutionsList.Count == 0
-                    ? "No cached solutions. Start a queue with Raphael solver to generate solutions."
-                    : "No solutions match your search.");
-                return;
-            }
-
-            var avail = ImGui.GetContentRegionAvail();
-            var leftWidth = VulcanUiScaling.Scaled(290f);
-            var rightWidth = avail.X - leftWidth - ImGui.GetStyle().ItemSpacing.X;
-
-            using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
-            {
-                ImGui.BeginChild("##solLeftPanel", new Vector2(leftWidth, avail.Y), true);
                 DrawSolutionsList(filtered);
-                ImGui.EndChild();
             }
+        }
 
-            ImGui.SameLine();
-
-            using (ImRaii.PushColor(ImGuiCol.ChildBg, new Vector4(0.08f, 0.08f, 0.10f, 1.00f)))
-            {
-                ImGui.BeginChild("##solRightPanel", new Vector2(rightWidth, avail.Y), true);
-                DrawSolutionDetail();
-                ImGui.EndChild();
-            }
+        ImGui.SameLine(0, M3.Space2);
+        using var right = M3Panel.Begin("##solRightPanel", new Vector2(0f, avail.Y));
+        if (right)
+        {
+            DrawSolutionDetail();
         }
     }
 
     private void DrawSolutionsList(List<CachedRaphaelSolution> solutions)
     {
-        var iconSize = VulcanUiScaling.Scaled(28f, 28f);
-        var itemHeight = iconSize.Y + ImGui.GetStyle().ItemSpacing.Y;
-        var contentMaxX = ImGui.GetContentRegionMax().X;
-
-        ElliLib.ImGuiClip.ClippedDraw(solutions, solution =>
+        var iconSize = VulcanUiScaling.Scaled(28f);
+        Ui.ClippedDraw(solutions, solution =>
         {
             var (name, iconId) = GetSolutionItemInfo(solution.Request.RecipeId);
-            var isSelected = _selectedSolutionKey == solution.Key;
             var req = solution.Request;
-            var statsLine = $"Lv{req.Level}  {req.Craftsmanship}/{req.Control}/{req.CP}  {solution.ActionIds.Count} steps";
-
-            if (iconId > 0)
-            {
-                var wrap = Icons.DefaultStorage.TextureProvider
-                    .GetFromGameIcon(new GameIconLookup(iconId))
-                    .GetWrapOrDefault();
-                if (wrap != null)
-                {
-                    ImGui.Image(wrap.Handle, iconSize);
-                }
-                else
-                {
-                    ImGui.Dummy(iconSize);
-                }
-            }
-            else
-            {
-                ImGui.Dummy(iconSize);
-            }
-
-            ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize.Y - ImGui.GetTextLineHeight()) / 2f);
-
-            if (ImGui.Selectable($"{name}##sol_{solution.Key}", isSelected, ImGuiSelectableFlags.None,
-                    new Vector2(contentMaxX - ImGui.GetCursorPosX(), 0)))
+            if (Ui.IconListRow($"##sol_{solution.Key}", iconId, name, _selectedSolutionKey == solution.Key, iconSize))
             {
                 _selectedSolutionKey = solution.Key;
             }
 
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(statsLine);
-            }
-        }, itemHeight);
+            M3Tooltip.Hovered($"{name}\nLevel {req.Level}, {req.Craftsmanship}/{req.Control}/{req.CP}, {solution.ActionIds.Count} steps");
+        }, iconSize + M3.Space2 + ImGui.GetStyle().ItemSpacing.Y);
     }
-
     private void DrawSolutionDetail()
     {
         if (_selectedSolutionKey == null)
         {
-            ImGui.Spacing();
-            ImGui.TextColored(ImGuiColors.DalamudGrey, "Select a solution to view details.");
+            M3Widgets.EmptyState("##noSolution", "No solution selected", "Pick a solution on the left to see its steps.", FontAwesomeIcon.Lightbulb);
             return;
         }
 
-        var solution = _solutionsList.FirstOrDefault(s => s.Key == _selectedSolutionKey);
+        var solution = _solutionsList.Find(s => s.Key == _selectedSolutionKey);
         if (solution == null)
         {
             _selectedSolutionKey = null;
@@ -202,89 +150,61 @@ public partial class VulcanWindow
 
         var req = solution.Request;
         var (name, iconId) = GetSolutionItemInfo(req.RecipeId);
-        var largeIconSize = VulcanUiScaling.Scaled(48f, 48f);
-
+        var largeIconSize = VulcanUiScaling.Scaled(48f);
+        var start = ImGui.GetCursorScreenPos();
         if (iconId > 0)
         {
-            var wrap = Icons.DefaultStorage.TextureProvider
-                .GetFromGameIcon(new GameIconLookup(iconId))
-                .GetWrapOrDefault();
-            if (wrap != null)
-            {
-                ImGui.Image(wrap.Handle, largeIconSize);
-                ImGui.SameLine(0, VulcanUiScaling.Scaled(10f));
-            }
+            M3Widgets.GameIcon(iconId, largeIconSize);
+            ImGui.SameLine(0, M3.Space3);
         }
 
-        var lineH = ImGui.GetTextLineHeightWithSpacing();
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (largeIconSize.Y - lineH * 2f) / 2f);
-        ImGui.TextColored(ImGuiColors.ParsedGold, name);
-        ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Recipe {req.RecipeId}");
+        using (ImRaii.Group())
+        {
+            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, start.Y + (largeIconSize - ImGui.GetTextLineHeightWithSpacing() * 2f) * 0.5f));
+            using (ImRaii.PushFont(M3.TitleMedium))
+            {
+                ImGui.TextUnformatted(name);
+            }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+            M3Text.Draw($"Recipe {req.RecipeId}, solved {solution.GeneratedAt.ToLocalTime():yyyy-MM-dd HH:mm}", M3TextStyle.Muted);
+        }
 
-        ImGui.TextColored(ImGuiColors.DalamudYellow, "Solve Parameters");
-        ImGui.Spacing();
+        ImGui.Dummy(new Vector2(0, M3.Space2));
+        using (M3Card.Begin("##solveParameters", "Solve parameters", FontAwesomeIcon.SlidersH, M3.AccentFor(0)))
+        {
+            M3Widgets.RowValue("Level", req.Level.ToString());
+            M3Widgets.RowValue("Craftsmanship", req.Craftsmanship.ToString());
+            M3Widgets.RowValue("Control", req.Control.ToString());
+            M3Widgets.RowValue("CP", req.CP.ToString());
+            M3Widgets.RowValue("Manipulation", req.Manipulation ? "Yes" : "No");
+            M3Widgets.RowValue("Specialist", req.Specialist ? "Yes" : "No");
+            M3Widgets.RowValue("Initial quality", req.InitialQuality.ToString());
+        }
 
-        ImGui.Text($"Level:          {req.Level}");
-        ImGui.Text($"Craftsmanship:  {req.Craftsmanship}");
-        ImGui.SameLine(VulcanUiScaling.Scaled(180f));
-        ImGui.Text($"Control:  {req.Control}");
-        ImGui.SameLine(VulcanUiScaling.Scaled(340f));
-        ImGui.Text($"CP:  {req.CP}");
-        ImGui.Text($"Manipulation:   {(req.Manipulation ? "Yes" : "No")}");
-        ImGui.SameLine(VulcanUiScaling.Scaled(180f));
-        ImGui.Text($"Specialist:  {(req.Specialist ? "Yes" : "No")}");
-        ImGui.Text($"Initial Quality: {req.InitialQuality}");
-        ImGui.Spacing();
-        ImGui.TextColored(ImGuiColors.DalamudGrey, $"Generated: {solution.GeneratedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.TextColored(ImGuiColors.ParsedGold, $"Actions ({solution.ActionIds.Count})");
-        ImGui.Spacing();
-
-        var actionIconSize = VulcanUiScaling.Scaled(24f, 24f);
-        var remainH = ImGui.GetContentRegionAvail().Y;
-        ImGui.BeginChild("##solActions", new Vector2(-1, remainH), false);
-
+        M3Widgets.SectionLabel($"Actions ({solution.ActionIds.Count})");
+        var actionIconSize = VulcanUiScaling.Scaled(24f);
+        using var actions = ImRaii.Child("##solActions", new Vector2(-1, ImGui.GetContentRegionAvail().Y), false);
         for (var i = 0; i < solution.ActionIds.Count; i++)
         {
             var actionId = solution.ActionIds[i];
-            var skillName = ((VulcanSkill)actionId).ToString();
             var skillIconId = GetSkillIconId(actionId);
-
+            var rowStart = ImGui.GetCursorScreenPos();
             if (skillIconId > 0)
             {
-                var wrap = Icons.DefaultStorage.TextureProvider
-                    .GetFromGameIcon(new GameIconLookup(skillIconId))
-                    .GetWrapOrDefault();
-                if (wrap != null)
-                {
-                    ImGui.Image(wrap.Handle, actionIconSize);
-                }
-                else
-                {
-                    ImGui.Dummy(actionIconSize);
-                }
+                M3Widgets.GameIcon(skillIconId, actionIconSize);
             }
             else
             {
-                ImGui.Dummy(actionIconSize);
+                ImGui.Dummy(new Vector2(actionIconSize));
             }
 
-            ImGui.SameLine(0, VulcanUiScaling.Scaled(6f));
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (actionIconSize.Y - ImGui.GetTextLineHeight()) / 2f);
-            ImGui.Text($"{i + 1}. {skillName}");
+            ImGui.SameLine(0, M3.Space2);
+            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (actionIconSize - ImGui.GetTextLineHeight()) * 0.5f));
+            M3Text.Draw($"{i + 1}.", M3TextStyle.Faint);
+            ImGui.SameLine(0, M3.Space1);
+            ImGui.TextUnformatted(((VulcanSkill)actionId).ToString());
         }
-
-        ImGui.EndChild();
     }
-
     private (string Name, uint IconId) GetSolutionItemInfo(uint recipeId)
     {
         if (_solutionItemCache.TryGetValue(recipeId, out var cached))

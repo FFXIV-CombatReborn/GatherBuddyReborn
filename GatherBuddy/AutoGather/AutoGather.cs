@@ -1,11 +1,11 @@
 using Dalamud.Game.Chat;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Gui.Toast;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Utility;
-using ElliLib.Extensions;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -27,10 +27,10 @@ using GatherBuddy.SeFunctions;
 using GatherBuddy.Time;
 using GatherBuddy.Utilities;
 using Lumina.Excel.Sheets;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Fish = GatherBuddy.Classes.Fish;
@@ -143,7 +143,15 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
 
-                var logMsg = _cachedLogMessages.FirstOrDefault(x => x.Text.ExtractText() == text);
+                var logMsg = default(LogMessage);
+                foreach (var row in _cachedLogMessages)
+                {
+                    if (row.Text.ExtractText() == text)
+                    {
+                        logMsg = row;
+                        break;
+                    }
+                }
 
                 if (logMsg.RowId != 0)
                 {
@@ -185,10 +193,27 @@ namespace GatherBuddy.AutoGather
                 if (chatMessage.LogKind is (XivChatType)2243)
                 {
                     var text = chatMessage.Message.TextValue;
-                    var id = Dalamud.GameData.GetExcelSheet<LogMessage>()
-                        ?.FirstOrDefault(x => x.Text.ToString() == text).RowId;
+                    var id = 0u;
+                    foreach (var row in Dalamud.GameData.GetExcelSheet<LogMessage>())
+                    {
+                        if (row.Text.ToString() == text)
+                        {
+                            id = row.RowId;
+                            break;
+                        }
+                    }
 
-                    LureSuccess = GatherBuddy.GameData.Fishes.Values.FirstOrDefault(f => f.FishData?.Unknown_70_1 == text) != null;
+                    var lureFish = false;
+                    foreach (var fish in GatherBuddy.GameData.Fishes.Values)
+                    {
+                        if (fish.FishData?.Unknown_70_1 == text)
+                        {
+                            lureFish = true;
+                            break;
+                        }
+                    }
+
+                    LureSuccess = lureFish;
 
                     if (LureSuccess)
                     {
@@ -275,7 +300,7 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (position != default && _failedFishingApproachPositions.All(p => Vector3.DistanceSquared(p, position) >= 1f))
+            if (position != default && _failedFishingApproachPositions.TrueForAll(p => Vector3.DistanceSquared(p, position) >= 1f))
             {
                 _failedFishingApproachPositions.Add(position);
             }
@@ -321,7 +346,7 @@ namespace GatherBuddy.AutoGather
             if (_fishingApproachLastCheckTime != DateTime.MinValue
              && (now - _fishingApproachLastCheckTime).TotalSeconds > 1)
             {
-                _fishingApproachBestDistance = Math.Min(_fishingApproachBestDistance, distance);
+                _fishingApproachBestDistance = System.Math.Min(_fishingApproachBestDistance, distance);
                 _fishingApproachLastProgressTime = now;
             }
             _fishingApproachLastCheckTime = now;
@@ -336,7 +361,7 @@ namespace GatherBuddy.AutoGather
              || Dalamud.Conditions[ConditionFlag.Mounting71]
              || Dalamud.Conditions[ConditionFlag.MountOrOrnamentTransition])
             {
-                _fishingApproachBestDistance = Math.Min(_fishingApproachBestDistance, distance);
+                _fishingApproachBestDistance = System.Math.Min(_fishingApproachBestDistance, distance);
                 _fishingApproachLastProgressTime = now;
                 return true;
             }
@@ -445,8 +470,7 @@ namespace GatherBuddy.AutoGather
                     ResetPendingFishingTargetChange();
                     Dalamud.ToastGui.ErrorToast -= HandleNodeInteractionErrorToast;
 
-                    // Restore normal controller blocking (blocks everything)
-                    GatherBuddy.ControllerSupport?.SetBlockingMode(true, true, true);
+                    M3Gamepad.EnableInputBlocking();
 
                     if (_autoRetainerMultiModeEnabled && AutoRetainer.IsEnabled)
                     {
@@ -491,8 +515,7 @@ namespace GatherBuddy.AutoGather
                     YesAlready.Lock();
                     DisableQuickGathering();
 
-                    // Switch to automation blocking mode (only block buttons, allow movement/camera)
-                    GatherBuddy.ControllerSupport?.SetBlockingMode(false, false, true);
+                    M3Gamepad.EnableInputBlocking(movement: false, camera: false);
                 }
 
                 _enabled = value;
@@ -623,7 +646,7 @@ namespace GatherBuddy.AutoGather
                     var fishingSpot = gatherTarget.FishingSpot;
 
                     if (gatherable != null && (gatherable.NodeType == NodeType.Regular || gatherable.NodeType == NodeType.Ephemeral)
-                        && VisitedNodes.LastOrDefault() != targetNode.BaseId
+                        && LastVisitedNode != targetNode.BaseId
                         && node != null && node.WorldPositions.ContainsKey(targetNode.BaseId))
                     {
                         FarNodesSeenSoFar.Clear();
@@ -639,7 +662,7 @@ namespace GatherBuddy.AutoGather
                         }
                     }
                     else if (gatherTarget.Fish?.IsSpearFish == true && fishingSpot != null
-                        && VisitedNodes.LastOrDefault() != targetNode.BaseId
+                        && LastVisitedNode != targetNode.BaseId
                         && fishingSpot.WorldPositions.ContainsKey(targetNode.BaseId))
                     {
                         FarNodesSeenSoFar.Clear();
@@ -997,7 +1020,17 @@ namespace GatherBuddy.AutoGather
             if (Diadem.IsInside && GatherBuddy.Config.AutoGatherConfig.DiademFarmCloudedNodes && _activeItemList.IsCloudedNodeConsumed)
             {
                 var currentWeather = EnhancedCurrentWeather.GetCurrentWeatherId();
-                if (_activeItemList.Any(x => x.Node?.NodeType == NodeType.Clouded && x.Node.UmbralWeather.Id == currentWeather))
+                var hasUmbralTarget = false;
+                foreach (var target in _activeItemList)
+                {
+                    if (target.Node?.NodeType == NodeType.Clouded && target.Node.UmbralWeather.Id == currentWeather)
+                    {
+                        hasUmbralTarget = true;
+                        break;
+                    }
+                }
+
+                if (hasUmbralTarget)
                 {
                     GatherBuddy.Log.Information($"[Umbral] Gathered umbral node - leaving Diadem to reset session");
                     StopNavigation();
@@ -1162,10 +1195,15 @@ namespace GatherBuddy.AutoGather
                     var aetheryteSheet = Dalamud.GameData.GetExcelSheet<Lumina.Excel.Sheets.Aetheryte>();
 
                     var targetTerritory = territorySheet.GetRow((uint)targetTerritoryId);
-                    var aethernetShard = aetheryteSheet.FirstOrDefault(a =>
-                        a.Territory.RowId == targetTerritoryId &&
-                        !a.IsAetheryte &&
-                        a.AethernetName.RowId > 0);
+                    var aethernetShard = default(Lumina.Excel.Sheets.Aetheryte);
+                    foreach (var a in aetheryteSheet)
+                    {
+                        if (a.Territory.RowId == targetTerritoryId && !a.IsAetheryte && a.AethernetName.RowId > 0)
+                        {
+                            aethernetShard = a;
+                            break;
+                        }
+                    }
 
                     if (aethernetShard.RowId > 0)
                     {
@@ -1246,8 +1284,22 @@ namespace GatherBuddy.AutoGather
             //Idyllshire to The Dravanian Hinterlands
             if (territoryId == 478 && next.Location.Territory.Id == 399)
             {
-                var aetheryte = Dalamud.Objects.Where(x => x.ObjectKind == ObjectKind.Aetheryte && x.IsTargetable)
-                    .OrderBy(x => x.Position.DistanceToPlayer()).FirstOrDefault();
+                IGameObject? aetheryte = null;
+                var aetheryteDistance = float.MaxValue;
+                foreach (var x in Dalamud.Objects)
+                {
+                    if (x.ObjectKind != ObjectKind.Aetheryte || !x.IsTargetable)
+                    {
+                        continue;
+                    }
+
+                    var distance = x.Position.DistanceToPlayer();
+                    if (aetheryte == null || distance < aetheryteDistance)
+                    {
+                        aetheryte = x;
+                        aetheryteDistance = distance;
+                    }
+                }
                 if (aetheryte != null)
                 {
                     if (aetheryte.Position.DistanceToPlayer() > 10)
@@ -1297,7 +1349,7 @@ namespace GatherBuddy.AutoGather
                     }
                 }
 
-                var dutyNpc = Dalamud.Objects.FirstOrDefault(o => o.BaseId == 1031694);
+                var dutyNpc = FindGameObject(o => o.BaseId == 1031694);
                 var selectStringAddon = Dalamud.GameGui.GetAddonByName("SelectString");
                 var talkAddon = Dalamud.GameGui.GetAddonByName("Talk");
                 var selectYesNoAddon = Dalamud.GameGui.GetAddonByName("SelectYesno");
@@ -1380,8 +1432,7 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            var forcedAetheryte = ForcedAetherytes.ZonesWithoutAetherytes
-                .FirstOrDefault(z => z.ZoneId == next.Location.Territory.Id);
+            var forcedAetheryte = Array.Find(ForcedAetherytes.ZonesWithoutAetherytes, z => z.ZoneId == next.Location.Territory.Id);
             if (forcedAetheryte.ZoneId != 0
              && GatherBuddy.GameData.Aetherytes[forcedAetheryte.AetheryteId].Territory.Id == territoryId)
             {
@@ -1512,6 +1563,20 @@ namespace GatherBuddy.AutoGather
         public readonly Dictionary<GatherTarget, (Vector3 Position, Angle Rotation, DateTime Expiration)> FishingSpotData = [];
         private readonly Dictionary<Vector3, DateTime> _fishingSpotDismountAttempts = [];
 
+        private KeyValuePair<GatherTarget, (Vector3 Position, Angle Rotation, DateTime Expiration)> FindFishingSpotEntry(GatherTarget target)
+        {
+            var spotId = target.FishingSpot?.Id;
+            foreach (var entry in FishingSpotData)
+            {
+                if (entry.Key.FishingSpot?.Id == spotId)
+                {
+                    return entry;
+                }
+            }
+
+            return default;
+        }
+
         private void DoFishMovement(GatherTarget next)
         {
             Debug.Assert(next.Fish != null);
@@ -1537,9 +1602,7 @@ namespace GatherBuddy.AutoGather
 
             if (!FishingSpotData.TryGetValue(fish, out var fishingSpotData))
             {
-                var existingEntryForSameSpot = FishingSpotData
-                    .FirstOrDefault(kvp => kvp.Key.FishingSpot?.Id == fish.FishingSpot?.Id);
-
+                var existingEntryForSameSpot = FindFishingSpotEntry(fish);
                 if (existingEntryForSameSpot.Key.Fish != null)
                 {
                     GatherBuddy.Log.Information($"[AutoGather] Reusing position for same fishing spot (switching from {existingEntryForSameSpot.Key.Fish.Name[GatherBuddy.Language]} to {fish.Fish!.Name[GatherBuddy.Language]})");
@@ -1580,7 +1643,7 @@ namespace GatherBuddy.AutoGather
                 {
                     if (_failedFishingApproachPositions.Count > 0)
                     {
-                        var failedPositions = string.Join(", ", _failedFishingApproachPositions.Select(p => $"({p.X:F1}, {p.Y:F1}, {p.Z:F1})"));
+                        var failedPositions = FormatFailedFishingPositions();
                         GatherBuddy.Log.Error(
                             $"[AutoGather] No untried fishing positions remain for {fish.Fish!.Name[GatherBuddy.Language]} at {fish.FishingSpot.Name}; failed={failedPositions}; destination={CurrentDestination}; pathing={IsPathing}; generating={IsPathGenerating}");
                         AbortAutoGather($"No untried fishing positions remain for {fish.FishingSpot.Name}");
@@ -1598,7 +1661,7 @@ namespace GatherBuddy.AutoGather
                     var alternateDistance = positionData.Value.Position.DistanceToPlayer();
                     if (alternateDistance > MaxFishingAlternateDistance)
                     {
-                        var failedPositions = string.Join(", ", _failedFishingApproachPositions.Select(p => $"({p.X:F1}, {p.Y:F1}, {p.Z:F1})"));
+                        var failedPositions = FormatFailedFishingPositions();
                         GatherBuddy.Log.Error(
                             $"[AutoGather] Nearest untried fishing position for {fish.Fish!.Name[GatherBuddy.Language]} at {fish.FishingSpot.Name} is {alternateDistance:F1}y away, exceeding the {MaxFishingAlternateDistance:F1}y recovery limit; failed={failedPositions}; destination={CurrentDestination}; pathing={IsPathing}; generating={IsPathGenerating}");
                         AbortAutoGather($"Nearest untried fishing position is {alternateDistance:F1}y away; stopping instead of relocating");
@@ -1964,9 +2027,9 @@ namespace GatherBuddy.AutoGather
                     var newRotation = fishingSpotData.Rotation;
 
                     var forwardDirection = new Vector3(
-                        (float)Math.Sin(Player.Rotation),
+                        (float)System.Math.Sin(Player.Rotation),
                         0,
-                        (float)Math.Cos(Player.Rotation)
+                        (float)System.Math.Cos(Player.Rotation)
                     );
 
                     var stepSize = 1.0f;
@@ -2056,24 +2119,37 @@ namespace GatherBuddy.AutoGather
 
                 // Check if the node hasn't spawned due to a game bug.
                 var flag = TimedNodePosition;
-                var nodeId = next.Node.WorldPositions.Keys.First();
+                var nodeId = FirstNodeId(next.Node.WorldPositions);
                 if (flag.HasValue && Vector2.Distance(flag.Value, player.ToVector2()) < NodeVisibilityDistance
-                    && !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable && nodeId == o.BaseId))
+                    && FindGameObject(o => o.ObjectKind == ObjectKind.GatheringPoint && o.IsTargetable && nodeId == o.BaseId) == null)
                 {
                     GatherBuddy.Log.Warning("Looks like the Clouded node hasn't spawned due to a game bug. Trying to move away.");
 
                     // Pick a random node far away and move there.
-                    var pos = GatherBuddy.GameData.GatheringNodes.Values
-                        .Where(n => n.Territory == Diadem.Territory)
-                        .SelectMany(n => n.WorldPositions.Values)
-                        .SelectMany(x => x)
-                        .Where(pos => Vector2.DistanceSquared(pos.ToVector2(), flag.Value) > 200f * 200f)
-                        .Aggregate((Count: 0, Item: Vector3.Zero), (acc, current) => (acc.Count + 1, (Random.Shared.Next(acc.Count + 1) == 0) ? current : acc.Item))
-                        .Item;
+                    var pos = Vector3.Zero;
+                    var farPositions = 0;
+                    foreach (var diademNode in GatherBuddy.GameData.GatheringNodes.Values)
+                    {
+                        if (diademNode.Territory != Diadem.Territory)
+                        {
+                            continue;
+                        }
+
+                        foreach (var positions in diademNode.WorldPositions.Values)
+                        {
+                            foreach (var position in positions)
+                            {
+                                if (Vector2.DistanceSquared(position.ToVector2(), flag.Value) > 200f * 200f && Random.Shared.Next(++farPositions) == 0)
+                                {
+                                    pos = position;
+                                }
+                            }
+                        }
+                    }
 
                     Navigate(pos, true, direct: true);
                     TaskManager.Enqueue(() => !IsPathGenerating);
-                    TaskManager.Enqueue(() => !Dalamud.Objects.Any(o => o.ObjectKind == ObjectKind.GatheringPoint && nodeId == o.BaseId) || !IsPathing, 10000);
+                    TaskManager.Enqueue(() => FindGameObject(o => o.ObjectKind == ObjectKind.GatheringPoint && nodeId == o.BaseId) == null || !IsPathing, 10000);
                     TaskManager.Enqueue(StopNavigation);
 
                     AutoStatus = "Trying to reset the bugged Clouded node";
@@ -2082,7 +2158,7 @@ namespace GatherBuddy.AutoGather
                 return false;
             }
 
-            if (Diadem.OddlyDelicateItems.Contains(next.Item))
+            if (next.Item is Gatherable oddlyDelicateCandidate && Diadem.OddlyDelicateItems.Contains(oddlyDelicateCandidate))
             {
                 return false;
             }
@@ -2100,26 +2176,35 @@ namespace GatherBuddy.AutoGather
                         continue;
                     }
 
-                    try
+                    var positionSum = Vector3.Zero;
+                    var positionCount = 0;
+                    foreach (var position in WorldData.WorldLocationsByNodeId[path[i]])
                     {
-                        var dist = Vector3.Distance(player, WorldData.WorldLocationsByNodeId[path[i]].Where(p => !IsBlacklisted(p)).Average());
-                        // If there are several close nodes within 50y of each other, pick the one with the lowest index.
-                        if (dist + 50f < closestDist)
+                        if (!IsBlacklisted(position))
                         {
-                            closestDist = dist;
-                            _diademPathIndex = i;
+                            positionSum += position;
+                            ++positionCount;
                         }
                     }
-                    catch (InvalidOperationException)
+
+                    if (positionCount == 0)
                     {
-                        continue; // Node is blacklisted
+                        continue;
+                    }
+
+                    var dist = Vector3.Distance(player, positionSum / positionCount);
+                    // If there are several close nodes within 50y of each other, pick the one with the lowest index.
+                    if (dist + 50f < closestDist)
+                    {
+                        closestDist = dist;
+                        _diademPathIndex = i;
                     }
                 }
             }
             else
             {
                 var prevIndex = _diademPathIndex;
-                while (!_diadem.IsNodeAvailable(path[_diademPathIndex]) || WorldData.WorldLocationsByNodeId[path[_diademPathIndex]].All(IsBlacklisted))
+                while (!_diadem.IsNodeAvailable(path[_diademPathIndex]) || WorldData.WorldLocationsByNodeId[path[_diademPathIndex]].TrueForAll(IsBlacklisted))
                 {
                     _diademPathIndex = (_diademPathIndex + 1) % path.Length;
                     if (prevIndex == _diademPathIndex)
@@ -2129,7 +2214,8 @@ namespace GatherBuddy.AutoGather
                 }
             }
 
-            var nextNode = Dalamud.Objects.Where(o => o.ObjectKind == ObjectKind.GatheringPoint && o.BaseId == path[_diademPathIndex] && o.IsTargetable).FirstOrDefault();
+            var nextNodeId = path[_diademPathIndex];
+            var nextNode = FindGameObject(o => o.ObjectKind == ObjectKind.GatheringPoint && o.BaseId == nextNodeId && o.IsTargetable);
             if (nextNode != null)
             {
                 if (IsBlacklisted(nextNode.Position))
@@ -2153,9 +2239,23 @@ namespace GatherBuddy.AutoGather
             else
             {
                 var nodeId = path[_diademPathIndex];
-                var pos = WorldData.WorldLocationsByNodeId[nodeId]
-                    .OrderBy(pos => Vector3.DistanceSquared(pos, player))
-                    .First();
+                var nodePositions = WorldData.WorldLocationsByNodeId[nodeId];
+                if (nodePositions.Count == 0)
+                {
+                    throw new InvalidOperationException($"Diadem node {nodeId} has no known positions.");
+                }
+
+                var pos = nodePositions[0];
+                var posDistance = Vector3.DistanceSquared(pos, player);
+                for (var i = 1; i < nodePositions.Count; ++i)
+                {
+                    var distance = Vector3.DistanceSquared(nodePositions[i], player);
+                    if (distance < posDistance)
+                    {
+                        pos = nodePositions[i];
+                        posDistance = distance;
+                    }
+                }
 
                 AutoStatus = $"Moving to next Diadem node ({Vector3.Distance(player, pos):F0}y)...";
 
@@ -2165,7 +2265,7 @@ namespace GatherBuddy.AutoGather
             return true;
         }
 
-        private bool TryWindmireJump(ref Vector3 destination)
+        private static bool TryWindmireJump(ref Vector3 destination)
         {
             if (!GatherBuddy.Config.AutoGatherConfig.DiademWindmireJumps)
             {
@@ -2175,9 +2275,17 @@ namespace GatherBuddy.AutoGather
             var pos = destination;
             var player = Player.Position;
 
-            var ((windmire, _), windmireDistance) = Diadem.Windmires
-                    .Select(w => (w, Distance: Vector3.Distance(player, w.From) + Vector3.Distance(w.To, pos)))
-                    .MinBy(x => x.Distance);
+            var windmire = Vector3.Zero;
+            var windmireDistance = float.MaxValue;
+            foreach (var (jumpFrom, jumpTo) in Diadem.Windmires)
+            {
+                var distance = Vector3.Distance(player, jumpFrom) + Vector3.Distance(jumpTo, pos);
+                if (distance < windmireDistance)
+                {
+                    windmire = jumpFrom;
+                    windmireDistance = distance;
+                }
+            }
 
             var directDistance = Vector3.Distance(player, pos);
 
@@ -2202,25 +2310,50 @@ namespace GatherBuddy.AutoGather
                 _diademPathIndex = -1;
             }
 
-            var allPositions = next.Location.WorldPositions
-                .Where(n => !VisitedNodes.Contains(n.Key))
-                .SelectMany(w => w.Value.Select(n => (id: w.Key, Position: n)))
-                .Where(v => !IsBlacklisted(v.Position))
-                .ToList();
+            var allPositions = new List<(uint Id, Vector3 Position)>();
+            foreach (var (worldNodeId, worldPositions) in next.Location.WorldPositions)
+            {
+                if (VisitedNodes.Contains(worldNodeId))
+                {
+                    continue;
+                }
+
+                foreach (var worldPosition in worldPositions)
+                {
+                    if (!IsBlacklisted(worldPosition))
+                    {
+                        allPositions.Add((worldNodeId, worldPosition));
+                    }
+                }
+            }
 
             var isSpearfishing = next.Fish?.IsSpearFish == true;
-            var visibleNodes = isSpearfishing && next.FishingSpot is { } spearfishingSpot
-                ? Dalamud.Objects
-                    .Where(gameObject => TryGetSpearfishingNodeState(gameObject, out var state)
-                        && state.RemainingCount > 0
-                        && MatchesSpearfishingSpot(spearfishingSpot, state)
-                        && !IsVisitedSpearfishingNode(state))
-                    .ToList()
-                : [.. Dalamud.Objects.Where(gameObject => allPositions.Contains((gameObject.BaseId, gameObject.Position)))];
+            var visibleNodes = new List<IGameObject>();
+            if (isSpearfishing && next.FishingSpot is { } spearfishingSpot)
+            {
+                foreach (var gameObject in Dalamud.Objects)
+                {
+                    if (TryGetSpearfishingNodeState(gameObject, out var state)
+                     && state.RemainingCount > 0
+                     && MatchesSpearfishingSpot(spearfishingSpot, state)
+                     && !IsVisitedSpearfishingNode(state))
+                    {
+                        visibleNodes.Add(gameObject);
+                    }
+                }
+            }
+            else
+            {
+                foreach (var gameObject in Dalamud.Objects)
+                {
+                    if (allPositions.Contains((gameObject.BaseId, gameObject.Position)))
+                    {
+                        visibleNodes.Add(gameObject);
+                    }
+                }
+            }
 
-            var closestTargetableNode = visibleNodes
-                .Where(o => o.IsTargetable)
-                .MinBy(o => Vector3.Distance(Player.Position, o.Position));
+            var closestTargetableNode = FindClosestObject(visibleNodes, true);
 
             if (!isSpearfishing)
             {
@@ -2246,7 +2379,7 @@ namespace GatherBuddy.AutoGather
                 return;
             }
 
-            if (isSpearfishing && visibleNodes.MinBy(gameObject => Vector3.Distance(Player.Position, gameObject.Position)) is { } visibleSpearfishingNode)
+            if (isSpearfishing && FindClosestObject(visibleNodes, false) is { } visibleSpearfishingNode)
             {
                 AutoStatus = visibleSpearfishingNode.IsTargetable ? "Moving to node..." : "Waiting for node to become targetable...";
                 MoveToCloseSpearfishingNode(visibleSpearfishingNode, next.Fish!, next.FishingSpot!);
@@ -2280,7 +2413,7 @@ namespace GatherBuddy.AutoGather
 
             if (CurrentDestination != default && IsPathing)
             {
-                var currentNode = visibleNodes.FirstOrDefault(o => o.Position == CurrentDestination);
+                var currentNode = visibleNodes.Find(o => o.Position == CurrentDestination);
                 if (currentNode != null && !currentNode.IsTargetable)
                 {
                     GatherBuddy.Log.Verbose($"Far node is not targetable, distance {currentNode.Position.DistanceToPlayer()}.");
@@ -2289,9 +2422,12 @@ namespace GatherBuddy.AutoGather
                 //It takes some time (roundtrip to the server) before a node becomes targetable after it becomes visible,
                 //so we need to delay excluding it. But instead of measuring time, we use distance, since character is traveling at a constant speed.
                 //Value 50 was determined empirically.
-                foreach (var node in allPositions.Where(o => o.Position.DistanceToPlayer() < NodeVisibilityDistance))
+                foreach (var node in allPositions)
                 {
-                    FarNodesSeenSoFar.Add(node.Position);
+                    if (node.Position.DistanceToPlayer() < NodeVisibilityDistance)
+                    {
+                        FarNodesSeenSoFar.Add(node.Position);
+                    }
                 }
 
                 if (CurrentDestination.DistanceToPlayer() < NodeVisibilityDistance)
@@ -2320,9 +2456,7 @@ namespace GatherBuddy.AutoGather
                     return;
                 }
 
-                selectedFarNode = allPositions
-                    .DefaultIfEmpty()
-                    .MinBy(o => Vector2.DistanceSquared(mapMarker.Value, o.Position.ToVector2()));
+                selectedFarNode = FindClosestPosition(allPositions, mapMarker.Value, null);
 
                 if (selectedFarNode.Position == default || Vector2.DistanceSquared(mapMarker.Value, selectedFarNode.Position.ToVector2()) > 10 * 10)
                 {
@@ -2333,10 +2467,7 @@ namespace GatherBuddy.AutoGather
             else
             {
                 //Select the closest node
-                selectedFarNode = allPositions
-                    .Where(n => !FarNodesSeenSoFar.Contains(n.Position))
-                    .DefaultIfEmpty()
-                    .MinBy(v => Vector2.DistanceSquared(mapMarker ?? Player.Position.ToVector2(), v.Position.ToVector2()));
+                selectedFarNode = FindClosestPosition(allPositions, mapMarker ?? Player.Position.ToVector2(), FarNodesSeenSoFar);
 
                 if (selectedFarNode.Position == default)
                 {
@@ -2349,6 +2480,83 @@ namespace GatherBuddy.AutoGather
             var jump = Diadem.IsInside && TryWindmireJump(ref selectedFarNode.Position);
 
             Navigate(selectedFarNode.Position, ShouldFly(selectedFarNode.Position), direct: jump, nodeId: jump ? null : selectedFarNode.Id);
+        }
+
+        private uint LastVisitedNode
+            => VisitedNodes.Count > 0 ? VisitedNodes[^1] : 0;
+
+        private string FormatFailedFishingPositions()
+            => string.Join(", ", _failedFishingApproachPositions.ConvertAll(p => $"({p.X:F1}, {p.Y:F1}, {p.Z:F1})"));
+
+        private static IGameObject? FindGameObject(Predicate<IGameObject> match)
+        {
+            foreach (var gameObject in Dalamud.Objects)
+            {
+                if (match(gameObject))
+                {
+                    return gameObject;
+                }
+            }
+
+            return null;
+        }
+
+        private static IGameObject? FindClosestObject(List<IGameObject> objects, bool targetableOnly)
+        {
+            var playerPosition = Player.Position;
+            IGameObject? closest = null;
+            var closestDistance = float.MaxValue;
+            foreach (var gameObject in objects)
+            {
+                if (targetableOnly && !gameObject.IsTargetable)
+                {
+                    continue;
+                }
+
+                var distance = Vector3.Distance(playerPosition, gameObject.Position);
+                if (closest == null || distance < closestDistance)
+                {
+                    closest = gameObject;
+                    closestDistance = distance;
+                }
+            }
+
+            return closest;
+        }
+
+        private static (uint? Id, Vector3 Position) FindClosestPosition(List<(uint Id, Vector3 Position)> positions, Vector2 target,
+            HashSet<Vector3>? exclude)
+        {
+            (uint? Id, Vector3 Position) closest = default;
+            var closestDistance = float.MaxValue;
+            var found = false;
+            foreach (var (id, position) in positions)
+            {
+                if (exclude != null && exclude.Contains(position))
+                {
+                    continue;
+                }
+
+                var distance = Vector2.DistanceSquared(target, position.ToVector2());
+                if (!found || distance < closestDistance)
+                {
+                    closest = (id, position);
+                    closestDistance = distance;
+                    found = true;
+                }
+            }
+
+            return closest;
+        }
+
+        private static uint FirstNodeId(Dictionary<uint, List<Vector3>> worldPositions)
+        {
+            foreach (var nodeId in worldPositions.Keys)
+            {
+                return nodeId;
+            }
+
+            throw new InvalidOperationException("The node has no world positions.");
         }
 
         private unsafe void LeaveTheDiadem()
@@ -2521,7 +2729,7 @@ namespace GatherBuddy.AutoGather
                 GatheringType.Miner => DiscipleOfLand.MinerLevel,
                 GatheringType.Botanist => DiscipleOfLand.BotanistLevel,
                 GatheringType.Fisher => DiscipleOfLand.FisherLevel,
-                GatheringType.Multiple => Math.Max(DiscipleOfLand.MinerLevel, DiscipleOfLand.BotanistLevel),
+                GatheringType.Multiple => System.Math.Max(DiscipleOfLand.MinerLevel, DiscipleOfLand.BotanistLevel),
                 _ => 0
             };
             if (level < Actions.Collect.MinLevel)
@@ -2742,7 +2950,7 @@ namespace GatherBuddy.AutoGather
 
                 if (insufficientPerception.Count > 0)
                 {
-                    var itemDetails = string.Join(", ", insufficientPerception.Select(x => $"{x.Name} (needs {x.Required})"));
+                    var itemDetails = string.Join(", ", insufficientPerception.ConvertAll(x => $"{x.Name} (needs {x.Required})"));
                     Communicator.PrintError($"[AutoGather] Cannot enable AutoGather: Insufficient perception (current: {playerPerception}): {itemDetails}");
                     GatherBuddy.Log.Error($"[AutoGather] AutoGather not enabled: Insufficient perception {playerPerception}");
                     return false;
@@ -2793,7 +3001,7 @@ namespace GatherBuddy.AutoGather
 
                 var enabledRetainers = AutoRetainer.GetEnabledRetainers();
 
-                if (enabledRetainers == null || !enabledRetainers.Any())
+                if (enabledRetainers == null || enabledRetainers.Count == 0)
                 {
                     if (_autoRetainerMultiModeEnabled)
                     {
@@ -2811,7 +3019,7 @@ namespace GatherBuddy.AutoGather
 
                 foreach (var (cid, retainerNames) in enabledRetainers)
                 {
-                    if (!retainerNames.Any())
+                    if (retainerNames.Count == 0)
                     {
                         continue;
                     }

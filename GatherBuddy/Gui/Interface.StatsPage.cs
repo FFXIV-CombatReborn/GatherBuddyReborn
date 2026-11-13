@@ -1,14 +1,15 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility;
-using ElliLib.Text;
-using ElliLib.Widgets;
+using Dalamud.Interface.Utility.Raii;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
+using GatherBuddy.RebornUI;
+using RebornMaterial;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Text;
 using Bait = GatherBuddy.Structs.Bait;
@@ -26,7 +27,6 @@ public partial class Interface
     private List<FishRecord> _records = [];
     private int _selectedFishingSpotIdx = GatherBuddy.Config.FishStatsSelectedIdx;
     private FishingSpot _selectedSpot = Locations.Values[GatherBuddy.Config.FishStatsSelectedIdx];
-    private ClippedSelectableCombo<FishingSpot>? _fishingSpotCombo;
 
     private static string CosmicHandler(FishingSpot spot)
     {
@@ -45,20 +45,11 @@ public partial class Interface
 
     private void DrawSelectorDropdown()
     {
-        if (_fishingSpotCombo == null)
-        {
-            // Probably use a custom FilterComboCache here.
-            var spots = Locations.Values.ToList();
-            _fishingSpotCombo = new ClippedSelectableCombo<FishingSpot>(
-                "FishingSpotSelector",
-                "Fishing Spot",
-                500,
-                spots,
-                CosmicHandler
-            );
-        }
-
-        if (_fishingSpotCombo.Draw(_selectedFishingSpotIdx, out var newIdx))
+        var spots = Locations.Values;
+        var newIdx = _selectedFishingSpotIdx;
+        if (M3Widgets.Combo("##FishingSpotSelector", ref newIdx, spots.Length, i => CosmicHandler(spots[i]), 420f * M3.Scale, "Choose a fishing spot",
+                true)
+         && newIdx != _selectedFishingSpotIdx)
         {
             _selectedFishingSpotIdx = newIdx;
             _selectedSpot = Locations.Values[_selectedFishingSpotIdx];
@@ -70,21 +61,24 @@ public partial class Interface
     private void DrawCopier()
     {
         var copyStatsString = GenerateSpotReport();
-        if (ImUtf8.Button($"Copy Fish Stats for {CosmicHandler(_selectedSpot)}"))
-        {
-            ImUtf8.SetClipboardText(copyStatsString);
-        }
-
-        ImUtf8.HoverTooltip(copyStatsString);
+        M3Widgets.CopyButton("##copyStats", copyStatsString, "Copy report", "Copied", tooltip: copyStatsString,
+            snackbar: $"Copied the fish stats for {CosmicHandler(_selectedSpot)}.");
     }
 
     private string GenerateSpotReport()
     {
-        var recordsAtSpot = _records
-            .Where(r => r.SpotId == _selectedSpot.Id && r is { HasCatch: true, HasBait: true })
-            .GroupBy(r => r.BaitId)
-            .OrderBy(g => g.First().Bait)
-            .ToList();
+        var spotRecords = _records.FindAll(r => r.SpotId == _selectedSpot.Id && r is { HasCatch: true, HasBait: true });
+        var recordsAtSpot = new List<(Bait Bait, List<FishRecord> Records, int Index)>();
+        foreach (var (_, baitGroupRecords) in GroupRecords(spotRecords, static r => r.BaitId))
+        {
+            recordsAtSpot.Add((baitGroupRecords[0].Bait, baitGroupRecords, recordsAtSpot.Count));
+        }
+
+        recordsAtSpot.Sort(static (lhs, rhs) =>
+        {
+            var order = Comparer<Bait>.Default.Compare(lhs.Bait, rhs.Bait);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
 
         var sb = new StringBuilder();
 
@@ -109,9 +103,8 @@ public partial class Interface
         sb.AppendLine("Collection Method: GatherBuddy Report Generator");
         sb.AppendLine("");
 
-        foreach (var baitGroup in recordsAtSpot)
+        foreach (var (_, baitRecords, _) in recordsAtSpot)
         {
-            var baitRecords = baitGroup.ToList();
             var bait = baitRecords[0].BaitId;
             var baitName = GatherBuddy.GameData.Bait.TryGetValue(bait, out var b) ? b.Name :
                 GatherBuddy.GameData.Fishes.TryGetValue(bait, out var f) ? $"Mooch - {new Bait(f.ItemData).Name}" : Bait.Unknown.Name;
@@ -119,22 +112,26 @@ public partial class Interface
             // Bait Name
             sb.AppendLine($"Bait: {baitName}");
 
-            var fishIdToIndex = _selectedSpot.Items
-                .Select((fish, index) => new { fish.FishId, index })
-                .ToDictionary(x => x.FishId, x => x.index);
-
-            var fishGroups = baitRecords
-                .GroupBy(r => r.CatchId)
-                .OrderBy(g =>
-                {
-                    var fishId = g.First().Catch!.FishId;
-                    return fishIdToIndex.GetValueOrDefault(fishId, int.MaxValue);
-                })
-                .ToList();
-
-            foreach (var fishGroup in fishGroups)
+            var fishIdToIndex = new Dictionary<uint, int>(_selectedSpot.Items.Length);
+            for (var i = 0; i < _selectedSpot.Items.Length; i++)
             {
-                var fishRecords = fishGroup.ToList();
+                fishIdToIndex.Add(_selectedSpot.Items[i].FishId, i);
+            }
+
+            var fishGroups = new List<(List<FishRecord> Records, int Order, int Index)>();
+            foreach (var (_, fishGroupRecords) in GroupRecords(baitRecords, static r => r.CatchId))
+            {
+                fishGroups.Add((fishGroupRecords, fishIdToIndex.GetValueOrDefault(fishGroupRecords[0].Catch!.FishId, int.MaxValue), fishGroups.Count));
+            }
+
+            fishGroups.Sort(static (lhs, rhs) =>
+            {
+                var order = lhs.Order.CompareTo(rhs.Order);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+
+            foreach (var (fishRecords, _, _) in fishGroups)
+            {
                 var fish = fishRecords[0].Catch!;
                 var count = fishRecords.Count;
 
@@ -150,7 +147,7 @@ public partial class Interface
                 // Time
                 if (GatherBuddy.Config.EnableReportTime)
                 {
-                    var timeRecords = fishRecords.Where(r => (!r.Flags.HasLure() || r.Flags.HasValidLure()) && !r.Flags.HasFlag(Effects.Chum)).ToList();
+                    var timeRecords = fishRecords.FindAll(r => (!r.Flags.HasLure() || r.Flags.HasValidLure()) && !r.Flags.HasFlag(Effects.Chum));
 
                     if (timeRecords.Count == 0)
                     {
@@ -158,11 +155,35 @@ public partial class Interface
                     }
                     else
                     {
-                        var minTime = timeRecords.Min(r => r.Bite) / 1000f;
-                        var maxTime = timeRecords.Max(r => r.Bite) / 1000f;
+                        int minBite = timeRecords[0].Bite;
+                        var maxBite = minBite;
+                        var minLureBite = int.MaxValue;
+                        var hasLureRecord = false;
+                        foreach (var timeRecord in timeRecords)
+                        {
+                            if (timeRecord.Bite < minBite)
+                            {
+                                minBite = timeRecord.Bite;
+                            }
 
-                        var lureRecords = timeRecords.Where(r => r.Flags.HasFlag(Effects.ValidLure)).ToList();
-                        var isMinLure = lureRecords.Count != 0 && lureRecords.Min(r => r.Bite) / 1000f == minTime;
+                            if (timeRecord.Bite > maxBite)
+                            {
+                                maxBite = timeRecord.Bite;
+                            }
+
+                            if (timeRecord.Flags.HasFlag(Effects.ValidLure))
+                            {
+                                hasLureRecord = true;
+                                if (timeRecord.Bite < minLureBite)
+                                {
+                                    minLureBite = timeRecord.Bite;
+                                }
+                            }
+                        }
+
+                        var minTime = minBite / 1000f;
+                        var maxTime = maxBite / 1000f;
+                        var isMinLure = hasLureRecord && minLureBite / 1000f == minTime;
 
                         var timeLine = $"- Times: {minTime} - {maxTime} ({timeRecords.Count} caught)";
                         if (isMinLure)
@@ -184,30 +205,45 @@ public partial class Interface
                     };
 
                     (string label, List<ushort> sizes, Dictionary<Effects, int> effectCounts, int count) Classify(
-                        IEnumerable<FishRecord> records, string label)
+                        Predicate<FishRecord> match, string label)
                     {
-                        var list = records.ToList();
-                        var sizes = list.Select(r => r.Size).ToList();
+                        var sizes = new List<ushort>();
                         var effectCounter = new Dictionary<Effects, int>();
-
                         foreach (var flag in filterFlags)
                         {
-                            effectCounter[flag] = list.Count(r => r.Flags.HasFlag(flag));
+                            effectCounter[flag] = 0;
                         }
 
-                        return (label, sizes, effectCounter, list.Count);
+                        foreach (var fishRecord in fishRecords)
+                        {
+                            if (!match(fishRecord))
+                            {
+                                continue;
+                            }
+
+                            sizes.Add(fishRecord.Size);
+                            foreach (var flag in filterFlags)
+                            {
+                                if (fishRecord.Flags.HasFlag(flag))
+                                {
+                                    effectCounter[flag]++;
+                                }
+                            }
+                        }
+
+                        return (label, sizes, effectCounter, sizes.Count);
                     }
 
                     var normal = Classify(
-                        fishRecords.Where(r => !r.Flags.HasFlag(Effects.Large) && !r.Flags.HasFlag(Effects.BigGameFishing)),
+                        static r => !r.Flags.HasFlag(Effects.Large) && !r.Flags.HasFlag(Effects.BigGameFishing),
                         "Average");
 
                     var large = Classify(
-                        fishRecords.Where(r => r.Flags.HasFlag(Effects.Large) && !r.Flags.HasFlag(Effects.BigGameFishing)),
+                        static r => r.Flags.HasFlag(Effects.Large) && !r.Flags.HasFlag(Effects.BigGameFishing),
                         "Large");
 
                     var bgf = Classify(
-                        fishRecords.Where(r => r.Flags.HasFlag(Effects.BigGameFishing)),
+                        static r => r.Flags.HasFlag(Effects.BigGameFishing),
                         "BGF");
 
 
@@ -218,13 +254,34 @@ public partial class Interface
                             return $"No {group.label} Fish";
                         }
 
-                        var min = group.sizes.Min() / 10f;
-                        var max = group.sizes.Max() / 10f;
+                        var minRaw = group.sizes[0];
+                        var maxRaw = minRaw;
+                        foreach (var size in group.sizes)
+                        {
+                            if (size < minRaw)
+                            {
+                                minRaw = size;
+                            }
 
-                        var effectText = string.Join(", ",
-                            filterFlags
-                                .Where(f => group.effects[f] > 0)
-                                .Select(f => $"{f}: {group.effects[f]}"));
+                            if (size > maxRaw)
+                            {
+                                maxRaw = size;
+                            }
+                        }
+
+                        var min = minRaw / 10f;
+                        var max = maxRaw / 10f;
+
+                        var effectParts = new List<string>(filterFlags.Length);
+                        foreach (var flag in filterFlags)
+                        {
+                            if (group.effects[flag] > 0)
+                            {
+                                effectParts.Add($"{flag}: {group.effects[flag]}");
+                            }
+                        }
+
+                        var effectText = string.Join(", ", effectParts);
 
                         return $"{min} - {max} ({group.count}" + (effectText != "" ? $" | [{effectText}])" : ")");
                     }
@@ -241,11 +298,8 @@ public partial class Interface
 
                 if (GatherBuddy.Config.EnableReportMulti)
                 {
-                    var doubleHookRecords = fishRecords.Where(r => r.Hook == HookSet.DoubleHook).ToList();
-                    var doubleHook = doubleHookRecords.Count != 0 ? doubleHookRecords.Average(r => r.Amount) : 0;
-
-                    var tripleHookRecords = fishRecords.Where(r => r.Hook == HookSet.TripleHook).ToList();
-                    var tripleHook = tripleHookRecords.Count != 0 ? tripleHookRecords.Average(r => r.Amount) : 0;
+                    var doubleHook = AverageHookAmount(fishRecords, HookSet.DoubleHook);
+                    var tripleHook = AverageHookAmount(fishRecords, HookSet.TripleHook);
 
                     var hookLine = new List<string>();
                     if (doubleHook > 0)
@@ -271,50 +325,80 @@ public partial class Interface
         return sb.ToString().TrimEnd();
     }
 
+    private static Dictionary<uint, List<FishRecord>> GroupRecords(List<FishRecord> records, Func<FishRecord, uint> keySelector)
+    {
+        var groups = new Dictionary<uint, List<FishRecord>>();
+        foreach (var fishRecord in records)
+        {
+            var key = keySelector(fishRecord);
+            if (!groups.TryGetValue(key, out var group))
+            {
+                group = [];
+                groups.Add(key, group);
+            }
+
+            group.Add(fishRecord);
+        }
+
+        return groups;
+    }
+
+    private static int CountRecords(List<FishRecord> records, Predicate<FishRecord> match)
+    {
+        var count = 0;
+        foreach (var fishRecord in records)
+        {
+            if (match(fishRecord))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static double AverageHookAmount(List<FishRecord> records, HookSet hook)
+    {
+        long sum = 0;
+        var count = 0;
+        foreach (var fishRecord in records)
+        {
+            if (fishRecord.Hook == hook)
+            {
+                sum += fishRecord.Amount;
+                count++;
+            }
+        }
+
+        return count != 0 ? (double)sum / count : 0;
+    }
+
     private void DrawFishingSpotInfo()
     {
-        ImUtf8.Text($"Coordinates: ({_selectedSpot.IntegralXCoord}, {_selectedSpot.IntegralYCoord})");
-        ImUtf8.Text($"Territory: {_selectedSpot.Territory.Name}");
-        ImGui.Separator();
-
-        if (_selectedSpot.ClosestAetheryte != null)
+        using var card = M3Card.Begin("##spotInfo", CosmicHandler(_selectedSpot), FontAwesomeIcon.MapMarkerAlt, M3.AccentFor(0));
+        M3Widgets.RowValue("Territory", _selectedSpot.Territory.Name);
+        M3Widgets.RowValue("Coordinates", $"{_selectedSpot.IntegralXCoord}, {_selectedSpot.IntegralYCoord}");
+        M3Widgets.RowValue("Closest aetheryte", _selectedSpot.ClosestAetheryte?.Name ?? "None nearby");
+        M3Widgets.SectionLabel("Fish here");
+        if (_selectedSpot.Items.Length != 0)
         {
-            ImUtf8.Text($"Closest Aetheryte: {_selectedSpot.ClosestAetheryte.Name}");
-        }
-        else
-        {
-            ImUtf8.Text("No Aetheryte found nearby.");
-        }
-
-        ImGui.Separator();
-
-        if (_selectedSpot.Items.Any())
-        {
-            ImUtf8.Text("Available Fish:");
             foreach (var fish in _selectedSpot.Items)
             {
-                ImUtf8.Text("- " + fish.Name[GatherBuddy.Language]);
+                M3Text.Bullet(fish.Name[GatherBuddy.Language]);
             }
         }
         else
         {
-            ImUtf8.Text("No fish available.");
+            M3Text.Draw("No fish available.", M3TextStyle.Faint);
         }
     }
 
     private void DrawFishInfo()
     {
-        var recordsAtSpot = _records
-            .Where(r => r.HasSpot && r.SpotId == _selectedSpot.Id && r.HasCatch && r.HasBait)
-            .ToList();
+        var recordsAtSpot = _records.FindAll(r => r.HasSpot && r.SpotId == _selectedSpot.Id && r.HasCatch && r.HasBait);
 
         // Group by FishId
-        var fishGroups = recordsAtSpot
-            .GroupBy(r => r.CatchId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.ToList()
-            );
+        var fishGroups = GroupRecords(recordsAtSpot, static r => r.CatchId);
 
         foreach (var (fishId, allEntries) in fishGroups)
         {
@@ -324,29 +408,30 @@ public partial class Interface
                 continue;
             }
 
-            ImUtf8.Text(fish.Name[GatherBuddy.Language], 0xFFCCFF66);
+            using (ImRaii.PushFont(M3.TitleMedium))
+            {
+                Ui.Text(fish.Name[GatherBuddy.Language], M3.Scheme.Primary);
+            }
 
             DrawSizeDistribution(allEntries);
             DrawBiteTimeHistogram(allEntries);
 
             ImGui.Spacing();
 
-            var baitGroups = allEntries
-                .GroupBy(r => r.BaitId)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var baitGroups = GroupRecords(allEntries, static r => r.BaitId);
 
             foreach (var (baitId, entries) in baitGroups)
             {
                 var bait = GatherBuddy.GameData.Bait.GetValueOrDefault(baitId);
-                ImUtf8.BulletText($"Bait: {bait?.Name ?? "Unknown"}");
+                M3Text.Bullet($"Bait: {bait?.Name ?? "Unknown"}");
 
                 DrawAmountCaught(entries.Count);
-                DrawCatchPercentage(entries, recordsAtSpot.Count(r => r.BaitId == baitId));
+                DrawCatchPercentage(entries, CountRecords(recordsAtSpot, r => r.BaitId == baitId));
 
-                ImGui.Separator();
+                M3Widgets.Divider(2f);
             }
 
-            ImGui.Separator();
+            M3Widgets.Divider();
         }
     }
 
@@ -372,13 +457,26 @@ public partial class Interface
 
         var colorPalette = new List<Vector4>
         {
-            new(0.5f, 0.5f, 0.5f, 1f),
-            new(1f, 1f, 0.3f, 1f),
-            new(0.4f, 0.6f, 1f, 1f),
+            M3Chart.SeriesColor(0),
+            M3Chart.SeriesColor(1),
+            M3Chart.SeriesColor(2),
         };
 
-        var minSize = entries.Min(r => r.Size / 10f);
-        var maxSize = entries.Max(r => r.Size / 10f);
+        var minSize = entries[0].Size / 10f;
+        var maxSize = minSize;
+        foreach (var fishRecord in entries)
+        {
+            var size = fishRecord.Size / 10f;
+            if (size < minSize)
+            {
+                minSize = size;
+            }
+
+            if (size > maxSize)
+            {
+                maxSize = size;
+            }
+        }
         var sizeRange = maxSize - minSize;
         if (sizeRange == 0)
         {
@@ -414,7 +512,14 @@ public partial class Interface
             }
         }
 
-        var maxCount = buckets.Max(b => b.normal + b.large + b.bgf);
+        var maxCount = buckets[0].normal + buckets[0].large + buckets[0].bgf;
+        foreach (var (normalCount, largeCount, bgfCount) in buckets)
+        {
+            if (normalCount + largeCount + bgfCount > maxCount)
+            {
+                maxCount = normalCount + largeCount + bgfCount;
+            }
+        }
 
         var drawList = ImGui.GetWindowDrawList();
         var cursor = ImGui.GetCursorScreenPos();
@@ -427,9 +532,9 @@ public partial class Interface
             var yVal = maxCount * i / (float)yTicks;
             var y = origin.Y - yVal / maxCount * chartHeight;
 
-            drawList.AddLine(new Vector2(origin.X, y), new Vector2(origin.X + chartWidth, y), ImGui.GetColorU32(ImGuiCol.Border));
-            drawList.AddText(new Vector2(origin.X - (ImUtf8.CalcTextSize($"{yVal}").X + padding), y - textHeight / 2),
-                ImGui.GetColorU32(ImGuiCol.Text), $"{yVal}");
+            drawList.AddLine(new Vector2(origin.X, y), new Vector2(origin.X + chartWidth, y), M3.U32(M3.Scheme.OutlineVariant, 0.6f));
+            drawList.AddText(new Vector2(origin.X - (ImGui.CalcTextSize($"{yVal}").X + padding), y - textHeight / 2),
+                M3.U32(M3.Scheme.OnSurfaceVariant), $"{yVal}");
         }
 
         // Bars
@@ -449,9 +554,9 @@ public partial class Interface
             var fromText = $"{fromVal:F1}";
             var toText = $"{fromVal + bucketWidth:F1}";
             var label = $"{fromText}-{toText}";
-            var textSize = ImUtf8.CalcTextSize(label);
+            var textSize = ImGui.CalcTextSize(label);
             var labelX = x + (barWidth - textSize.X) * 0.5f;
-            drawList.AddText(new Vector2(labelX, origin.Y + 4f), ImGui.GetColorU32(ImGuiCol.Text), label);
+            drawList.AddText(new Vector2(labelX, origin.Y + 4f), M3.U32(M3.Scheme.OnSurfaceVariant), label);
             continue;
 
             void DrawStack(ref float yPos, int count, Vector4 color)
@@ -471,9 +576,9 @@ public partial class Interface
         }
 
         // Titles
-        drawList.AddText(new Vector2(cursor.X + leftMargin + chartWidth * 0.5f - 20f, origin.Y + 20f), ImGui.GetColorU32(ImGuiCol.Text),
+        drawList.AddText(new Vector2(cursor.X + leftMargin + chartWidth * 0.5f - 20f, origin.Y + 20f), M3.U32(M3.Scheme.OnSurfaceVariant),
             "Size");
-        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), new Vector2(cursor.X + 5f, cursor.Y), ImGui.GetColorU32(ImGuiCol.Text), "Count");
+        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), new Vector2(cursor.X + 5f, cursor.Y), M3.U32(M3.Scheme.OnSurfaceVariant), "Count");
 
         // Legend
         var legendX = origin.X + chartWidth + 10f;
@@ -490,7 +595,7 @@ public partial class Interface
             var label = $"{sizeName}";
             drawList.AddRectFilled(new Vector2(legendX, legendY), new Vector2(legendX + textHeight, legendY + textHeight),
                 ImGui.ColorConvertFloat4ToU32(colorPalette[i]));
-            drawList.AddText(new Vector2(legendX + textHeight, legendY), ImGui.GetColorU32(ImGuiCol.Text), label);
+            drawList.AddText(new Vector2(legendX + textHeight, legendY), M3.U32(M3.Scheme.OnSurfaceVariant), label);
             legendY += textHeight + 4f;
         }
 
@@ -500,13 +605,13 @@ public partial class Interface
 
     private static void DrawAmountCaught(int count)
     {
-        ImUtf8.Text($"Caught: {count} times");
+        M3Text.Draw(count == 1 ? "Caught once" : $"Caught {count} times", M3TextStyle.Muted);
     }
 
     private static void DrawCatchPercentage(List<FishRecord> entries, int baitTotal)
     {
         var percentage = entries.Count / (float)baitTotal * 100f;
-        ImUtf8.Text($"Percent of baited catches: {percentage:F2}");
+        M3Text.Draw($"{percentage:F2}% of the catches with this bait", M3TextStyle.Muted);
     }
 
     private static void DrawBiteTimeHistogram(List<FishRecord> entries)
@@ -529,17 +634,26 @@ public partial class Interface
         const int yTicks = 5;
         var padding = 5 * ImGuiHelpers.GlobalScale;
 
-        var baitIds = entries.Select(e => e.BaitId).Distinct().OrderBy(id => id).ToList();
+        var baitIds = new List<uint>();
+        foreach (var fishRecord in entries)
+        {
+            if (!baitIds.Contains(fishRecord.BaitId))
+            {
+                baitIds.Add(fishRecord.BaitId);
+            }
+        }
+
+        baitIds.Sort();
         var baitColors = new Dictionary<uint, Vector4>();
         var colorPalette = new Vector4[]
         {
-            new(0.4f, 0.6f, 1f, 1f),
-            new(1f, 0.7f, 0.2f, 1f),
-            new(0.6f, 1f, 0.6f, 1f),
-            new(1f, 0.4f, 0.4f, 1f),
-            new(1f, 1f, 0.3f, 1f),
-            new(0.7f, 0.5f, 1f, 1f),
-            new(0.4f, 1f, 0.9f, 1f),
+            M3Chart.SeriesColor(0),
+            M3Chart.SeriesColor(1),
+            M3Chart.SeriesColor(2),
+            M3Chart.SeriesColor(3),
+            M3Chart.SeriesColor(4),
+            M3Chart.SeriesColor(5),
+            M3Chart.SeriesColor(6),
         };
         for (var i = 0; i < baitIds.Count; i++)
         {
@@ -562,8 +676,21 @@ public partial class Interface
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.0f, 0.5f, 0.0f, 1.0f)), // Dark green
         };
 
-        var minTime = entries.Min(e => e.Bite / 1000f);
-        var maxTime = entries.Max(e => e.Bite / 1000f);
+        var minTime = entries[0].Bite / 1000f;
+        var maxTime = minTime;
+        foreach (var fishRecord in entries)
+        {
+            var biteTime = fishRecord.Bite / 1000f;
+            if (biteTime < minTime)
+            {
+                minTime = biteTime;
+            }
+
+            if (biteTime > maxTime)
+            {
+                maxTime = biteTime;
+            }
+        }
         var timeRange = maxTime - minTime;
         var bucketWidth = timeRange / bucketCount;
 
@@ -597,11 +724,20 @@ public partial class Interface
             list.Add(e);
         }
 
-        var maxCount = buckets
-            .Where(dict => dict.Count > 0)
-            .Select(dict => dict.Values.Sum(e => e.Count))
-            .DefaultIfEmpty(0)
-            .Max();
+        var maxCount = 0;
+        foreach (var bucketRecords in buckets)
+        {
+            var bucketTotal = 0;
+            foreach (var baitRecords in bucketRecords.Values)
+            {
+                bucketTotal += baitRecords.Count;
+            }
+
+            if (bucketRecords.Count > 0 && bucketTotal > maxCount)
+            {
+                maxCount = bucketTotal;
+            }
+        }
 
         var drawList = ImGui.GetWindowDrawList();
         var cursor = ImGui.GetCursorScreenPos();
@@ -614,10 +750,10 @@ public partial class Interface
             var yVal = maxCount * i / (float)yTicks;
             var y = origin.Y - yVal / maxCount * chartHeight;
 
-            drawList.AddLine(new Vector2(origin.X, y), new Vector2(origin.X + chartWidth, y), ImGui.GetColorU32(ImGuiCol.Border));
+            drawList.AddLine(new Vector2(origin.X, y), new Vector2(origin.X + chartWidth, y), M3.U32(M3.Scheme.OutlineVariant, 0.6f));
             var label = $"{yVal:0}";
             drawList.AddText(new Vector2(origin.X - (ImGui.CalcTextSize(label).X + padding), y - textHeight / 2),
-                ImGui.GetColorU32(ImGuiCol.Text), label);
+                M3.U32(M3.Scheme.OnSurfaceVariant), label);
         }
 
         // Histogram bars
@@ -643,85 +779,85 @@ public partial class Interface
                 var barTop = new Vector2(x + barWidth, y);
                 var counter = new List<int>
                 {
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && e.Flags.HasFlag(Effects.ModestLure1)
                      && e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && e.Flags.HasFlag(Effects.ModestLure1)
                      && !e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
                      && !e.Flags.HasFlag(Effects.ModestLure1)
                      && e.Flags.HasFlag(Effects.ModestLure2)),
-                    lRecords.Count(e =>
+                    CountRecords(lRecords, static e =>
                         !e.Flags.HasFlag(Effects.Chum)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure1)
                      && !e.Flags.HasFlag(Effects.AmbitiousLure2)
@@ -762,7 +898,7 @@ public partial class Interface
                     var heightTextSize = ImGui.CalcTextSize($"{c}");
                     drawList.AddText(
                         new Vector2(x + barWidth / 2 - heightTextSize.X / 2,
-                            barBot.Y - c / (float)maxCount * chartHeight / 2 - heightTextSize.Y / 2), ImGui.GetColorU32(ImGuiCol.Text), $"{c}");
+                            barBot.Y - c / (float)maxCount * chartHeight / 2 - heightTextSize.Y / 2), M3.U32(M3.Scheme.OnSurfaceVariant), $"{c}");
                 }
 
                 y -= height;
@@ -774,13 +910,13 @@ public partial class Interface
             var label = $"{from:F1}-{to:F1}";
             var textSize = ImGui.CalcTextSize(label);
             var labelX = x + (barWidth - textSize.X) * 0.5f;
-            drawList.AddText(new Vector2(labelX, origin.Y + 4f), ImGui.GetColorU32(ImGuiCol.Text), label);
+            drawList.AddText(new Vector2(labelX, origin.Y + 4f), M3.U32(M3.Scheme.OnSurfaceVariant), label);
         }
 
         // Titles
-        drawList.AddText(new Vector2(cursor.X + leftMargin + chartWidth * 0.5f - 20f, origin.Y + 20f), ImGui.GetColorU32(ImGuiCol.Text),
+        drawList.AddText(new Vector2(cursor.X + leftMargin + chartWidth * 0.5f - 20f, origin.Y + 20f), M3.U32(M3.Scheme.OnSurfaceVariant),
             "Bite Time");
-        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), new Vector2(cursor.X + 5f, cursor.Y), ImGui.GetColorU32(ImGuiCol.Text), "Count");
+        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), new Vector2(cursor.X + 5f, cursor.Y), M3.U32(M3.Scheme.OnSurfaceVariant), "Count");
 
         // Legend
         var legendX = origin.X + chartWidth + 10f;
@@ -792,7 +928,7 @@ public partial class Interface
             var label = $"{baitName}";
             drawList.AddRectFilled(new Vector2(legendX, legendY), new Vector2(legendX + textHeight, legendY + textHeight),
                 ImGui.ColorConvertFloat4ToU32(baitColors[bait]));
-            drawList.AddText(new Vector2(legendX + textHeight, legendY), ImGui.GetColorU32(ImGuiCol.Text), label);
+            drawList.AddText(new Vector2(legendX + textHeight, legendY), M3.U32(M3.Scheme.OnSurfaceVariant), label);
             legendY += textHeight + 4f;
         }
 
@@ -821,7 +957,7 @@ public partial class Interface
                     hatchColors[k]);
             }
 
-            drawList.AddText(new Vector2(legendX + textHeight, legendY), ImGui.GetColorU32(ImGuiCol.Text), label);
+            drawList.AddText(new Vector2(legendX + textHeight, legendY), M3.U32(M3.Scheme.OnSurfaceVariant), label);
             legendY += textHeight + 4f;
         }
 
@@ -829,7 +965,7 @@ public partial class Interface
         ImGui.Dummy(new Vector2(leftMargin + chartWidth + 100f, chartHeight + bottomMargin + 20f));
     }
 
-    private void DrawStatsPageTab()
+    private void DrawStatsPage()
     {
         if (!GatherBuddy.Config.EnableFishStats)
         {
@@ -837,23 +973,17 @@ public partial class Interface
         }
 
         _records = _plugin.FishRecorder.Records;
-        using var id = ImUtf8.PushId("Fishing Spots Stats"u8);
-        using var tab = ImUtf8.TabItem("Fishing Spots Stats"u8);
-        ImUtf8.HoverTooltip("Aggregator of Fish Record data in a presentable format"u8);
-
-        if (!tab)
-        {
-            return;
-        }
-
-        using var child = ImUtf8.Child(""u8, Vector2.Zero);
+        using var id = ImRaii.PushId("Fishing Spots Stats");
+        using var child = ImRaii.Child("##stats", Vector2.Zero);
         if (!child)
         {
             return;
         }
 
         DrawSelectorDropdown();
+        ImGui.SameLine(0, M3.Space2);
         DrawCopier();
+        ImGui.Dummy(new Vector2(0, M3.Space1));
         DrawFishingSpotInfo();
         if (GatherBuddy.Config.EnableFishStatsGraphs)
         {

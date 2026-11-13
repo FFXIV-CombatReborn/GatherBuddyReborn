@@ -6,7 +6,6 @@ using GatherBuddy.Plugin;
 using GatherBuddy.Vulcan.Vendors;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather.Collectables;
 
@@ -314,7 +313,7 @@ public unsafe class CollectableManager : IDisposable
             return;
         }
 
-        if (_windowHandler.IsReady)
+        if (CollectableWindowHandler.IsReady)
         {
             _stateStartTime = DateTime.UtcNow;
             _lastAction = DateTime.MinValue;
@@ -471,7 +470,14 @@ public unsafe class CollectableManager : IDisposable
         var remainingCount = current.Count - 1;
         if (remainingCount > 0)
         {
-            _turnInQueue = new Queue<CollectableTurnInItem>(new[] { current with { Count = remainingCount } }.Concat(_turnInQueue));
+            var requeued = new Queue<CollectableTurnInItem>(_turnInQueue.Count + 1);
+            requeued.Enqueue(current with { Count = remainingCount });
+            foreach (var queued in _turnInQueue)
+            {
+                requeued.Enqueue(queued);
+            }
+
+            _turnInQueue = requeued;
         }
 
         _purchaseAttemptedForOvercap = false;
@@ -514,7 +520,7 @@ public unsafe class CollectableManager : IDisposable
 
     private void CloseTurnInWindow()
     {
-        if (!_windowHandler.IsReady)
+        if (!CollectableWindowHandler.IsReady)
         {
             var nextState = _nextStateAfterWindowClose;
             var nextStatus = _statusAfterWindowClose;
@@ -777,7 +783,7 @@ public unsafe class CollectableManager : IDisposable
 
     private void TransitionAfterClosingTurnInWindow(CollectableState nextState, string nextStatus)
     {
-        if (!_windowHandler.IsReady)
+        if (!CollectableWindowHandler.IsReady)
         {
             _stateStartTime = DateTime.UtcNow;
             _lastAction = DateTime.MinValue;
@@ -802,7 +808,7 @@ public unsafe class CollectableManager : IDisposable
             VendorInteractionHelper.ResetShopSelectionState(_turnInVendor);
         }
 
-        if (_windowHandler.IsReady)
+        if (CollectableWindowHandler.IsReady)
         {
             _windowHandler.CloseWindow();
         }
@@ -951,8 +957,8 @@ public unsafe class CollectableManager : IDisposable
     private static bool IsGatheringCollectable(CollectableTurnInItem item)
         => item.JobId >= 8;
 
-    private string GetPurchaseListName(Guid purchaseListId)
-        => GatherBuddy.VendorBuyListManager.Lists.FirstOrDefault(list => list.Id == purchaseListId)?.Name ?? purchaseListId.ToString();
+    private static string GetPurchaseListName(Guid purchaseListId)
+        => VendorBuyListManager.GetList(purchaseListId)?.Name ?? purchaseListId.ToString();
 
     private static string DescribeSource(CollectableRunSource source)
         => source switch

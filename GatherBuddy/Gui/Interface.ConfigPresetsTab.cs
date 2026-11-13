@@ -1,18 +1,18 @@
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Components;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Utility;
-using ElliLib;
 using GatherBuddy.AutoGather;
-using GatherBuddy.Config;
 using GatherBuddy.Interfaces;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
+using GatherBuddy.RebornUI.Settings;
 using Lumina.Excel.Sheets;
 using Newtonsoft.Json;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using static GatherBuddy.AutoGather.AutoGather;
 
@@ -24,7 +24,6 @@ namespace GatherBuddy.Gui
             [("Elemental Shards", 2), ("Elemental Crystals", 8), ("Elemental Clusters", 14)];
 
         private readonly ConfigPresetsSelector _configPresetsSelector = new();
-        private (bool EditingName, bool ChangingMin) _configPresetsUIState;
 
         public IReadOnlyCollection<ConfigPreset> GatherActionsPresets
             => _configPresetsSelector.Presets;
@@ -47,9 +46,7 @@ namespace GatherBuddy.Gui
 
             protected override bool OnDraw(int idx)
             {
-                using var id = ImRaii.PushId(idx);
-                using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), !Items[idx].Enabled);
-                var isSelected = ImGui.Selectable(CheckUnnamed(Items[idx].Name), idx == CurrentIdx);
+                var isSelected = ListRow(CheckUnnamed(Items[idx].Name), idx == CurrentIdx, !Items[idx].Enabled);
 
                 if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && idx != Items.Count - 1)
                 {
@@ -59,6 +56,9 @@ namespace GatherBuddy.Gui
 
                 return isSelected;
             }
+
+            protected override string NameOf(ConfigPreset item)
+                => item.Name;
 
             protected override bool OnDelete(int idx)
             {
@@ -211,518 +211,412 @@ namespace GatherBuddy.Gui
 
             public ConfigPreset Match(IGatherable? item)
             {
-                var defaultPreset = Items.Last();
-                return item == null
-                    ? defaultPreset
-                    : Items.SkipLast(1).Where(i => i.Match(item)).FirstOrDefault(defaultPreset);
+                var defaultPreset = Items[Items.Count - 1];
+                if (item == null)
+                {
+                    return defaultPreset;
+                }
+
+                for (var i = 0; i < Items.Count - 1; i++)
+                {
+                    if (Items[i].Match(item))
+                    {
+                        return Items[i];
+                    }
+                }
+
+                return defaultPreset;
             }
         }
 
         public ConfigPreset MatchConfigPreset(IGatherable? item)
             => _configPresetsSelector.Match(item);
 
-        public void DrawConfigPresetsTab()
+        private const string PresetCheckerDialogId = "Config Presets Checker###gbr_preset_checker";
+
+        private static readonly M3Segment[] LevelKindSegments =
+        [
+            new("Item level", Tooltip: "The level shown in the gathering log and the gathering window."),
+            new("Gathering level", Tooltip: "The hidden gathering level (glv). Use it to tell different tiers of legendary nodes apart."),
+        ];
+
+        private bool _presetsDirty;
+
+        private readonly Dictionary<string, (DateTime Built, List<(string Name, uint RowId)> Items)> _consumableChoices = [];
+
+        private void MarkPresetsDirty()
+            => _presetsDirty = true;
+
+        internal void FlushConfigPresets()
         {
-            using var tab = ImRaii.TabItem("Config Presets");
-
-            ImGuiUtil.HoverTooltip("Configure what actions to use with Auto-Gather.");
-
-            if (!tab)
+            if (!_presetsDirty)
             {
                 return;
             }
 
+            _presetsDirty = false;
+            _configPresetsSelector.Save();
+        }
+
+        public void DrawConfigPresetsPage()
+        {
+            if (_presetsDirty && !ImGui.IsAnyItemActive())
+            {
+                FlushConfigPresets();
+            }
+
             var selector = _configPresetsSelector;
-            selector.Draw(SelectorWidth);
+            using (VulcanUiStyle.PushTheme())
+            {
+                selector.Draw(SelectorWidth);
+            }
+
             ImGui.SameLine();
-            ItemDetailsWindow.Draw("Preset Details", DrawConfigPresetHeader,
-                () => { DrawConfigPreset(selector.EnsureCurrent()!, selector.CurrentIdx == selector.Presets.Count - 1); });
+            using var details = ImRaii.Child("##config_preset_details", -Vector2.One, false);
+            if (!details)
+            {
+                return;
+            }
+
+            var preset = selector.EnsureCurrent()!;
+            var isDefault = selector.CurrentIdx == selector.Presets.Count - 1;
+            using var id = ImRaii.PushId(selector.CurrentIdx);
+
+            DrawPresetOverview(preset, isDefault);
+            if (!isDefault)
+            {
+                DrawPresetFilters(preset);
+            }
+
+            DrawPresetGeneral(preset);
+            DrawPresetActions(preset);
+            DrawPresetConsumables(preset);
+            DrawPresetChecker();
         }
 
-        private void DrawConfigPresetHeader()
+        private void DrawPresetOverview(ConfigPreset preset, bool isDefault)
         {
-            if (ImGui.Button("Export"))
-            {
-                var current = _configPresetsSelector.Current;
-                if (current == null)
-                {
-                    Communicator.PrintError("No config preset selected.");
-                    return;
-                }
-
-                var text = current.ToBase64String();
-                ImGui.SetClipboardText(text);
-                Communicator.Print($"Successfully copied {current.Name} to clipboard.");
-            }
-
-            if (ImGui.Button("Check"))
-            {
-                ImGui.OpenPopup("Config Presets Checker");
-            }
-
-            ImGuiUtil.HoverTooltip("Check what presets are used for items from the auto-gather list");
-
-            var open = true;
-            using (var popup = ImRaii.PopupModal("Config Presets Checker", ref open,
-                       ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoTitleBar))
-            {
-                if (popup)
-                {
-                    using (var table = ImRaii.Table("Items", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
-                    {
-                        ImGui.TableSetupColumn("Gather List");
-                        ImGui.TableSetupColumn("Item");
-                        ImGui.TableSetupColumn("Config Preset");
-                        ImGui.TableHeadersRow();
-
-                        var crystals = CrystalTypes
-                            .Where(x => GatherBuddy.GameData.Gatherables.ContainsKey(x.id))
-                            .Select(x => ("", x.name, GatherBuddy.GameData.Gatherables[x.id]));
-                        var items = _plugin.AutoGatherListsManager.Lists
-                            .Where(x => x.Enabled && !x.Fallback)
-                            .SelectMany(x => x.Items.Select(i => (x.Name, i.Name[GatherBuddy.Language], i)));
-
-                        foreach (var (list, name, item) in items)
-                        {
-                            ImGui.TableNextRow();
-                            ImGui.TableNextColumn();
-                            ImGui.Text(list);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(name);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(MatchConfigPreset(item).Name);
-                        }
-                        foreach (var (list, name, item) in crystals)
-                        {
-                            ImGui.TableNextRow();
-                            ImGui.TableNextColumn();
-                            ImGui.Text(list);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(name);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(MatchConfigPreset(item).Name);
-                        }
-                    }
-
-                    var size = ImGui.CalcTextSize("Close").X + ImGui.GetStyle().FramePadding.X * 2.0f;
-                    var offset = (ImGui.GetContentRegionAvail().X - size) * 0.5f;
-                    if (offset > 0.0f)
-                    {
-                        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
-                    }
-
-                    if (ImGui.Button("Close"))
-                    {
-                        ImGui.CloseCurrentPopup();
-                    }
-                }
-            }
-
-            ImGuiComponents.HelpMarker(
-                "Presets are checked against the current target item in order from top to bottom.\n"
-              + "Only the first matched preset is used, the rest are ignored.\n"
-              + "The Default preset is always last and is used if no other preset matches the item.");
-        }
-
-        private void DrawConfigPreset(ConfigPreset preset, bool isDefault)
-        {
-            var selector = _configPresetsSelector;
-            ref var state = ref _configPresetsUIState;
+            using var card = M3Card.Begin("preset_overview", isDefault ? "Default preset" : CheckUnnamed(preset.Name), FontAwesomeIcon.SlidersH,
+                M3.AccentFor(0), M3CardStyle.Filled,
+                "Presets are checked against the item being gathered from top to bottom, and only the first match is used. "
+              + "The Default preset always comes last and covers every item no other preset matches.");
 
             if (!isDefault)
             {
-                if (ImGuiUtil.DrawEditButtonText(0, CheckUnnamed(preset.Name), out var name, ref state.EditingName, IconButtonSize,
-                        SetInputWidth, 64)
-                 && name != CheckUnnamed(preset.Name))
+                var name = preset.Name;
+                if (M3Widgets.RowText("Name", ref name, "Preset name", null, 64))
                 {
                     preset.Name = name;
-                    selector.Save();
+                    MarkPresetsDirty();
                 }
 
                 var enabled = preset.Enabled;
-                if (ImGui.Checkbox("Enabled", ref enabled) && enabled != preset.Enabled)
+                if (M3Widgets.RowSwitch("Enabled", ref enabled, "Disabled presets are skipped. Double-click a preset in the list to toggle it too."))
                 {
                     preset.Enabled = enabled;
-                    selector.Save();
-                }
-
-                ImGui.Spacing();
-                ImGui.Separator();
-                ImGui.Spacing();
-
-                var useGlv = preset.ItemLevel.UseGlv;
-                using var box = ImRaii.ListBox("##ConfigPresetListbox",
-                    new Vector2(-1.5f * ImGui.GetStyle().ItemSpacing.X, ImGui.GetFrameHeightWithSpacing() * 3 + ItemSpacing.Y));
-
-                var min = preset.ItemLevel.Min;
-                var max = preset.ItemLevel.Max;
-                var editDone = false;
-
-                var halfWidth = (SetInputWidth - ImGui.GetStyle().ItemSpacing.X) / 2;
-
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MinItemLvl", ref min, 0.2f, 1, useGlv ? ConfigPreset.MaxGvl : ConfigPreset.MaxLevel))
-                {
-                    state.ChangingMin = true;
-                    preset.ItemLevel.Min = min;
-                }
-
-                editDone = ImGui.IsItemDeactivatedAfterEdit();
-
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MaxItemLvl", ref max, 0.2f, 1, useGlv ? ConfigPreset.MaxGvl : ConfigPreset.MaxLevel))
-                {
-                    state.ChangingMin = false;
-                    preset.ItemLevel.Max = max;
-                }
-
-                editDone = editDone || ImGui.IsItemDeactivatedAfterEdit();
-
-                if (editDone)
-                {
-                    if (preset.ItemLevel.Min > preset.ItemLevel.Max)
-                    {
-                        if (state.ChangingMin)
-                        {
-                            preset.ItemLevel.Max = preset.ItemLevel.Min;
-                        }
-                        else
-                        {
-                            preset.ItemLevel.Min = preset.ItemLevel.Max;
-                        }
-                    }
-
-                    selector.Save();
-                }
-
-                ImGui.SameLine();
-                ImGui.TextUnformatted("Minimum and maximum item");
-
-                ImGui.SameLine();
-                if (ImGui.RadioButton("level", !useGlv))
-                {
-                    useGlv = false;
-                }
-
-                ImGuiUtil.HoverTooltip("Level as shown in the gathering log and the gathering window.");
-                ImGui.SameLine();
-                if (ImGui.RadioButton("glv", useGlv))
-                {
-                    useGlv = true;
-                }
-
-                ImGuiUtil.HoverTooltip("Gathering level (hidden stat). Use it to distinguish between different tiers of legendary nodes.");
-                if (useGlv != preset.ItemLevel.UseGlv)
-                {
-                    if (useGlv)
-                    {
-                        min = GatherBuddy.GameData.Gatherables.Values
-                            .Where(i => i.Level >= preset.ItemLevel.Min)
-                            .Select(i => (int)i.GatheringData.GatheringItemLevel.RowId)
-                            .DefaultIfEmpty(ConfigPreset.MaxGvl)
-                            .Min();
-                        max = GatherBuddy.GameData.Gatherables.Values
-                            .Where(i => i.Level <= preset.ItemLevel.Max)
-                            .Select(i => (int)i.GatheringData.GatheringItemLevel.RowId)
-                            .DefaultIfEmpty(1)
-                            .Max();
-                    }
-                    else
-                    {
-                        min = GatherBuddy.GameData.Gatherables.Values
-                            .Where(i => i.GatheringData.GatheringItemLevel.RowId >= preset.ItemLevel.Min)
-                            .Select(i => i.Level)
-                            .DefaultIfEmpty(ConfigPreset.MaxLevel)
-                            .Min();
-                        max = GatherBuddy.GameData.Gatherables.Values
-                            .Where(i => i.GatheringData.GatheringItemLevel.RowId <= preset.ItemLevel.Max)
-                            .Select(i => i.Level)
-                            .DefaultIfEmpty(1)
-                            .Max();
-                    }
-
-                    preset.ItemLevel.UseGlv = useGlv;
-                    preset.ItemLevel.Min = min;
-                    preset.ItemLevel.Max = max;
-                    selector.Save();
-                }
-
-                ImGui.Text("Node types:");
-                ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Regular", "", preset.NodeType.Regular, x => preset.NodeType.Regular = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine(0, ImGui.CalcTextSize("Crystals").X - ImGui.CalcTextSize("Regular").X + ItemSpacing.X);
-                if (ImGuiUtil.Checkbox("Unspoiled", "", preset.NodeType.Unspoiled, x => preset.NodeType.Unspoiled = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine(0, ImGui.CalcTextSize("Collectables").X - ImGui.CalcTextSize("Unspoiled").X + ItemSpacing.X);
-                if (ImGuiUtil.Checkbox("Legendary", "", preset.NodeType.Legendary, x => preset.NodeType.Legendary = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine(0, ImGui.CalcTextSize("Gatherables").X - ImGui.CalcTextSize("Legendary").X + ItemSpacing.X);
-                if (ImGuiUtil.Checkbox("Ephemeral", "", preset.NodeType.Ephemeral, x => preset.NodeType.Ephemeral = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Clouded", "", preset.NodeType.Clouded, x => preset.NodeType.Clouded = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.Text("Item types:");
-                ImGui.SameLine(0, ImGui.CalcTextSize("Node types:").X - ImGui.CalcTextSize("Item types:").X + ItemSpacing.X);
-                if (ImGuiUtil.Checkbox("Crystals", "", preset.ItemType.Crystals, x => preset.ItemType.Crystals = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Collectables", "", preset.ItemType.Collectables, x => preset.ItemType.Collectables = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Gatherables", "", preset.ItemType.Other, x => preset.ItemType.Other = x))
-                {
-                    selector.Save();
-                }
-
-                ImGui.SameLine();
-                if (ImGuiUtil.Checkbox("Fish", "", preset.ItemType.Fish, x =>
-                    {
-                        preset.ItemType.Fish = x;
-                        if (x)
-                        {
-                            preset.ChooseBestActionsAutomatically = false;
-                        }
-                    }))
-                {
-                    selector.Save();
+                    MarkPresetsDirty();
                 }
             }
 
-            using var child = ImRaii.Child("ConfigPresetSettings", new Vector2(-1.5f * ItemSpacing.X, -ItemSpacing.Y));
-
-            using var width = ImRaii.ItemWidth(SetInputWidth);
-            var showGeneralSettings = !preset.ItemType.Fish || preset.ItemType.Crystals || preset.ItemType.Other || preset.ItemType.Collectables;
-
-            if (showGeneralSettings)
+            if (M3Widgets.RowButton("Share this preset", "Copy", "Copies the preset to your clipboard, ready to import with the list's import button.",
+                    M3ButtonStyle.Tonal, FontAwesomeIcon.Copy))
             {
-                using var node = ImRaii.TreeNode("General Settings", ImGuiTreeNodeFlags.Framed);
-                if (node)
-                {
-                    if (preset.ItemType.Crystals || preset.ItemType.Other)
-                    {
-                        var tmp = preset.GatherableMinGP;
-                        if (ImGui.DragInt("Minimum GP for gathering regular items or crystals", ref tmp, 1f, 0, ConfigPreset.MaxGP))
-                        {
-                            preset.GatherableMinGP = tmp;
-                        }
-
-                        if (ImGui.IsItemDeactivatedAfterEdit())
-                        {
-                            selector.Save();
-                        }
-                    }
-
-                    if (preset.ItemType.Collectables)
-                    {
-                        var tmp = preset.CollectableMinGP;
-                        if (ImGui.DragInt("Minimum GP for collecting collectables", ref tmp, 1f, 0, ConfigPreset.MaxGP))
-                        {
-                            preset.CollectableMinGP = tmp;
-                        }
-
-                        if (ImGui.IsItemDeactivatedAfterEdit())
-                        {
-                            selector.Save();
-                        }
-
-                        tmp = preset.CollectableActionsMinGP;
-                        if (ImGui.DragInt("Minimum GP for using actions on collectables", ref tmp, 1f, 0, ConfigPreset.MaxGP))
-                        {
-                            preset.CollectableActionsMinGP = tmp;
-                        }
-
-                        if (ImGui.IsItemDeactivatedAfterEdit())
-                        {
-                            selector.Save();
-                        }
-
-                        ImGui.SameLine();
-                        if (ImGuiUtil.Checkbox($"Always use {ConcatNames(Actions.SolidAge)}",
-                                $"Use {ConcatNames(Actions.SolidAge)} regardless of starting GP if the target collectability score is reached",
-                                preset.CollectableAlwaysUseSolidAge,
-                                x => preset.CollectableAlwaysUseSolidAge = x))
-                        {
-                            selector.Save();
-                        }
-
-                        if (ImGuiUtil.Checkbox("Manually set collectability scores",
-                                "When disabled, collectability scores will be automatically detected from the game UI.\n"
-                              + "When enabled, you can manually specify the target and minimum scores below.",
-                                preset.CollectableManualScores,
-                                x => preset.CollectableManualScores = x))
-                        {
-                            selector.Save();
-                        }
-
-                        if (preset.CollectableManualScores)
-                        {
-                            tmp = preset.CollectableTagetScore;
-                            if (ImGui.DragInt("Target collectability score to reach before collecting", ref tmp, 1f, 0,
-                                    ConfigPreset.MaxCollectability))
-                            {
-                                preset.CollectableTagetScore = tmp;
-                            }
-
-                            if (ImGui.IsItemDeactivatedAfterEdit())
-                            {
-                                selector.Save();
-                            }
-
-                            tmp = preset.CollectableMinScore;
-                            if (ImGui.DragInt(
-                                    $"Minimum collectability score to collect at the last integrity point (set to {ConfigPreset.MaxCollectability} to disable)",
-                                    ref tmp, 1f, 0, ConfigPreset.MaxCollectability))
-                            {
-                                preset.CollectableMinScore = tmp;
-                            }
-
-                            if (ImGui.IsItemDeactivatedAfterEdit())
-                            {
-                                selector.Save();
-                            }
-                        }
-                    }
-
-                    var isFishExclusive = preset.ItemType.Fish && !preset.ItemType.Crystals && !preset.ItemType.Other && !preset.ItemType.Collectables;
-                    if (!isFishExclusive)
-                    {
-                        if (ImGuiUtil.Checkbox("Automatically decide what actions to use",
-                                "This setting works differently depending on item or node type.\n"
-                              + "For collectables: the usual collectable rotation is used with all actions enabled.\n"
-                              + "For unspoiled and legendary nodes: actions are chosen to maximise the yield.\n"
-                              + "For regular nodes: actions are chosen to maximise the yield per GP spent.\n",
-                                preset.ChooseBestActionsAutomatically,
-                                x => preset.ChooseBestActionsAutomatically = x))
-                        {
-                            selector.Save();
-                        }
-                    }
-
-                    if (!preset.ItemType.Fish && preset.ChooseBestActionsAutomatically && preset.NodeType.Regular)
-                    {
-                        if (ImGuiUtil.Checkbox("Hold off spending GP until a node with the best bonuses",
-                                "This setting is for regular nodes only. When enabled, GP would be kept for nodes with bonuses\n"
-                              + "that would give the best possible yield per GP spent. Make sure that nodes with +2 integrity,\n"
-                              + "+3 yield, and +100% boon chance hidden bonuses do exist, and you can meet their requirements.\n"
-                              + $"It is ignored if {ConcatNames(Actions.Bountiful)} gives +3 bonus, because nothing can beat that.\n"
-                              + "Not recommended if you have the Revisit trait (level 91+).",
-                                preset.SpendGPOnBestNodesOnly,
-                                x => preset.SpendGPOnBestNodesOnly = x))
-                        {
-                            selector.Save();
-                        }
-                    }
-                }
+                ImGui.SetClipboardText(preset.ToBase64String());
+                Communicator.Print($"Successfully copied {preset.Name} to clipboard.");
+                M3Snackbar.Show($"Copied {CheckUnnamed(preset.Name)} to the clipboard.", severity: M3Severity.Success);
             }
 
-            using var width2 = ImRaii.ItemWidth(SetInputWidth - ImGui.GetStyle().IndentSpacing);
-            if ((preset.ItemType.Crystals || preset.ItemType.Other) && !preset.ChooseBestActionsAutomatically)
+            if (M3Widgets.RowButton("Check which preset each item uses", "Check",
+                    "Lists every item in your enabled auto-gather lists, and crystals, with the preset it will use.", M3ButtonStyle.Tonal,
+                    FontAwesomeIcon.Tasks))
             {
-                using var node = ImRaii.TreeNode("Gathering Actions", ImGuiTreeNodeFlags.Framed);
-                if (node)
-                {
-                    DrawActionConfig(ConcatNames(Actions.Luck), preset.GatherableActions.Luck, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Bountiful), preset.GatherableActions.Bountiful, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Yield1), preset.GatherableActions.Yield1, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Yield2), preset.GatherableActions.Yield2, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.SolidAge), preset.GatherableActions.SolidAge, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Gift1), preset.GatherableActions.Gift1, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Gift2), preset.GatherableActions.Gift2, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.Tidings), preset.GatherableActions.Tidings, selector.Save);
-                    if (preset.ItemType.Crystals)
-                    {
-                        DrawActionConfig(Actions.TwelvesBounty.Names.Botanist, preset.GatherableActions.TwelvesBounty, selector.Save);
-                        DrawActionConfig(Actions.GivingLand.Names.Botanist, preset.GatherableActions.GivingLand, selector.Save);
-                    }
-                }
+                M3Dialog.Open(PresetCheckerDialogId);
             }
-
-            if (preset.ItemType.Collectables && !preset.ChooseBestActionsAutomatically)
-            {
-                using var node = ImRaii.TreeNode("Collectable Actions", ImGuiTreeNodeFlags.Framed);
-                if (node)
-                {
-                    DrawActionConfig(Actions.Scour.Names.Botanist, preset.CollectableActions.Scour, selector.Save);
-                    DrawActionConfig(Actions.Brazen.Names.Botanist, preset.CollectableActions.Brazen, selector.Save);
-                    DrawActionConfig(Actions.Meticulous.Names.Botanist, preset.CollectableActions.Meticulous, selector.Save);
-                    DrawActionConfig(Actions.Scrutiny.Names.Botanist, preset.CollectableActions.Scrutiny, selector.Save);
-                    DrawActionConfig(ConcatNames(Actions.SolidAge), preset.CollectableActions.SolidAge, selector.Save);
-                }
-            }
-            if (preset.ItemType.Fish)
-            {
-                using var node = ImRaii.TreeNode("Fishing Actions", ImGuiTreeNodeFlags.Framed);
-                if (node)
-                {
-                    DrawToggleConfig("Patience / Patience II", preset.FishingActions.Patience, selector.Save);
-                    DrawFishingActionConfig(Actions.DoubleHook.Name, preset.FishingActions.DoubleHook, selector.Save, preset.FishingActions.TripleHook);
-                    DrawFishingActionConfig(Actions.TripleHook.Name, preset.FishingActions.TripleHook, selector.Save, preset.FishingActions.DoubleHook);
-                    DrawFishingActionConfig(Actions.PrizeCatch.Name, preset.FishingActions.PrizeCatch, selector.Save);
-                    DrawFishingActionConfig(Actions.Chum.Name, preset.FishingActions.Chum, selector.Save);
-                    DrawFishingActionConfig(Actions.SurfaceSlap.Name, preset.FishingActions.SurfaceSlap, selector.Save);
-                    DrawFishingActionConfig(Actions.IdenticalCast.Name, preset.FishingActions.IdenticalCast, selector.Save);
-                    DrawFishingActionConfig(Actions.AmbitiousLure.Name, preset.FishingActions.AmbitiousLure, selector.Save);
-                    DrawFishingActionConfig(Actions.ModestLure.Name, preset.FishingActions.ModestLure, selector.Save);
-                }
-            }
-
-            {
-                using var node = ImRaii.TreeNode("Consumables", ImGuiTreeNodeFlags.Framed);
-                if (node)
-                {
-                    DrawActionConfig("Cordial", preset.Consumables.Cordial, selector.Save, PossibleCordials);
-                    DrawActionConfig("Food", preset.Consumables.Food, selector.Save, PossibleFoods, true);
-                    DrawActionConfig("Medicine", preset.Consumables.Potion, selector.Save, PossiblePotions, true);
-                    DrawActionConfig("Manual", preset.Consumables.Manual, selector.Save, PossibleManuals, true);
-                    DrawActionConfig("Squadron Manual", preset.Consumables.SquadronManual, selector.Save, PossibleSquadronManuals, true);
-                    DrawActionConfig("Squadron Pass", preset.Consumables.SquadronPass, selector.Save, PossibleSquadronPasses, true);
-                }
-            }
-
-            static string ConcatNames(Actions.BaseAction action)
-                => $"{action.Names.Miner} / {action.Names.Botanist}";
         }
 
-        private void DrawActionConfig(string name, ConfigPreset.ActionConfig action, System.Action save, IEnumerable<Item>? items = null,
-            bool hideGP = false)
+        private void DrawPresetFilters(ConfigPreset preset)
         {
-            using var node = ImRaii.TreeNode(name);
-            if (!node)
+            using var card = M3Card.Begin("preset_filters", "Applies to", FontAwesomeIcon.Filter, M3.AccentFor(1), M3CardStyle.Filled,
+                "The items this preset is used for.");
+
+            var kind = preset.ItemLevel.UseGlv ? 1 : 0;
+            if (M3Widgets.RowSegmented("Level type", ref kind, LevelKindSegments))
+            {
+                SwitchLevelKind(preset, kind == 1);
+            }
+
+            var low = preset.ItemLevel.Min;
+            var high = preset.ItemLevel.Max;
+            var useGlv = preset.ItemLevel.UseGlv;
+            if (M3Widgets.RowIntRange(useGlv ? "Gathering level range" : "Item level range", ref low, ref high, 1, useGlv ? ConfigPreset.MaxGvl : ConfigPreset.MaxLevel,
+                    supporting: "The lowest and highest level this preset is used for."))
+            {
+                preset.ItemLevel.Min = low;
+                preset.ItemLevel.Max = high;
+                MarkPresetsDirty();
+            }
+
+            var nodes = preset.NodeType;
+            DrawChipGroup("preset_nodes", "Node types", null,
+                ("Regular", nodes.Regular, v => nodes.Regular = v),
+                ("Unspoiled", nodes.Unspoiled, v => nodes.Unspoiled = v),
+                ("Legendary", nodes.Legendary, v => nodes.Legendary = v),
+                ("Ephemeral", nodes.Ephemeral, v => nodes.Ephemeral = v),
+                ("Clouded", nodes.Clouded, v => nodes.Clouded = v));
+
+            var items = preset.ItemType;
+            DrawChipGroup("preset_items", "Item types", "Choosing fish turns off deciding actions automatically.",
+                ("Crystals", items.Crystals, v => items.Crystals = v),
+                ("Collectables", items.Collectables, v => items.Collectables = v),
+                ("Gatherables", items.Other, v => items.Other = v),
+                ("Fish", items.Fish, v =>
+                {
+                    items.Fish = v;
+                    if (v)
+                    {
+                        preset.ChooseBestActionsAutomatically = false;
+                    }
+                }
+            ));
+        }
+
+        private void SwitchLevelKind(ConfigPreset preset, bool useGlv)
+        {
+            if (useGlv == preset.ItemLevel.UseGlv)
             {
                 return;
             }
 
-            ref var state = ref _configPresetsUIState;
-
-            var halfWidth = (SetInputWidth - ImGui.GetStyle().ItemSpacing.X) / 2;
-
-            if (ImGuiUtil.Checkbox("Enabled", "", action.Enabled, x => action.Enabled = x))
+            var min = int.MaxValue;
+            var max = int.MinValue;
+            foreach (var item in GatherBuddy.GameData.Gatherables.Values)
             {
-                save();
+                var glv = (int)item.GatheringData.GatheringItemLevel.RowId;
+                var (oldLevel, newLevel) = useGlv ? (item.Level, glv) : (glv, item.Level);
+                if (oldLevel >= preset.ItemLevel.Min && newLevel < min)
+                {
+                    min = newLevel;
+                }
+
+                if (oldLevel <= preset.ItemLevel.Max && newLevel > max)
+                {
+                    max = newLevel;
+                }
+            }
+
+            if (min == int.MaxValue)
+            {
+                min = useGlv ? ConfigPreset.MaxGvl : ConfigPreset.MaxLevel;
+            }
+
+            if (max == int.MinValue)
+            {
+                max = 1;
+            }
+
+            preset.ItemLevel.UseGlv = useGlv;
+            preset.ItemLevel.Min = min;
+            preset.ItemLevel.Max = max;
+            MarkPresetsDirty();
+        }
+
+        private void DrawChipGroup(string id, string label, string? supporting, params (string Label, bool Value, System.Action<bool> Set)[] chips)
+        {
+            var row = M3SettingRow.Begin(label, supporting, Vector2.Zero);
+            M3SettingRow.End(row);
+
+            var indent = M3Style.Spacing(12f, 8f);
+            ImGui.Indent(indent);
+            var flow = new M3Flow(M3.Space1, MathF.Max(1f, ImGui.GetContentRegionAvail().X - M3Card.RightInset));
+            foreach (var (chipLabel, value, set) in chips)
+            {
+                var icon = value ? FontAwesomeIcon.Check : FontAwesomeIcon.None;
+                flow.Next(M3Widgets.ChipWidth(chipLabel, icon));
+                if (M3Widgets.Chip($"##{id}_{chipLabel}", chipLabel, value, icon))
+                {
+                    set(!value);
+                    MarkPresetsDirty();
+                }
+            }
+
+            ImGui.Unindent(indent);
+            ImGui.Dummy(new Vector2(0f, M3.Space2));
+        }
+
+        private void DrawPresetGeneral(ConfigPreset preset)
+        {
+            var types = preset.ItemType;
+            var showGeneralSettings = !types.Fish || types.Crystals || types.Other || types.Collectables;
+            if (!showGeneralSettings)
+            {
+                return;
+            }
+
+            using var card = M3Card.Begin("preset_general", "General", FontAwesomeIcon.Cog, M3.AccentFor(2));
+            if (types.Crystals || types.Other)
+            {
+                var gp = preset.GatherableMinGP;
+                if (M3Widgets.RowNumber("Minimum GP for regular items and crystals", ref gp, 10, 0, ConfigPreset.MaxGP, "GP"))
+                {
+                    preset.GatherableMinGP = gp;
+                    MarkPresetsDirty();
+                }
+            }
+
+            if (types.Collectables)
+            {
+                var gp = preset.CollectableMinGP;
+                if (M3Widgets.RowNumber("Minimum GP for collectables", ref gp, 10, 0, ConfigPreset.MaxGP, "GP"))
+                {
+                    preset.CollectableMinGP = gp;
+                    MarkPresetsDirty();
+                }
+
+                gp = preset.CollectableActionsMinGP;
+                if (M3Widgets.RowNumber("Minimum GP for actions on collectables", ref gp, 10, 0, ConfigPreset.MaxGP, "GP"))
+                {
+                    preset.CollectableActionsMinGP = gp;
+                    MarkPresetsDirty();
+                }
+
+                var solidAge = ConcatNames(Actions.SolidAge);
+                var alwaysSolidAge = preset.CollectableAlwaysUseSolidAge;
+                if (M3Widgets.RowSwitch($"Always use {solidAge}", ref alwaysSolidAge,
+                        $"Use {solidAge} regardless of starting GP once the target collectability is reached."))
+                {
+                    preset.CollectableAlwaysUseSolidAge = alwaysSolidAge;
+                    MarkPresetsDirty();
+                }
+
+                var manual = preset.CollectableManualScores;
+                if (M3Widgets.RowSwitch("Set collectability scores manually", ref manual,
+                        "When off, the scores are read from the game. When on, enter the target and minimum scores yourself."))
+                {
+                    preset.CollectableManualScores = manual;
+                    MarkPresetsDirty();
+                }
+
+                if (preset.CollectableManualScores)
+                {
+                    using var sub = M3SubGroup.Begin();
+                    var score = preset.CollectableTagetScore;
+                    if (M3Widgets.RowNumber("Target collectability", ref score, 10, 0, ConfigPreset.MaxCollectability, null,
+                            "Keep going until the item reaches this collectability."))
+                    {
+                        preset.CollectableTagetScore = score;
+                        MarkPresetsDirty();
+                    }
+
+                    score = preset.CollectableMinScore;
+                    if (M3Widgets.RowNumber("Minimum collectability at the last integrity point", ref score, 10, 0, ConfigPreset.MaxCollectability, null,
+                            $"Collect anyway at the last integrity point if the item has at least this much. {ConfigPreset.MaxCollectability} turns it off."))
+                    {
+                        preset.CollectableMinScore = score;
+                        MarkPresetsDirty();
+                    }
+                }
+            }
+
+            var isFishExclusive = types.Fish && !types.Crystals && !types.Other && !types.Collectables;
+            if (!isFishExclusive)
+            {
+                var automatic = preset.ChooseBestActionsAutomatically;
+                if (M3Widgets.RowSwitch("Automatically decide what actions to use", ref automatic,
+                        "For collectables, the usual collectable rotation is used with every action. For unspoiled and legendary nodes, "
+                      + "actions are chosen for the most yield. For regular nodes, actions are chosen for the most yield per GP spent."))
+                {
+                    preset.ChooseBestActionsAutomatically = automatic;
+                    MarkPresetsDirty();
+                }
+            }
+
+            if (!types.Fish && preset.ChooseBestActionsAutomatically && preset.NodeType.Regular)
+            {
+                var bestOnly = preset.SpendGPOnBestNodesOnly;
+                if (M3Widgets.RowSwitch("Hold off spending GP until a node with the best bonuses", ref bestOnly,
+                        "Regular nodes only. Keeps GP for nodes whose bonuses give the best yield per GP: make sure nodes with +2 integrity, "
+                      + "+3 yield and +100% boon chance hidden bonuses exist and that you meet their requirements. "
+                      + $"Ignored when {ConcatNames(Actions.Bountiful)} gives +3, since nothing beats that. Not recommended with the Revisit trait (level 91+)."))
+                {
+                    preset.SpendGPOnBestNodesOnly = bestOnly;
+                    MarkPresetsDirty();
+                }
+            }
+        }
+
+        private void DrawPresetActions(ConfigPreset preset)
+        {
+            var types = preset.ItemType;
+            if ((types.Crystals || types.Other) && !preset.ChooseBestActionsAutomatically)
+            {
+                using var card = M3Card.Begin("preset_gathering_actions", "Gathering actions", FontAwesomeIcon.Leaf, M3.AccentFor(0),
+                    M3CardStyle.Filled, "Turn on an action to set when it is used.");
+                var actions = preset.GatherableActions;
+                DrawActionRow(ConcatNames(Actions.Luck), actions.Luck);
+                DrawActionRow(ConcatNames(Actions.Bountiful), actions.Bountiful);
+                DrawActionRow(ConcatNames(Actions.Yield1), actions.Yield1);
+                DrawActionRow(ConcatNames(Actions.Yield2), actions.Yield2);
+                DrawActionRow(ConcatNames(Actions.SolidAge), actions.SolidAge);
+                DrawActionRow(ConcatNames(Actions.Gift1), actions.Gift1);
+                DrawActionRow(ConcatNames(Actions.Gift2), actions.Gift2);
+                DrawActionRow(ConcatNames(Actions.Tidings), actions.Tidings);
+                if (types.Crystals)
+                {
+                    DrawActionRow(Actions.TwelvesBounty.Names.Botanist, actions.TwelvesBounty);
+                    DrawActionRow(Actions.GivingLand.Names.Botanist, actions.GivingLand);
+                }
+            }
+
+            if (types.Collectables && !preset.ChooseBestActionsAutomatically)
+            {
+                using var card = M3Card.Begin("preset_collectable_actions", "Collectable actions", FontAwesomeIcon.Gem, M3.AccentFor(1),
+                    M3CardStyle.Filled, "Turn on an action to set when it is used.");
+                var actions = preset.CollectableActions;
+                DrawActionRow(Actions.Scour.Names.Botanist, actions.Scour);
+                DrawActionRow(Actions.Brazen.Names.Botanist, actions.Brazen);
+                DrawActionRow(Actions.Meticulous.Names.Botanist, actions.Meticulous);
+                DrawActionRow(Actions.Scrutiny.Names.Botanist, actions.Scrutiny);
+                DrawActionRow(ConcatNames(Actions.SolidAge), actions.SolidAge);
+            }
+
+            if (types.Fish)
+            {
+                using var card = M3Card.Begin("preset_fishing_actions", "Fishing actions", FontAwesomeIcon.Fish, M3.AccentFor(2),
+                    M3CardStyle.Filled, "Turn on an action to set when it is used.");
+                var actions = preset.FishingActions;
+                DrawToggleRow("Patience / Patience II", actions.Patience);
+                DrawFishingActionRow(Actions.DoubleHook.Name, actions.DoubleHook, actions.TripleHook);
+                DrawFishingActionRow(Actions.TripleHook.Name, actions.TripleHook, actions.DoubleHook);
+                DrawFishingActionRow(Actions.PrizeCatch.Name, actions.PrizeCatch);
+                DrawFishingActionRow(Actions.Chum.Name, actions.Chum);
+                DrawFishingActionRow(Actions.SurfaceSlap.Name, actions.SurfaceSlap);
+                DrawFishingActionRow(Actions.IdenticalCast.Name, actions.IdenticalCast);
+                DrawFishingActionRow(Actions.AmbitiousLure.Name, actions.AmbitiousLure);
+                DrawFishingActionRow(Actions.ModestLure.Name, actions.ModestLure);
+            }
+        }
+
+        private void DrawPresetConsumables(ConfigPreset preset)
+        {
+            using var card = M3Card.Begin("preset_consumables", "Consumables", FontAwesomeIcon.Flask, M3.AccentFor(0), M3CardStyle.Filled,
+                "Items in your inventory are listed first, with how many you have.");
+            var consumables = preset.Consumables;
+            DrawActionRow("Cordial", consumables.Cordial, PossibleCordials);
+            DrawActionRow("Food", consumables.Food, PossibleFoods, true);
+            DrawActionRow("Medicine", consumables.Potion, PossiblePotions, true);
+            DrawActionRow("Manual", consumables.Manual, PossibleManuals, true);
+            DrawActionRow("Squadron Manual", consumables.SquadronManual, PossibleSquadronManuals, true);
+            DrawActionRow("Squadron Pass", consumables.SquadronPass, PossibleSquadronPasses, true);
+        }
+
+        private void DrawActionRow(string name, ConfigPreset.ActionConfig action, IEnumerable<Item>? items = null, bool hideGP = false)
+        {
+            using var id = ImRaii.PushId(name);
+            var enabled = action.Enabled;
+            if (M3Widgets.RowSwitch(name, ref enabled))
+            {
+                action.Enabled = enabled;
+                MarkPresetsDirty();
             }
 
             if (!action.Enabled)
@@ -730,230 +624,109 @@ namespace GatherBuddy.Gui
                 return;
             }
 
-            if (action is ConfigPreset.ActionConfigIntegrity action2)
+            using var sub = M3SubGroup.Begin();
+            if (action is ConfigPreset.ActionConfigIntegrity firstStep)
             {
-                if (ImGuiUtil.Checkbox("Use only on first step", "Use only if no items have been gathered from the node yet",
-                        action2.FirstStepOnly, x => action2.FirstStepOnly = x))
+                var firstStepOnly = firstStep.FirstStepOnly;
+                if (M3Widgets.RowSwitch("Only on the first step", ref firstStepOnly, "Use it only if nothing has been gathered from the node yet."))
                 {
-                    save();
+                    firstStep.FirstStepOnly = firstStepOnly;
+                    MarkPresetsDirty();
                 }
             }
 
             if (!hideGP)
             {
-                var min = action.MinGP;
-                var max = action.MaxGP;
-                var editDone = false;
-
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MinGP", ref min, 1, 0, ConfigPreset.MaxGP))
+                var low = action.MinGP;
+                var high = action.MaxGP;
+                if (M3Widgets.RowIntRange("GP", ref low, ref high, 0, ConfigPreset.MaxGP, supporting: "Use it while your GP is in this range."))
                 {
-                    state.ChangingMin = true;
-                    action.MinGP = min;
-                }
-                editDone = ImGui.IsItemDeactivatedAfterEdit();
-
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MaxGP", ref max, 1, 0, ConfigPreset.MaxGP))
-                {
-                    state.ChangingMin = false;
-                    action.MaxGP = max;
-                }
-                editDone = editDone || ImGui.IsItemDeactivatedAfterEdit();
-
-                if (editDone)
-                {
-                    if (action.MinGP > action.MaxGP)
-                    {
-                        if (state.ChangingMin)
-                        {
-                            action.MaxGP = action.MinGP;
-                        }
-                        else
-                        {
-                            action.MinGP = action.MaxGP;
-                        }
-                    }
-
-                    save();
-                }
-                ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
-                ImGui.TextUnformatted("Minimum and maximum GP");
-            }
-
-            if (action is ConfigPreset.ActionConfigBoon action3)
-            {
-                var min = action3.MinBoonChance;
-                var max = action3.MaxBoonChance;
-                var editDone = false;
-
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MinBoonChance", ref min, 0.2f, 0, 100))
-                {
-                    state.ChangingMin = true;
-                    action3.MinBoonChance = min;
-                }
-
-                editDone = ImGui.IsItemDeactivatedAfterEdit();
-
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(halfWidth);
-                if (ImGui.DragInt("##MaxBoonChance", ref max, 0.2f, 0, 100))
-                {
-                    state.ChangingMin = false;
-                    action3.MaxBoonChance = max;
-                }
-
-                editDone = editDone || ImGui.IsItemDeactivatedAfterEdit();
-
-                if (editDone)
-                {
-                    if (action3.MinBoonChance > action3.MaxBoonChance)
-                    {
-                        if (state.ChangingMin)
-                        {
-                            action3.MaxBoonChance = action3.MinBoonChance;
-                        }
-                        else
-                        {
-                            action3.MinBoonChance = action3.MaxBoonChance;
-                        }
-                    }
-
-                    save();
-                }
-
-                ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
-                ImGui.TextUnformatted("Minimum and maximum boon chance");
-            }
-
-            if (action is ConfigPreset.ActionConfigIntegrity action4)
-            {
-                var tmp = action4.MinIntegrity;
-                ImGui.SetNextItemWidth(SetInputWidth);
-                if (ImGui.DragInt("Minimum initial node integrity", ref tmp, 0.1f, 1, ConfigPreset.MaxIntegrity))
-                {
-                    action4.MinIntegrity = tmp;
-                }
-
-                if (ImGui.IsItemDeactivatedAfterEdit())
-                {
-                    save();
+                    action.MinGP = low;
+                    action.MaxGP = high;
+                    MarkPresetsDirty();
                 }
             }
 
-            if (action is ConfigPreset.ActionConfigYieldBonus action5)
+            if (action is ConfigPreset.ActionConfigBoon boon)
             {
-                var tmp = action5.MinYieldBonus;
-                ImGui.SetNextItemWidth(SetInputWidth);
-                if (ImGui.DragInt("Minimum yield bonus", ref tmp, 0.1f, 1, 3))
+                var low = boon.MinBoonChance;
+                var high = boon.MaxBoonChance;
+                if (M3Widgets.RowIntRange("Boon chance", ref low, ref high, 0, 100, "%", "Use it while the boon chance is in this range."))
                 {
-                    action5.MinYieldBonus = tmp;
-                }
-
-                if (ImGui.IsItemDeactivatedAfterEdit())
-                {
-                    save();
+                    boon.MinBoonChance = low;
+                    boon.MaxBoonChance = high;
+                    MarkPresetsDirty();
                 }
             }
 
-            if (action is ConfigPreset.ActionConfigYieldTotal action6)
+            if (action is ConfigPreset.ActionConfigIntegrity integrity)
             {
-                var tmp = action6.MinYieldTotal;
-                ImGui.SetNextItemWidth(SetInputWidth);
-                if (ImGui.DragInt("Minimum total yield", ref tmp, 0.1f, 1, 30))
+                var minIntegrity = integrity.MinIntegrity;
+                if (M3Widgets.RowNumber("Minimum initial node integrity", ref minIntegrity, 1, 1, ConfigPreset.MaxIntegrity))
                 {
-                    action6.MinYieldTotal = tmp;
-                }
-
-                if (ImGui.IsItemDeactivatedAfterEdit())
-                {
-                    save();
+                    integrity.MinIntegrity = minIntegrity;
+                    MarkPresetsDirty();
                 }
             }
 
-            if (action is ConfigPreset.ActionConfigConsumable action7 && items != null)
+            if (action is ConfigPreset.ActionConfigYieldBonus yieldBonus)
             {
-                var list = items
-                    .SelectMany(item => new[]
-                    {
-                        (item, rowid: item.RowId, isHq: false),
-                        (item, rowid: item.RowId + 1_000_000, isHq: true)
-                    })
-                    .Where(x => !x.isHq || x.item.CanBeHq)
-                    .Select(x => (name: ItemUtil.GetItemName(x.rowid, includeIcon: true).ExtractText(), x.rowid, count: GetInventoryItemCount(x.rowid)))
-                    .Where(x => !string.IsNullOrEmpty(x.name))
-                    .OrderBy(x => x.count == 0)
-                    .ThenBy(x => x.name)
-                    .Select(x => x with { name = $"{x.name} ({x.count})" })
-                    .ToList();
-
-                var selected = (action7.ItemId > 0 ? list.FirstOrDefault(x => x.rowid == action7.ItemId).name : null) ?? string.Empty;
-                using var combo = ImRaii.Combo($"Select {name.ToLower()}", selected);
-                if (combo)
+                var minYieldBonus = yieldBonus.MinYieldBonus;
+                if (M3Widgets.RowNumber("Minimum yield bonus", ref minYieldBonus, 1, 1, 3))
                 {
-                    if (ImGui.Selectable(string.Empty, action7.ItemId <= 0))
-                    {
-                        action7.ItemId = 0;
-                        save();
-                    }
+                    yieldBonus.MinYieldBonus = minYieldBonus;
+                    MarkPresetsDirty();
+                }
+            }
 
-                    bool? separatorState = null;
-                    foreach (var (itemname, rowid, count) in list)
-                    {
-                        if (count != 0)
-                        {
-                            separatorState = true;
-                        }
-                        else if (separatorState ?? false)
-                        {
-                            ImGui.Separator();
-                            separatorState = false;
-                        }
+            if (action is ConfigPreset.ActionConfigYieldTotal yieldTotal)
+            {
+                var minYieldTotal = yieldTotal.MinYieldTotal;
+                if (M3Widgets.RowNumber("Minimum total yield", ref minYieldTotal, 1, 1, 30))
+                {
+                    yieldTotal.MinYieldTotal = minYieldTotal;
+                    MarkPresetsDirty();
+                }
+            }
 
-                        if (ImGui.Selectable(itemname, action7.ItemId == rowid))
-                        {
-                            action7.ItemId = rowid;
-                            save();
-                        }
-                    }
+            if (action is ConfigPreset.ActionConfigConsumable consumable && items != null)
+            {
+                var choices = ConsumableChoices(name, items);
+                var index = Math.Max(0, choices.FindIndex(c => c.RowId == consumable.ItemId));
+                if (M3Widgets.RowCombo("Item", ref index, choices.Count, i => choices[i].Name, null, search: true)
+                 && index >= 0 && index < choices.Count && choices[index].RowId != consumable.ItemId)
+                {
+                    consumable.ItemId = choices[index].RowId;
+                    MarkPresetsDirty();
                 }
             }
         }
 
-        private static void DrawToggleConfig(string name, ConfigPreset.ToggleConfig action, System.Action save)
+        private void DrawToggleRow(string name, ConfigPreset.ToggleConfig action)
         {
-            using var node = ImRaii.TreeNode(name);
-            if (!node)
+            using var id = ImRaii.PushId(name);
+            var enabled = action.Enabled;
+            if (M3Widgets.RowSwitch(name, ref enabled))
             {
-                return;
-            }
-
-            if (ImGuiUtil.Checkbox("Enabled", "", action.Enabled, x => action.Enabled = x))
-            {
-                save();
+                action.Enabled = enabled;
+                MarkPresetsDirty();
             }
         }
 
-        private void DrawFishingActionConfig(string name, ConfigPreset.FishingActionConfig action, System.Action save, ConfigPreset.FishingActionConfig? oppositeAction = null)
+        private void DrawFishingActionRow(string name, ConfigPreset.FishingActionConfig action, ConfigPreset.FishingActionConfig? oppositeAction = null)
         {
-            using var node = ImRaii.TreeNode(name);
-            if (!node)
+            using var id = ImRaii.PushId(name);
+            var enabled = action.Enabled;
+            var supporting = oppositeAction != null ? "Double Hook and Triple Hook can't both be on; turning one on turns the other off." : null;
+            if (M3Widgets.RowSwitch(name, ref enabled, supporting))
             {
-                return;
-            }
-
-            if (ImGuiUtil.Checkbox("Enabled", "", action.Enabled, x =>
+                action.Enabled = enabled;
+                if (enabled && oppositeAction != null)
                 {
-                    action.Enabled = x;
-                    if (x && oppositeAction != null)
-                    {
-                        oppositeAction.Enabled = false;
-                    }
-                }))
-            {
-                save();
+                    oppositeAction.Enabled = false;
+                }
+
+                MarkPresetsDirty();
             }
 
             if (!action.Enabled)
@@ -961,34 +734,132 @@ namespace GatherBuddy.Gui
                 return;
             }
 
-            var thresholdAbove = action.GpThresholdAbove;
-            if (ImGui.RadioButton("Use when GP is Above", thresholdAbove))
+            using var sub = M3SubGroup.Begin();
+            var above = action.GpThresholdAbove ? 0 : 1;
+            if (M3Widgets.RowSegmented("Use when GP is", ref above, SettingRows.AboveBelowSegments))
             {
-                action.GpThresholdAbove = true;
-                save();
-            }
-
-            ImGui.SameLine();
-            if (ImGui.RadioButton("Below", !thresholdAbove))
-            {
-                action.GpThresholdAbove = false;
-                save();
+                action.GpThresholdAbove = above == 0;
+                MarkPresetsDirty();
             }
 
             var threshold = action.GpThreshold;
-            ImGui.SetNextItemWidth(SetInputWidth / 2);
-            if (ImGui.DragInt("GP Threshold", ref threshold, 1, 0, ConfigPreset.MaxGP))
+            if (M3Widgets.RowNumber("GP threshold", ref threshold, 10, 0, ConfigPreset.MaxGP, "GP"))
             {
                 action.GpThreshold = threshold;
-            }
-
-            if (ImGui.IsItemDeactivatedAfterEdit())
-            {
-                save();
+                MarkPresetsDirty();
             }
         }
+
+        private List<(string Name, uint RowId)> ConsumableChoices(string key, IEnumerable<Item> items)
+        {
+            if (_consumableChoices.TryGetValue(key, out var cached) && (DateTime.UtcNow - cached.Built).TotalSeconds < 2)
+            {
+                return cached.Items;
+            }
+
+            var entries = new List<(string Name, uint RowId, int Count, int Order)>();
+            foreach (var item in items)
+            {
+                AddConsumableChoice(entries, item.RowId);
+                if (item.CanBeHq)
+                {
+                    AddConsumableChoice(entries, item.RowId + 1_000_000);
+                }
+            }
+
+            entries.Sort(static (a, b) =>
+            {
+                var order = (a.Count == 0).CompareTo(b.Count == 0);
+                if (order != 0)
+                {
+                    return order;
+                }
+
+                order = string.Compare(a.Name, b.Name, StringComparison.CurrentCulture);
+                return order != 0 ? order : a.Order.CompareTo(b.Order);
+            });
+
+            var list = new List<(string Name, uint RowId)>(entries.Count + 1) { ("None", 0u) };
+            foreach (var (name, rowId, count, _) in entries)
+            {
+                list.Add(($"{name} ({count})", rowId));
+            }
+
+            _consumableChoices[key] = (DateTime.UtcNow, list);
+            return list;
+        }
+
+        private static void AddConsumableChoice(List<(string Name, uint RowId, int Count, int Order)> entries, uint rowId)
+        {
+            var name = ItemUtil.GetItemName(rowId, includeIcon: true).ExtractText();
+            if (!string.IsNullOrEmpty(name))
+            {
+                entries.Add((name, rowId, GetInventoryItemCount(rowId), entries.Count));
+            }
+        }
+
+        private void DrawPresetChecker()
+        {
+            using var dialog = M3Dialog.Begin(PresetCheckerDialogId, "Which preset each item uses",
+                "Items from your enabled auto-gather lists, and crystals, with the preset that matches each of them.", FontAwesomeIcon.Tasks, 640f);
+            if (!dialog.IsOpen)
+            {
+                return;
+            }
+
+            var rows = new List<(string List, string Name, IGatherable Item)>();
+            foreach (var list in _plugin.AutoGatherListsManager.Lists)
+            {
+                if (!list.Enabled || list.Fallback)
+                {
+                    continue;
+                }
+
+                foreach (var item in list.Items)
+                {
+                    rows.Add((list.Name, item.Name[GatherBuddy.Language], item));
+                }
+            }
+
+            foreach (var (name, id) in CrystalTypes)
+            {
+                if (GatherBuddy.GameData.Gatherables.TryGetValue(id, out var crystal))
+                {
+                    rows.Add((string.Empty, name, crystal));
+                }
+            }
+
+            var lineHeight = ImGui.GetTextLineHeightWithSpacing() + ImGui.GetStyle().CellPadding.Y * 2f;
+            var height = MathF.Min(rows.Count + 1, 14) * lineHeight + ImGui.GetStyle().CellPadding.Y * 2f;
+            using (var table = ImRaii.Table("##preset_checker", 3,
+                       ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp,
+                       new Vector2(0f, height)))
+            {
+                if (table)
+                {
+                    ImGui.TableSetupScrollFreeze(0, 1);
+                    ImGui.TableSetupColumn("Gather list");
+                    ImGui.TableSetupColumn("Item");
+                    ImGui.TableSetupColumn("Config preset");
+                    ImGui.TableHeadersRow();
+
+                    foreach (var (list, name, item) in rows)
+                    {
+                        ImGui.TableNextRow();
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted(list);
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted(name);
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted(MatchConfigPreset(item).Name);
+                    }
+                }
+            }
+
+            M3Dialog.Actions([new M3DialogAction("Close", M3ButtonStyle.Filled)]);
+        }
+
+        private static string ConcatNames(Actions.BaseAction action)
+            => $"{action.Names.Miner} / {action.Names.Botanist}";
     }
 }
-
-
-

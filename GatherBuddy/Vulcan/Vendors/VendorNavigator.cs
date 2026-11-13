@@ -16,7 +16,6 @@ using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -367,10 +366,21 @@ public class VendorNavigator
         var npcXZ = new Vector2(npcPosition.X, npcPosition.Z);
         foreach (var territoryCandidate in territoryCandidates)
         {
-            var housingShards = housingAethernetSheet
-                .Where(a => a.TerritoryType.RowId == territoryCandidate)
-                .OrderBy(a => a.Order)
-                .ToList();
+            var shardRows = new List<(HousingAethernet Row, int Index)>();
+            foreach (var shardRow in housingAethernetSheet)
+            {
+                if (shardRow.TerritoryType.RowId == territoryCandidate)
+                {
+                    shardRows.Add((shardRow, shardRows.Count));
+                }
+            }
+
+            shardRows.Sort(static (lhs, rhs) =>
+            {
+                var order = lhs.Row.Order.CompareTo(rhs.Row.Order);
+                return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+            });
+            var housingShards = shardRows.ConvertAll(static entry => entry.Row);
             if (housingShards.Count == 0)
             {
                 continue;
@@ -466,7 +476,16 @@ public class VendorNavigator
 
     private static Vector2? GetHousingAetheryteXZ(HousingAethernet housingShard, uint territoryId, ExcelSheet<Map> mapSheet)
     {
-        var map = mapSheet.FirstOrDefault(m => m.TerritoryType.RowId == territoryId);
+        Map map = default;
+        foreach (var mapRow in mapSheet)
+        {
+            if (mapRow.TerritoryType.RowId == territoryId)
+            {
+                map = mapRow;
+                break;
+            }
+        }
+
         if (map.RowId == 0)
         {
             return null;
@@ -1811,9 +1830,14 @@ public class VendorNavigator
             if (VNavmesh.Path.IsRunning())
             {
                 var playerXZ = new Vector2(playerPosition.X, playerPosition.Z);
-                var path = VNavmesh.Path.ListWaypoints()
-                    .SkipWhile(p => Vector2.DistanceSquared(playerXZ, new Vector2(p.X, p.Z)) < 16f)
-                    .ToList();
+                var waypoints = VNavmesh.Path.ListWaypoints();
+                var skipped = 0;
+                while (skipped < waypoints.Count && Vector2.DistanceSquared(playerXZ, new Vector2(waypoints[skipped].X, waypoints[skipped].Z)) < 16f)
+                {
+                    skipped++;
+                }
+
+                var path = waypoints.GetRange(skipped, waypoints.Count - skipped);
 
                 if (path.Count == 0)
                 {
@@ -1842,7 +1866,7 @@ public class VendorNavigator
     {
         if (_pathUsesCombinedApproach && _landingWaypointCount > 0 && !Dalamud.Conditions[ConditionFlag.Diving])
         {
-            var remainingPath = VNavmesh.Path.ListWaypoints().ToList();
+            var remainingPath = new List<Vector3>(VNavmesh.Path.ListWaypoints());
             if (remainingPath.Count < _landingWaypointCount)
             {
                 VNavmesh.Path.Stop();
@@ -1938,7 +1962,7 @@ public class VendorNavigator
 
     private void StopPathing()
     {
-        if (VNavmesh.Path.IsRunning())
+        if (VNavmesh.Enabled && VNavmesh.Path.IsRunning())
         {
             VNavmesh.Path.Stop();
         }
@@ -2147,37 +2171,14 @@ public class VendorNavigator
     }
 
     private static bool TryGetNearestHousingEntryAetheryte(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
-    {
-        aetheryte = null;
-        horizontalDistance = float.MaxValue;
-        distance = float.MaxValue;
-
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-        {
-            return false;
-        }
-
-        var nearest = Dalamud.Objects
-            .Where(obj => obj.ObjectKind == ObjectKind.Aetheryte && obj.IsTargetable)
-            .Select(obj => (Object: obj, HorizontalDistance: Vector2.Distance(new Vector2(player.Position.X, player.Position.Z), new Vector2(obj.Position.X, obj.Position.Z)), Distance: Vector3.Distance(player.Position, obj.Position)))
-            .OrderBy(entry => entry.Distance)
-            .FirstOrDefault();
-
-        if (nearest.Object == null)
-        {
-            return false;
-        }
-
-        aetheryte = nearest.Object;
-        horizontalDistance = nearest.HorizontalDistance;
-        distance = nearest.Distance;
-        return true;
-    }
+        => TryGetNearestObject(static obj => obj.ObjectKind == ObjectKind.Aetheryte && obj.IsTargetable, out aetheryte, out horizontalDistance, out distance);
 
     private static bool TryGetNearestAethernetSource(out IGameObject? aetheryte, out float horizontalDistance, out float distance)
+        => TryGetNearestObject(IsAethernetSource, out aetheryte, out horizontalDistance, out distance);
+
+    private static bool TryGetNearestObject(Predicate<IGameObject> match, out IGameObject? nearest, out float horizontalDistance, out float distance)
     {
-        aetheryte = null;
+        nearest = null;
         horizontalDistance = float.MaxValue;
         distance = float.MaxValue;
 
@@ -2187,21 +2188,23 @@ public class VendorNavigator
             return false;
         }
 
-        var nearest = Dalamud.Objects
-            .Where(IsAethernetSource)
-            .Select(obj => (Object: obj, HorizontalDistance: Vector2.Distance(new Vector2(player.Position.X, player.Position.Z), new Vector2(obj.Position.X, obj.Position.Z)), Distance: Vector3.Distance(player.Position, obj.Position)))
-            .OrderBy(entry => entry.Distance)
-            .FirstOrDefault();
-
-        if (nearest.Object == null)
+        foreach (var obj in Dalamud.Objects)
         {
-            return false;
+            if (!match(obj))
+            {
+                continue;
+            }
+
+            var objDistance = Vector3.Distance(player.Position, obj.Position);
+            if (nearest == null || objDistance < distance)
+            {
+                nearest = obj;
+                horizontalDistance = Vector2.Distance(new Vector2(player.Position.X, player.Position.Z), new Vector2(obj.Position.X, obj.Position.Z));
+                distance = objDistance;
+            }
         }
 
-        aetheryte = nearest.Object;
-        horizontalDistance = nearest.HorizontalDistance;
-        distance = nearest.Distance;
-        return true;
+        return nearest != null;
     }
 
     private static float GetAethernetSourceInteractionDistance(IGameObject source)
@@ -2335,8 +2338,22 @@ public class VendorNavigator
             : addon->PromptText->NodeText.ToString();
 
     private static bool MatchesAnyText(string text, IReadOnlyList<string> candidates)
-        => !string.IsNullOrWhiteSpace(text)
-         && candidates.Any(candidate => text.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < candidates.Count; ++i)
+        {
+            if (text.Contains(candidates[i], StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static unsafe void ClickButton(AtkUnitBase* addon, AtkComponentButton* button)
     {
@@ -2660,7 +2677,16 @@ public class VendorNavigator
         }
 
         distances.Add(interactionLimit);
-        return [.. distances.Distinct()];
+        var distinctDistances = new List<float>(distances.Count);
+        foreach (var candidate in distances)
+        {
+            if (!distinctDistances.Contains(candidate))
+            {
+                distinctDistances.Add(candidate);
+            }
+        }
+
+        return [.. distinctDistances];
     }
 
     private void LogApproachDiagnostics(IGameObject liveNpc, string navigationReason, IReadOnlyList<string> diagnostics)
@@ -2979,7 +3005,7 @@ public class VendorNavigator
         }
 
         landingWaypoint = flyPath[^1];
-        flyPath.AddRange(groundPath.Skip(intersectionIndex + 1));
+        flyPath.AddRange(groundPath.GetRange(intersectionIndex + 1, groundPath.Count - intersectionIndex - 1));
         flyPath.Add(landingWaypoint);
         return flyPath;
 

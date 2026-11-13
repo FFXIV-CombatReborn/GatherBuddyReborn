@@ -1,133 +1,85 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.GamePad;
+using Dalamud.Interface;
 using GatherBuddy.Crafting;
 using GatherBuddy.Vulcan.Vendors;
+using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
 
 public partial class VulcanWindow
 {
-    private void DrawDebugTab()
+    private static readonly uint[] DebugJobIds = [8, 9, 10, 11, 12, 13, 14, 15];
+
+    private static readonly M3Segment[] VendorLocationSegments =
+    [
+        new("DataShare first", FontAwesomeIcon.Database, "Prefer AllaganTools DataShare locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and planevent.lgb."),
+        new("LGB first", FontAwesomeIcon.Map, "Prefer planevent.lgb locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and AllaganTools DataShare."),
+    ];
+
+    private void DrawDebugPage()
     {
-        IDisposable tabItem;
-        bool tabOpen;
-
-        if (GatherBuddy.ControllerSupport != null)
+        using var child = ImRaii.Child("##vulcanDebug", Vector2.Zero);
+        if (!child)
         {
-            var handle = GatherBuddy.ControllerSupport.TabNavigation.TabItem("Debug##debugTab", 7, 9);
-            tabItem = handle;
-            tabOpen = handle;
-        }
-        else
-        {
-            var handle = ImRaii.TabItem("Debug##debugTab");
-            tabItem = handle;
-            tabOpen = handle.Success;
+            return;
         }
 
-        using (tabItem)
+        using (M3Card.Begin("##debugMenus", "Context menus", FontAwesomeIcon.Bars, M3.AccentFor(0)))
         {
-            if (!tabOpen)
-            {
-                return;
-            }
-
-            ImGui.BeginGroup();
-            ImGui.Text("Context Menu Settings");
-            ImGui.Spacing();
-
-            ImGui.Text("  Max Recent Lists:");
-            ImGui.SameLine();
             var maxRecentLists = GatherBuddy.Config.MaxRecentCraftingListsInContextMenu;
-            ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(100f));
-            if (ImGui.InputInt("###MaxRecentLists", ref maxRecentLists, 1, 1))
+            if (M3Widgets.RowNumber("Recent lists in menus", ref maxRecentLists, 1, 1, 50, supporting: "How many recent crafting lists context menus offer."))
             {
-                GatherBuddy.Config.MaxRecentCraftingListsInContextMenu = Math.Max(1, Math.Min(50, maxRecentLists));
+                GatherBuddy.Config.MaxRecentCraftingListsInContextMenu = Math.Clamp(maxRecentLists, 1, 50);
                 GatherBuddy.Config.Save();
             }
-            if (ImGui.IsItemHovered())
+        }
+
+        DrawVendorNpcLocationDebug();
+
+        using (M3Card.Begin("##debugRepair", "Repair", FontAwesomeIcon.Wrench, M3.AccentFor(2)))
+        {
+            M3Widgets.RowValue("Lowest equipped condition", $"{Crafting.RepairManager.GetMinEquippedPercent()}%");
+            M3Widgets.RowValue("Can repair yourself", Crafting.RepairManager.CanRepairAny() ? "Yes" : "No");
+            var npcNearby = Crafting.RepairManager.RepairNPCNearby(out _);
+            M3Widgets.RowValue("Repair NPC nearby", npcNearby ? "Yes" : "No");
+            if (npcNearby)
             {
-                ImGui.SetTooltip("Maximum number of recent crafting lists to show in context menus (1-50)");
+                M3Widgets.RowValue("NPC repair price", $"{Crafting.RepairManager.GetNPCRepairPrice():N0} gil");
+            }
+        }
+
+        using (M3Card.Begin("##debugMateria", "Materia extraction", FontAwesomeIcon.Gem, M3.AccentFor(3)))
+        {
+            M3Widgets.RowValue("Extraction unlocked", Crafting.MateriaManager.IsExtractionUnlocked() ? "Yes" : "No");
+            M3Widgets.RowValue("Items ready", Crafting.MateriaManager.ReadySpiritbondItemCount().ToString());
+            M3Widgets.RowValue("Free inventory slots", Crafting.MateriaManager.HasFreeInventorySlots() ? "Yes" : "No");
+        }
+
+        using (M3Card.Begin("##debugGearset", "Gearset stats", FontAwesomeIcon.UserCog, M3.AccentFor(4)))
+        {
+            var jobIndex = Math.Max(0, Array.IndexOf(DebugJobIds, _debugSelectedJobId));
+            if (M3Widgets.RowCombo("Job", ref jobIndex, DebugJobIds.Length, i => GetDebugJobName(DebugJobIds[i])))
+            {
+                _debugSelectedJobId = DebugJobIds[jobIndex];
+                _debugLastTestResult = null;
             }
 
-            ImGui.EndGroup();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            DrawVendorNpcLocationDebug();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            ImGui.BeginGroup();
-            ImGui.Text("Repair Status");
-            ImGui.Spacing();
-            ImGui.Text($"  Min Equipped: {Crafting.RepairManager.GetMinEquippedPercent()}%");
-            ImGui.Text($"  Can Self Repair: {Crafting.RepairManager.CanRepairAny()}");
-            ImGui.Text($"  Repair NPC Nearby: {Crafting.RepairManager.RepairNPCNearby(out _)}");
-            if (Crafting.RepairManager.RepairNPCNearby(out _))
-            {
-                ImGui.Text($"  NPC Repair Price: {Crafting.RepairManager.GetNPCRepairPrice()} gil");
-            }
-            ImGui.EndGroup();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            ImGui.BeginGroup();
-            ImGui.Text("Materia Extraction Status");
-            ImGui.Spacing();
-            ImGui.Text($"  Extraction Unlocked: {Crafting.MateriaManager.IsExtractionUnlocked()}");
-            ImGui.Text($"  Items Ready: {Crafting.MateriaManager.ReadySpiritbondItemCount()}");
-            ImGui.Text($"  Free Slots: {Crafting.MateriaManager.HasFreeInventorySlots()}");
-            ImGui.EndGroup();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            ImGui.BeginGroup();
-            ImGui.Text("Gearset Stat Test");
-            ImGui.Text("  Select Job:");
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(VulcanUiScaling.Scaled(150f));
-            if (ImGui.BeginCombo("###JobSelector", GetDebugJobName(_debugSelectedJobId)))
-            {
-                var jobs = new[] { (8u, "Carpenter (CRP)"), (9u, "Blacksmith (BSM)"), (10u, "Armorer (ARM)"), (11u, "Goldsmith (GSM)"), (12u, "Leatherworker (LTW)"), (13u, "Weaver (WVR)"), (14u, "Alchemist (ALC)"), (15u, "Culinarian (CUL)") };
-                foreach (var (jobId, jobName) in jobs)
-                {
-                    if (ImGui.Selectable(jobName, _debugSelectedJobId == jobId))
-                    {
-                        _debugSelectedJobId = jobId;
-                        _debugLastTestResult = null;
-                    }
-                }
-                ImGui.EndCombo();
-            }
-
-            ImGui.Spacing();
-            if (ImGui.Button("Test Stat Read", VulcanUiScaling.Scaled(150f, 0f)))
+            if (M3Widgets.Button("##readStats", "Read stats", M3ButtonStyle.Tonal, FontAwesomeIcon.Search))
             {
                 var stats = GearsetStatsReader.ReadGearsetStatsForJob(_debugSelectedJobId);
-                if (stats != null)
-                {
-                    _debugLastTestResult = $"Success: Craftsmanship={stats.Craftsmanship}, Control={stats.Control}, CP={stats.CP}, Manipulation={stats.Manipulation}";
-                }
-                else
-                {
-                    _debugLastTestResult = "Failed: Could not read gearset stats for this job";
-                }
+                _debugLastTestResult = stats != null
+                    ? $"Success: Craftsmanship={stats.Craftsmanship}, Control={stats.Control}, CP={stats.CP}, Manipulation={stats.Manipulation}"
+                    : "Failed: Could not read gearset stats for this job";
             }
 
-            ImGui.SameLine();
-            if (ImGui.Button("Update Saved Gearset", VulcanUiScaling.Scaled(170f, 0f)))
+            ImGui.SameLine(0, M3.Space2);
+            if (M3Widgets.Button("##updateGearset", "Update saved gearset", M3ButtonStyle.Text, FontAwesomeIcon.Save,
+                    tooltip: "Updates the selected job's saved gearset from your currently equipped items. You must be on that job."))
             {
                 var refreshResult = GearsetStatsReader.RefreshGearsetFromCurrentEquipped(_debugSelectedJobId);
                 var stats = GearsetStatsReader.ReadGearsetStatsForJob(_debugSelectedJobId);
@@ -135,207 +87,84 @@ public partial class VulcanWindow
                     ? $"{refreshResult} Current read: Craftsmanship={stats.Craftsmanship}, Control={stats.Control}, CP={stats.CP}, Manipulation={stats.Manipulation}"
                     : refreshResult;
             }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Updates the selected job's saved gearset from your currently equipped items. You must be on that job.");
-            }
 
             if (_debugLastTestResult != null)
             {
-                ImGui.Spacing();
-                ImGui.TextWrapped(_debugLastTestResult);
+                M3Text.Draw(_debugLastTestResult, M3TextStyle.Muted, true);
             }
-            ImGui.EndGroup();
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-
-            DrawGamepadInputTest();
         }
+
+        DrawGamepadInputTest();
     }
 
     private static void DrawVendorNpcLocationDebug()
     {
-        ImGui.BeginGroup();
-        ImGui.Text("Vendor NPC Location Source");
-        ImGui.Spacing();
-
+        using var card = M3Card.Begin("##debugVendorLocations", "Vendor NPC locations", FontAwesomeIcon.MapMarkerAlt, M3.AccentFor(1));
         var dataShareFirst = GatherBuddy.Config.VendorNpcLocationsDataShareFirst;
-        if (ImGui.RadioButton("DataShare first###vendorNpcLocationDataShareFirst", dataShareFirst))
+        var index = dataShareFirst ? 0 : 1;
+        if (M3Widgets.RowSegmented("Source to prefer", ref index, VendorLocationSegments))
         {
-            SetVendorNpcLocationSourcePreference(true);
+            SetVendorNpcLocationSourcePreference(index == 0);
         }
 
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Prefer AllaganTools DataShare locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and planevent.lgb.");
-        }
-
-        ImGui.SameLine();
-
-        if (ImGui.RadioButton("LGB first###vendorNpcLocationLgbFirst", !dataShareFirst))
-        {
-            SetVendorNpcLocationSourcePreference(false);
-        }
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Prefer planevent.lgb locations, then fill gaps from the Level sheet, ENpcPlace supplemental data, and AllaganTools DataShare.");
-        }
-
-        ImGui.Spacing();
-        ImGui.Text($"  Source Order: {(dataShareFirst ? "DataShare -> Level -> Supplemental -> LGB" : "LGB -> Level -> Supplemental -> DataShare")}");
-        ImGui.Text($"  Cache Status: {GetVendorNpcLocationCacheStatus()}");
-        ImGui.EndGroup();
+        M3Widgets.RowValue("Source order", dataShareFirst ? "DataShare, Level, supplemental, LGB" : "LGB, Level, supplemental, DataShare");
+        M3Widgets.RowValue("Cache", GetVendorNpcLocationCacheStatus());
     }
 
-    private void DrawGamepadInputTest()
+    private static string PressedButtons(params (GamepadButtons Button, string Name)[] buttons)
     {
-        ImGui.BeginGroup();
-        ImGui.Text("Gamepad Input Test");
-        ImGui.Separator();
-        ImGui.Spacing();
-
         var gamepad = Dalamud.GamepadState;
-
-        ImGui.Text("Left Stick:");
-        ImGui.SameLine();
-        ImGui.Text($"X: {gamepad.LeftStick.X:F3}, Y: {gamepad.LeftStick.Y:F3}");
-
-        ImGui.Text("Right Stick:");
-        ImGui.SameLine();
-        ImGui.Text($"X: {gamepad.RightStick.X:F3}, Y: {gamepad.RightStick.Y:F3}");
-
-        ImGui.Spacing();
-        ImGui.Text("D-Pad:");
-        ImGui.SameLine();
-        var dpad = "None";
-        if (gamepad.Pressed(GamepadButtons.DpadUp) > 0)
+        var pressed = new List<string>(buttons.Length);
+        foreach (var (button, name) in buttons)
         {
-            dpad = "Up";
+            if (gamepad.Pressed(button) > 0)
+            {
+                pressed.Add(name);
+            }
         }
 
-        if (gamepad.Pressed(GamepadButtons.DpadDown) > 0)
-        {
-            dpad = "Down";
-        }
+        return pressed.Count > 0 ? string.Join(", ", pressed) : "None";
+    }
 
-        if (gamepad.Pressed(GamepadButtons.DpadLeft) > 0)
-        {
-            dpad = "Left";
-        }
+    private static void DrawGamepadInputTest()
+    {
+        using var card = M3Card.Begin("##debugGamepad", "Gamepad input", FontAwesomeIcon.Gamepad, M3.AccentFor(5));
+        var gamepad = Dalamud.GamepadState;
+        M3Widgets.RowValue("Left stick", $"X {gamepad.LeftStick.X:F3}, Y {gamepad.LeftStick.Y:F3}");
+        M3Widgets.RowValue("Right stick", $"X {gamepad.RightStick.X:F3}, Y {gamepad.RightStick.Y:F3}");
+        M3Widgets.RowValue("D-pad", PressedButtons((GamepadButtons.DpadUp, "Up"), (GamepadButtons.DpadDown, "Down"), (GamepadButtons.DpadLeft, "Left"),
+            (GamepadButtons.DpadRight, "Right")));
+        M3Widgets.RowValue("Face buttons", PressedButtons((GamepadButtons.South, "A/Cross"), (GamepadButtons.East, "B/Circle"),
+            (GamepadButtons.West, "X/Square"), (GamepadButtons.North, "Y/Triangle")));
+        M3Widgets.RowValue("Shoulder buttons", PressedButtons((GamepadButtons.L1, "L1"), (GamepadButtons.R1, "R1"), (GamepadButtons.L2, "L2"),
+            (GamepadButtons.R2, "R2")));
 
-        if (gamepad.Pressed(GamepadButtons.DpadRight) > 0)
-        {
-            dpad = "Right";
-        }
-
-        ImGui.Text(dpad);
-
-        ImGui.Spacing();
-        ImGui.Text("Face Buttons:");
-        var faceButtons = new List<string>();
-        if (gamepad.Pressed(GamepadButtons.South) > 0)
-        {
-            faceButtons.Add("A/Cross");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.East) > 0)
-        {
-            faceButtons.Add("B/Circle");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.West) > 0)
-        {
-            faceButtons.Add("X/Square");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.North) > 0)
-        {
-            faceButtons.Add("Y/Triangle");
-        }
-
-        ImGui.SameLine();
-        ImGui.Text(faceButtons.Count > 0 ? string.Join(", ", faceButtons) : "None");
-
-        ImGui.Spacing();
-        ImGui.Text("Shoulder Buttons:");
-        var shoulderButtons = new List<string>();
-        if (gamepad.Pressed(GamepadButtons.L1) > 0)
-        {
-            shoulderButtons.Add("L1");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.R1) > 0)
-        {
-            shoulderButtons.Add("R1");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.L2) > 0)
-        {
-            shoulderButtons.Add("L2");
-        }
-
-        if (gamepad.Pressed(GamepadButtons.R2) > 0)
-        {
-            shoulderButtons.Add("R2");
-        }
-
-        ImGui.SameLine();
-        ImGui.Text(shoulderButtons.Count > 0 ? string.Join(", ", shoulderButtons) : "None");
-
-        ImGui.Spacing();
-        ImGui.Text("ImGui Navigation State:");
         var io = ImGui.GetIO();
-        ImGui.Text($"  NavActive: {io.NavActive}");
-        ImGui.Text($"  NavVisible: {io.NavVisible}");
-        ImGui.Text($"  ConfigFlags: {io.ConfigFlags}");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        M3Widgets.RowValue("Navigation active", io.NavActive ? "Yes" : "No");
+        M3Widgets.RowValue("Navigation visible", io.NavVisible ? "Yes" : "No");
+        M3Widgets.RowValue("Config flags", io.ConfigFlags.ToString());
 
         var navKeyboardEnabled = (io.ConfigFlags & ImGuiConfigFlags.NavEnableKeyboard) != 0;
         var navGamepadEnabled = (io.ConfigFlags & ImGuiConfigFlags.NavEnableGamepad) != 0;
-
-        if (ImGui.Button(navGamepadEnabled ? "Disable Gamepad Nav" : "Enable Gamepad Nav", VulcanUiScaling.Scaled(200f, 0f)))
+        if (M3Widgets.Button("##gamepadNav", navGamepadEnabled ? "Turn off gamepad navigation" : "Turn on gamepad navigation", M3ButtonStyle.Tonal,
+                FontAwesomeIcon.Gamepad))
         {
             io = ImGui.GetIO();
-            if (navGamepadEnabled)
-            {
-                io.ConfigFlags &= ~ImGuiConfigFlags.NavEnableGamepad;
-                GatherBuddy.Log.Information("[VulcanWindow] Disabled ImGui gamepad navigation");
-            }
-            else
-            {
-                io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;
-                GatherBuddy.Log.Information("[VulcanWindow] Enabled ImGui gamepad navigation");
-            }
+            io.ConfigFlags ^= ImGuiConfigFlags.NavEnableGamepad;
+            GatherBuddy.Log.Information($"[VulcanWindow] {(navGamepadEnabled ? "Disabled" : "Enabled")} ImGui gamepad navigation");
         }
 
-        ImGui.SameLine();
-        if (ImGui.Button(navKeyboardEnabled ? "Disable Keyboard Nav" : "Enable Keyboard Nav", VulcanUiScaling.Scaled(200f, 0f)))
+        ImGui.SameLine(0, M3.Space2);
+        if (M3Widgets.Button("##keyboardNav", navKeyboardEnabled ? "Turn off keyboard navigation" : "Turn on keyboard navigation", M3ButtonStyle.Tonal,
+                FontAwesomeIcon.Keyboard))
         {
             io = ImGui.GetIO();
-            if (navKeyboardEnabled)
-            {
-                io.ConfigFlags &= ~ImGuiConfigFlags.NavEnableKeyboard;
-                GatherBuddy.Log.Information("[VulcanWindow] Disabled ImGui keyboard navigation");
-            }
-            else
-            {
-                io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
-                GatherBuddy.Log.Information("[VulcanWindow] Enabled ImGui keyboard navigation");
-            }
+            io.ConfigFlags ^= ImGuiConfigFlags.NavEnableKeyboard;
+            GatherBuddy.Log.Information($"[VulcanWindow] {(navKeyboardEnabled ? "Disabled" : "Enabled")} ImGui keyboard navigation");
         }
 
-        ImGui.TextColored(new Vector4(1, 1, 0, 1), "Note: Press Tab or use D-pad to start navigating");
-
-        ImGui.EndGroup();
+        M3Text.Draw("Press Tab or use the D-pad to start navigating.", M3TextStyle.Muted);
     }
-
-
     private static string GetDebugJobName(uint jobId) => jobId switch
     {
         8 => "Carpenter (CRP)",

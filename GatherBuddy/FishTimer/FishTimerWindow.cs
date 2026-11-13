@@ -1,16 +1,14 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
-using ElliLib;
-using ElliLib.Extensions;
-using ElliLib.Raii;
-using ElliLib.Text;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using GatherBuddy.Config;
 using GatherBuddy.Gui;
+using GatherBuddy.RebornUI;
 using GatherBuddy.SeFunctions;
+using GatherBuddy.Utility;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Numerics;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
 using TimeStamp = GatherBuddy.Time.TimeStamp;
@@ -32,8 +30,8 @@ public partial class FishTimerWindow : Window, IDisposable
     private FishCache[] _availableFish = [];
     private TimeStamp _nextUptimeChange = TimeStamp.MaxValue;
     private readonly FishRecorder _recorder;
-    private readonly int _maxNumLines = GatherBuddy.GameData.FishingSpots.Values.Where(f => !f.Spearfishing).Max(f => f.Items.Length);
-    private readonly ImRaii.Style _style = new();
+    private readonly int _maxNumLines = GetMaxNumLines();
+    private readonly StyleStack _style = new();
 
     private float _lineHeight;
     private Vector2 _iconSize = Vector2.Zero;
@@ -131,8 +129,8 @@ public partial class FishTimerWindow : Window, IDisposable
             drawList.AddLine(start - scale, end - scale, 0x80000000, ImGuiHelpers.GlobalScale);
             drawList.AddLine(start, end, 0xFFFFFFFF, ImGuiHelpers.GlobalScale);
             drawList.AddLine(start + scale, end + scale, 0x80000000, ImGuiHelpers.GlobalScale);
-            var t = Math.Round(i * (double)time / 1000, GatherBuddy.Config.SecondIntervalsRounding).ToString();
-            ImGuiUtil.TextShadowed(ImGui.GetWindowDrawList(), end with { X = end.X - ImGui.CalcTextSize(t).X / 2 }, t, 0xFFFFFFFF, 0x80000000);
+            var t = System.Math.Round(i * (double)time / 1000, GatherBuddy.Config.SecondIntervalsRounding).ToString();
+            Ui.TextShadowed(ImGui.GetWindowDrawList(), end with { X = end.X - ImGui.CalcTextSize(t).X / 2 }, t, 0xFFFFFFFF, 0x80000000);
         }
     }
 
@@ -167,16 +165,16 @@ public partial class FishTimerWindow : Window, IDisposable
 
     private string EllipsifyString(ReadOnlySpan<char> text, float maxWidth)
     {
-        if (ImUtf8.CalcTextSize(text).X < maxWidth)
+        if (ImGui.CalcTextSize(text).X < maxWidth)
         {
             return new string(text);
         }
 
-        maxWidth -= ImUtf8.CalcTextSize("...").X;
-        var length = Math.Max(text.Length - 3, 0);
+        maxWidth -= ImGui.CalcTextSize("...").X;
+        var length = System.Math.Max(text.Length - 3, 0);
         while (length-- > 0)
         {
-            if (ImUtf8.CalcTextSize(text, false, length).X < maxWidth)
+            if (ImGui.CalcTextSize(text[..length]).X < maxWidth)
             {
                 return $"{text[..length]}...";
             }
@@ -226,6 +224,20 @@ public partial class FishTimerWindow : Window, IDisposable
         _milliseconds = spot == null ? 0 : newMilliseconds;
     }
 
+    private static int GetMaxNumLines()
+    {
+        var maxNumLines = 0;
+        foreach (var spot in GatherBuddy.GameData.FishingSpots.Values)
+        {
+            if (!spot.Spearfishing && spot.Items.Length > maxNumLines)
+            {
+                maxNumLines = spot.Items.Length;
+            }
+        }
+
+        return maxNumLines;
+    }
+
     private void UpdateFish()
     {
         if (_spot == null)
@@ -234,23 +246,37 @@ public partial class FishTimerWindow : Window, IDisposable
         }
         else
         {
-            var enumerator = _spot.Items.Select(f => new FishCache(_recorder, f, _spot));
-            if (GatherBuddy.Config.HideUnavailableFish)
+            var hideUnavailable = GatherBuddy.Config.HideUnavailableFish;
+            var hideUncaught = GatherBuddy.Config.HideUncaughtFish;
+            var availableFish = new List<FishCache>(_spot.Items.Length);
+            foreach (var fish in _spot.Items)
             {
-                enumerator = enumerator.Where(f => !f.Unavailable);
+                var cache = new FishCache(_recorder, fish, _spot);
+                if (hideUnavailable && cache.Unavailable || hideUncaught && cache.Uncaught)
+                {
+                    continue;
+                }
+
+                availableFish.Add(cache);
             }
 
-            if (GatherBuddy.Config.HideUncaughtFish)
-            {
-                enumerator = enumerator.Where(f => !f.Uncaught);
-            }
-
-            _availableFish = [.. enumerator.OrderBy(f => f.SortOrder)];
+            availableFish.StableSort(static (lhs, rhs) => lhs.SortOrder.CompareTo(rhs.SortOrder));
+            _availableFish = [.. availableFish];
 
             var currentTime = GatherBuddy.Time.ServerTime;
             if (_availableFish.Length > 0)
             {
-                _nextUptimeChange = _availableFish.Min(f => f.NextUptime.Start < currentTime ? f.NextUptime.End : f.NextUptime.Start);
+                var nextUptimeChange = TimeStamp.MaxValue;
+                foreach (var fish in _availableFish)
+                {
+                    var change = fish.NextUptime.Start < currentTime ? fish.NextUptime.End : fish.NextUptime.Start;
+                    if (change < nextUptimeChange)
+                    {
+                        nextUptimeChange = change;
+                    }
+                }
+
+                _nextUptimeChange = nextUptimeChange;
             }
             else
             {

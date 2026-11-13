@@ -1,12 +1,11 @@
 using Dalamud.Interface.ImGuiNotification;
-using ElliLib.Extensions;
 using GatherBuddy.Alarms;
 using GatherBuddy.Interfaces;
+using GatherBuddy.Utility;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Functions = GatherBuddy.Plugin.Functions;
 
 namespace GatherBuddy.GatherHelper;
@@ -56,19 +55,30 @@ public partial class GatherWindowManager : IDisposable
     public void SetActiveItems()
     {
         ActiveItems.Clear();
-        foreach (var item in Presets.Where(p => p.Enabled)
-                     .SelectMany(p => p.Items)
-                     .Where(i => !ActiveItems.Contains(i)))
+        foreach (var preset in Presets)
         {
-            ActiveItems.Add(item);
+            if (!preset.Enabled)
+            {
+                continue;
+            }
+
+            foreach (var item in preset.Items)
+            {
+                if (!ActiveItems.Contains(item))
+                {
+                    ActiveItems.Add(item);
+                }
+            }
         }
 
         if (GatherBuddy.Config.ShowGatherWindowAlarms && GatherBuddy.Config.AlarmsEnabled)
         {
-            foreach (var item in _alarms.ActiveAlarms.Select(a => a.Item1.Item)
-                         .Where(i => !ActiveItems.Contains(i)))
+            foreach (var (alarm, _) in _alarms.ActiveAlarms)
             {
-                ActiveItems.Add(item);
+                if (!ActiveItems.Contains(alarm.Item))
+                {
+                    ActiveItems.Add(alarm.Item);
+                }
             }
         }
 
@@ -103,7 +113,7 @@ public partial class GatherWindowManager : IDisposable
 
         try
         {
-            var text = JsonConvert.SerializeObject(Presets.Select(p => new GatherWindowPreset.Config(p)), Formatting.Indented);
+            var text = JsonConvert.SerializeObject(Presets.ConvertAll(p => new GatherWindowPreset.Config(p)), Formatting.Indented);
             File.WriteAllText(file.FullName, text);
         }
         catch (Exception e)

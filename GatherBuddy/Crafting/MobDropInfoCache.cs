@@ -4,7 +4,6 @@ using LuminaSupplemental.Excel.Model;
 using LuminaSupplemental.Excel.Services;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using System.Threading;
@@ -37,7 +36,19 @@ public sealed record MobDropMobInfo(
     IReadOnlyList<MobDropZoneInfo> Zones)
 {
     public int ZoneCount => Zones.Count;
-    public int ClusterCount => Zones.Sum(zone => zone.ClusterCount);
+    public int ClusterCount
+    {
+        get
+        {
+            var count = 0;
+            for (var i = 0; i < Zones.Count; i++)
+            {
+                count += Zones[i].ClusterCount;
+            }
+
+            return count;
+        }
+    }
 }
 
 public sealed record MobDropItemInfo(
@@ -46,12 +57,37 @@ public sealed record MobDropItemInfo(
     public static MobDropItemInfo Empty { get; } = new([]);
     public bool HasData => Mobs.Count > 0;
     public int MobCount => Mobs.Count;
-    public int ZoneCount => Mobs
-        .SelectMany(mob => mob.Zones)
-        .Select(zone => (zone.TerritoryTypeId, zone.ZoneName))
-        .Distinct()
-        .Count();
-    public int ClusterCount => Mobs.Sum(mob => mob.ClusterCount);
+    public int ZoneCount
+    {
+        get
+        {
+            var zones = new HashSet<(uint, string)>();
+            for (var i = 0; i < Mobs.Count; i++)
+            {
+                var mobZones = Mobs[i].Zones;
+                for (var j = 0; j < mobZones.Count; j++)
+                {
+                    zones.Add((mobZones[j].TerritoryTypeId, mobZones[j].ZoneName));
+                }
+            }
+
+            return zones.Count;
+        }
+    }
+
+    public int ClusterCount
+    {
+        get
+        {
+            var count = 0;
+            for (var i = 0; i < Mobs.Count; i++)
+            {
+                count += Mobs[i].ClusterCount;
+            }
+
+            return count;
+        }
+    }
 }
 
 public static class MobDropInfoCache
@@ -190,10 +226,15 @@ public static class MobDropInfoCache
         var overrides = LoadOverrides();
 
         var spawnsByName = BuildSpawnIndex(mobSpawns, overrides.Spawns);
-        var removedDrops = overrides.RemovedDrops
-            .Where(drop => drop.ItemId > 0 && drop.BNpcNameId > 0)
-            .Select(drop => new MobDropLinkKey(drop.ItemId, drop.BNpcNameId))
-            .ToHashSet();
+        var removedDrops = new HashSet<MobDropLinkKey>();
+        foreach (var removedDrop in overrides.RemovedDrops)
+        {
+            if (removedDrop.ItemId > 0 && removedDrop.BNpcNameId > 0)
+            {
+                removedDrops.Add(new MobDropLinkKey(removedDrop.ItemId, removedDrop.BNpcNameId));
+            }
+        }
+
 
         var dropsByItemId = new Dictionary<uint, List<MobDropMobInfo>>();
         var dropItemIds = new HashSet<uint>();
@@ -235,12 +276,19 @@ public static class MobDropInfoCache
         var finalDropsByItemId = new Dictionary<uint, MobDropItemInfo>(dropsByItemId.Count);
         foreach (var (itemId, mobs) in dropsByItemId)
         {
-            finalDropsByItemId[itemId] = new MobDropItemInfo(
-                mobs.OrderBy(mob => mob.MobName, StringComparer.OrdinalIgnoreCase).ThenBy(mob => mob.BNpcNameId).ToList());
+            var sortedMobs = new List<MobDropMobInfo>(mobs);
+            sortedMobs.Sort(CompareMobs);
+            finalDropsByItemId[itemId] = new MobDropItemInfo(sortedMobs);
         }
 
         _dropsByItemId = finalDropsByItemId;
         _dropItemIds = dropItemIds;
+    }
+
+    private static int CompareMobs(MobDropMobInfo lhs, MobDropMobInfo rhs)
+    {
+        var order = StringComparer.OrdinalIgnoreCase.Compare(lhs.MobName, rhs.MobName);
+        return order != 0 ? order : lhs.BNpcNameId.CompareTo(rhs.BNpcNameId);
     }
 
     private static MobDropOverrides LoadOverrides()
@@ -366,12 +414,30 @@ public static class MobDropInfoCache
             ];
         }
 
-        var zones = new List<MobDropZoneInfo>();
-        foreach (var territoryGroup in spawns
-                     .GroupBy(spawn => spawn.TerritoryTypeId)
-                     .OrderBy(group => ResolveZoneName(group.Key, territorySheet), StringComparer.OrdinalIgnoreCase))
+        var territoryGroups = new List<(uint TerritoryTypeId, string SortName, List<MobDropSpawnPoint> Spawns, int Index)>();
+        var groupIndexes = new Dictionary<uint, int>();
+        foreach (var spawn in spawns)
         {
-            var territoryTypeId = territoryGroup.Key;
+            if (!groupIndexes.TryGetValue(spawn.TerritoryTypeId, out var groupIndex))
+            {
+                groupIndex = territoryGroups.Count;
+                groupIndexes.Add(spawn.TerritoryTypeId, groupIndex);
+                territoryGroups.Add((spawn.TerritoryTypeId, ResolveZoneName(spawn.TerritoryTypeId, territorySheet), [], groupIndex));
+            }
+
+            territoryGroups[groupIndex].Spawns.Add(spawn);
+        }
+
+        territoryGroups.Sort(static (lhs, rhs) =>
+        {
+            var order = StringComparer.OrdinalIgnoreCase.Compare(lhs.SortName, rhs.SortName);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+
+        var zones = new List<MobDropZoneInfo>();
+        foreach (var territoryGroup in territoryGroups)
+        {
+            var territoryTypeId = territoryGroup.TerritoryTypeId;
             if (!ShouldDisplayTerritory(territoryTypeId, territorySheet))
             {
                 continue;
@@ -386,10 +452,13 @@ public static class MobDropInfoCache
                 mapRow = mapRowId != 0 && mapSheet.TryGetRow(mapRowId, out var foundMap) ? foundMap : null;
             }
 
-            var clusters = BuildClusters(
-                territoryGroup.Select(spawn => spawn.Position).ToList(),
-                territoryTypeId,
-                mapRow);
+            var positions = new List<Vector3>();
+            foreach (var spawn in territoryGroup.Spawns)
+            {
+                positions.Add(spawn.Position);
+            }
+
+            var clusters = BuildClusters(positions, territoryTypeId, mapRow);
             zones.Add(new MobDropZoneInfo(zoneName, territoryTypeId, clusters));
         }
 
@@ -428,13 +497,16 @@ public static class MobDropInfoCache
         uint territoryTypeId,
         Map? mapRow)
     {
-        var normalizedPositions = positions
-            .Select(position => NormalizeSpawnPosition(position, mapRow))
-            .Where(position => position.HasValue)
-            .Select(position => position!.Value)
-            .ToList();
+        var coordinates = new List<Vector2>(positions.Count);
+        foreach (var position in positions)
+        {
+            if (NormalizeSpawnPosition(position, mapRow) is { } normalizedPosition)
+            {
+                coordinates.Add(normalizedPosition.Coordinates);
+            }
+        }
 
-        var clusteredPoints = ClusterPositions(normalizedPositions.Select(position => position.Coordinates).ToList());
+        var clusteredPoints = ClusterPositions(coordinates);
 
         var clusters = new List<MobDropClusterInfo>(clusteredPoints.Count);
         for (var i = 0; i < clusteredPoints.Count; i++)
@@ -468,10 +540,12 @@ public static class MobDropInfoCache
 
     private static List<List<Vector2>> ClusterPositions(IReadOnlyList<Vector2> positions)
     {
-        var orderedPositions = positions
-            .OrderBy(position => position.X)
-            .ThenBy(position => position.Y)
-            .ToList();
+        var orderedPositions = new List<Vector2>(positions);
+        orderedPositions.Sort(static (lhs, rhs) =>
+        {
+            var order = lhs.X.CompareTo(rhs.X);
+            return order != 0 ? order : lhs.Y.CompareTo(rhs.Y);
+        });
         var clusters = new List<List<Vector2>>();
         var centroids = new List<Vector2>();
         foreach (var position in orderedPositions)
@@ -501,12 +575,30 @@ public static class MobDropInfoCache
             centroids[bestIndex] = AveragePosition(clusters[bestIndex]);
         }
 
-        return [.. clusters
-            .Select((points, index) => (Points: points, Centroid: centroids[index]))
-            .OrderByDescending(cluster => cluster.Points.Count)
-            .ThenBy(cluster => cluster.Centroid.X)
-            .ThenBy(cluster => cluster.Centroid.Y)
-            .Select(cluster => cluster.Points)];
+        var orderedClusters = new List<(List<Vector2> Points, Vector2 Centroid, int Index)>(clusters.Count);
+        for (var i = 0; i < clusters.Count; i++)
+        {
+            orderedClusters.Add((clusters[i], centroids[i], i));
+        }
+
+        orderedClusters.Sort(static (lhs, rhs) =>
+        {
+            var order = rhs.Points.Count.CompareTo(lhs.Points.Count);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = lhs.Centroid.X.CompareTo(rhs.Centroid.X);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = lhs.Centroid.Y.CompareTo(rhs.Centroid.Y);
+            return order != 0 ? order : lhs.Index.CompareTo(rhs.Index);
+        });
+        return orderedClusters.ConvertAll(static cluster => cluster.Points);
     }
 
     private static Vector2 AveragePosition(IReadOnlyList<Vector2> points)

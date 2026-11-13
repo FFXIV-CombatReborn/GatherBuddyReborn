@@ -15,7 +15,6 @@ using GatherBuddy.Time;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,13 +24,13 @@ namespace GatherBuddy.AutoGather
 {
     public partial class AutoGather
     {
-        public bool IsPathing
+        public static bool IsPathing
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Path.IsRunning();
 
         public bool IsPathGenerating
             => _navState.task != null;
 
-        public bool NavReady
+        public static bool NavReady
             => GatherBuddy.Config.AutoGatherConfig.UseNavigation && VNavmesh.Nav.IsReady();
 
         private bool IsBlacklisted(Vector3 g)
@@ -41,10 +40,10 @@ namespace GatherBuddy.AutoGather
                     && points.Contains(g);
         }
 
-        public bool IsGathering
+        public static bool IsGathering
             => Dalamud.Conditions[ConditionFlag.Gathering] || Dalamud.Conditions[ConditionFlag.ExecutingGatheringAction];
 
-        public bool IsFishing
+        public static bool IsFishing
             => Dalamud.Conditions[ConditionFlag.Fishing];
 
         private enum PathfindingStage
@@ -104,7 +103,7 @@ namespace GatherBuddy.AutoGather
             InventoryType.Inventory4,
         ];
 
-        public GatheringType JobAsGatheringType
+        public static GatheringType JobAsGatheringType
         {
             get
             {
@@ -119,7 +118,7 @@ namespace GatherBuddy.AutoGather
             }
         }
 
-        public bool ShouldUseFlag
+        public static bool ShouldUseFlag
             => !GatherBuddy.Config.AutoGatherConfig.DisableFlagPathing;
 
         public unsafe bool ShouldFly(Vector3 destination)
@@ -249,15 +248,23 @@ namespace GatherBuddy.AutoGather
             => GetAddon<AddonRepair>("Repair");
 
         public IEnumerable<IGatherable> ItemsToGatherInZone
-            => _activeItemList
-                .Where(i => i.Node?.Territory.Id == Dalamud.ClientState.TerritoryType)
-                .Where(i => LocationMatchesJob(i.Location))
-                .Select(i => i.Item);
+        {
+            get
+            {
+                foreach (var target in _activeItemList)
+                {
+                    if (target.Node?.Territory.Id == Dalamud.ClientState.TerritoryType && LocationMatchesJob(target.Location))
+                    {
+                        yield return target.Item;
+                    }
+                }
+            }
+        }
 
         private bool LocationMatchesJob(ILocation loc)
             => loc.GatheringType.ToGroup() == JobAsGatheringType;
 
-        public bool CanAct
+        public static bool CanAct
         {
             get
             {
@@ -294,7 +301,7 @@ namespace GatherBuddy.AutoGather
         }
 
         private static unsafe bool HasGivingLandBuff
-            => Dalamud.Objects.LocalPlayer?.StatusList.Any(s => s.StatusId == 1802) ?? false;
+            => Player.HasStatus(1802);
 
         public static unsafe bool IsGivingLandOffCooldown
             => ActionManager.Instance()->IsActionOffCooldown(ActionType.Action, Actions.GivingLand.ActionId);

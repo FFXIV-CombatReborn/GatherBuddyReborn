@@ -1,6 +1,5 @@
 using GatherBuddy.Classes;
 using GatherBuddy.Helpers;
-using System.Linq;
 
 namespace GatherBuddy.AutoGather;
 
@@ -21,38 +20,14 @@ public partial class AutoGather
         3973   // Modest Lure
     ];
 
-    private bool HasActiveFishingBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-        {
-            return false;
-        }
+    private static bool HasActiveFishingBuff()
+        => Player.HasAnyStatus(FishingBuffIds);
 
-        return player.StatusList.Any(status => FishingBuffIds.Contains(status.StatusId));
-    }
+    private static bool HasFoodBuff()
+        => Player.HasStatus(48);
 
-    private bool HasFoodBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-        {
-            return false;
-        }
-
-        return player.StatusList.Any(status => status.StatusId == 48);
-    }
-
-    private bool HasMedicineBuff()
-    {
-        var player = Dalamud.Objects.LocalPlayer;
-        if (player == null)
-        {
-            return false;
-        }
-
-        return player.StatusList.Any(status => status.StatusId == 49);
-    }
+    private static bool HasMedicineBuff()
+        => Player.HasStatus(49);
 
     private ConfigPreset GetFishingConsumablesPreset()
     {

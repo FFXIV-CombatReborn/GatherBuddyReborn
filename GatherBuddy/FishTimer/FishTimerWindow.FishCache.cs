@@ -1,19 +1,17 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
-using ElliLib.Text;
 using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Time;
 using System;
-using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using static GatherBuddy.Gui.Interface;
 using Effects = GatherBuddy.Models.Effects;
 using FishingSpot = GatherBuddy.Classes.FishingSpot;
-using ImRaii = ElliLib.Raii.ImRaii;
+using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.FishTimer;
 
@@ -103,7 +101,7 @@ public partial class FishTimerWindow
 
         public FishCache(FishRecorder recorder, Fish fish, FishingSpot spot)
         {
-            _fish = ExtendedFishList.FirstOrDefault(f => f.Data == fish) ?? new ExtendedFish(fish);
+            _fish = FindExtendedFish(fish) ?? new ExtendedFish(fish);
 
             // Get All and Bait Times and set caught-with-bait information.
             _all = new FishRecordTimes.Times();
@@ -151,7 +149,7 @@ public partial class FishTimerWindow
             NextUptime = TimeInterval.Always;
             _textLine = fish.Name[GatherBuddy.Language];
 
-            var uptime = GatherBuddy.UptimeManager.NextUptime(fish, spot.Territory, GatherBuddy.Time.ServerTime);
+            var uptime = Plugin.UptimeManager.NextUptime(fish, spot.Territory, GatherBuddy.Time.ServerTime);
             if (GatherBuddy.Config.ShowFishTimerUptimes && uptime != TimeInterval.Invalid && uptime != TimeInterval.Never)
             {
                 NextUptime = uptime;
@@ -248,7 +246,7 @@ public partial class FishTimerWindow
             DrawMarkers(ptr, pos, size.Y, size.X);
         }
 
-        private int TripleHookCount(int x)
+        private static int TripleHookCount(int x)
         {
             return x switch
             {
@@ -272,7 +270,7 @@ public partial class FishTimerWindow
                     : NextUptime.End < GatherBuddy.Time.ServerTime
                         ? "(ended)"
                         : TimeInterval.DurationString(NextUptime.End, GatherBuddy.Time.ServerTime, true);
-            var textWidth = timeString is null ? 0 : ImUtf8.CalcTextSize(timeString).X;
+            var textWidth = timeString is null ? 0 : ImGui.CalcTextSize(timeString).X;
 
             // Icon
             if (_icon.TryGetWrap(out var wrap, out _))
@@ -314,10 +312,10 @@ public partial class FishTimerWindow
                 clipRectMax.X -= textWidth + window._originalSpacing.X + padding;
             }
 
-            using (ImUtf8.PushClipRect(clipRectMin, clipRectMax))
-            {
-                ImUtf8.TextFrameAligned(_textLine);
-            }
+            ImGui.PushClipRect(clipRectMin, clipRectMax, true);
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(_textLine);
+            ImGui.PopClipRect();
 
             hovered |= ImGui.IsItemHovered();
 
@@ -353,14 +351,14 @@ public partial class FishTimerWindow
 
                         if (_fish.MutliHookUpper == _fish.MultiHookLower)
                         {
-                            ImUtf8.Text($"Double Hook for {_fish.MultiHookLower} fish{(_fish.Points > 0 ? $" worth {_fish.Points * _fish.MultiHookLower} points" : "")}");
-                            ImUtf8.Text($"Triple Hook for {TripleHookCount(_fish.MultiHookLower)} fish{(_fish.Points > 0 ? $" worth {_fish.Points * TripleHookCount(_fish.MultiHookLower)} points" : "")}");
+                            ImGui.TextUnformatted($"Double Hook for {_fish.MultiHookLower} fish{(_fish.Points > 0 ? $" worth {_fish.Points * _fish.MultiHookLower} points" : "")}");
+                            ImGui.TextUnformatted($"Triple Hook for {TripleHookCount(_fish.MultiHookLower)} fish{(_fish.Points > 0 ? $" worth {_fish.Points * TripleHookCount(_fish.MultiHookLower)} points" : "")}");
                         }
                         else
                         {
-                            ImUtf8.Text($"Double Hook for {_fish.MultiHookLower}-{_fish.MutliHookUpper} fish" +
+                            ImGui.TextUnformatted($"Double Hook for {_fish.MultiHookLower}-{_fish.MutliHookUpper} fish" +
                                 $"{(_fish.Points > 0 ? $" worth between {_fish.Points * _fish.MultiHookLower} and {_fish.Points * _fish.MutliHookUpper} points" : "")}");
-                            ImUtf8.Text($"Triple Hook for {TripleHookCount(_fish.MultiHookLower)}-{TripleHookCount(_fish.MutliHookUpper)} fish" +
+                            ImGui.TextUnformatted($"Triple Hook for {TripleHookCount(_fish.MultiHookLower)}-{TripleHookCount(_fish.MutliHookUpper)} fish" +
                                 $"{(_fish.Points > 0 ? $" worth between {_fish.Points * TripleHookCount(_fish.MultiHookLower)} and {_fish.Points * TripleHookCount(_fish.MutliHookUpper)} points" : "")}");
                         }
 
@@ -402,7 +400,7 @@ public partial class FishTimerWindow
                         using var tooltip = ImRaii.Tooltip();
                         window._style.Push(ImGuiStyleVar.ItemSpacing, window._originalSpacing);
 
-                        ImUtf8.Text($"This fish is a {_fish.OceanSpecies.ToString().ToLower()}");
+                        ImGui.TextUnformatted($"This fish is a {_fish.OceanSpecies.ToString().ToLower()}");
 
                         window._style.Pop();
                     }
@@ -416,7 +414,7 @@ public partial class FishTimerWindow
             // Collectable Icon
             if (collectible)
             {
-                var tint = Dalamud.Objects.LocalPlayer?.StatusList.Any(s => s.StatusId is 805) is true
+                var tint = Helpers.Player.HasStatus(805)
                     ? Vector4.One
                     : new Vector4(0.75f, 0.75f, 0.75f, 0.5f);
 
@@ -439,7 +437,8 @@ public partial class FishTimerWindow
 
             var offset = ImGui.CalcTextSize(timeString).X + (collectible ? window._iconSize.X : 0) + (multiHook ? window._iconSize.X : 0);
             ImGui.SameLine(window._windowSize.X - offset - padding);
-            ImUtf8.TextFrameAligned(timeString);
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(timeString);
         }
     }
 }

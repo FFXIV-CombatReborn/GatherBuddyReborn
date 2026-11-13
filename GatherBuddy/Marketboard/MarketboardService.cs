@@ -2,7 +2,6 @@ using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -136,8 +135,8 @@ public sealed class MarketboardService : IDisposable
                     var nqRes = await _universalis.GetMarketDataAsync(scope, new[] { itemId }, 10, ct, false);
                     await Task.Delay(300, ct);
                     var hqRes = await _universalis.GetMarketDataAsync(scope, new[] { itemId }, 10, ct, true);
-                    var nqData = nqRes.FirstOrDefault(r => r.ItemId == itemId);
-                    var hqData = hqRes.FirstOrDefault(r => r.ItemId == itemId);
+                    var nqData = nqRes.Find(r => r.ItemId == itemId);
+                    var hqData = hqRes.Find(r => r.ItemId == itemId);
                     var base_ = nqData ?? hqData;
                     if (base_ != null)
                     {
@@ -159,7 +158,7 @@ public sealed class MarketboardService : IDisposable
                 {
                     results = await _universalis.GetMarketDataAsync(scope, new[] { itemId }, 20, ct);
                 }
-                var data = results.FirstOrDefault(r => r.ItemId == itemId);
+                var data = results.Find(r => r.ItemId == itemId);
 
                 lock (_lock)
                 {
@@ -215,8 +214,8 @@ public sealed class MarketboardService : IDisposable
         lock (_lock)
         {
             ids = [with(_history)];
-            names = [.. ids.Select(id => _names.TryGetValue(id, out var n) ? n : string.Empty)];
-            icons = [.. ids.Select(id => _icons.TryGetValue(id, out var ic) ? ic : 0u)];
+            names = ids.ConvertAll(id => _names.TryGetValue(id, out var n) ? n : string.Empty);
+            icons = ids.ConvertAll(id => _icons.TryGetValue(id, out var ic) ? ic : 0u);
             foreach (var id in ids)
             {
                 _cache.Remove((id, dc));
@@ -236,17 +235,15 @@ public sealed class MarketboardService : IDisposable
             _history.Remove(itemId);
             _names.Remove(itemId);
             _icons.Remove(itemId);
-            var cacheKeys = _cache.Keys.Where(k => k.Item1 == itemId).ToList();
-            foreach (var k in cacheKeys)
+            foreach (var key in _cache.Keys)
             {
-                _cache.Remove(k);
+                if (key.Item1 == itemId)
+                {
+                    _cache.Remove(key);
+                }
             }
 
-            var errKeys = _errors.Where(k => k.Item1 == itemId).ToList();
-            foreach (var k in errKeys)
-            {
-                _errors.Remove(k);
-            }
+            _errors.RemoveWhere(k => k.Item1 == itemId);
         }
     }
 
@@ -299,7 +296,7 @@ public sealed class MarketboardService : IDisposable
         return result;
     }
 
-    public List<string> GetDcWorlds()
+    public static List<string> GetDcWorlds()
     {
         var result = new List<string>();
         try
@@ -342,7 +339,7 @@ public sealed class MarketboardService : IDisposable
         return result;
     }
 
-    public string GetDataCenter()
+    public static string GetDataCenter()
     {
         try
         {
@@ -431,11 +428,10 @@ public sealed class MarketboardService : IDisposable
             List<PersistedEntry> entries;
             lock (_lock)
             {
-                entries = [.. _history
-                    .Select(id => new PersistedEntry(
-                        id,
-                        _names.TryGetValue(id, out var n) ? n : string.Empty,
-                        _icons.TryGetValue(id, out var ic) ? ic : 0u))];
+                entries = _history.ConvertAll(id => new PersistedEntry(
+                    id,
+                    _names.TryGetValue(id, out var n) ? n : string.Empty,
+                    _icons.TryGetValue(id, out var ic) ? ic : 0u));
             }
             var path = Path.Combine(Dalamud.PluginInterface.GetPluginConfigDirectory(), HistoryFile);
             File.WriteAllText(path, JsonSerializer.Serialize(entries));
