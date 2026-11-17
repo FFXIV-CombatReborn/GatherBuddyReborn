@@ -124,10 +124,11 @@ public sealed partial class VendorBuyListManager
             return [];
         }
 
-        var parsedLines = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        var vendorLines = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        var otherLines = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         using var reader = new StringReader(text);
-        var sawSectionHeader = false;
-        var inVendorSection = false;
+        var sawVendorSection = false;
+        var inVendorSection = true;
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
@@ -139,14 +140,9 @@ public sealed partial class VendorBuyListManager
 
             if (TryGetTeamCraftSectionHeader(trimmedLine, out var sectionHeader))
             {
-                sawSectionHeader = true;
                 inVendorSection = sectionHeader.Equals("Vendor", StringComparison.OrdinalIgnoreCase)
                     || sectionHeader.Equals("Vendors", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (sawSectionHeader && !inVendorSection)
-            {
+                sawVendorSection |= inVendorSection;
                 continue;
             }
 
@@ -155,16 +151,18 @@ public sealed partial class VendorBuyListManager
                 continue;
             }
 
-            if (parsedLines.TryGetValue(itemName, out var existingQuantity))
+            var target = inVendorSection ? vendorLines : otherLines;
+            if (target.TryGetValue(itemName, out var existingQuantity))
             {
-                parsedLines[itemName] = SaturatingAdd(existingQuantity, quantity);
+                target[itemName] = SaturatingAdd(existingQuantity, quantity);
             }
             else
             {
-                parsedLines[itemName] = quantity;
+                target[itemName] = quantity;
             }
         }
 
+        var parsedLines = sawVendorSection || vendorLines.Count > 0 ? vendorLines : otherLines;
         var importLines = new List<TeamCraftVendorImportLine>(parsedLines.Count);
         foreach (var (name, total) in parsedLines)
         {

@@ -50,7 +50,7 @@ public sealed partial class VendorBuyListWindow
             return;
         }
 
-        M3Text.Draw("Paste the 'Vendors' section of a TeamCraft list below.", M3TextStyle.Muted, true);
+        M3Text.Draw("Paste a TeamCraft or Allagan Tools list below. Only the 'Vendors' section is used when the list has one.", M3TextStyle.Muted, true);
         ImGui.Dummy(new Vector2(0f, M3.Space1));
         NormalizeTeamCraftImportTargetListId(manager);
         var footerHeight = M3Widgets.ButtonHeight + M3.Space3 + ImGui.GetStyle().ItemSpacing.Y;

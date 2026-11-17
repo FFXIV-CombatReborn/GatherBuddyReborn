@@ -99,7 +99,13 @@ public partial class GatherBuddy
 
         _commands["/vvendor"] = new CommandInfo(OnVendor)
         {
-            HelpMessage = "Open the Vulcan Vendors tab.",
+            HelpMessage = "Open the Vulcan Vendors tab. Use 'buylist' to open the Vendor Buy List window.",
+            ShowInHelp = true,
+        };
+
+        _commands["/vbuylist"] = new CommandInfo(OnVendorBuyList)
+        {
+            HelpMessage = "Open the Vulcan Vendor Buy List window.",
             ShowInHelp = true,
         };
 
@@ -315,7 +321,18 @@ public partial class GatherBuddy
     }
 
     private void OnVendor(string command, string arguments)
-        => _vulcanWindow?.OpenToVendors();
+    {
+        if (arguments.Trim().Equals("buylist", StringComparison.OrdinalIgnoreCase))
+        {
+            _vendorBuyListWindow?.Open();
+            return;
+        }
+
+        _vulcanWindow?.OpenToVendors();
+    }
+
+    private void OnVendorBuyList(string command, string arguments)
+        => _vendorBuyListWindow?.Open();
 
     private void OnVulcanMarketboard(string command, string arguments)
         => _vulcanWindow?.OpenToMarketboard();
