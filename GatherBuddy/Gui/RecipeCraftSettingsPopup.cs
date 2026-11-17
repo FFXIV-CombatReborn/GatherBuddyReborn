@@ -607,7 +607,7 @@ public class RecipeCraftSettingsPopup
     private static bool DrawModeChoice(string id, ref int mode, M3Segment[] segments, string inheritedLabel, int specificIndex)
     {
         var picked = M3Widgets.SegmentedButtons(id, segments, mode, M3Widgets.SegmentedWidth(segments));
-        if (picked != mode)
+        if (picked >= 0 && picked != mode)
         {
             mode = picked;
         }

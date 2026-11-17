@@ -410,7 +410,7 @@ public static class TableFilter
         ImGui.SameLine(MathF.Max(start + ImGui.CalcTextSize(label).X + M3.Space3, start + 150f * M3.Scale));
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() - (height - ImGui.GetTextLineHeight()) * 0.5f);
         var picked = M3Widgets.SegmentedButtons("##state", TriStateSegments, index, width);
-        if (picked == index)
+        if (picked < 0 || picked == index)
         {
             return false;
         }

@@ -34,6 +34,7 @@ public static class CraftingGatherBridge
     private static DateTime _lastCollectablesExitAttempt = DateTime.MinValue;
     private static DateTime _lastCollectablesHardFailLog = DateTime.MinValue;
     private static bool _waitingForCollectablesHomeReturn = false;
+    private static bool _finalCollectablesRunDone = false;
     private static bool _collectablesHomeReturnStarted = false;
 
     public static bool PreserveListOnDisable { get; set; } = false;
@@ -174,7 +175,11 @@ public static class CraftingGatherBridge
             TryStartCollectablesInterruption();
             _queueProcessor.Update();
 
-            if (_queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete && !_queueProcessor.HasPendingTasks())
+            if (_queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete
+             && !_queueProcessor.HasPendingTasks()
+             && !_collectablesStartPending
+             && !_waitingForCollectables
+             && !_waitingForCollectablesHomeReturn)
             {
                 GatherBuddy.Log.Information("[CraftingGatherBridge] All completion tasks done, cleaning up");
                 RestoreDisabledGatherLists();
@@ -229,6 +234,7 @@ public static class CraftingGatherBridge
         _ephemeralListId = ephemeralListId;
         _activeExecutionPlan = executionPlan;
         ResetCollectablesInterruptionState();
+        _finalCollectablesRunDone = false;
         _lastCollectablesHardFailLog = DateTime.MinValue;
         _queueProcessor = new CraftingQueueProcessor();
         _queueProcessor.QueueCompleted += OnQueueCompleted;
@@ -479,7 +485,7 @@ public static class CraftingGatherBridge
     private static void TryStartCollectablesInterruption()
     {
         if (_queueProcessor == null
-         || _queueProcessor.CurrentState is CraftingQueueProcessor.QueueState.Idle or CraftingQueueProcessor.QueueState.Complete
+         || _queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Idle
          || GatherBuddy.CollectableManager == null
          || GatherBuddy.CollectableManager.IsRunning
          || _waitingForCollectablesHomeReturn
@@ -489,6 +495,12 @@ public static class CraftingGatherBridge
         }
 
         if (_waitingForCollectables)
+        {
+            return;
+        }
+
+        var queueComplete = _queueProcessor.CurrentState == CraftingQueueProcessor.QueueState.Complete;
+        if (queueComplete && !_collectablesStartPending && (_finalCollectablesRunDone || _queueProcessor.HasPendingTasks()))
         {
             return;
         }
@@ -528,6 +540,12 @@ public static class CraftingGatherBridge
             if (!thresholdState.ThresholdReached)
             {
                 return;
+            }
+
+            if (queueComplete)
+            {
+                GatherBuddy.Log.Information($"[CraftingGatherBridge] Queue finished with the collectables threshold reached ({thresholdState.CollectableCount}), turning in before cleanup");
+                _finalCollectablesRunDone = true;
             }
 
             _queueProcessor.Pause();
