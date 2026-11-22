@@ -261,8 +261,10 @@ public partial class Interface
         var node = group.Nodes[idx];
         using var id = ImRaii.PushId(idx);
         var i = idx;
+        var rowHeight = M3TextField.Height;
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Remove this item", diameter: ImGui.GetFrameHeight()))
         {
             if (GatherGroupManager.ChangeGroupNode(group, i, null, null, null, null, true))
@@ -276,6 +278,7 @@ public partial class Interface
         }
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         var itemIdx = Array.IndexOf(GatherGroupCache.AllGatherables, node.Item);
         if (DrawGatherableCombo("##item", ref itemIdx, SetInputWidth * 1.25f)
          && GatherGroupManager.ChangeGroupNode(group, i, GatherGroupCache.AllGatherables[itemIdx], null, null, null, false))
@@ -287,6 +290,7 @@ public partial class Interface
         _gatherGroupCache.Selector.CreateDropTarget<GatherGroupDragDropData>(d => _plugin.GatherGroupManager.MoveNode(group, d.NodeIdx, i));
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         DrawTimeInput(node.EorzeaStartMinute, node.EorzeaEndMinute, (from, to) =>
         {
             if (GatherGroupManager.ChangeGroupNode(group, i, null, from, to, null, false))
@@ -297,9 +301,11 @@ public partial class Interface
         });
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         DrawLocationInput(group, i, node);
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         var length = node.Length();
         if (minutes < length)
         {
@@ -358,6 +364,7 @@ public partial class Interface
         var idx = _gatherGroupCache.NewItemIdx;
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
+        Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
         if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add this item", M3ButtonStyle.Tonal, diameter: ImGui.GetFrameHeight()))
         {
             var gatherable = GatherGroupCache.AllGatherables[idx];
@@ -439,6 +446,8 @@ public partial class Interface
     private void DrawGatherGroupHeaderLine()
     {
         var current = _gatherGroupCache.Selector.Current;
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(M3Widgets.IconButtonSize);
         if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this gather group to your clipboard", enabled: current != null))
         {
             try
@@ -452,7 +461,7 @@ public partial class Interface
             }
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##list", "Make auto-gather list", M3ButtonStyle.Text, FontAwesomeIcon.Robot, enabled: current != null,
                 tooltip: "Create a new auto-gather list from this gather group."))
         {
@@ -460,7 +469,7 @@ public partial class Interface
             M3Snackbar.Show("Created an auto-gather list.");
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##preset", "Make window preset", M3ButtonStyle.Text, FontAwesomeIcon.ListUl, enabled: current != null,
                 tooltip: "Create a new gather window preset from this gather group."))
         {
@@ -468,7 +477,7 @@ public partial class Interface
             M3Snackbar.Show("Created a gather window preset.");
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##alarms", "Make alarms", M3ButtonStyle.Text, FontAwesomeIcon.Bell, enabled: current != null,
                 tooltip: "Create a new alarm group from this gather group."))
         {
@@ -476,7 +485,7 @@ public partial class Interface
             M3Snackbar.Show("Created an alarm group.");
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.HoldButton("##restore", "Restore default groups", 1f, M3ButtonStyle.Tonal, FontAwesomeIcon.Undo,
                 tooltip: $"{_gatherGroupCache.DefaultGroupTooltip.Replace("Hold Control to apply.", "Press and hold to apply.")}")
          && _plugin.GatherGroupManager.SetDefaults(true))
@@ -486,8 +495,7 @@ public partial class Interface
             M3Snackbar.Show("Restored the default gather groups.");
         }
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        row.Next(ImGui.GetFrameHeight(), M3.Space2);
         M3Widgets.HelpMarker("Use /gathergroup [name] [optional:minute offset] to call a group.\n"
           + "This will /gather the item that is up currently (or [minute offset] eorzea minutes in the future).\n"
           + "If times for multiple items overlap, the first item from top to bottom will be gathered.");

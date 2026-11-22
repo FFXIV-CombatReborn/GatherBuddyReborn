@@ -1,4 +1,5 @@
 using GatherBuddy.RebornUI;
+using Newtonsoft.Json;
 using RebornMaterial;
 using System.Numerics;
 
@@ -12,4 +13,9 @@ public partial class Configuration : IM3Settings
     public float UiPaddingScale { get; set; } = 1f;
     public float UiMotionScale { get; set; } = 1f;
     public bool UiCompactLayout { get; set; } = false;
+    public bool UiIconSidebar { get; set; } = false;
+
+    [JsonIgnore]
+    public bool UiDescriptionTooltips
+        => UiCompactLayout;
 }

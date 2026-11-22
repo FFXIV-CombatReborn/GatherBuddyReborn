@@ -39,7 +39,6 @@ public partial class Interface
 
         protected override void PreDraw()
         {
-            ExtraHeight = (M3Widgets.ButtonHeight + ImGui.GetStyle().ItemSpacing.Y + M3.Space1) / ImGuiHelpers.GlobalScale;
             if (_deleteIdx > -1)
             {
                 _plugin.FishRecorder.Remove(_deleteIdx);
@@ -697,20 +696,19 @@ public partial class Interface
     private void DrawRecordPage()
     {
         using var id = ImRaii.PushId("Fish Records");
+        _recordTable.ExtraHeight = TableFooterHeight;
         _recordTable.Draw(ImGui.GetTextLineHeightWithSpacing());
 
         ImGui.Dummy(new Vector2(0, M3.Space1));
         var shown = _recordTable.CurrentItems;
         var total = _recordTable.TotalItems;
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(ImGui.GetFrameHeight());
         M3Badge.Draw(shown == total ? $"{total} records" : $"{shown} of {total} records", shown == total ? M3.Scheme.Secondary : M3.Scheme.Primary,
             shown == total ? null : "Some records are hidden by the column filters.");
-        var buttonY = ImGui.GetItemRectMin().Y + (ImGui.GetItemRectSize().Y - M3Widgets.ButtonHeight) * 0.5f;
 
         void NextButton()
-        {
-            ImGui.SameLine(0, M3.Space2);
-            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, buttonY));
-        }
+            => row.Next(M3Widgets.ButtonHeight, M3.Space2);
 
         NextButton();
         if (M3Widgets.Button("##cleanup", "Clean up", M3ButtonStyle.Tonal, FontAwesomeIcon.Broom,

@@ -161,6 +161,8 @@ public partial class Interface
     private void DrawAutoGatherListsLine()
     {
         var current = _autoGatherListsCache.Selector.Selected;
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(M3Widgets.IconButtonSize);
         if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this auto-gather list to your clipboard", enabled: current != null))
         {
             try
@@ -176,7 +178,7 @@ public partial class Interface
 
         if (Reflection.ArtisanExporter.ArtisanAssemblyEnabled)
         {
-            ImGui.SameLine(0, M3.Space1);
+            row.Next(M3Widgets.ButtonHeight, M3.Space1);
             if (M3Widgets.Button("##artisan", "Import from Artisan", M3ButtonStyle.Text, FontAwesomeIcon.FileImport,
                     tooltip: "Pick one of your Artisan lists to import into a new auto-gather list."))
             {
@@ -198,23 +200,21 @@ public partial class Interface
             }
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##teamcraft", "Import from TeamCraft", M3ButtonStyle.Text, FontAwesomeIcon.Paste, enabled: current != null,
                 tooltip: "Add the items of a TeamCraft list in your clipboard to this list."))
         {
             ImportTeamCraftList(current!);
         }
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        row.Next(ImGui.GetFrameHeight(), M3.Space2);
         M3Widgets.HelpMarker(
             "If the config option to sort by location is not selected, items are gathered in the order of the enabled lists, then in the order of items in each list, "
           + "but timed nodes and fish are always prioritized.\n"
           + "Drag lists in the tree to move them, or onto a folder to put them in it.\n"
           + "Drag items by their handle to rearrange them, or onto another list in the tree to move them there.\n"
           + "In the Gather Window, hold Control and right-click an item to delete it from the list it belongs to.");
-        ImGui.SameLine(0, M3.Space1);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() - (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        row.Next(M3Widgets.IconButtonSize, M3.Space1);
         if (M3Widgets.IconButton("##discord", FontAwesomeIcon.Comments, "Open the Auto-Gather support Discord"))
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -349,23 +349,24 @@ public partial class Interface
         }
 
         var enabled = list.Enabled;
+        var switchHeight = M3Widgets.SwitchSize().Y;
+        var checkboxHeight = Ui.LabeledCheckboxHeight;
+        var row = new Ui.Row(MathF.Max(switchHeight, checkboxHeight));
+        row.Place(switchHeight);
         if (M3Widgets.Switch("##listEnabled", ref enabled) && enabled != list.Enabled)
         {
             _plugin.AutoGatherListsManager.ToggleList(list);
         }
 
         M3Tooltip.Hovered("Gather the enabled items of this list.");
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
-        M3Text.Draw(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted);
-        ImGui.SameLine(0, M3.Space3 * 2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() - (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
+        row.NextText(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted, M3.Space2);
+        row.Next(checkboxHeight, M3.Space3 * 2);
         DrawAutoGatherListOption("Fallback##list",
             "Items from fallback lists won't be auto-gathered on their own.\n"
           + "But if a node doesn't contain any items from regular lists, or you gathered enough of them,\n"
           + "items from fallback lists are gathered instead if that node has them.",
             list.Fallback, v => _plugin.AutoGatherListsManager.SetFallback(list, v));
-        ImGui.SameLine(0, M3.Space3);
+        row.Next(checkboxHeight, M3.Space3);
         DrawAutoGatherListOption("Remove completed##list",
             "Remove enabled items from this list once your inventory reaches their quantity.",
             list.RemoveCompletedItems, v => _plugin.AutoGatherListsManager.SetRemoveCompletedItems(list, v));
@@ -446,6 +447,7 @@ public partial class Interface
         var gatherables = _autoGatherListsCache.FilteredGatherables;
         int changeIndex = -1, changeItemIndex = -1, deleteIndex = -1;
         var comboWidth = SetInputWidth * 1.25f;
+        var rowHeight = M3Widgets.NumberFieldHeight;
 
         using (var style = M3Table.PushStyle())
         using (var table = ImRaii.Table("##autoGatherItems", AutoGatherItemColumns.Length,
@@ -458,6 +460,7 @@ public partial class Interface
                     ImGui.TableSetupColumn(column);
                 }
 
+                var headerHeight = list.Items.Count > 0 ? M3Widgets.CheckboxHitSize().Y : 0f;
                 ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
                 foreach (var column in AutoGatherItemColumns)
                 {
@@ -487,7 +490,7 @@ public partial class Interface
                     }
                     else if (!column.StartsWith("##"))
                     {
-                        M3Table.Header(column, center: false);
+                        Ui.TableHeader(column, headerHeight);
                     }
                 }
 
@@ -497,15 +500,17 @@ public partial class Interface
                     using var id = ImRaii.PushId((int)item.ItemId);
 
                     ImGui.TableNextColumn();
-                    DrawAutoGatherItemHandle(list, item, i, filteringItems);
+                    DrawAutoGatherItemHandle(list, item, i, filteringItems, rowHeight);
 
                     ImGui.TableNextColumn();
+                    Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
                     if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Remove this item from the list", diameter: ImGui.GetFrameHeight()))
                     {
                         deleteIndex = i;
                     }
 
                     ImGui.TableNextColumn();
+                    Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
                     var enabled = list.EnabledItems[item];
                     if (M3Widgets.Checkbox("##enabled", ref enabled))
                     {
@@ -513,6 +518,7 @@ public partial class Interface
                     }
 
                     ImGui.TableNextColumn();
+                    Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
                     var newIdx = -1;
                     if (DrawFilteredGatherableCombo("##item", ref newIdx, item.Name[GatherBuddy.Language], comboWidth) && newIdx >= 0)
                     {
@@ -523,7 +529,7 @@ public partial class Interface
                     ImGui.TableNextColumn();
                     var invTotal = item.GetTotalCount(list.UsesRetainerInventory);
                     var quantity = list.Quantities.TryGetValue(item, out var q) ? (int)q : 1;
-                    Ui.RightAligned(invTotal.ToString("N0"));
+                    Ui.RightAligned(invTotal.ToString("N0"), rowHeight: rowHeight);
                     M3Tooltip.Hovered(list.UsesRetainerInventory ? "In your inventory and retainers" : "In your inventory");
 
                     ImGui.TableNextColumn();
@@ -533,6 +539,7 @@ public partial class Interface
                     }
 
                     ImGui.TableNextColumn();
+                    Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
                     if (DrawLocationInput(item, list.PreferredLocations.GetValueOrDefault(item), out var newLoc))
                     {
                         _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
@@ -542,6 +549,7 @@ public partial class Interface
                 using var addId = ImRaii.PushId(-1);
                 ImGui.TableNextColumn();
                 ImGui.TableNextColumn();
+                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
                 if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add the chosen item at the end of the list", M3ButtonStyle.Tonal,
                         diameter: ImGui.GetFrameHeight(), enabled: _autoGatherListsCache.NewGatherableIdx < gatherables.Count))
                 {
@@ -575,9 +583,9 @@ public partial class Interface
         }
     }
 
-    private void DrawAutoGatherItemHandle(AutoGatherList list, IGatherable item, int index, bool filteringItems)
+    private void DrawAutoGatherItemHandle(AutoGatherList list, IGatherable item, int index, bool filteringItems, float height)
     {
-        var size = new Vector2(M3Draw.MeasureIcon(FontAwesomeIcon.GripVertical).X + M3.Space2, ImGui.GetFrameHeight());
+        var size = new Vector2(M3Draw.MeasureIcon(FontAwesomeIcon.GripVertical).X + M3.Space2, height);
         var min = ImGui.GetCursorScreenPos();
         ImGui.InvisibleButton("##handle", size);
         var hovered = ImGui.IsItemHovered();
@@ -616,7 +624,10 @@ public partial class Interface
     private static void DrawAutoGatherStatus()
     {
         var enabled = GatherBuddy.AutoGather.Enabled;
-        if (M3Widgets.RowSwitch("Auto-Gather##auto_gather_enabled", ref enabled, $"Status: {GatherBuddy.AutoGather.AutoStatus}"))
+        var status = GatherBuddy.AutoGather.AutoStatus;
+        var compact = GatherBuddy.Config.UiDescriptionTooltips;
+        if (M3Widgets.RowSwitch(compact ? $"Auto-Gather: {status}###auto_gather_enabled" : "Auto-Gather###auto_gather_enabled", ref enabled,
+                compact ? null : $"Status: {status}"))
         {
             GatherBuddy.AutoGather.Enabled = enabled;
         }

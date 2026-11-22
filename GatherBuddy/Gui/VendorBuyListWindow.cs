@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Utility;
 using GatherBuddy.Vulcan.Vendors;
 using Lumina.Excel.Sheets;
@@ -671,6 +672,7 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         var remaining = VendorBuyListManager.GetRemainingQuantity(entry);
         var targetCount = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
 
+        var rowHeight = M3Widgets.NumberFieldHeight;
         ImGui.TableNextRow();
         if (isActive)
         {
@@ -678,6 +680,8 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         }
 
         ImGui.TableNextColumn();
+        var row = new Ui.Row(rowHeight);
+        row.Place(M3Widgets.CheckboxHitSize().Y);
         if (M3Widgets.Checkbox($"##vendorBuyListEnabled_{entry.Id}", ref isEnabled, !(isActive || manager.IsBusy)))
         {
             manager.SetEntryEnabled(entry.Id, isEnabled);
@@ -685,7 +689,7 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
 
         M3Tooltip.Hovered(isEnabled ? "Enabled. Click to skip this entry." : "Skipped. Click to buy it again.");
 
-        ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
+        row.Next(iconSize, VulcanUiScaling.Scaled(4f));
         var icon = Icons.DefaultStorage.TextureProvider.GetFromGameIcon(new GameIconLookup(entry.IconId));
         if (icon.TryGetWrap(out var wrap, out _))
         {
@@ -696,19 +700,14 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
             ImGui.Dummy(iconVec);
         }
 
-        ImGui.SameLine(0, VulcanUiScaling.Scaled(4f));
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (iconSize - ImGui.GetTextLineHeight()) / 2f);
+        row.Next(rowHeight, VulcanUiScaling.Scaled(4f));
         var nameColor = isActive ? s.Primary : !entry.Enabled ? M3.Alpha(s.OnSurfaceVariant, 0.7f) : s.OnSurface;
-        using (ImRaii.PushColor(ImGuiCol.Text, nameColor))
-        {
-            ImGui.TextUnformatted(entry.ItemName);
-        }
+        Ui.RowText(entry.ItemName, rowHeight, nameColor);
 
         M3Tooltip.Hovered(isActive ? $"{entry.ItemName}\nBuying this now." : entry.ItemName);
 
         ImGui.TableNextColumn();
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextUnformatted($"{entry.Cost:N0}");
+        Ui.RowText($"{entry.Cost:N0}", rowHeight);
 
         ImGui.TableNextColumn();
         if (M3Widgets.NumberField($"##vendorBuyListTarget_{entry.Id}", ref targetCount, ImGui.GetContentRegionAvail().X, 1, 1, 99999,
@@ -718,48 +717,39 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         }
 
         ImGui.TableNextColumn();
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextUnformatted($"{currentCount:N0}");
+        Ui.RowText($"{currentCount:N0}", rowHeight);
 
         ImGui.TableNextColumn();
-        ImGui.AlignTextToFramePadding();
         if (!entry.Enabled)
         {
-            M3Text.Draw("Off", M3TextStyle.Faint);
+            Ui.RowText("Off", rowHeight, M3TextStyle.Faint);
         }
         else if (remaining > 0)
         {
-            using (ImRaii.PushColor(ImGuiCol.Text, success))
-            {
-                ImGui.TextUnformatted($"{remaining:N0}");
-            }
+            Ui.RowText($"{remaining:N0}", rowHeight, success);
         }
         else
         {
-            M3Text.Draw("0", M3TextStyle.Faint);
+            Ui.RowText("0", rowHeight, M3TextStyle.Faint);
         }
 
         ImGui.TableNextColumn();
-        selectedVendor = DrawEntryVendorCell(entry, manager, isActive, vendorOptions, selectedVendor);
+        selectedVendor = DrawEntryVendorCell(entry, manager, isActive, vendorOptions, selectedVendor, rowHeight);
 
         ImGui.TableNextColumn();
-        ImGui.AlignTextToFramePadding();
         if (selectedVendor?.Location == null)
         {
-            M3Text.Draw("Unknown", M3TextStyle.Faint);
+            Ui.RowText("Unknown", rowHeight, M3TextStyle.Faint);
         }
         else
         {
             var here = Dalamud.ClientState.TerritoryType == selectedVendor.Location.TerritoryId;
-            using (ImRaii.PushColor(ImGuiCol.Text, here ? success : s.OnSurface))
-            {
-                ImGui.TextUnformatted(selectedVendor.ZoneName);
-            }
-
+            Ui.RowText(selectedVendor.ZoneName, rowHeight, here ? success : s.OnSurface);
             M3Tooltip.Hovered(here ? $"{selectedVendor.ZoneName}\nYou are in this zone." : selectedVendor.ZoneName);
         }
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         if (M3Widgets.IconButton($"##vendorBuyListRemove_{entry.Id}", FontAwesomeIcon.Trash, "Remove from the list", diameter: ImGui.GetFrameHeight(),
                 enabled: !isActive && !manager.IsBusy))
         {
@@ -847,12 +837,11 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
     }
 
     private static VendorListNpcOption? DrawEntryVendorCell(VendorBuyListEntry entry, VendorBuyListManager manager, bool isActive,
-        IReadOnlyList<VendorListNpcOption> vendorOptions, VendorListNpcOption? selectedVendor)
+        IReadOnlyList<VendorListNpcOption> vendorOptions, VendorListNpcOption? selectedVendor, float rowHeight)
     {
         if (vendorOptions.Count == 0)
         {
-            ImGui.AlignTextToFramePadding();
-            M3Text.Draw(entry.VendorNpcName, M3TextStyle.Faint);
+            Ui.RowText(entry.VendorNpcName, rowHeight, M3TextStyle.Faint);
             M3Tooltip.Hovered(entry.VendorNpcName);
             return null;
         }
@@ -861,12 +850,12 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         if (vendorOptions.Count == 1)
         {
             var label = GetVendorNpcDisplayLabel(vendorOptions, selectedVendor);
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextUnformatted(label);
+            Ui.RowText(label, rowHeight);
             M3Tooltip.Hovered(label);
             return selectedVendor;
         }
 
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         var selectedLabel = GetVendorNpcDisplayLabel(vendorOptions, selectedVendor);
         var current = selectedVendor;
         var index = vendorOptions.IndexOf(o => VendorPreferenceHelper.MatchesVendor(o.Npc, current.Npc));

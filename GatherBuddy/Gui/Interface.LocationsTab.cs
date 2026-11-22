@@ -5,6 +5,7 @@ using GatherBuddy.Classes;
 using GatherBuddy.Config;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;
+using GatherBuddy.RebornUI;
 using GatherBuddy.RebornUI.Tables;
 using GatherBuddy.Structs;
 using RebornMaterial;
@@ -66,10 +67,7 @@ public partial class Interface
                 => _nameColumnWidth * ImGuiHelpers.GlobalScale;
 
             public override void DrawColumn(ILocation item, int _)
-            {
-                ImGui.AlignTextToFramePadding();
-                base.DrawColumn(item, _);
-            }
+                => Ui.RowText(ToName(item), M3Widgets.ComboHeight);
         }
 
         private sealed class TypeColumn : ColumnFlags<JobFlags, ILocation>
@@ -101,10 +99,7 @@ public partial class Interface
             }
 
             public override void DrawColumn(ILocation location, int _)
-            {
-                ImGui.AlignTextToFramePadding();
-                ImGui.Text(location.GatheringType.ToString());
-            }
+                => Ui.RowText(location.GatheringType.ToString(), M3Widgets.ComboHeight);
 
             public override int Compare(ILocation a, ILocation b)
                 => a.GatheringType.CompareTo(b.GatheringType);
@@ -136,10 +131,7 @@ public partial class Interface
                 => _territoryColumnWidth * ImGuiHelpers.GlobalScale;
 
             public override void DrawColumn(ILocation item, int _)
-            {
-                ImGui.AlignTextToFramePadding();
-                base.DrawColumn(item, _);
-            }
+                => Ui.RowText(ToName(item), M3Widgets.ComboHeight);
         }
 
         private sealed class LevelColumn() : ColumnNumber<ILocation>(ComparisonMethod.LessEqual)
@@ -151,10 +143,7 @@ public partial class Interface
                 => _levelColumnWidth * ImGuiHelpers.GlobalScale;
 
             public override void DrawColumn(ILocation item, int _)
-            {
-                ImGui.AlignTextToFramePadding();
-                base.DrawColumn(item, _);
-            }
+                => Ui.RightAligned(ToName(item), rowHeight: M3Widgets.ComboHeight);
         }
 
         private sealed class ItemColumn : ColumnString<ILocation>
@@ -177,10 +166,7 @@ public partial class Interface
                 => 0;
 
             public override void DrawColumn(ILocation item, int _)
-            {
-                ImGui.AlignTextToFramePadding();
-                base.DrawColumn(item, _);
-            }
+                => Ui.RowText(ToName(item), M3Widgets.ComboHeight);
         }
 
         private sealed class AetheryteColumn : ColumnString<ILocation>
@@ -227,6 +213,7 @@ public partial class Interface
             {
                 var overwritten = location.DefaultXCoord != location.IntegralXCoord;
                 using var color = ImRaii.PushColor(ImGuiCol.FrameBg, ColorId.ChangedLocationBg.Value(), overwritten);
+                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
                 var x = location.IntegralXCoord / 100f;
                 ImGui.SetNextItemWidth(-1);
                 if (ImGui.DragFloat("##x", ref x, 0.05f, 1f, 42f, "%.2f", ImGuiSliderFlags.AlwaysClamp))
@@ -260,6 +247,7 @@ public partial class Interface
             {
                 var overwritten = location.DefaultYCoord != location.IntegralYCoord;
                 using var color = ImRaii.PushColor(ImGuiCol.FrameBg, ColorId.ChangedLocationBg.Value(), overwritten);
+                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
                 var y = location.IntegralYCoord / 100f;
                 ImGui.SetNextItemWidth(-1);
                 if (ImGui.DragFloat("##y", ref y, 0.05f, 1f, 42f, "%.2f", ImGuiSliderFlags.AlwaysClamp))
@@ -293,6 +281,7 @@ public partial class Interface
             {
                 var overwritten = location.DefaultRadius != location.Radius;
                 using var color = ImRaii.PushColor(ImGuiCol.FrameBg, ColorId.ChangedLocationBg.Value(), overwritten);
+                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
                 ImGui.SetNextItemWidth(-1);
                 int radius = location.Radius;
                 if (ImGui.DragInt("##radius", ref radius, 0.1f, 0, IMarkable.RadiusMax))
@@ -398,6 +387,7 @@ public partial class Interface
                         $"\n\nMarkers stored for this location:\n\n{FormatMarkers(location.Markers)}";
                 }
 
+                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
                 if (M3Widgets.IconButton("##store", FontAwesomeIcon.Map, tt, diameter: ImGui.GetFrameHeight(), enabled: markerCount > 0 && !invalid))
                 {
                     _plugin.LocationManager.SetMarkers(location, markers);

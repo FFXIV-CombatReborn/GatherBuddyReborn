@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using GatherBuddy.Crafting;
+using GatherBuddy.RebornUI;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
@@ -104,13 +105,17 @@ public class CraftingStatusWindow : M3Window
         var width = 300f * scale;
         using var wrap = ImRaii.TextWrapPos(ImGui.GetCursorPosX() + width);
 
+        var (stateLabel, stateTone, stateIcon) = DescribeState(currentState, paused);
+        var pillSize = M3Widgets.PillSize(stateLabel, stateIcon);
+        float titleHeight;
         using (ImRaii.PushFont(M3.TitleMedium))
         {
-            ImGui.TextUnformatted("Crafting queue");
+            titleHeight = MathF.Max(ImGui.GetTextLineHeight(), pillSize.Y);
+            Ui.RowText("Crafting queue", titleHeight);
         }
 
-        var (stateLabel, stateTone, stateIcon) = DescribeState(currentState, paused);
-        ImGui.SameLine(width - M3Widgets.PillSize(stateLabel, stateIcon).X + ImGui.GetStyle().WindowPadding.X);
+        ImGui.SameLine(width - pillSize.X + ImGui.GetStyle().WindowPadding.X);
+        Ui.CenterInRow(titleHeight, pillSize.Y);
         M3Widgets.Pill("##craft_state", stateLabel, stateTone, stateIcon);
 
         ImGui.Dummy(new Vector2(0f, M3.Space1));

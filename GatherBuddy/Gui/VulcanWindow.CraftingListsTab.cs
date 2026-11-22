@@ -96,9 +96,6 @@ public partial class VulcanWindow
     private static bool DrawOpenListHeader(CraftingListDefinition list)
     {
         var buttonSize = M3Widgets.IconButtonSize;
-        var top = ImGui.GetCursorPosY();
-        var back = M3Widgets.IconButton("##crafting_list_back", FontAwesomeIcon.ArrowLeft, "Back to your lists");
-
         float titleHeight;
         using (ImRaii.PushFont(M3.TitleLarge))
         {
@@ -108,10 +105,13 @@ public partial class VulcanWindow
         var recipeCount = list.Recipes.Count;
         var location = string.IsNullOrEmpty(list.FolderPath) ? "Crafting list" : CraftingListManager.FormatFolderPath(list.FolderPath);
         var subtitle = $"{location} · {recipeCount} {(recipeCount == 1 ? "recipe" : "recipes")}";
-        var blockHeight = titleHeight + ImGui.GetTextLineHeight();
+        var blockHeight = titleHeight + ImGui.GetStyle().ItemSpacing.Y + ImGui.GetTextLineHeight();
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(top + MathF.Max(0f, (buttonSize - blockHeight) * 0.5f));
+        var row = new Ui.Row(MathF.Max(buttonSize, blockHeight));
+        row.Place(buttonSize);
+        var back = M3Widgets.IconButton("##crafting_list_back", FontAwesomeIcon.ArrowLeft, "Back to your lists");
+
+        row.Next(blockHeight, M3.Space2);
         ImGui.BeginGroup();
         using (ImRaii.PushFont(M3.TitleLarge))
         {
@@ -123,8 +123,7 @@ public partial class VulcanWindow
 
         if (list.Ephemeral)
         {
-            ImGui.SameLine(0, M3.Space3);
-            ImGui.SetCursorPosY(top + MathF.Max(0f, (buttonSize - M3Widgets.ChipHeight) * 0.5f));
+            row.Next(M3Widgets.ChipHeight, M3.Space3);
             if (M3Widgets.Chip("##crafting_list_ephemeral", "Ephemeral", true, FontAwesomeIcon.HourglassHalf,
                     "Automatically deleted after crafting completes. Has no effect if stopped manually.\nClick to keep this list."))
             {

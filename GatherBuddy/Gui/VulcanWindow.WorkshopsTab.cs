@@ -384,13 +384,11 @@ public partial class VulcanWindow
         foreach (var requirement in craftableRequirements)
         {
             var craftCount = requirement.CraftsNeeded * Math.Max(1, _workshopLoopCount);
-            var rowStart = ImGui.GetCursorScreenPos();
             M3Widgets.GameIcon(requirement.IconId, iconSize);
             ImGui.SameLine(0, M3.Space2);
-            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (iconSize - ImGui.GetTextLineHeight()) * 0.5f));
-            ImGui.TextUnformatted(requirement.ItemName);
+            Ui.RowText(requirement.ItemName, iconSize);
             ImGui.SameLine(0, M3.Space2);
-            M3Text.Draw(craftCount == 1 ? "1 craft" : $"{craftCount} crafts", M3TextStyle.Muted);
+            Ui.RowText(craftCount == 1 ? "1 craft" : $"{craftCount} crafts", iconSize, M3TextStyle.Muted);
         }
     }
     private void CreateWorkshopCraftingList(WorkshopScopeNode scope, string listName)

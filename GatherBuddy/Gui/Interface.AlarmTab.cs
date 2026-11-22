@@ -163,8 +163,10 @@ public partial class Interface
         var alarm = group.Alarms[alarmIdx];
         using var id = ImRaii.PushId(alarmIdx);
 
+        var rowHeight = M3Widgets.NumberFieldHeight;
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Delete this alarm", diameter: ImGui.GetFrameHeight()))
         {
             _plugin.AlarmManager.DeleteAlarm(group, alarmIdx--);
@@ -181,6 +183,7 @@ public partial class Interface
         M3Tooltip.Hovered("Names are optional and can be used in the alarm message that is printed to chat.");
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         var enabled = alarm.Enabled;
         if (M3Widgets.Checkbox("##enabled", ref enabled) && enabled != alarm.Enabled)
         {
@@ -190,6 +193,7 @@ public partial class Interface
         M3Tooltip.Hovered("Enable this alarm.");
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         var itemIdx = alarm.Item.InternalLocationId - 1;
         if (DrawTimedItemCombo("##item", ref itemIdx))
         {
@@ -210,6 +214,7 @@ public partial class Interface
         M3Tooltip.Hovered("Trigger this alarm this many seconds before the item is next available.");
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         var printMessage = alarm.PrintMessage;
         if (M3Widgets.Checkbox("##print", ref printMessage))
         {
@@ -219,6 +224,7 @@ public partial class Interface
         M3Tooltip.Hovered("Print a chat message when this alarm is triggered.");
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         var soundIdx = Array.IndexOf(AlarmCache.SoundIds, alarm.SoundId);
         if (M3Widgets.Combo("##sound", ref soundIdx, AlarmCache.SoundIdNames, AlarmSoundWidth, tooltip: "The sound played when this alarm is triggered."))
         {
@@ -227,6 +233,7 @@ public partial class Interface
         }
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         if (DrawLocationInput(alarm.Item, alarm.PreferLocation, out var newLocation))
         {
             _plugin.AlarmManager.ChangeAlarmLocation(group, alarmIdx, newLocation);
@@ -236,6 +243,7 @@ public partial class Interface
         var (_, time) = AlarmManager.GetUptime(alarm);
         var now = GatherBuddy.Time.ServerTime.AddSeconds(alarm.SecondOffset);
         var size = new Vector2(150 * M3.Scale, ImGui.GetFrameHeight());
+        Ui.CenterInRow(rowHeight, size.Y);
         if (time.Start > now)
         {
             Ui.Framed(TimeInterval.DurationString(time.Start, now, false), ColorId.WarningBg.Value(), size);
@@ -261,7 +269,7 @@ public partial class Interface
 
         ImGui.SameLine(0, M3.Space3);
         var enabled = group.Enabled;
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3TextField.Height - M3Widgets.SwitchSize().Y) * 0.5f);
+        Ui.CenterInRow(M3TextField.Height, M3Widgets.SwitchSize().Y);
         if (M3Widgets.Switch("##groupEnabled", ref enabled) && enabled != group.Enabled)
         {
             _plugin.AlarmManager.ToggleGroup(idx);
@@ -269,12 +277,12 @@ public partial class Interface
 
         M3Tooltip.Hovered("Enable this alarm group. Only the alarms in it that are enabled themselves count as active.");
         ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
-        M3Text.Draw(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted);
+        Ui.RowText(enabled ? "Enabled" : "Disabled", M3TextField.Height, M3TextStyle.Muted);
     }
 
     private static void DrawAlarmTableHeader(AlarmGroup group)
     {
+        var headerHeight = group.Alarms.Count > 0 ? M3Widgets.CheckboxHitSize().Y : 0f;
         ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
         for (var i = 0; i < AlarmColumns.Length; ++i)
         {
@@ -312,7 +320,7 @@ public partial class Interface
 
             if (!AlarmColumns[i].StartsWith("##"))
             {
-                M3Table.Header(AlarmColumns[i], center: false);
+                Ui.TableHeader(AlarmColumns[i], headerHeight);
             }
         }
     }
@@ -339,8 +347,10 @@ public partial class Interface
         }
 
         using var id = ImRaii.PushId(-1);
+        var rowHeight = M3Widgets.NumberFieldHeight;
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add this alarm", M3ButtonStyle.Tonal, diameter: ImGui.GetFrameHeight()))
         {
             _plugin.AlarmManager.AddAlarm(group, _alarmCache.CreateAlarm());
@@ -349,14 +359,18 @@ public partial class Interface
         ImGui.TableNextColumn();
         M3TextField.Draw("##name", "Name of the new alarm", ref _alarmCache.NewName, SetInputWidth, 64);
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         M3Widgets.Checkbox("##enabled", ref _alarmCache.NewEnabled);
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         DrawTimedItemCombo("##item", ref _alarmCache.NewItemIdx);
         ImGui.TableNextColumn();
         M3Widgets.NumberField("##offset", ref _alarmCache.NewSecondOffset, SetInputWidth * 0.6f, 10, 0, RealTime.SecondsPerDay, "s");
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         M3Widgets.Checkbox("##print", ref _alarmCache.NewPrintMessage);
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         M3Widgets.Combo("##sound", ref _alarmCache.NewSoundIdx, AlarmCache.SoundIdNames, AlarmSoundWidth);
     }
 
@@ -370,6 +384,8 @@ public partial class Interface
     private void DrawAlarmGroupHeaderLine()
     {
         var current = _alarmCache.Selector.Current;
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(M3Widgets.IconButtonSize);
         if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this alarm group to your clipboard", enabled: current != null))
         {
             try
@@ -385,7 +401,7 @@ public partial class Interface
             }
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##preset", "Make gather window preset", M3ButtonStyle.Text, FontAwesomeIcon.ListUl, enabled: current != null,
                 tooltip: "Create a new gather window preset from this alarm group."))
         {
@@ -393,8 +409,7 @@ public partial class Interface
             M3Snackbar.Show("Created a gather window preset.");
         }
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        row.Next(ImGui.GetFrameHeight(), M3.Space2);
         M3Widgets.HelpMarker("Use /gather alarm to gather the last item alarm triggered.\n"
           + "Use /gatherfish alarm to gather the last fish alarm triggered.");
     }

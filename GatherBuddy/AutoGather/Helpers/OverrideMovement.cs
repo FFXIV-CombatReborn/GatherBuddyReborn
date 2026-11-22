@@ -139,6 +139,6 @@ public unsafe class OverrideMovement : IDisposable
     private void UpdateLegacyMode()
     {
         _legacyMode = Dalamud.GameConfig.UiControl.TryGetUInt("MoveMode", out var mode) && mode == 1;
-        GatherBuddy.Log.Information($"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
+        GatherBuddy.Log.Verbose($"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
     }
 }

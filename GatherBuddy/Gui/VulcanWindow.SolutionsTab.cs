@@ -40,20 +40,20 @@ public partial class VulcanWindow
         var rowTop = ImGui.GetItemRectMin().Y;
         var rowHeight = ImGui.GetItemRectSize().Y;
 
-        void SameRow(float height)
+        void SameRow(float height, float gap)
         {
-            ImGui.SameLine(0, M3.Space2);
+            ImGui.SameLine(0, gap);
             ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowTop + (rowHeight - height) * 0.5f));
         }
 
-        SameRow(M3Widgets.ButtonHeight);
+        SameRow(M3Widgets.ButtonHeight, M3.Space2);
         if (M3Widgets.Button("##stopQueue", "Stop queue", M3ButtonStyle.Tonal, FontAwesomeIcon.Stop, enabled: coordinator.PendingSolves > 0,
                 tooltip: "Cancel queued and active Raphael solves while keeping completed cached solutions."))
         {
             coordinator.CancelAllPendingSolves();
         }
 
-        SameRow(M3Widgets.ButtonHeight);
+        SameRow(M3Widgets.ButtonHeight, M3.Space2);
         if (M3Widgets.Button("##clearAll", "Clear all", M3ButtonStyle.Text, FontAwesomeIcon.Trash, enabled: _solutionsList.Count > 0,
                 tooltip: "Forget every cached solution."))
         {
@@ -62,7 +62,7 @@ public partial class VulcanWindow
             _solutionsList.Clear();
         }
 
-        SameRow(M3Widgets.CheckboxHitSize().Y);
+        SameRow(Ui.LabeledCheckboxHeight, M3.Space2);
         var autoClear = raphaelConfig.AutoClearSolutionCache;
         if (M3Widgets.LabeledCheckbox("Clear when a queue starts", ref autoClear,
                 tooltip: "Clears cached solutions each time a new crafting queue starts.\nTurn this off to reuse solutions across queue runs when your stats haven't changed."))
@@ -71,9 +71,9 @@ public partial class VulcanWindow
             GatherBuddy.Config.Save();
         }
 
-        SameRow(M3Badge.Size("Active 0").Y);
+        SameRow(ImGui.GetFrameHeight(), M3.Space2);
         M3Badge.Draw($"Active {coordinator.ActiveSolves}", coordinator.ActiveSolves > 0 ? M3.Scheme.Success : M3.Scheme.Outline, "Solves running now");
-        ImGui.SameLine(0, M3.Space1);
+        SameRow(ImGui.GetFrameHeight(), M3.Space1);
         M3Badge.Draw($"Pending {coordinator.PendingSolves}", coordinator.PendingSolves > 0 ? M3.Scheme.Warning : M3.Scheme.Outline, "Solves waiting in the queue");
 
         ImGui.Dummy(new Vector2(0, M3.Space2));
@@ -188,7 +188,6 @@ public partial class VulcanWindow
         {
             var actionId = solution.ActionIds[i];
             var skillIconId = GetSkillIconId(actionId);
-            var rowStart = ImGui.GetCursorScreenPos();
             if (skillIconId > 0)
             {
                 M3Widgets.GameIcon(skillIconId, actionIconSize);
@@ -199,10 +198,9 @@ public partial class VulcanWindow
             }
 
             ImGui.SameLine(0, M3.Space2);
-            ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (actionIconSize - ImGui.GetTextLineHeight()) * 0.5f));
-            M3Text.Draw($"{i + 1}.", M3TextStyle.Faint);
+            Ui.RowText($"{i + 1}.", actionIconSize, M3TextStyle.Faint);
             ImGui.SameLine(0, M3.Space1);
-            ImGui.TextUnformatted(((VulcanSkill)actionId).ToString());
+            Ui.RowText(((VulcanSkill)actionId).ToString(), actionIconSize);
         }
     }
     private (string Name, uint IconId) GetSolutionItemInfo(uint recipeId)
