@@ -4,6 +4,7 @@ using Dalamud.Game.Inventory.InventoryEventArgTypes;
 using Dalamud.Interface;
 using GatherBuddy.Crafting;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
 using RebornMaterial;
@@ -1298,11 +1299,8 @@ public class CraftingListEditor
     private void DrawRecipeBulkActions(List<int> indicesToRemove)
     {
         var selectionCount = _selectedRecipeIndices.Count;
-        var top = ImGui.GetCursorPosY();
-        ImGui.SetCursorPosY(top + MathF.Max(0f, (M3Widgets.ButtonHeight - ImGui.GetTextLineHeight()) * 0.5f));
-        M3Text.Draw($"{selectionCount} selected", M3TextStyle.Muted);
+        Ui.RowText($"{selectionCount} selected", M3Widgets.ButtonHeight, M3TextStyle.Muted);
         ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(top);
         if (M3Widgets.Button("##skipSelected", "Skip", M3ButtonStyle.Text, FontAwesomeIcon.Ban,
                 tooltip: $"Mark all {selectionCount} selected recipes as skipped."))
         {
@@ -1828,6 +1826,7 @@ public class CraftingListEditor
         }
 
         ImGui.SameLine(0, 0);
+        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, top.Y + (rowHeight - buttonSize) * 0.5f));
         if (M3Widgets.IconButton("##remove", FontAwesomeIcon.Trash, "Remove this recipe from the list.", diameter: buttonSize))
         {
             indicesToRemove.Add(row.ListIndex);

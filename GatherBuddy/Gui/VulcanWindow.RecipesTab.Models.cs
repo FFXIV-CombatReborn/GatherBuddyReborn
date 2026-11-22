@@ -2,6 +2,7 @@
 using Dalamud.Interface.Textures;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
+using GatherBuddy.RebornUI;
 using Lumina.Excel.Sheets;
 using RebornMaterial;
 using System;
@@ -139,13 +140,11 @@ public partial class VulcanWindow
                     }
 
                     var have = GetInventoryCount(itemId);
-                    var rowStart = ImGui.GetCursorScreenPos();
                     M3Widgets.GameIcon(item.Icon, size);
                     ImGui.SameLine(0, M3.Space2);
-                    ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (size - ImGui.GetTextLineHeight()) * 0.5f));
-                    ImGui.TextUnformatted(item.Name.ExtractText());
+                    Ui.RowText(item.Name.ExtractText(), size);
                     ImGui.SameLine(0, M3.Space2);
-                    M3Text.Draw($"{have} / {needed}", have >= needed ? M3TextStyle.Success : M3TextStyle.Error);
+                    Ui.RowText($"{have} / {needed}", size, have >= needed ? M3TextStyle.Success : M3TextStyle.Error);
                 }
             }
             else

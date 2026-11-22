@@ -98,7 +98,59 @@ internal static class Ui
         drawList.AddText(position, color, text);
     }
 
-    public static void RightAligned(string text, float offset = 0f)
+    public readonly struct Row(float height)
+    {
+        private readonly float _top = ImGui.GetCursorScreenPos().Y;
+
+        public void Place(float itemHeight)
+            => ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, _top + (height - itemHeight) * 0.5f));
+
+        public void Next(float itemHeight, float gap)
+        {
+            ImGui.SameLine(0, gap);
+            Place(itemHeight);
+        }
+
+        public void NextText(string text, M3TextStyle style, float gap)
+        {
+            Next(height, gap);
+            RowText(text, height, style);
+        }
+    }
+
+    public static float LabeledCheckboxHeight
+        => MathF.Max(M3Widgets.CheckboxHitSize().Y, ImGui.GetFrameHeight());
+
+    public static void CenterInRow(float rowHeight, float itemHeight)
+        => ImGui.SetCursorPosY(ImGui.GetCursorPosY() + MathF.Max(0f, (rowHeight - itemHeight) * 0.5f));
+
+    public static void RowText(string text, float rowHeight)
+    {
+        var size = ImGui.CalcTextSize(text);
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.Dummy(new Vector2(size.X, rowHeight));
+        ImGui.GetWindowDrawList().AddText(min + new Vector2(0f, (rowHeight - size.Y) * 0.5f), ImGui.GetColorU32(ImGuiCol.Text), text);
+    }
+
+    public static void RowText(string text, float rowHeight, M3TextStyle style)
+    {
+        using var scope = M3Text.Push(style);
+        RowText(text, rowHeight);
+    }
+
+    public static void RowText(string text, float rowHeight, Vector4 color)
+    {
+        using var c = ImRaii.PushColor(ImGuiCol.Text, color);
+        RowText(text, rowHeight);
+    }
+
+    public static void TableHeader(string text, float rowHeight)
+    {
+        CenterInRow(rowHeight, M3Text.Measure(text, M3TextStyle.Label).Y);
+        M3Table.Header(text, center: false);
+    }
+
+    public static void RightAligned(string text, float offset = 0f, float rowHeight = 0f)
     {
         var gap = ImGui.GetContentRegionAvail().X - offset - ImGui.CalcTextSize(text).X;
         if (gap > 0f)
@@ -106,7 +158,14 @@ internal static class Ui
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + gap);
         }
 
-        ImGui.TextUnformatted(text);
+        if (rowHeight > 0f)
+        {
+            RowText(text, rowHeight);
+        }
+        else
+        {
+            ImGui.TextUnformatted(text);
+        }
     }
 
     public static void Centered(string text)

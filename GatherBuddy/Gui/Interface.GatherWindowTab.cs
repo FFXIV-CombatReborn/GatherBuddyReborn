@@ -108,6 +108,8 @@ public partial class Interface
     private void DrawGatherWindowPresetHeaderLine()
     {
         var current = _gatherWindowCache.Selector.Current;
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(M3Widgets.IconButtonSize);
         if (M3Widgets.IconButton("##copy", FontAwesomeIcon.Copy, "Copy this gather window preset to your clipboard", enabled: current != null))
         {
             try
@@ -122,7 +124,7 @@ public partial class Interface
             }
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.ButtonHeight, M3.Space1);
         if (M3Widgets.Button("##alarms", "Make alarms", M3ButtonStyle.Text, FontAwesomeIcon.Bell, enabled: current != null,
                 tooltip: "Create a new alarm group from this gather window preset."))
         {
@@ -130,8 +132,7 @@ public partial class Interface
             M3Snackbar.Show("Created an alarm group.");
         }
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Widgets.HelpMarkerWidth()) * 0.5f);
+        row.Next(ImGui.GetFrameHeight(), M3.Space2);
         M3Widgets.HelpMarker(
             "If the gather window is not sorted by uptimes, items are added once each, in the order of the enabled presets and then their items.\n"
           + "Drag presets in the list to move them.\n"
@@ -155,7 +156,7 @@ public partial class Interface
 
         ImGui.SameLine(0, M3.Space3);
         var enabled = preset.Enabled;
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3TextField.Height - M3Widgets.SwitchSize().Y) * 0.5f);
+        Ui.CenterInRow(M3TextField.Height, M3Widgets.SwitchSize().Y);
         if (M3Widgets.Switch("##presetEnabled", ref enabled) && enabled != preset.Enabled)
         {
             _plugin.GatherWindowManager.TogglePreset(preset);
@@ -163,8 +164,7 @@ public partial class Interface
 
         M3Tooltip.Hovered("Show this preset's items in the gather window.");
         ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SwitchSize().Y - ImGui.GetTextLineHeight()) * 0.5f);
-        M3Text.Draw(enabled ? "Enabled" : "Disabled", M3TextStyle.Muted);
+        Ui.RowText(enabled ? "Enabled" : "Disabled", M3TextField.Height, M3TextStyle.Muted);
 
         ImGui.Dummy(new Vector2(0, M3.Space2));
         M3Widgets.SectionLabel($"Items ({preset.Items.Count})");

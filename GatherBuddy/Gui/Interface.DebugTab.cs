@@ -12,6 +12,7 @@ using GatherBuddy.Enums;
 using GatherBuddy.FishTimer;
 using GatherBuddy.Levenshtein;
 using GatherBuddy.Plugin;
+using GatherBuddy.RebornUI;
 using GatherBuddy.SeFunctions;
 using GatherBuddy.Structs;
 using GatherBuddy.Time;
@@ -936,8 +937,7 @@ public partial class Interface
             }
             else
             {
-                ImGui.AlignTextToFramePadding();
-                M3Text.Draw("This territory does not have that weather.", M3TextStyle.Muted);
+                Ui.RowText("This territory does not have that weather.", M3Widgets.ComboHeight, M3TextStyle.Muted);
             }
         }
 

@@ -980,8 +980,10 @@ public partial class Interface
             return;
         }
 
+        var row = new Ui.Row(M3Widgets.ButtonHeight);
+        row.Place(M3Widgets.ComboHeight);
         DrawSelectorDropdown();
-        ImGui.SameLine(0, M3.Space2);
+        row.Next(M3Widgets.ButtonHeight, M3.Space2);
         DrawCopier();
         ImGui.Dummy(new Vector2(0, M3.Space1));
         DrawFishingSpotInfo();

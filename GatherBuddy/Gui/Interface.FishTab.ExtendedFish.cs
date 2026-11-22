@@ -631,7 +631,7 @@ public partial class Interface
 
             using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing with { X = ImGuiHelpers.GlobalScale });
             var size = iconSize / 1.5f;
-            var offset = (size.Y - ImGui.GetTextLineHeightWithSpacing()) / 2f;
+            var offset = (size.Y - ImGui.GetTextLineHeight()) / 2f;
             foreach (var predator in fish.Predators)
             {
                 var pos = ImGui.GetCursorPosY();

@@ -349,23 +349,23 @@ public partial class VulcanWindow
         return $"{option.Npc.Name} [{option.Npc.NpcId}]";
     }
 
-    private static void DrawVendorZoneCell(VendorDisplayNpcOption? selectedNpc)
+    private static void DrawVendorZoneCell(VendorDisplayNpcOption? selectedNpc, float rowHeight)
     {
         var location = selectedNpc?.Location;
         if (location == null)
         {
-            M3Text.Draw("Unknown", M3TextStyle.Faint);
+            Ui.RowText("Unknown", rowHeight, M3TextStyle.Faint);
             return;
         }
 
         if (Dalamud.ClientState.TerritoryType == location.TerritoryId)
         {
-            Ui.Text(selectedNpc!.ZoneName, M3.Scheme.Success);
+            Ui.RowText(selectedNpc!.ZoneName, rowHeight, M3.Scheme.Success);
             M3Tooltip.Hovered("You are in this zone.");
         }
         else
         {
-            ImGui.TextUnformatted(selectedNpc!.ZoneName);
+            Ui.RowText(selectedNpc!.ZoneName, rowHeight);
         }
     }
 
@@ -885,17 +885,17 @@ public partial class VulcanWindow
     private float GetVendorSortControlWidth()
         => M3Widgets.ButtonWidth(FontAwesomeIcon.Sort, GetVendorSortLabel()) + M3.Space1 + M3Widgets.IconButtonSize;
 
-    private void DrawVendorCostCell(VendorDisplayRow row, float iconSize)
+    private void DrawVendorCostCell(VendorDisplayRow row, float iconSize, float rowHeight)
     {
-        var rowStart = ImGui.GetCursorScreenPos();
+        var line = new Ui.Row(rowHeight);
         if (row.CurrencyIconId != 0)
         {
+            line.Place(iconSize);
             M3Widgets.GameIcon(row.CurrencyIconId, iconSize);
-            ImGui.SameLine(0, M3.Space1);
+            line.Next(rowHeight, M3.Space1);
         }
 
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (iconSize - ImGui.GetTextLineHeight()) * 0.5f));
-        ImGui.TextUnformatted(row.CostText);
+        Ui.RowText(row.CostText, rowHeight);
         M3Tooltip.Hovered(GetVendorCurrencyName(row.Entry.CurrencyItemId, row.Entry.CurrencyName));
     }
 
@@ -926,7 +926,7 @@ public partial class VulcanWindow
         }
 
         ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - M3Badge.Size("0").Y) * 0.5f);
+        Ui.CenterInRow(M3Widgets.ButtonHeight, ImGui.GetFrameHeight());
         M3Badge.Draw(VendorBuyListManager.Entries.Count == 1 ? $"{VendorBuyListManager.ActiveListName}: 1 item" : $"{VendorBuyListManager.ActiveListName}: {VendorBuyListManager.Entries.Count} items",
             M3.Scheme.Tertiary, "The active vendor buy list");
 
@@ -957,11 +957,9 @@ public partial class VulcanWindow
 
         ImGui.Dummy(new Vector2(0, M3.Space1));
         var overflow = _vendorDisplay.Count > 500;
-        var rowTop = ImGui.GetCursorScreenPos().Y;
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ButtonHeight - ImGui.GetTextLineHeight()) * 0.5f);
-        M3Text.Draw(overflow ? $"Showing 500 of {_vendorDisplay.Count}, refine your search" : $"{_vendorDisplay.Count} results", M3TextStyle.Muted);
+        Ui.RowText(overflow ? $"Showing 500 of {_vendorDisplay.Count}, refine your search" : $"{_vendorDisplay.Count} results", M3Widgets.ButtonHeight,
+            M3TextStyle.Muted);
         ImGui.SameLine(MathF.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - GetVendorSortControlWidth()));
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowTop));
         DrawVendorSortControl();
 
         var showAutomationControls = _vendorCategory is VendorShopType.GilShop or VendorShopType.SpecialCurrency or VendorShopType.GrandCompanySeals;
@@ -1025,9 +1023,11 @@ public partial class VulcanWindow
         var entry = row.Entry;
         var selectedNpc = GetSelectedVendorOption(row);
 
+        var rowHeight = M3Widgets.NumberFieldHeight;
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
-        var rowStart = ImGui.GetCursorScreenPos();
+        var line = new Ui.Row(rowHeight);
+        line.Place(iconSize);
         if (row.Icon.TryGetWrap(out var wrap, out _))
         {
             Ui.HoverIcon(wrap, new Vector2(iconSize));
@@ -1037,12 +1037,11 @@ public partial class VulcanWindow
             ImGui.Dummy(new Vector2(iconSize));
         }
 
-        ImGui.SameLine(0, M3.Space1);
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, rowStart.Y + (iconSize - ImGui.GetTextLineHeight()) * 0.5f));
-        ImGui.TextUnformatted(entry.ItemName);
+        line.Next(rowHeight, M3.Space1);
+        Ui.RowText(entry.ItemName, rowHeight);
 
         ImGui.TableNextColumn();
-        DrawVendorCostCell(row, iconSize);
+        DrawVendorCostCell(row, iconSize, rowHeight);
         if (showGilControls)
         {
             ImGui.TableNextColumn();
@@ -1050,20 +1049,23 @@ public partial class VulcanWindow
         }
 
         ImGui.TableNextColumn();
-        DrawVendorNpcCell(row, selectedNpc);
+        DrawVendorNpcCell(row, selectedNpc, rowHeight);
 
         ImGui.TableNextColumn();
-        DrawVendorZoneCell(selectedNpc);
+        DrawVendorZoneCell(selectedNpc, rowHeight);
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         DrawVendorMapMarkerButton(row, selectedNpc);
         if (showGilControls)
         {
             ImGui.TableNextColumn();
+            Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
             DrawVendorAddToListButton(row, selectedNpc);
         }
 
         ImGui.TableNextColumn();
+        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
         DrawVendorGoButton(row, selectedNpc);
     }
 
@@ -1077,20 +1079,21 @@ public partial class VulcanWindow
         }
     }
 
-    private static void DrawVendorNpcCell(VendorDisplayRow row, VendorDisplayNpcOption? selectedNpc)
+    private static void DrawVendorNpcCell(VendorDisplayRow row, VendorDisplayNpcOption? selectedNpc, float rowHeight)
     {
         if (row.NpcOptions.Count == 0)
         {
-            M3Text.Draw(row.FallbackVendorName, M3TextStyle.Faint);
+            Ui.RowText(row.FallbackVendorName, rowHeight, M3TextStyle.Faint);
             return;
         }
 
         if (row.NpcOptions.Count == 1)
         {
-            ImGui.TextUnformatted(row.NpcOptions[0].Npc.Name);
+            Ui.RowText(row.NpcOptions[0].Npc.Name, rowHeight);
             return;
         }
 
+        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         var options = row.NpcOptions;
         var index = selectedNpc == null ? 0 : options.IndexOf(o => VendorPreferenceHelper.MatchesVendor(o.Npc, selectedNpc.Npc));
         if (M3Widgets.Combo($"##vnpc_{row.IdSuffix}", ref index, options.Count, i => GetVendorNpcDisplayLabel(row, options[i]),

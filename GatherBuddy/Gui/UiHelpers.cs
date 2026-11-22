@@ -210,7 +210,7 @@ public partial class Interface
     }
 
     private static float TableFooterHeight
-        => (M3Widgets.ButtonHeight + ImGui.GetStyle().ItemSpacing.Y + M3.Space1) / ImGuiHelpers.GlobalScale;
+        => (M3Widgets.ButtonHeight + ImGui.GetStyle().ItemSpacing.Y * 2f + M3.Space1) / ImGuiHelpers.GlobalScale;
 
     private void DrawTableFooter<T>(Table<T> table, Func<T, IGatherable> selector, string label, string statusName)
     {

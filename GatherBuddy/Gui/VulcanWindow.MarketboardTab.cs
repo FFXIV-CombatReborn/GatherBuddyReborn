@@ -220,6 +220,7 @@ public partial class VulcanWindow
 
         ImGui.Dummy(new Vector2(0, M3.Space2));
         var scopeIndex = _mbDetailScopeIndex;
+        var row = new Ui.Row(M3Widgets.ComboHeight);
         if (M3Widgets.Combo("##mbdetailscope", ref scopeIndex, _mbScopeOptions.Count,
                 i => i < _mbScopeIsDc.Count && _mbScopeIsDc[i] ? $"Data center: {_mbScopeOptions[i]}" : _mbScopeOptions[i], VulcanUiScaling.Scaled(220f),
                 (isDcScope ? "Data center: " : string.Empty) + scope)
@@ -229,14 +230,13 @@ public partial class VulcanWindow
             svc.QueueLookup(itemId, name, iconId, _mbScopeOptions[scopeIndex]);
         }
 
-        ImGui.SameLine(0, M3.Space2);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.ComboHeight - M3Widgets.IconButtonSize) * 0.5f);
+        row.Next(M3Widgets.IconButtonSize, M3.Space2);
         if (M3Widgets.IconButton("##mbrefresh", FontAwesomeIcon.Sync, "Look the price up again"))
         {
             svc.ForceRefresh(itemId, scope);
         }
 
-        ImGui.SameLine(0, M3.Space1);
+        row.Next(M3Widgets.IconButtonSize, M3.Space1);
         if (M3Widgets.IconButton("##mbweb", FontAwesomeIcon.ExternalLinkAlt, $"Open https://universalis.app/market/{itemId}"))
         {
             try

@@ -3,6 +3,7 @@ using Dalamud.Game.Text;
 using Dalamud.Interface;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.Crafting;
+using GatherBuddy.RebornUI;
 using GatherBuddy.Vulcan;
 using Lumina.Excel.Sheets;
 using RebornMaterial;
@@ -594,14 +595,10 @@ public class RecipeCraftSettingsPopup
     private bool InListContext
         => _editingListItem != null || _isPrecraftMode;
 
-    private static void SettingLabel(string label)
+    private void SettingLabel(string label)
     {
-        var height = MathF.Max(M3Widgets.ComboHeight, M3Widgets.SegmentedHeight);
-        var start = ImGui.GetCursorPosY();
-        ImGui.SetCursorPosY(start + (height - ImGui.GetTextLineHeight()) * 0.5f);
-        ImGui.TextUnformatted(label);
+        Ui.RowText(label, InListContext ? M3Widgets.SegmentedHeight : M3Widgets.ComboHeight);
         ImGui.SameLine(SettingLabelWidth);
-        ImGui.SetCursorPosY(start);
     }
 
     private static bool DrawModeChoice(string id, ref int mode, M3Segment[] segments, string inheritedLabel, int specificIndex)
@@ -615,8 +612,7 @@ public class RecipeCraftSettingsPopup
         if (mode == 0)
         {
             ImGui.SameLine(0, M3.Space2);
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (M3Widgets.SegmentedHeight - ImGui.GetTextLineHeight()) * 0.5f);
-            M3Text.Draw($"List: {inheritedLabel}", M3TextStyle.Muted);
+            Ui.RowText($"List: {inheritedLabel}", M3Widgets.SegmentedHeight, M3TextStyle.Muted);
             return false;
         }
 
@@ -1185,18 +1181,22 @@ public class RecipeCraftSettingsPopup
         ImGui.TableNextColumn();
         M3Table.Header("Use HQ", "How many HQ ones to use");
 
+        var rowHeight = M3Widgets.NumberFieldHeight;
+        var lineHeight = ImGui.GetTextLineHeight();
         for (var i = 0; i < _ingredients.Count; i++)
         {
             var ing = _ingredients[i];
             using var id = ImRaii.PushId(i);
             ImGui.TableNextColumn();
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextUnformatted(ing.ItemName);
+            Ui.RowText(ing.ItemName, rowHeight);
             ImGui.TableNextColumn();
+            Ui.CenterInRow(rowHeight, lineHeight);
             M3Table.CenteredText(ing.TotalNeeded.ToString());
             ImGui.TableNextColumn();
+            Ui.CenterInRow(rowHeight, lineHeight);
             M3Table.CenteredText(ing.AvailableNQ.ToString(), ing.AvailableNQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : null);
             ImGui.TableNextColumn();
+            Ui.CenterInRow(rowHeight, lineHeight);
             M3Table.CenteredText(ing.AvailableHQ.ToString(), ing.AvailableHQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : M3.Scheme.Info);
             ImGui.TableNextColumn();
             if (ing.CanBeHQ)
@@ -1209,6 +1209,7 @@ public class RecipeCraftSettingsPopup
             }
             else
             {
+                Ui.CenterInRow(rowHeight, lineHeight);
                 M3Table.CenteredText("N/A", M3Text.ColorOf(M3TextStyle.Faint));
             }
         }
