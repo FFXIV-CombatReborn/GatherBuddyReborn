@@ -217,11 +217,7 @@ public partial class Interface
         row.Next(M3Widgets.IconButtonSize, M3.Space1);
         if (M3Widgets.IconButton("##discord", FontAwesomeIcon.Comments, "Open the Auto-Gather support Discord"))
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "https://discord.gg/p54TZMPnC9",
-                UseShellExecute = true,
-            });
+            OpenDiscord();
         }
     }
 

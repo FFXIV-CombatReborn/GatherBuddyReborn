@@ -82,6 +82,8 @@ public partial class VulcanWindow : M3ShellWindow, IDisposable
     public VulcanWindow()
         : base(WindowId, "vulcan", "Vulcan", "Vulcan", DefaultSize, DefaultConstraints)
     {
+        AllowPinning = false;
+        AllowClickthrough = false;
         BuildPages();
         CraftingGameInterop.CraftFinished += OnCraftFinished;
     }
@@ -300,6 +302,12 @@ public partial class VulcanWindow : M3ShellWindow, IDisposable
 
     protected override void PreDrawFold()
     {
+        if (IsPinned || IsClickthrough)
+        {
+            IsPinned = false;
+            IsClickthrough = false;
+        }
+
         if (_recipesTabRequestFocus)
         {
             _recipesTabRequestFocus = false;
