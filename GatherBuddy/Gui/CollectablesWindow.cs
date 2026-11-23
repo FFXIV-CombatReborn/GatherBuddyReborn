@@ -44,7 +44,18 @@ public sealed class CollectablesWindow : M3PanelWindow
         : base(WindowId, "Collectables", DefaultSize, DefaultConstraints)
     {
         RespectCloseHotkey = true;
+        AllowPinning = false;
+        AllowClickthrough = false;
         IsOpen = false;
+    }
+
+    protected override void PreDrawFold()
+    {
+        if (IsPinned || IsClickthrough)
+        {
+            IsPinned = false;
+            IsClickthrough = false;
+        }
     }
 
     public void Open()

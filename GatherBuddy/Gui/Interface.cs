@@ -7,6 +7,7 @@ using GatherBuddy.Time;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using Functions = GatherBuddy.Plugin.Functions;
 
@@ -15,6 +16,7 @@ namespace GatherBuddy.Gui;
 public partial class Interface : M3ShellWindow, IDisposable
 {
     private const string PluginName = "GatherBuddy Reborn";
+    private const string DiscordUrl = "https://discord.gg/p54TZMPnC9";
 
     private const string SectionBrowse = "Browse";
     private const string SectionPlan = "Plan";
@@ -36,6 +38,7 @@ public partial class Interface : M3ShellWindow, IDisposable
 
     private static readonly M3WindowAction[] MainWindowActions =
     [
+        new("##gbr_discord", FontAwesomeIcon.Comments, "Join the Discord"),
         new("##gbr_open_vulcan", FontAwesomeIcon.Hammer, "Open Vulcan, the crafting window"),
         new("##gbr_open_collectables", FontAwesomeIcon.BoxOpen, "Open the collectables window"),
     ];
@@ -87,6 +90,8 @@ public partial class Interface : M3ShellWindow, IDisposable
         : base($"{PluginName}###GatherBuddyMain", "gbr", PluginName, PluginName, DefaultSize, DefaultConstraints)
     {
         BlocksGameInput = false;
+        AllowPinning = false;
+        AllowClickthrough = false;
         _plugin = plugin;
         _gatherGroupCache = new GatherGroupCache(_plugin.GatherGroupManager);
         _autoGatherListsCache = new AutoGatherListsCache();
@@ -157,6 +162,9 @@ public partial class Interface : M3ShellWindow, IDisposable
         switch (index)
         {
             case 0:
+                OpenDiscord();
+                break;
+            case 1:
                 if (GatherBuddy.VulcanWindow == null)
                 {
                     M3Snackbar.Show("The Vulcan window isn't available.", severity: M3Severity.Error);
@@ -167,7 +175,7 @@ public partial class Interface : M3ShellWindow, IDisposable
                 }
 
                 break;
-            case 1:
+            case 2:
                 if (GatherBuddy.CollectablesWindow == null)
                 {
                     M3Snackbar.Show("The collectables window isn't available.", severity: M3Severity.Error);
@@ -178,6 +186,28 @@ public partial class Interface : M3ShellWindow, IDisposable
                 }
 
                 break;
+        }
+    }
+
+    private static void OpenDiscord()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(DiscordUrl) { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            GatherBuddy.Log.Error($"Could not open {DiscordUrl}:\n{e}");
+            M3Snackbar.Show("The Discord link couldn't be opened.", severity: M3Severity.Error);
+        }
+    }
+
+    protected override void PreDrawFold()
+    {
+        if (IsPinned || IsClickthrough)
+        {
+            IsPinned = false;
+            IsClickthrough = false;
         }
     }
 
