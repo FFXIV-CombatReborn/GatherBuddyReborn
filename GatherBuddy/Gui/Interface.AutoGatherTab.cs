@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
@@ -146,6 +147,7 @@ public partial class Interface
         public int NewGatherableIdx;
         public string ItemFilter = string.Empty;
         public AutoGatherList? ItemFilterList;
+        public uint ActiveQuantityInputId;
     }
 
     private readonly AutoGatherListsCache _autoGatherListsCache;
@@ -371,6 +373,7 @@ public partial class Interface
         {
             _autoGatherListsCache.ItemFilterList = list;
             _autoGatherListsCache.ItemFilter = string.Empty;
+            _autoGatherListsCache.ActiveQuantityInputId = 0;
         }
 
         ImGui.Dummy(new Vector2(0, M3.Space1));
@@ -446,119 +449,148 @@ public partial class Interface
         var rowHeight = M3Widgets.NumberFieldHeight;
 
         using (var style = M3Table.PushStyle())
-        using (var table = ImRaii.Table("##autoGatherItems", AutoGatherItemColumns.Length,
-                   ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.RowBg | ImGuiTableFlags.PadOuterX | ImGuiTableFlags.ScrollX))
         {
-            if (table)
+            var haveWidth = MathF.Ceiling(M3Text.Measure("Have", M3TextStyle.Label).X);
+            var wantWidth = MathF.Max(MathF.Ceiling(M3Text.Measure("Want", M3TextStyle.Label).X), M3Widgets.NumberFieldWidth(true));
+            var haveTexts = new string[visibleItemIndices.Count];
+            var quantities = new int[visibleItemIndices.Count];
+            for (var rowIdx = 0; rowIdx < visibleItemIndices.Count; ++rowIdx)
             {
-                foreach (var column in AutoGatherItemColumns)
-                {
-                    ImGui.TableSetupColumn(column);
-                }
+                var rowItem = list.Items[visibleItemIndices[rowIdx]];
+                var haveText = rowItem.GetTotalCount(list.UsesRetainerInventory).ToString("N0");
+                haveTexts[rowIdx] = haveText;
+                haveWidth = MathF.Max(haveWidth, MathF.Ceiling(ImGui.CalcTextSize(haveText).X));
 
-                var headerHeight = list.Items.Count > 0 ? M3Widgets.CheckboxHitSize().Y : 0f;
-                ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
-                foreach (var column in AutoGatherItemColumns)
+                var rowQuantity = list.Quantities.TryGetValue(rowItem, out var q) ? (int)q : 1;
+                quantities[rowIdx] = rowQuantity;
+                wantWidth = MathF.Max(wantWidth, M3Widgets.NumberFieldWidth(rowQuantity.ToString(CultureInfo.InvariantCulture), true));
+            }
+
+            wantWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _autoGatherListsCache.ActiveQuantityInputId, wantWidth, true));
+
+            using (var table = ImRaii.Table("##autoGatherItems", AutoGatherItemColumns.Length,
+                       ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.RowBg | ImGuiTableFlags.PadOuterX | ImGuiTableFlags.ScrollX))
+            {
+                if (table)
                 {
-                    ImGui.TableNextColumn();
-                    if (column == "On" && list.Items.Count > 0)
+                    foreach (var column in AutoGatherItemColumns)
                     {
-                        var allEnabled = true;
-                        var anyEnabled = false;
-                        foreach (var listItem in list.Items)
+                        ImGui.TableSetupColumn(column);
+                    }
+
+                    var headerHeight = list.Items.Count > 0 ? M3Widgets.CheckboxHitSize().Y : 0f;
+                    ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
+                    foreach (var column in AutoGatherItemColumns)
+                    {
+                        ImGui.TableNextColumn();
+                        if (column == "On" && list.Items.Count > 0)
                         {
-                            if (list.EnabledItems[listItem])
+                            var allEnabled = true;
+                            var anyEnabled = false;
+                            foreach (var listItem in list.Items)
                             {
-                                anyEnabled = true;
+                                if (list.EnabledItems[listItem])
+                                {
+                                    anyEnabled = true;
+                                }
+                                else
+                                {
+                                    allEnabled = false;
+                                }
                             }
-                            else
+
+                            if (M3Widgets.Checkbox("##allEnabled", ref allEnabled, mixed: !allEnabled && anyEnabled))
                             {
-                                allEnabled = false;
+                                _plugin.AutoGatherListsManager.ChangeEnabled(list, [.. list.Items], allEnabled);
                             }
+
+                            M3Tooltip.Hovered((allEnabled ? "Disable" : "Enable") + " all items in the list");
+                        }
+                        else if (!column.StartsWith("##"))
+                        {
+                            Ui.TableHeader(column, headerHeight);
+                        }
+                    }
+
+                    for (var rowIdx = 0; rowIdx < visibleItemIndices.Count; ++rowIdx)
+                    {
+                        var i = visibleItemIndices[rowIdx];
+                        var item = list.Items[i];
+                        using var id = ImRaii.PushId((int)item.ItemId);
+
+                        ImGui.TableNextColumn();
+                        DrawAutoGatherItemHandle(list, item, i, filteringItems, rowHeight);
+
+                        ImGui.TableNextColumn();
+                        Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
+                        if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Remove this item from the list", diameter: ImGui.GetFrameHeight()))
+                        {
+                            deleteIndex = i;
                         }
 
-                        if (M3Widgets.Checkbox("##allEnabled", ref allEnabled, mixed: !allEnabled && anyEnabled))
+                        ImGui.TableNextColumn();
+                        Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
+                        var enabled = list.EnabledItems[item];
+                        if (M3Widgets.Checkbox("##enabled", ref enabled))
                         {
-                            _plugin.AutoGatherListsManager.ChangeEnabled(list, [.. list.Items], allEnabled);
+                            _plugin.AutoGatherListsManager.ChangeEnabled(list, item, enabled);
                         }
 
-                        M3Tooltip.Hovered((allEnabled ? "Disable" : "Enable") + " all items in the list");
+                        ImGui.TableNextColumn();
+                        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
+                        var newIdx = -1;
+                        if (DrawFilteredGatherableCombo("##item", ref newIdx, item.Name[GatherBuddy.Language], comboWidth) && newIdx >= 0)
+                        {
+                            changeIndex = i;
+                            changeItemIndex = newIdx;
+                        }
+
+                        ImGui.TableNextColumn();
+                        Ui.RightAlignedFixed(haveTexts[rowIdx], haveWidth, rowHeight);
+                        M3Tooltip.Hovered(list.UsesRetainerInventory ? "In your inventory and retainers" : "In your inventory");
+
+                        ImGui.TableNextColumn();
+                        var quantity = quantities[rowIdx];
+                        var prevActiveId = ImGuiP.GetActiveID();
+                        if (M3Widgets.NumberField("##quantity", ref quantity, wantWidth, 1, 1, int.MaxValue))
+                        {
+                            _plugin.AutoGatherListsManager.ChangeQuantity(list, item, (uint)Math.Max(1, quantity));
+                        }
+
+                        Ui.TrackActiveInput(ref _autoGatherListsCache.ActiveQuantityInputId, prevActiveId);
+
+                        ImGui.TableNextColumn();
+                        Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
+                        if (DrawLocationInput(item, list.PreferredLocations.GetValueOrDefault(item), out var newLoc))
+                        {
+                            _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
+                        }
                     }
-                    else if (!column.StartsWith("##"))
+
+                    using var addId = ImRaii.PushId(-1);
+                    ImGui.TableNextColumn();
+                    ImGui.TableNextColumn();
+                    Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
+                    if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add the chosen item at the end of the list", M3ButtonStyle.Tonal,
+                            diameter: ImGui.GetFrameHeight(), enabled: _autoGatherListsCache.NewGatherableIdx < gatherables.Count))
                     {
-                        Ui.TableHeader(column, headerHeight);
+                        _plugin.AutoGatherListsManager.AddItem(list, gatherables[_autoGatherListsCache.NewGatherableIdx]);
                     }
-                }
-
-                foreach (var i in visibleItemIndices)
-                {
-                    var item = list.Items[i];
-                    using var id = ImRaii.PushId((int)item.ItemId);
 
                     ImGui.TableNextColumn();
-                    DrawAutoGatherItemHandle(list, item, i, filteringItems, rowHeight);
-
                     ImGui.TableNextColumn();
-                    Ui.CenterInRow(rowHeight, ImGui.GetFrameHeight());
-                    if (M3Widgets.IconButton("##delete", FontAwesomeIcon.Trash, "Remove this item from the list", diameter: ImGui.GetFrameHeight()))
+                    var idx = _autoGatherListsCache.NewGatherableIdx;
+                    if (DrawFilteredGatherableCombo("##newItem", ref idx, "Add an item", comboWidth))
                     {
-                        deleteIndex = i;
+                        _autoGatherListsCache.NewGatherableIdx = idx;
+                        _plugin.AutoGatherListsManager.AddItem(list, gatherables[idx]);
                     }
 
                     ImGui.TableNextColumn();
-                    Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
-                    var enabled = list.EnabledItems[item];
-                    if (M3Widgets.Checkbox("##enabled", ref enabled))
-                    {
-                        _plugin.AutoGatherListsManager.ChangeEnabled(list, item, enabled);
-                    }
+                    ImGui.Dummy(new Vector2(haveWidth, 0f));
 
                     ImGui.TableNextColumn();
-                    Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
-                    var newIdx = -1;
-                    if (DrawFilteredGatherableCombo("##item", ref newIdx, item.Name[GatherBuddy.Language], comboWidth) && newIdx >= 0)
-                    {
-                        changeIndex = i;
-                        changeItemIndex = newIdx;
-                    }
-
-                    ImGui.TableNextColumn();
-                    var invTotal = item.GetTotalCount(list.UsesRetainerInventory);
-                    var quantity = list.Quantities.TryGetValue(item, out var q) ? (int)q : 1;
-                    Ui.RightAligned(invTotal.ToString("N0"), rowHeight: rowHeight);
-                    M3Tooltip.Hovered(list.UsesRetainerInventory ? "In your inventory and retainers" : "In your inventory");
-
-                    ImGui.TableNextColumn();
-                    if (M3Widgets.NumberField("##quantity", ref quantity, 120f * M3.Scale, 1, 1, int.MaxValue))
-                    {
-                        _plugin.AutoGatherListsManager.ChangeQuantity(list, item, (uint)Math.Max(1, quantity));
-                    }
-
-                    ImGui.TableNextColumn();
-                    Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
-                    if (DrawLocationInput(item, list.PreferredLocations.GetValueOrDefault(item), out var newLoc))
-                    {
-                        _plugin.AutoGatherListsManager.ChangePreferredLocation(list, item, newLoc);
-                    }
-                }
-
-                using var addId = ImRaii.PushId(-1);
-                ImGui.TableNextColumn();
-                ImGui.TableNextColumn();
-                Ui.CenterInRow(M3Widgets.ComboHeight, ImGui.GetFrameHeight());
-                if (M3Widgets.IconButton("##add", FontAwesomeIcon.Plus, "Add the chosen item at the end of the list", M3ButtonStyle.Tonal,
-                        diameter: ImGui.GetFrameHeight(), enabled: _autoGatherListsCache.NewGatherableIdx < gatherables.Count))
-                {
-                    _plugin.AutoGatherListsManager.AddItem(list, gatherables[_autoGatherListsCache.NewGatherableIdx]);
-                }
-
-                ImGui.TableNextColumn();
-                ImGui.TableNextColumn();
-                var idx = _autoGatherListsCache.NewGatherableIdx;
-                if (DrawFilteredGatherableCombo("##newItem", ref idx, "Add an item", comboWidth))
-                {
-                    _autoGatherListsCache.NewGatherableIdx = idx;
-                    _plugin.AutoGatherListsManager.AddItem(list, gatherables[idx]);
+                    ImGui.Dummy(new Vector2(wantWidth, 0f));
                 }
             }
         }

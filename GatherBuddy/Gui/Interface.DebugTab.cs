@@ -871,6 +871,18 @@ public partial class Interface
             ImGui.TableNextRow();
             drawRow(datum);
         }
+
+        if (flags.HasFlag(ImGuiTableFlags.SizingFixedFit))
+        {
+            using var pad = ImRaii.PushStyle(ImGuiStyleVar.CellPadding, new Vector2(ImGui.GetStyle().CellPadding.X, 0f));
+            ImGui.TableNextRow();
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, 0);
+            foreach (var title in columnTitles)
+            {
+                ImGui.TableNextColumn();
+                ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure(title, M3TextStyle.Label).X), 0f));
+            }
+        }
     }
 
     private void DrawDebugFishHelper()

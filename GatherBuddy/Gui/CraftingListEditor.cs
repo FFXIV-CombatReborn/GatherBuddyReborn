@@ -10,6 +10,7 @@ using Lumina.Excel.Sheets;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,6 +40,8 @@ public class CraftingListEditor
     }
     private readonly CraftingListDefinition _list;
     private int _searchQuantity = 1;
+    private uint _activeSearchQuantityInputId;
+    private uint _activeRecipeQuantityInputId;
     private Recipe? _selectedRecipe = null;
     private readonly Dictionary<uint, string> _recipeLabels = [];
     private readonly Dictionary<uint, string> _recipeNames = [];
@@ -1060,7 +1063,13 @@ public class CraftingListEditor
         DrawRecipePicker(CardContentWidth());
         ImGui.Dummy(new Vector2(0f, M3.Space1));
 
-        M3Widgets.NumberField("##quantity", ref _searchQuantity, M3Widgets.NumberFieldWidth(true), 1, 1);
+        var searchQtyWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(
+            ref _activeSearchQuantityInputId,
+            M3Widgets.NumberFieldWidth(_searchQuantity.ToString(CultureInfo.InvariantCulture), true),
+            true));
+        var prevSearchActiveId = ImGuiP.GetActiveID();
+        M3Widgets.NumberField("##quantity", ref _searchQuantity, searchQtyWidth, 1, 1);
+        Ui.TrackActiveInput(ref _activeSearchQuantityInputId, prevSearchActiveId);
         M3Tooltip.Hovered("How many times to craft it");
         ImGui.SameLine(0, M3.Space2);
 
@@ -1259,13 +1268,21 @@ public class CraftingListEditor
         }
 
         var recipeRows = GetRecipeDisplayRows();
+        var quantityWidth = M3Widgets.NumberFieldWidth(true);
+        for (var i = 0; i < _list.Recipes.Count; ++i)
+        {
+            quantityWidth = MathF.Max(quantityWidth, M3Widgets.NumberFieldWidth(_list.Recipes[i].Quantity.ToString(CultureInfo.InvariantCulture), true));
+        }
+
+        quantityWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _activeRecipeQuantityInputId, quantityWidth, true));
+
         var clipper = ImGui.ImGuiListClipper();
         clipper.Begin(recipeRows.Count);
         while (clipper.Step())
         {
             for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
             {
-                DrawRecipeListRow(recipeRows[i], indicesToRemove);
+                DrawRecipeListRow(recipeRows[i], indicesToRemove, quantityWidth);
             }
         }
 
@@ -1723,7 +1740,7 @@ public class CraftingListEditor
         return rows;
     }
 
-    private void DrawRecipeListRow(RecipeDisplayRow row, List<int> indicesToRemove)
+    private void DrawRecipeListRow(RecipeDisplayRow row, List<int> indicesToRemove, float quantityWidth)
     {
         if (row.ListIndex >= _list.Recipes.Count)
         {
@@ -1737,7 +1754,6 @@ public class CraftingListEditor
 
         var rowHeight = M3Widgets.NumberFieldHeight;
         var buttonSize = MathF.Min(M3Widgets.IconButtonSize, rowHeight);
-        var quantityWidth = M3Widgets.NumberFieldWidth(true);
         var gap = M3.Space1;
         var rowWidth = CardContentWidth();
         var labelWidth = MathF.Max(60f * scale, rowWidth - quantityWidth - buttonSize * 2f - gap * 2f);
@@ -1803,6 +1819,7 @@ public class CraftingListEditor
         var io = ImGui.GetIO();
         var quantity = item.Quantity;
         var step = io.KeyShift ? 100 : io.KeyCtrl ? 10 : 1;
+        var prevActiveId = ImGuiP.GetActiveID();
         if (M3Widgets.NumberField("##qty", ref quantity, quantityWidth, step, 1))
         {
             quantity = Math.Max(1, quantity);
@@ -1812,6 +1829,8 @@ public class CraftingListEditor
                 SaveListAndRefresh(false);
             }
         }
+
+        Ui.TrackActiveInput(ref _activeRecipeQuantityInputId, prevActiveId);
 
         M3Tooltip.Hovered("Click - or + to change it by 1.\nHold Ctrl for 10, Shift for 100.");
 

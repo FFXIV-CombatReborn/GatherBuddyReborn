@@ -73,6 +73,7 @@ public partial class VulcanWindow
     private readonly Dictionary<uint, string> _vendorCurrencyNames = [];
     private readonly Dictionary<uint, string> _vendorZoneNames = [];
     private readonly Dictionary<(VendorShopType ShopType, uint ItemId, uint CurrencyItemId, uint Cost), int> _vendorPurchaseQuantities = [];
+    private uint _activeVendorQuantityInputId;
     private static Vector4 VendorMarkerButtonColor
         => M3.Scheme.Info;
 
@@ -105,8 +106,11 @@ public partial class VulcanWindow
     private void SetVendorPurchaseQuantity(VendorShopEntry entry, int quantity)
         => _vendorPurchaseQuantities[VendorQuantityKey(entry)] = System.Math.Max(1, quantity);
 
-    private static float GetVendorQuantityInputWidth()
-        => System.Math.Max(VulcanUiScaling.Scaled(80f), ImGui.CalcTextSize("99999").X + ImGui.GetStyle().FramePadding.X * 2f + VulcanUiScaling.Scaled(12f));
+    private float GetVendorQuantityInputWidth()
+    {
+        var width = MathF.Max(MathF.Ceiling(M3Text.Measure("Quantity", M3TextStyle.Label).X), M3Widgets.NumberFieldWidth("99999", true));
+        return MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _activeVendorQuantityInputId, width, true));
+    }
 
     private static void SetVendorNpcPref(VendorShopEntry entry, VendorNpc vendor)
         => VendorPreferenceHelper.SetPreferredNpc(entry, vendor);
@@ -963,6 +967,7 @@ public partial class VulcanWindow
         DrawVendorSortControl();
 
         var showAutomationControls = _vendorCategory is VendorShopType.GilShop or VendorShopType.SpecialCurrency or VendorShopType.GrandCompanySeals;
+        var quantityWidth = showAutomationControls ? GetVendorQuantityInputWidth() : 0f;
         string[] headers = showAutomationControls
             ? ["Item", "Cost", "Quantity", "Vendor", "Location", "##flag", "##list", "##go"]
             : ["Item", "Cost", "Vendor", "Location", "##flag", "##go"];
@@ -980,7 +985,7 @@ public partial class VulcanWindow
         ImGui.TableSetupColumn("Cost", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(110f));
         if (showAutomationControls)
         {
-            ImGui.TableSetupColumn("Quantity", ImGuiTableColumnFlags.WidthFixed, GetVendorQuantityInputWidth());
+            ImGui.TableSetupColumn("Quantity", ImGuiTableColumnFlags.WidthFixed);
         }
 
         ImGui.TableSetupColumn("Vendor", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(180f));
@@ -1010,15 +1015,24 @@ public partial class VulcanWindow
         {
             for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
             {
-                DrawVendorTableRow(_vendorDisplay[i], showAutomationControls, iconSize);
+                DrawVendorTableRow(_vendorDisplay[i], showAutomationControls, iconSize, quantityWidth);
             }
         }
 
         clipper.End();
         clipper.Destroy();
+
+        if (limit == 0 && showAutomationControls)
+        {
+            using var pad = ImRaii.PushStyle(ImGuiStyleVar.CellPadding, new Vector2(ImGui.GetStyle().CellPadding.X, 0f));
+            ImGui.TableNextRow();
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, 0);
+            ImGui.TableSetColumnIndex(2);
+            ImGui.Dummy(new Vector2(quantityWidth, 0f));
+        }
     }
 
-    private void DrawVendorTableRow(VendorDisplayRow row, bool showGilControls, float iconSize)
+    private void DrawVendorTableRow(VendorDisplayRow row, bool showGilControls, float iconSize, float quantityWidth)
     {
         var entry = row.Entry;
         var selectedNpc = GetSelectedVendorOption(row);
@@ -1045,7 +1059,7 @@ public partial class VulcanWindow
         if (showGilControls)
         {
             ImGui.TableNextColumn();
-            DrawVendorQuantityCell(row);
+            DrawVendorQuantityCell(row, quantityWidth);
         }
 
         ImGui.TableNextColumn();
@@ -1069,14 +1083,17 @@ public partial class VulcanWindow
         DrawVendorGoButton(row, selectedNpc);
     }
 
-    private void DrawVendorQuantityCell(VendorDisplayRow row)
+    private void DrawVendorQuantityCell(VendorDisplayRow row, float quantityWidth)
     {
         var quantity = GetVendorPurchaseQuantity(row.Entry);
         using var id = ImRaii.PushId(row.IdSuffix);
-        if (M3Widgets.NumberField("##vendorQty", ref quantity, GetVendorQuantityInputWidth(), 1, 1, 99999))
+        var prevActiveId = ImGuiP.GetActiveID();
+        if (M3Widgets.NumberField("##vendorQty", ref quantity, quantityWidth, 1, 1, 99999))
         {
             SetVendorPurchaseQuantity(row.Entry, quantity);
         }
+
+        Ui.TrackActiveInput(ref _activeVendorQuantityInputId, prevActiveId);
     }
 
     private static void DrawVendorNpcCell(VendorDisplayRow row, VendorDisplayNpcOption? selectedNpc, float rowHeight)

@@ -9,6 +9,7 @@ using Lumina.Excel.Sheets;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
@@ -55,6 +56,7 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
     private string _listNameInput = string.Empty;
     private bool _focusListNameInput;
     private bool _openListNamePopup;
+    private uint _activeTargetInputId;
 
     public VendorBuyListWindow()
         : base(WindowId, "Vendor Buy Lists", DefaultSize, DefaultConstraints)
@@ -563,6 +565,31 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         const ImGuiTableFlags tableFlags = ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg
                                          | ImGuiTableFlags.SizingStretchProp;
         using var panel = VulcanUiStyle.PushTheme();
+        var costWidth = MathF.Ceiling(ImGui.CalcTextSize("Cost").X);
+        var wantWidth = MathF.Max(MathF.Ceiling(ImGui.CalcTextSize("Want").X), M3Widgets.NumberFieldWidth(true));
+        var haveWidth = MathF.Ceiling(ImGui.CalcTextSize("Have").X);
+        var needWidth = MathF.Max(MathF.Ceiling(ImGui.CalcTextSize("Need").X), MathF.Ceiling(ImGui.CalcTextSize("Off").X));
+        var currentCounts = new int[entries.Count];
+        var remainings = new uint[entries.Count];
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            costWidth = MathF.Max(costWidth, MathF.Ceiling(ImGui.CalcTextSize($"{entry.Cost:N0}").X));
+            var targetCount = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
+            wantWidth = MathF.Max(wantWidth, M3Widgets.NumberFieldWidth(targetCount.ToString(CultureInfo.InvariantCulture), true));
+            var currentCount = System.Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
+            currentCounts[i] = currentCount;
+            haveWidth = MathF.Max(haveWidth, MathF.Ceiling(ImGui.CalcTextSize($"{currentCount:N0}").X));
+            var remaining = VendorBuyListManager.GetRemainingQuantity(entry);
+            remainings[i] = remaining;
+            if (entry.Enabled && remaining > 0)
+            {
+                needWidth = MathF.Max(needWidth, MathF.Ceiling(ImGui.CalcTextSize($"{remaining:N0}").X));
+            }
+        }
+
+        wantWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _activeTargetInputId, wantWidth, true));
+
         if (!ImGui.BeginTable("##vendorBuyListTable", 8, tableFlags, new Vector2(-1, -1)))
         {
             return;
@@ -570,10 +597,10 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1.25f);
-        ImGui.TableSetupColumn("Cost", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(58f));
-        ImGui.TableSetupColumn("Want", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(86f));
-        ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
-        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, VulcanUiScaling.Scaled(54f));
+        ImGui.TableSetupColumn("Cost", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("Want", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("Have", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed);
         ImGui.TableSetupColumn("Vendor", ImGuiTableColumnFlags.WidthStretch, 0.80f);
         ImGui.TableSetupColumn("Location", ImGuiTableColumnFlags.WidthStretch, 1.00f);
         ImGui.TableSetupColumn("##remove", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight() + VulcanUiScaling.Scaled(8f));
@@ -587,7 +614,7 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         {
             for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
             {
-                DrawEntryRow(entries[i], manager, iconVec, iconSize);
+                DrawEntryRow(entries[i], manager, iconVec, iconSize, currentCounts[i], remainings[i], costWidth, wantWidth, haveWidth, needWidth);
             }
         }
 
@@ -659,7 +686,8 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         }
     }
 
-    private void DrawEntryRow(VendorBuyListEntry entry, VendorBuyListManager manager, Vector2 iconVec, float iconSize)
+    private void DrawEntryRow(VendorBuyListEntry entry, VendorBuyListManager manager, Vector2 iconVec, float iconSize, int currentCount, uint remaining,
+        float costWidth, float wantWidth, float haveWidth, float needWidth)
     {
         var s = M3.Scheme;
         var success = M3.Severity(M3Severity.Success);
@@ -668,8 +696,6 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         var selectedVendor = GetSelectedVendorOption(vendorOptions, resolvedVendor);
         var isActive = manager.ActiveEntryId == entry.Id;
         var isEnabled = entry.Enabled;
-        var currentCount = System.Math.Max(0, VendorBuyListManager.GetCurrentInventoryAndArmoryCount(entry.ItemId));
-        var remaining = VendorBuyListManager.GetRemainingQuantity(entry);
         var targetCount = entry.TargetQuantity > int.MaxValue ? int.MaxValue : (int)entry.TargetQuantity;
 
         var rowHeight = M3Widgets.NumberFieldHeight;
@@ -707,30 +733,33 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
         M3Tooltip.Hovered(isActive ? $"{entry.ItemName}\nBuying this now." : entry.ItemName);
 
         ImGui.TableNextColumn();
-        Ui.RowText($"{entry.Cost:N0}", rowHeight);
+        Ui.RowTextFixed($"{entry.Cost:N0}", costWidth, rowHeight);
 
         ImGui.TableNextColumn();
-        if (M3Widgets.NumberField($"##vendorBuyListTarget_{entry.Id}", ref targetCount, ImGui.GetContentRegionAvail().X, 1, 1, 99999,
+        var prevActiveId = ImGuiP.GetActiveID();
+        if (M3Widgets.NumberField($"##vendorBuyListTarget_{entry.Id}", ref targetCount, wantWidth, 1, 1, 99999,
                 enabled: !(isActive || manager.IsBusy)))
         {
             manager.UpdateTargetQuantity(entry.Id, (uint)System.Math.Max(1, targetCount));
         }
 
+        Ui.TrackActiveInput(ref _activeTargetInputId, prevActiveId);
+
         ImGui.TableNextColumn();
-        Ui.RowText($"{currentCount:N0}", rowHeight);
+        Ui.RowTextFixed($"{currentCount:N0}", haveWidth, rowHeight);
 
         ImGui.TableNextColumn();
         if (!entry.Enabled)
         {
-            Ui.RowText("Off", rowHeight, M3TextStyle.Faint);
+            Ui.RowTextFixed("Off", needWidth, rowHeight, M3TextStyle.Faint);
         }
         else if (remaining > 0)
         {
-            Ui.RowText($"{remaining:N0}", rowHeight, success);
+            Ui.RowTextFixed($"{remaining:N0}", needWidth, rowHeight, success);
         }
         else
         {
-            Ui.RowText("0", rowHeight, M3TextStyle.Faint);
+            Ui.RowTextFixed("0", needWidth, rowHeight, M3TextStyle.Faint);
         }
 
         ImGui.TableNextColumn();
