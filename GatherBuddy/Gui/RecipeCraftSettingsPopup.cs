@@ -9,6 +9,7 @@ using Lumina.Excel.Sheets;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
@@ -69,11 +70,9 @@ public class RecipeCraftSettingsPopup
 
     private readonly List<IngredientData> _ingredients = [];
     private bool _useAllNQ = false;
+    private uint _activeIngredientHqInputId;
     public System.Action? OnSaved { get; set; }
     private static float SettingLabelWidth => VulcanUiScaling.Scaled(130f);
-    private static float IngredientCountColumnWidth => VulcanUiScaling.Scaled(46f);
-    private static float IngredientUseHqColumnWidth => VulcanUiScaling.Scaled(130f);
-    private static float IngredientInputWidth => VulcanUiScaling.Scaled(120f);
 
     public void Open(uint recipeId, string recipeName)
     {
@@ -1157,6 +1156,37 @@ public class RecipeCraftSettingsPopup
         }
 
         using var style = M3Table.PushStyle();
+        var needWidth = MathF.Ceiling(M3Text.Measure("Need", M3TextStyle.Label).X);
+        var nqWidth = MathF.Ceiling(M3Text.Measure("NQ", M3TextStyle.Label).X);
+        var hqWidth = MathF.Ceiling(M3Text.Measure("HQ", M3TextStyle.Label).X);
+        var useHqWidth = MathF.Ceiling(M3Text.Measure("Use HQ", M3TextStyle.Label).X);
+        var anyCanBeHq = false;
+        for (var i = 0; i < _ingredients.Count; i++)
+        {
+            var ing = _ingredients[i];
+            needWidth = MathF.Max(needWidth, MathF.Ceiling(ImGui.CalcTextSize(ing.TotalNeeded.ToString()).X));
+            nqWidth = MathF.Max(nqWidth, MathF.Ceiling(ImGui.CalcTextSize(ing.AvailableNQ.ToString()).X));
+            hqWidth = MathF.Max(hqWidth, MathF.Ceiling(ImGui.CalcTextSize(ing.AvailableHQ.ToString()).X));
+            if (ing.CanBeHQ)
+            {
+                anyCanBeHq = true;
+                useHqWidth = MathF.Max(useHqWidth, M3Widgets.NumberFieldWidth(ing.DesiredHQ.ToString(CultureInfo.InvariantCulture), true));
+            }
+            else
+            {
+                useHqWidth = MathF.Max(useHqWidth, MathF.Ceiling(ImGui.CalcTextSize("N/A").X));
+            }
+        }
+
+        if (anyCanBeHq)
+        {
+            useHqWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _activeIngredientHqInputId, useHqWidth, true));
+        }
+        else if (_activeIngredientHqInputId != 0)
+        {
+            _activeIngredientHqInputId = 0;
+        }
+
         using var table = ImRaii.Table("##ingredients", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.PadOuterX,
             new Vector2(ImGui.GetContentRegionAvail().X - M3Card.RightInset, 0));
         if (!table)
@@ -1165,10 +1195,10 @@ public class RecipeCraftSettingsPopup
         }
 
         ImGui.TableSetupColumn("Ingredient", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
-        ImGui.TableSetupColumn("NQ", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
-        ImGui.TableSetupColumn("HQ", ImGuiTableColumnFlags.WidthFixed, IngredientCountColumnWidth);
-        ImGui.TableSetupColumn("Use HQ", ImGuiTableColumnFlags.WidthFixed, IngredientUseHqColumnWidth);
+        ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("NQ", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("HQ", ImGuiTableColumnFlags.WidthFixed);
+        ImGui.TableSetupColumn("Use HQ", ImGuiTableColumnFlags.WidthFixed);
         ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
         ImGui.TableNextColumn();
         M3Table.Header("Ingredient", center: false);
@@ -1182,7 +1212,6 @@ public class RecipeCraftSettingsPopup
         M3Table.Header("Use HQ", "How many HQ ones to use");
 
         var rowHeight = M3Widgets.NumberFieldHeight;
-        var lineHeight = ImGui.GetTextLineHeight();
         for (var i = 0; i < _ingredients.Count; i++)
         {
             var ing = _ingredients[i];
@@ -1190,27 +1219,26 @@ public class RecipeCraftSettingsPopup
             ImGui.TableNextColumn();
             Ui.RowText(ing.ItemName, rowHeight);
             ImGui.TableNextColumn();
-            Ui.CenterInRow(rowHeight, lineHeight);
-            M3Table.CenteredText(ing.TotalNeeded.ToString());
+            Ui.CenteredFixed(ing.TotalNeeded.ToString(), needWidth, rowHeight);
             ImGui.TableNextColumn();
-            Ui.CenterInRow(rowHeight, lineHeight);
-            M3Table.CenteredText(ing.AvailableNQ.ToString(), ing.AvailableNQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : null);
+            Ui.CenteredFixed(ing.AvailableNQ.ToString(), nqWidth, rowHeight, ing.AvailableNQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : null);
             ImGui.TableNextColumn();
-            Ui.CenterInRow(rowHeight, lineHeight);
-            M3Table.CenteredText(ing.AvailableHQ.ToString(), ing.AvailableHQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : M3.Scheme.Info);
+            Ui.CenteredFixed(ing.AvailableHQ.ToString(), hqWidth, rowHeight, ing.AvailableHQ == 0 ? M3Text.ColorOf(M3TextStyle.Faint) : M3.Scheme.Info);
             ImGui.TableNextColumn();
             if (ing.CanBeHQ)
             {
                 var desiredHQ = ing.DesiredHQ;
-                if (M3Widgets.NumberField("##hq", ref desiredHQ, IngredientInputWidth, 1, 0, ing.TotalNeeded))
+                var prevActiveId = ImGuiP.GetActiveID();
+                if (M3Widgets.NumberField("##hq", ref desiredHQ, useHqWidth, 1, 0, ing.TotalNeeded))
                 {
                     ing.DesiredHQ = Math.Clamp(desiredHQ, 0, ing.TotalNeeded);
                 }
+
+                Ui.TrackActiveInput(ref _activeIngredientHqInputId, prevActiveId);
             }
             else
             {
-                Ui.CenterInRow(rowHeight, lineHeight);
-                M3Table.CenteredText("N/A", M3Text.ColorOf(M3TextStyle.Faint));
+                Ui.CenteredFixed("N/A", useHqWidth, rowHeight, M3Text.ColorOf(M3TextStyle.Faint));
             }
         }
     }

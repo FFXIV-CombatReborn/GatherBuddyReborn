@@ -52,7 +52,7 @@
     <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" />
     <PackageReference Include="LuminaSupplemental.Excel" Version="7.0.1" />
     <PackageReference Include="MessagePack" Version="3.1.12" />
-    <PackageReference Include="RebornMaterial" Version="7.5.8.4" />
+    <PackageReference Include="RebornMaterial" Version="7.5.8.5" />
   </ItemGroup>
 
 	<ItemGroup>

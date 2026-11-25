@@ -7,6 +7,8 @@ using RebornMaterial;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace GatherBuddy.RebornUI;
 
@@ -165,6 +167,104 @@ internal static class Ui
         else
         {
             ImGui.TextUnformatted(text);
+        }
+    }
+
+    public static void RightAlignedFixed(string text, float width, float rowHeight)
+    {
+        var size = ImGui.CalcTextSize(text);
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.Dummy(new Vector2(width, rowHeight));
+        ImGui.GetWindowDrawList().AddText(
+            new Vector2(min.X + MathF.Max(0f, width - size.X), min.Y + (rowHeight - size.Y) * 0.5f),
+            ImGui.GetColorU32(ImGuiCol.Text),
+            text);
+    }
+
+    public static void RowTextFixed(string text, float width, float rowHeight, Vector4? color = null)
+    {
+        var size = ImGui.CalcTextSize(text);
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.Dummy(new Vector2(width, rowHeight));
+        ImGui.GetWindowDrawList().AddText(
+            new Vector2(min.X, min.Y + (rowHeight - size.Y) * 0.5f),
+            color.HasValue ? M3.U32(color.Value) : ImGui.GetColorU32(ImGuiCol.Text),
+            text);
+    }
+
+    public static void RowTextFixed(string text, float width, float rowHeight, M3TextStyle style)
+    {
+        using var scope = M3Text.Push(style);
+        RowTextFixed(text, width, rowHeight);
+    }
+
+    public static void CenteredFixed(string text, float width, float rowHeight, Vector4? color = null)
+    {
+        var size = ImGui.CalcTextSize(text);
+        var min = ImGui.GetCursorScreenPos();
+        ImGui.Dummy(new Vector2(width, rowHeight));
+        ImGui.GetWindowDrawList().AddText(
+            new Vector2(min.X + MathF.Max(0f, (width - size.X) * 0.5f), min.Y + (rowHeight - size.Y) * 0.5f),
+            color.HasValue ? M3.U32(color.Value) : ImGui.GetColorU32(ImGuiCol.Text),
+            text);
+    }
+
+    public static string? GetActiveInputText(uint id)
+    {
+        if (id == 0 || ImGuiP.GetActiveID() != id)
+        {
+            return null;
+        }
+
+        var state = ImGuiP.GetInputTextState(id);
+        if (state.IsNull)
+        {
+            return null;
+        }
+
+        if (state.CurLenW > 0)
+        {
+            var len = Math.Min(state.CurLenW, state.TextW.Size);
+            if (len > 0)
+            {
+                return new string(MemoryMarshal.Cast<ushort, char>(state.TextW.AsSpan().Slice(0, len)));
+            }
+        }
+
+        if (state.TextAIsValid && state.CurLenA > 0)
+        {
+            var len = Math.Min(state.CurLenA, state.TextA.Size);
+            if (len > 0)
+            {
+                return Encoding.UTF8.GetString(state.TextA.AsSpan().Slice(0, len));
+            }
+        }
+
+        return null;
+    }
+
+    public static float ActiveNumberFieldWidth(ref uint activeId, float currentWidth, bool steppers, string? unit = null)
+    {
+        var activeText = GetActiveInputText(activeId);
+        if (activeText != null)
+        {
+            return MathF.Max(currentWidth, M3Widgets.NumberFieldWidth(activeText, steppers, unit));
+        }
+
+        if (activeId != 0)
+        {
+            activeId = 0;
+        }
+
+        return currentWidth;
+    }
+
+    public static void TrackActiveInput(ref uint activeId, uint prevActiveId)
+    {
+        var currentActiveId = ImGuiP.GetActiveID();
+        if (currentActiveId != 0 && currentActiveId != prevActiveId && !ImGuiP.GetInputTextState(currentActiveId).IsNull)
+        {
+            activeId = currentActiveId;
         }
     }
 

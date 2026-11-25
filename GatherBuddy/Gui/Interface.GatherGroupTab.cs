@@ -399,6 +399,15 @@ public partial class Interface
         {
             _gatherGroupCache.NewItemIdx = idx;
         }
+
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Eorzea time", M3TextStyle.Label).X), 0f));
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Location", M3TextStyle.Label).X), 0f));
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Length", M3TextStyle.Label).X), 0f));
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Annotation", M3TextStyle.Label).X), 0f));
     }
 
     private static void DrawNameField(TimedGroup group)

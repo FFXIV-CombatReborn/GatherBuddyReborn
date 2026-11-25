@@ -9,6 +9,7 @@ using GatherBuddy.Time;
 using RebornMaterial;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
@@ -130,6 +131,7 @@ public partial class Interface
         public bool NewPrintMessage;
         public int NewSoundIdx;
         public int NewSecondOffset;
+        public uint ActiveOffsetInputId;
 
         public Alarm CreateAlarm()
             => new(GatherBuddy.UptimeManager.TimedGatherables[NewItemIdx])
@@ -158,7 +160,7 @@ public partial class Interface
         return M3Widgets.Combo(id, ref index, items.Length, i => items[i].Name[GatherBuddy.Language], AlarmItemWidth, "Choose an item", true);
     }
 
-    private void DrawAlarmInfo(ref int alarmIdx, AlarmGroup group)
+    private void DrawAlarmInfo(ref int alarmIdx, AlarmGroup group, float offsetWidth)
     {
         var alarm = group.Alarms[alarmIdx];
         using var id = ImRaii.PushId(alarmIdx);
@@ -206,10 +208,13 @@ public partial class Interface
 
         ImGui.TableNextColumn();
         var secondOffset = alarm.SecondOffset;
-        if (M3Widgets.NumberField("##offset", ref secondOffset, SetInputWidth * 0.6f, 10, 0, RealTime.SecondsPerDay, "s"))
+        var prevActiveId = ImGuiP.GetActiveID();
+        if (M3Widgets.NumberField("##offset", ref secondOffset, offsetWidth, 10, 0, RealTime.SecondsPerDay, "s"))
         {
             _plugin.AlarmManager.ChangeAlarmOffset(group, alarmIdx, Math.Clamp(secondOffset, 0, RealTime.SecondsPerDay));
         }
+
+        Ui.TrackActiveInput(ref _alarmCache.ActiveOffsetInputId, prevActiveId);
 
         M3Tooltip.Hovered("Trigger this alarm this many seconds before the item is next available.");
 
@@ -328,6 +333,19 @@ public partial class Interface
     private void DrawAlarmTable(AlarmGroup group)
     {
         using var style = M3Table.PushStyle();
+        var offsetWidth = MathF.Max(
+            MathF.Ceiling(M3Text.Measure("Seconds early", M3TextStyle.Label).X),
+            M3Widgets.NumberFieldWidth(_alarmCache.NewSecondOffset.ToString(CultureInfo.InvariantCulture), true, "s"));
+        for (var i = 0; i < group.Alarms.Count; ++i)
+        {
+            offsetWidth = MathF.Max(offsetWidth, M3Widgets.NumberFieldWidth(group.Alarms[i].SecondOffset.ToString(CultureInfo.InvariantCulture), true, "s"));
+        }
+
+        offsetWidth = MathF.Ceiling(Ui.ActiveNumberFieldWidth(ref _alarmCache.ActiveOffsetInputId, offsetWidth, true, "s"));
+        var onHeaderWidth = MathF.Ceiling(M3Text.Measure("On", M3TextStyle.Label).X);
+        var chatHeaderWidth = MathF.Ceiling(M3Text.Measure("Chat", M3TextStyle.Label).X);
+        var checkboxWidth = M3Widgets.CheckboxHitSize().X;
+
         using var table = ImRaii.Table("##alarms", AlarmColumns.Length, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.NoKeepColumnsVisible
           | ImGuiTableFlags.RowBg | ImGuiTableFlags.PadOuterX);
         if (!table)
@@ -343,7 +361,7 @@ public partial class Interface
         DrawAlarmTableHeader(group);
         for (var i = 0; i < group.Alarms.Count; ++i)
         {
-            DrawAlarmInfo(ref i, group);
+            DrawAlarmInfo(ref i, group, offsetWidth);
         }
 
         using var id = ImRaii.PushId(-1);
@@ -361,17 +379,35 @@ public partial class Interface
         ImGui.TableNextColumn();
         Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         M3Widgets.Checkbox("##enabled", ref _alarmCache.NewEnabled);
+        if (onHeaderWidth > checkboxWidth)
+        {
+            ImGui.SameLine(0f, 0f);
+            ImGui.Dummy(new Vector2(onHeaderWidth - checkboxWidth, 0f));
+        }
+
         ImGui.TableNextColumn();
         Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         DrawTimedItemCombo("##item", ref _alarmCache.NewItemIdx);
         ImGui.TableNextColumn();
-        M3Widgets.NumberField("##offset", ref _alarmCache.NewSecondOffset, SetInputWidth * 0.6f, 10, 0, RealTime.SecondsPerDay, "s");
+        var prevNewOffsetActiveId = ImGuiP.GetActiveID();
+        M3Widgets.NumberField("##offset", ref _alarmCache.NewSecondOffset, offsetWidth, 10, 0, RealTime.SecondsPerDay, "s");
+        Ui.TrackActiveInput(ref _alarmCache.ActiveOffsetInputId, prevNewOffsetActiveId);
         ImGui.TableNextColumn();
         Ui.CenterInRow(rowHeight, M3Widgets.CheckboxHitSize().Y);
         M3Widgets.Checkbox("##print", ref _alarmCache.NewPrintMessage);
+        if (chatHeaderWidth > checkboxWidth)
+        {
+            ImGui.SameLine(0f, 0f);
+            ImGui.Dummy(new Vector2(chatHeaderWidth - checkboxWidth, 0f));
+        }
+
         ImGui.TableNextColumn();
         Ui.CenterInRow(rowHeight, M3Widgets.ComboHeight);
         M3Widgets.Combo("##sound", ref _alarmCache.NewSoundIdx, AlarmCache.SoundIdNames, AlarmSoundWidth);
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Location", M3TextStyle.Label).X), 0f));
+        ImGui.TableNextColumn();
+        ImGui.Dummy(new Vector2(MathF.Ceiling(M3Text.Measure("Next", M3TextStyle.Label).X), 0f));
     }
 
     private void DrawAlarmInfo(AlarmGroup group, int idx)
