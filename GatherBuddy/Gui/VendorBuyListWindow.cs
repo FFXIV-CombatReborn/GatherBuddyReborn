@@ -658,8 +658,7 @@ public sealed partial class VendorBuyListWindow : M3PanelWindow
             _focusListNameInput = false;
         }
 
-        M3TextField.Draw("##vendorBuyListNameInput", "List name", ref _listNameInput, ImGui.GetContentRegionAvail().X, 128);
-        var submitted = ImGui.IsItemDeactivated() && (ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter));
+        var submitted = Ui.TextField("##vendorBuyListNameInput", "List name", ref _listNameInput, ImGui.GetContentRegionAvail().X, 128).SubmittedWithEnter;
 
         var pressed = M3Dialog.Actions(
         [

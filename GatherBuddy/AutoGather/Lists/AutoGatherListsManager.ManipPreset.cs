@@ -1,4 +1,5 @@
 using GatherBuddy.AutoGather.Extensions;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;
 using GatherBuddy.Interfaces;

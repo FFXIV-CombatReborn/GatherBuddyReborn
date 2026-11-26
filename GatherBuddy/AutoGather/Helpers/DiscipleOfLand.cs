@@ -2,7 +2,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using GatherBuddy.Utilities;
 using System;
 
-namespace GatherBuddy.AutoGather
+namespace GatherBuddy.AutoGather.Helpers
 {
     public static class DiscipleOfLand
     {

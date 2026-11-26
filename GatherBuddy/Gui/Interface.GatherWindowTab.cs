@@ -8,6 +8,7 @@ using GatherBuddy.RebornUI;
 using RebornMaterial;
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -143,6 +144,7 @@ public partial class Interface
 
     private void DrawGatherWindowPreset(GatherWindowPreset preset)
     {
+        using var presetId = ImRaii.PushId(RuntimeHelpers.GetHashCode(preset));
         if (Ui.CommitField("##presetName", "Name", preset.Name, out var newName, SetInputWidth, 64))
         {
             _plugin.GatherWindowManager.ChangeName(preset, newName);

@@ -1,5 +1,6 @@
 using FFXIVClientStructs.FFXIV.Client.Game;
 using GatherBuddy.AutoGather;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.AutoHookIntegration.Models;
 using GatherBuddy.Classes;
 using GatherBuddy.Enums;

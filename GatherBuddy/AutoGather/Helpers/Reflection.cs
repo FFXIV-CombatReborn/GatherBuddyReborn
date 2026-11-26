@@ -14,13 +14,9 @@ namespace GatherBuddy.AutoGather.Helpers
     {
         private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
 
-        public class ArtisanExporter
+        public class ArtisanExporter(AutoGatherListsManager listsManager)
         {
-            private readonly AutoGatherListsManager _listsManager;
-            public ArtisanExporter(AutoGatherListsManager listsManager)
-            {
-                _listsManager = listsManager;
-            }
+            private readonly AutoGatherListsManager _listsManager = listsManager;
             public IDalamudPlugin? ArtisanAssemblyInstance;
 
             public static bool ArtisanAssemblyEnabled

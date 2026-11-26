@@ -324,30 +324,81 @@ internal static class Ui
     public static void Framed(string text, uint fill, Vector2 size = default, uint textColor = 0)
         => Framed(text, ImGui.ColorConvertU32ToFloat4(fill), size, textColor == 0 ? null : ImGui.ColorConvertU32ToFloat4(textColor));
 
-    private static uint _editId;
-    private static string _editText = string.Empty;
+    public readonly record struct TextFieldResult(bool Changed, bool Active, bool Deactivated, bool DeactivatedAfterEdit)
+    {
+        public bool SubmittedWithEnter
+            => Deactivated && (ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter));
+    }
+
+    private readonly record struct TextFieldState(uint InputId, bool Edited, int Frame);
+
+    private static readonly Dictionary<uint, TextFieldState> _textFields = [];
+    private static readonly Dictionary<uint, (string Text, int Frame)> _commitTexts = [];
+
+    public static TextFieldResult TextField(string id, string hint, ref string text, float width, int maxLength = 256)
+    {
+        var key = ImGui.GetID(id);
+        var frame = ImGui.GetFrameCount();
+        var hadState = _textFields.TryGetValue(key, out var state);
+        var wasActive = hadState && frame - state.Frame <= 1;
+        if (hadState && !wasActive)
+        {
+            _textFields.Remove(key);
+        }
+
+        var prevActiveId = ImGuiP.GetActiveID();
+        var changed = M3TextField.Draw(id, hint, ref text, width, maxLength);
+        var activeId = ImGuiP.GetActiveID();
+
+        var isActive = ImGui.IsItemActive()
+         || wasActive && state.InputId != 0 && activeId == state.InputId
+         || activeId != 0 && activeId != prevActiveId && !ImGuiP.GetInputTextState(activeId).IsNull;
+        if (isActive)
+        {
+            var edited = (wasActive && state.Edited) || changed;
+            _textFields[key] = new TextFieldState(activeId, edited, frame);
+            return new TextFieldResult(changed, true, false, false);
+        }
+
+        if (wasActive)
+        {
+            _textFields.Remove(key);
+            var cancelled = ImGui.IsKeyPressed(ImGuiKey.Escape);
+            var edited = (state.Edited || changed) && !cancelled;
+            return new TextFieldResult(changed, false, true, edited);
+        }
+
+        var immediateDeactivated = changed && !ImGui.IsKeyPressed(ImGuiKey.Escape);
+        return new TextFieldResult(changed, false, immediateDeactivated, immediateDeactivated);
+    }
 
     public static bool CommitField(string id, string hint, string current, out string committed, float width, int maxLength = 256)
     {
         var key = ImGui.GetID(id);
-        var text = _editId == key ? _editText : current;
-        M3TextField.Draw(id, hint, ref text, width, maxLength);
+        var frame = ImGui.GetFrameCount();
+        var hadBuffer = _commitTexts.TryGetValue(key, out var buffer);
+        var editing = hadBuffer && frame - buffer.Frame <= 1;
+        if (hadBuffer && !editing)
+        {
+            _commitTexts.Remove(key);
+        }
+
+        var text = editing ? buffer.Text : current;
+        var result = TextField(id, hint, ref text, width, maxLength);
         committed = text;
-        if (ImGui.IsItemActive())
+
+        if (result.Active)
         {
-            _editId = key;
-            _editText = text;
+            _commitTexts[key] = (text, frame);
             return false;
         }
 
-        if (_editId != key)
+        if (editing)
         {
-            return false;
+            _commitTexts.Remove(key);
         }
 
-        _editId = 0;
-        _editText = string.Empty;
-        return text != current;
+        return result.DeactivatedAfterEdit && text != current;
     }
 
     public static void CenteredIcon(FontAwesomeIcon icon, Vector4 color, string? tooltip = null)
