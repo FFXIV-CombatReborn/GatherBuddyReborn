@@ -9,10 +9,10 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 
 //Credit: https://github.com/NightmareXIV/Lifestream/blob/main/Lifestream/Movement/OverrideMovement.cs#7ad417a
-namespace GatherBuddy.AutoGather.Movement;
+namespace GatherBuddy.AutoGather.Helpers;
 
 [StructLayout(LayoutKind.Explicit, Size = 0x18)]
-public unsafe struct PlayerMoveControllerFlyInput
+public struct PlayerMoveControllerFlyInput
 {
     [FieldOffset(0x0)] public float Forward;
     [FieldOffset(0x4)] public float Left;
@@ -24,7 +24,7 @@ public unsafe struct PlayerMoveControllerFlyInput
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 0x2B0)]
-public unsafe struct CameraEx
+public struct CameraEx
 {
     [FieldOffset(0x130)] public float DirH; // 0 is north, increases CW
     [FieldOffset(0x134)] public float DirV; // 0 is horizontal, positive is looking up, negative looking down

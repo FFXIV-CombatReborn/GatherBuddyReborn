@@ -2656,7 +2656,7 @@ namespace GatherBuddy.AutoGather
 
             if (GatherBuddy.Config.AutoGatherConfig.HonkMode)
             {
-                Task.Run(() => _soundHelper.StartHonkSoundTask(3));
+                Task.Run(() => SoundHelper.StartHonkSoundTask(3));
             }
 
             CloseGatheringAddons();

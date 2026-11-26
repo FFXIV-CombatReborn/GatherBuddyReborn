@@ -811,12 +811,14 @@ public class CraftingListEditor
     {
         using var card = M3Card.Begin("##list_info_card", "List", FontAwesomeIcon.ClipboardList, M3.AccentFor(0));
         var width = CardContentWidth();
-        if (M3TextField.Draw("##listName", "List name", ref _editingName, width, 128))
+        using var listId = ImRaii.PushId(_list.ID);
+        var nameField = Ui.TextField("##listName", "List name", ref _editingName, width, 128);
+        if (nameField.Changed)
         {
             _nameConflict = false;
         }
 
-        if (ImGui.IsItemDeactivatedAfterEdit())
+        if (nameField.DeactivatedAfterEdit)
         {
             var trimmed = _editingName.Trim();
             if (string.IsNullOrWhiteSpace(trimmed))

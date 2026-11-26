@@ -390,8 +390,7 @@ public partial class VulcanWindow
         M3Widgets.SectionLabel("Quantity");
         M3Widgets.NumberField("##ContextQty", ref _contextMenuAddQuantity, width, 1, 1, 9999);
         M3Widgets.SectionLabel("New list");
-        M3TextField.Draw("##NewListName", "List name", ref _contextMenuNewListName, width, 128);
-        var createEnter = ImGui.IsItemDeactivatedAfterEdit() && ImGui.IsKeyPressed(ImGuiKey.Enter);
+        var createEnter = Ui.TextField("##NewListName", "List name", ref _contextMenuNewListName, width, 128).SubmittedWithEnter;
         M3Widgets.LabeledCheckbox("Ephemeral##ctxNewListEphemeral", ref _contextMenuNewListEphemeral,
             tooltip: "Delete the list once crafting completes. You can change this later in the list editor.");
         var canCreate = !string.IsNullOrWhiteSpace(_contextMenuNewListName);

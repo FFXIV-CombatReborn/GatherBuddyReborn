@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
 namespace GatherBuddy.Gui;
@@ -412,6 +413,7 @@ public partial class Interface
 
     private void DrawAlarmInfo(AlarmGroup group, int idx)
     {
+        using var id = ImRaii.PushId(RuntimeHelpers.GetHashCode(group));
         DrawGroupData(group, idx);
         ImGui.Dummy(new Vector2(0, M3.Space2));
         DrawAlarmTable(group);

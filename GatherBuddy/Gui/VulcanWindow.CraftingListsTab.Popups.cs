@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using GatherBuddy.Crafting;
+using GatherBuddy.RebornUI;
 using RebornMaterial;
 using System.Numerics;
 
@@ -40,9 +41,6 @@ public partial class VulcanWindow
         _newFolderParentPath = string.Empty;
         _openCreateFolderPopup = false;
     }
-
-    private static bool SubmittedWithEnter()
-        => ImGui.IsItemDeactivated() && (ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter));
 
     private void DrawImportListPopup()
     {
@@ -143,8 +141,7 @@ public partial class VulcanWindow
             ImGui.SetKeyboardFocusHere();
         }
 
-        M3TextField.Draw("##newListName", "List name", ref _newListName, ImGui.GetContentRegionAvail().X, 256);
-        var submitted = SubmittedWithEnter();
+        var submitted = Ui.TextField("##newListName", "List name", ref _newListName, ImGui.GetContentRegionAvail().X, 256).SubmittedWithEnter;
         if (!string.IsNullOrWhiteSpace(_newListName) && !GatherBuddy.CraftingListManager.IsNameUnique(_newListName))
         {
             M3Text.Draw("A list with this name already exists. It will be renamed automatically.", M3TextStyle.Warning, true);
@@ -210,8 +207,7 @@ public partial class VulcanWindow
             ImGui.SetKeyboardFocusHere();
         }
 
-        M3TextField.Draw("##newFolderName", "Folder name", ref _newFolderName, ImGui.GetContentRegionAvail().X, 256);
-        var submitted = SubmittedWithEnter();
+        var submitted = Ui.TextField("##newFolderName", "Folder name", ref _newFolderName, ImGui.GetContentRegionAvail().X, 256).SubmittedWithEnter;
         var isAvailable = GatherBuddy.CraftingListManager.IsFolderNameAvailable(_newFolderName, _newFolderParentPath);
         if (!string.IsNullOrWhiteSpace(_newFolderName) && !isAvailable)
         {

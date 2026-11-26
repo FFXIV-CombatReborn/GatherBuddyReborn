@@ -12,7 +12,7 @@ public class SoundHelper
 {
     private const string SoundResource = "GatherBuddy.CustomInfo.honk-sound.wav";
 
-    public void StartHonkSoundTask(int repeatCount)
+    public static void StartHonkSoundTask(int repeatCount)
         => Task.Run(() => PlayHonkSound(repeatCount));
 
     private static void PlayHonkSound(int repeatCount)
@@ -20,11 +20,7 @@ public class SoundHelper
         try
         {
             var assembly = Assembly.GetExecutingAssembly();
-            using var resourceStream = assembly.GetManifestResourceStream(SoundResource);
-            if (resourceStream == null)
-            {
-                throw new FileNotFoundException($"Embedded resource {SoundResource} not found.");
-            }
+            using var resourceStream = assembly.GetManifestResourceStream(SoundResource) ?? throw new FileNotFoundException($"Embedded resource {SoundResource} not found.");
 
             using var ms = new MemoryStream();
             resourceStream.CopyTo(ms);

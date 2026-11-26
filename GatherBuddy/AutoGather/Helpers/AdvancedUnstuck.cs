@@ -1,5 +1,6 @@
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
+using GatherBuddy.AutoGather.Helpers;
 using GatherBuddy.CustomInfo;
 using GatherBuddy.Helpers;
 using GatherBuddy.Plugin;

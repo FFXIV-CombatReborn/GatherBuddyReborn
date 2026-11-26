@@ -17,6 +17,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ImRaii = Dalamud.Interface.Utility.Raii.ImRaii;
 
@@ -335,6 +336,7 @@ public partial class Interface
 
     private void DrawAutoGatherList(AutoGatherList list)
     {
+        using var listId = ImRaii.PushId(RuntimeHelpers.GetHashCode(list));
         if (Ui.CommitField("##listName", "Name", list.Name, out var newName, SetInputWidth, 64))
         {
             _plugin.AutoGatherListsManager.ChangeName(list, newName);
