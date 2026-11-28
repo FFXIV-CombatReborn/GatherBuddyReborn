@@ -302,12 +302,6 @@ public partial class VulcanWindow : M3ShellWindow, IDisposable
 
     protected override void PreDrawFold()
     {
-        if (IsPinned || IsClickthrough)
-        {
-            IsPinned = false;
-            IsClickthrough = false;
-        }
-
         if (_recipesTabRequestFocus)
         {
             _recipesTabRequestFocus = false;

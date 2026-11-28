@@ -49,15 +49,6 @@ public sealed class CollectablesWindow : M3PanelWindow
         IsOpen = false;
     }
 
-    protected override void PreDrawFold()
-    {
-        if (IsPinned || IsClickthrough)
-        {
-            IsPinned = false;
-            IsClickthrough = false;
-        }
-    }
-
     public void Open()
         => OpenAndRestore();
 
