@@ -227,6 +227,7 @@ public partial class GatherBuddy : IDalamudPlugin
         NativeItemTooltipBridge?.BeginImGuiFrame();
         try
         {
+            RebornUI.WindowPresetReset.Apply(WindowSystem);
             WindowSystem.Draw();
         }
         finally

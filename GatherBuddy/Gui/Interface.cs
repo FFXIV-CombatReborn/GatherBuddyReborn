@@ -202,15 +202,6 @@ public partial class Interface : M3ShellWindow, IDisposable
         }
     }
 
-    protected override void PreDrawFold()
-    {
-        if (IsPinned || IsClickthrough)
-        {
-            IsPinned = false;
-            IsClickthrough = false;
-        }
-    }
-
     protected override void BeforeDrawShell()
         => SetupValues();
 
